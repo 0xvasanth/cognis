@@ -8,5 +8,7 @@ pub mod base;
 pub mod anthropic;
 #[cfg(feature = "openai")]
 pub mod openai;
+#[cfg(feature = "ollama")]
+pub mod ollama;
 
 pub use base::*;
