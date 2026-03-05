@@ -5,6 +5,7 @@ pub mod constants;
 pub mod errors;
 pub mod graph;
 pub mod managed;
+pub mod prebuilt;
 pub mod pregel;
 pub mod runtime;
 pub mod types;
