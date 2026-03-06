@@ -46,6 +46,7 @@ pub mod chat_models;
 pub mod document_loaders;
 pub mod embeddings;
 pub mod memory;
+pub mod output_parsers;
 pub mod prompts;
 pub mod retrievers;
 pub mod text_splitter;
