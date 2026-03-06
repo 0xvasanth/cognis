@@ -27,3 +27,8 @@ pub use sql::{
     ColumnSchema, ColumnSchemaBuilder, DatabaseSchema, DatabaseSchemaBuilder, SQLQueryValidator,
     TableSchema, TableSchemaBuilder, TextToSQLChain, TextToSQLChainBuilder,
 };
+pub mod api;
+pub use api::{
+    APIChain, APIChainBuilder, APISpec, APISpecBuilder, EndpointSpec, EndpointSpecBuilder,
+    ParameterSpec, ParameterSpecBuilder, RequestValidator,
+};
