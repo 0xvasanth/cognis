@@ -1,5 +1,6 @@
 pub mod content;
 pub mod base;
+pub mod multimodal;
 pub mod tool_types;
 pub mod human;
 pub mod ai;
@@ -27,6 +28,7 @@ pub use self::content::{
 };
 pub use self::function::FunctionMessage;
 pub use self::human::HumanMessage;
+pub use self::multimodal::{ContentPart, ImageDetail, ImageUrlContent};
 pub use self::system::SystemMessage;
 pub use self::tool::{ToolMessage, ToolStatus};
 pub use self::openai::{convert_to_openai_messages, count_tokens_approximately};
