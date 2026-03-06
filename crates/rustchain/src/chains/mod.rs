@@ -18,3 +18,7 @@ pub mod router;
 pub use router::{Route, RouterChain, RouterResult, SemanticRouter};
 pub mod structured_output;
 pub use structured_output::StructuredOutputChain;
+pub mod summarize;
+pub use summarize::{
+    MapReduceSummarizationChain, RefineSummarizationChain, StuffSummarizationChain,
+};
