@@ -9,3 +9,4 @@ pub mod docstore;
 pub mod ensemble;
 pub mod multi_vector;
 pub mod parent_document;
+pub mod self_query;
