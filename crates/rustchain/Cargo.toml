@@ -17,6 +17,7 @@ futures.workspace = true
 regex = "1"
 csv = "1"
 glob = "0.3"
+pdf-extract = { version = "0.7", optional = true }
 
 [dependencies.reqwest]
 workspace = true
@@ -28,6 +29,7 @@ optional = true
 
 [features]
 default = []
+pdf = ["dep:pdf-extract"]
 openai = ["dep:reqwest", "dep:secrecy"]
 anthropic = ["dep:reqwest", "dep:secrecy"]
 google = ["dep:reqwest", "dep:secrecy"]

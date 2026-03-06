@@ -8,6 +8,9 @@ pub mod csv;
 pub mod directory;
 pub mod html;
 pub mod json;
+pub mod markdown;
+#[cfg(feature = "pdf")]
+pub mod pdf;
 pub mod text;
 
 #[cfg(any(
@@ -23,6 +26,9 @@ pub use self::csv::CsvLoader;
 pub use directory::DirectoryLoader;
 pub use html::HTMLLoader;
 pub use json::JsonLoader;
+pub use markdown::MarkdownLoader;
+#[cfg(feature = "pdf")]
+pub use pdf::PdfLoader;
 pub use text::TextLoader;
 
 #[cfg(any(
