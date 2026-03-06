@@ -485,15 +485,72 @@ impl StateGraph {
         self
     }
 
-    /// Set a conditional entry point that routes to different nodes based on input.
+    /// Set a conditional entry point that routes to different nodes based on
+    /// the input state.
     ///
-    /// This is equivalent to `add_conditional_edges(START, path, path_map)`.
+    /// The routing function `path` inspects the input and returns a route key
+    /// (via [`RouterResult`]). The optional `path_map` translates route keys
+    /// to actual node names. If a route key is not found in the map, the
+    /// optional `default` node is used; if neither is available, the key
+    /// itself is used as a literal node name.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` — Routing function that examines input state and returns a
+    ///   [`RouterResult`] indicating which node(s) to route to.
+    /// * `path_map` — Optional mapping from route keys to node names.
+    /// * `default` — Optional fallback node name when the route key is not in
+    ///   the path map.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::collections::HashMap;
+    /// use std::sync::Arc;
+    /// use serde_json::{json, Value};
+    /// use langgraph::graph::state::{StateGraph, AsyncNodeAction};
+    /// use langgraph::graph::branch::RouterResult;
+    ///
+    /// let router = Arc::new(|state: &Value| -> RouterResult {
+    ///     let mode = state.get("mode").and_then(|v| v.as_str()).unwrap_or("default");
+    ///     RouterResult::Single(mode.to_string())
+    /// });
+    ///
+    /// let mut path_map = HashMap::new();
+    /// path_map.insert("fast".to_string(), "fast_node".to_string());
+    /// path_map.insert("slow".to_string(), "slow_node".to_string());
+    ///
+    /// let action: AsyncNodeAction = Arc::new(|s| Box::pin(async { Ok(s) }));
+    ///
+    /// let graph = StateGraph::new()
+    ///     .add_node("fast_node", action.clone())
+    ///     .add_node("slow_node", action.clone())
+    ///     .add_node("fallback", action.clone())
+    ///     .set_conditional_entry_point(router, Some(path_map), Some("fallback".to_string()))
+    ///     .set_finish_point("fast_node")
+    ///     .set_finish_point("slow_node")
+    ///     .set_finish_point("fallback")
+    ///     .compile()
+    ///     .unwrap();
+    /// ```
     pub fn set_conditional_entry_point(
-        self,
+        mut self,
         path: RouterFn,
         path_map: Option<HashMap<String, String>>,
+        default: Option<String>,
     ) -> Self {
-        self.add_conditional_edges(START, path, path_map)
+        let mut branch = Branch::new(path);
+        if let Some(map) = path_map {
+            branch = branch.with_path_map(map);
+        }
+        if let Some(def) = default {
+            branch = branch.with_default(def);
+        }
+        self.edges.push(Edge::Conditional {
+            from: START.to_string(),
+            branch,
+        });
+        self
     }
 
     /// Add an edge from multiple source nodes to a single target.
@@ -1475,7 +1532,7 @@ mod tests {
     use serde_json::json;
 
     /// Helper: create an async node action that sets a key in state.
-    fn make_set_action(key: &str, value: Value) -> AsyncNodeAction {
+    fn make_action(key: &str, value: Value) -> AsyncNodeAction {
         let key = key.to_string();
         Arc::new(move |_state: Value| {
             let key = key.clone();
@@ -1503,9 +1560,9 @@ mod tests {
     async fn test_linear_graph() {
         // A -> B -> C
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("step_a", json!(true)))
-            .add_node("b", make_set_action("step_b", json!(true)))
-            .add_node("c", make_set_action("step_c", json!(true)))
+            .add_node("a", make_action("step_a", json!(true)))
+            .add_node("b", make_action("step_b", json!(true)))
+            .add_node("c", make_action("step_c", json!(true)))
             .set_entry_point("a")
             .add_edge("a", "b")
             .add_edge("b", "c")
@@ -1525,9 +1582,9 @@ mod tests {
     async fn test_branching_graph() {
         // START -> router -> (left | right) -> END
         let graph = StateGraph::new()
-            .add_node("router", make_set_action("routed", json!(true)))
-            .add_node("left", make_set_action("branch", json!("left")))
-            .add_node("right", make_set_action("branch", json!("right")))
+            .add_node("router", make_action("routed", json!(true)))
+            .add_node("left", make_action("branch", json!("left")))
+            .add_node("right", make_action("branch", json!("right")))
             .set_entry_point("router")
             .add_conditional_edges(
                 "router",
@@ -1595,7 +1652,7 @@ mod tests {
         // Infinite loop with a low recursion limit.
         let graph = StateGraph::new()
             .with_recursion_limit(3)
-            .add_node("loop_node", make_set_action("x", json!(1)))
+            .add_node("loop_node", make_action("x", json!(1)))
             .set_entry_point("loop_node")
             .add_edge("loop_node", "loop_node")
             .compile()
@@ -1614,7 +1671,7 @@ mod tests {
     #[tokio::test]
     async fn test_single_node_graph() {
         let graph = StateGraph::new()
-            .add_node("only", make_set_action("done", json!(true)))
+            .add_node("only", make_action("done", json!(true)))
             .set_entry_point("only")
             .set_finish_point("only")
             .compile()
@@ -1627,7 +1684,7 @@ mod tests {
     #[test]
     fn test_compile_no_entry_point() {
         let result = StateGraph::new()
-            .add_node("a", make_set_action("x", json!(1)))
+            .add_node("a", make_action("x", json!(1)))
             .compile();
 
         assert!(result.is_err());
@@ -1636,7 +1693,7 @@ mod tests {
     #[test]
     fn test_compile_unknown_edge_target() {
         let result = StateGraph::new()
-            .add_node("a", make_set_action("x", json!(1)))
+            .add_node("a", make_action("x", json!(1)))
             .set_entry_point("a")
             .add_edge("a", "nonexistent")
             .compile();
@@ -1647,7 +1704,7 @@ mod tests {
     #[test]
     fn test_compile_unknown_edge_source() {
         let result = StateGraph::new()
-            .add_node("a", make_set_action("x", json!(1)))
+            .add_node("a", make_action("x", json!(1)))
             .set_entry_point("a")
             .add_edge("nonexistent", "a")
             .compile();
@@ -1659,8 +1716,8 @@ mod tests {
     async fn test_state_merging() {
         // Each node adds a different key; all should be present at the end.
         let graph = StateGraph::new()
-            .add_node("first", make_set_action("a", json!(1)))
-            .add_node("second", make_set_action("b", json!(2)))
+            .add_node("first", make_action("a", json!(1)))
+            .add_node("second", make_action("b", json!(2)))
             .set_entry_point("first")
             .add_edge("first", "second")
             .set_finish_point("second")
@@ -1691,8 +1748,8 @@ mod tests {
     #[test]
     fn test_node_names() {
         let graph = StateGraph::new()
-            .add_node("alpha", make_set_action("x", json!(1)))
-            .add_node("beta", make_set_action("y", json!(2)))
+            .add_node("alpha", make_action("x", json!(1)))
+            .add_node("beta", make_action("y", json!(2)))
             .set_entry_point("alpha")
             .add_edge("alpha", "beta")
             .set_finish_point("beta")
@@ -1707,13 +1764,13 @@ mod tests {
     #[test]
     #[should_panic(expected = "reserved name")]
     fn test_cannot_add_start_node() {
-        let _ = StateGraph::new().add_node(START, make_set_action("x", json!(1)));
+        let _ = StateGraph::new().add_node(START, make_action("x", json!(1)));
     }
 
     #[test]
     #[should_panic(expected = "reserved name")]
     fn test_cannot_add_end_node() {
-        let _ = StateGraph::new().add_node(END, make_set_action("x", json!(1)));
+        let _ = StateGraph::new().add_node(END, make_action("x", json!(1)));
     }
 
     #[tokio::test]
@@ -1723,9 +1780,9 @@ mod tests {
         path_map.insert("go_b".to_string(), "node_b".to_string());
 
         let graph = StateGraph::new()
-            .add_node("start_node", make_set_action("started", json!(true)))
-            .add_node("node_a", make_set_action("result", json!("a")))
-            .add_node("node_b", make_set_action("result", json!("b")))
+            .add_node("start_node", make_action("started", json!(true)))
+            .add_node("node_a", make_action("result", json!("a")))
+            .add_node("node_b", make_action("result", json!("b")))
             .set_entry_point("start_node")
             .add_conditional_edges(
                 "start_node",
@@ -1747,9 +1804,9 @@ mod tests {
     async fn test_add_sequence() {
         let graph = StateGraph::new()
             .add_sequence(vec![
-                ("a", make_set_action("step_a", json!(true))),
-                ("b", make_set_action("step_b", json!(true))),
-                ("c", make_set_action("step_c", json!(true))),
+                ("a", make_action("step_a", json!(true))),
+                ("b", make_action("step_b", json!(true))),
+                ("c", make_action("step_c", json!(true))),
             ])
             .set_entry_point("a")
             .set_finish_point("c")
@@ -1765,8 +1822,8 @@ mod tests {
     #[tokio::test]
     async fn test_set_conditional_entry_point() {
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("result", json!("a")))
-            .add_node("b", make_set_action("result", json!("b")))
+            .add_node("a", make_action("result", json!("a")))
+            .add_node("b", make_action("result", json!("b")))
             .set_conditional_entry_point(
                 Arc::new(|state: &Value| {
                     if state
@@ -1779,6 +1836,7 @@ mod tests {
                         super::super::branch::RouterResult::Single("b".to_string())
                     }
                 }),
+                None,
                 None,
             )
             .set_finish_point("a")
@@ -1794,9 +1852,9 @@ mod tests {
     async fn test_add_edges_join() {
         // a and b both lead to c
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("from_a", json!(true)))
-            .add_node("b", make_set_action("from_b", json!(true)))
-            .add_node("c", make_set_action("joined", json!(true)))
+            .add_node("a", make_action("from_a", json!(true)))
+            .add_node("b", make_action("from_b", json!(true)))
+            .add_node("c", make_action("joined", json!(true)))
             .set_entry_point("a")
             .add_edge("a", "b")
             .add_edges(&["a", "b"], "c")
@@ -1811,7 +1869,7 @@ mod tests {
     #[test]
     fn test_schema_accessors() {
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("x", json!(1)))
+            .add_node("a", make_action("x", json!(1)))
             .set_entry_point("a")
             .set_finish_point("a")
             .with_input_schema(json!({"type": "object"}))
@@ -1831,7 +1889,7 @@ mod tests {
         };
         let node = NodeSpec {
             name: "cached_node".to_string(),
-            action: make_set_action("x", json!(1)),
+            action: make_action("x", json!(1)),
             metadata: None,
             retry_policy: None,
             cache_policy: Some(cache_policy),
@@ -1852,7 +1910,7 @@ mod tests {
     fn test_node_spec_defer() {
         let node = NodeSpec {
             name: "deferred_node".to_string(),
-            action: make_set_action("x", json!(1)),
+            action: make_action("x", json!(1)),
             metadata: None,
             retry_policy: None,
             cache_policy: None,
@@ -1882,15 +1940,15 @@ mod tests {
         let graph = StateGraph::new()
             .add_node_with_full_config(
                 "full_node",
-                make_set_action("result", json!("done")),
+                make_action("result", json!("done")),
                 Some(metadata),
                 Some(RetryPolicy::default()),
                 Some(cache_policy),
                 Some(ends.clone()),
                 true,
             )
-            .add_node("next_node", make_set_action("next", json!(true)))
-            .add_node("error_handler", make_set_action("error", json!(true)))
+            .add_node("next_node", make_action("next", json!(true)))
+            .add_node("error_handler", make_action("error", json!(true)))
             .set_entry_point("full_node")
             .set_finish_point("full_node")
             .compile()
@@ -1916,7 +1974,7 @@ mod tests {
     async fn test_stream_values_mode() {
         // Single node: stream should yield full state after execution.
         let graph = StateGraph::new()
-            .add_node("only", make_set_action("done", json!(true)))
+            .add_node("only", make_action("done", json!(true)))
             .set_entry_point("only")
             .set_finish_point("only")
             .compile()
@@ -1942,7 +2000,7 @@ mod tests {
     async fn test_stream_updates_mode() {
         // Single node: stream should yield only the delta.
         let graph = StateGraph::new()
-            .add_node("only", make_set_action("done", json!(true)))
+            .add_node("only", make_action("done", json!(true)))
             .set_entry_point("only")
             .set_finish_point("only")
             .compile()
@@ -1967,8 +2025,8 @@ mod tests {
     async fn test_stream_two_node_graph() {
         // A -> B: should yield two updates in order.
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("step_a", json!(1)))
-            .add_node("b", make_set_action("step_b", json!(2)))
+            .add_node("a", make_action("step_a", json!(1)))
+            .add_node("b", make_action("step_b", json!(2)))
             .set_entry_point("a")
             .add_edge("a", "b")
             .set_finish_point("b")
@@ -1992,9 +2050,9 @@ mod tests {
     async fn test_stream_conditional_routing() {
         // START -> router -> (left | right) -> END
         let graph = StateGraph::new()
-            .add_node("router", make_set_action("routed", json!(true)))
-            .add_node("left", make_set_action("branch", json!("left")))
-            .add_node("right", make_set_action("branch", json!("right")))
+            .add_node("router", make_action("routed", json!(true)))
+            .add_node("left", make_action("branch", json!("left")))
+            .add_node("right", make_action("branch", json!("right")))
             .set_entry_point("router")
             .add_conditional_edges(
                 "router",
@@ -2054,9 +2112,9 @@ mod tests {
     async fn test_interrupt_before() {
         // A -> B -> C, interrupt before B
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("step_a", json!(true)))
-            .add_node("b", make_set_action("step_b", json!(true)))
-            .add_node("c", make_set_action("step_c", json!(true)))
+            .add_node("a", make_action("step_a", json!(true)))
+            .add_node("b", make_action("step_b", json!(true)))
+            .add_node("c", make_action("step_c", json!(true)))
             .set_entry_point("a")
             .add_edge("a", "b")
             .add_edge("b", "c")
@@ -2086,9 +2144,9 @@ mod tests {
     async fn test_interrupt_after() {
         // A -> B -> C, interrupt after B
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("step_a", json!(true)))
-            .add_node("b", make_set_action("step_b", json!(true)))
-            .add_node("c", make_set_action("step_c", json!(true)))
+            .add_node("a", make_action("step_a", json!(true)))
+            .add_node("b", make_action("step_b", json!(true)))
+            .add_node("c", make_action("step_c", json!(true)))
             .set_entry_point("a")
             .add_edge("a", "b")
             .add_edge("b", "c")
@@ -2122,9 +2180,9 @@ mod tests {
     async fn test_interrupt_resume_after_interrupt() {
         // A -> B -> C, interrupt before B, then resume.
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("step_a", json!(true)))
-            .add_node("b", make_set_action("step_b", json!(true)))
-            .add_node("c", make_set_action("step_c", json!(true)))
+            .add_node("a", make_action("step_a", json!(true)))
+            .add_node("b", make_action("step_b", json!(true)))
+            .add_node("c", make_action("step_c", json!(true)))
             .set_entry_point("a")
             .add_edge("a", "b")
             .add_edge("b", "c")
@@ -2160,7 +2218,7 @@ mod tests {
     async fn test_interrupt_resume_with_update() {
         // A -> B -> C, interrupt before B, human provides state update.
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("step_a", json!(true)))
+            .add_node("a", make_action("step_a", json!(true)))
             .add_node(
                 "b",
                 make_transform_action(|state: Value| {
@@ -2171,7 +2229,7 @@ mod tests {
                     Ok(json!({"step_b": true, "was_approved": approved}))
                 }),
             )
-            .add_node("c", make_set_action("step_c", json!(true)))
+            .add_node("c", make_action("step_c", json!(true)))
             .set_entry_point("a")
             .add_edge("a", "b")
             .add_edge("b", "c")
@@ -2208,8 +2266,8 @@ mod tests {
     async fn test_interrupt_no_interrupt_normal_flow() {
         // No interrupts configured — should complete normally.
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("step_a", json!(true)))
-            .add_node("b", make_set_action("step_b", json!(true)))
+            .add_node("a", make_action("step_a", json!(true)))
+            .add_node("b", make_action("step_b", json!(true)))
             .set_entry_point("a")
             .add_edge("a", "b")
             .set_finish_point("b")
@@ -2233,7 +2291,7 @@ mod tests {
     async fn test_stream_debug_mode() {
         // Debug mode should include step number, elapsed_ms, update, and state.
         let graph = StateGraph::new()
-            .add_node("a", make_set_action("val", json!(42)))
+            .add_node("a", make_action("val", json!(42)))
             .set_entry_point("a")
             .set_finish_point("a")
             .compile()
@@ -2258,8 +2316,8 @@ mod tests {
     async fn test_subgraph_simple() {
         // Inner graph: inner_a -> inner_b
         let inner = StateGraph::new()
-            .add_node("inner_a", make_set_action("inner_step_a", json!(true)))
-            .add_node("inner_b", make_set_action("inner_step_b", json!(true)))
+            .add_node("inner_a", make_action("inner_step_a", json!(true)))
+            .add_node("inner_b", make_action("inner_step_b", json!(true)))
             .set_entry_point("inner_a")
             .add_edge("inner_a", "inner_b")
             .set_finish_point("inner_b")
@@ -2268,9 +2326,9 @@ mod tests {
 
         // Outer graph: setup -> subgraph -> finish
         let outer = StateGraph::new()
-            .add_node("setup", make_set_action("setup_done", json!(true)))
+            .add_node("setup", make_action("setup_done", json!(true)))
             .add_subgraph("subgraph", inner)
-            .add_node("finish", make_set_action("finish_done", json!(true)))
+            .add_node("finish", make_action("finish_done", json!(true)))
             .set_entry_point("setup")
             .add_edge("setup", "subgraph")
             .add_edge("subgraph", "finish")
@@ -2305,7 +2363,7 @@ mod tests {
             .unwrap();
 
         let outer = StateGraph::new()
-            .add_node("init", make_set_action("x", json!(5)))
+            .add_node("init", make_action("x", json!(5)))
             .add_subgraph("sub", inner)
             .add_node(
                 "check",
@@ -2335,7 +2393,7 @@ mod tests {
         let left_sub = StateGraph::new()
             .add_node(
                 "left_inner",
-                make_set_action("path", json!("left_subgraph")),
+                make_action("path", json!("left_subgraph")),
             )
             .set_entry_point("left_inner")
             .set_finish_point("left_inner")
@@ -2345,7 +2403,7 @@ mod tests {
         let right_sub = StateGraph::new()
             .add_node(
                 "right_inner",
-                make_set_action("path", json!("right_subgraph")),
+                make_action("path", json!("right_subgraph")),
             )
             .set_entry_point("right_inner")
             .set_finish_point("right_inner")
@@ -2353,7 +2411,7 @@ mod tests {
             .unwrap();
 
         let outer = StateGraph::new()
-            .add_node("router", make_set_action("routed", json!(true)))
+            .add_node("router", make_action("routed", json!(true)))
             .add_subgraph("left_sub", left_sub)
             .add_subgraph("right_sub", right_sub)
             .set_entry_point("router")
@@ -2583,7 +2641,7 @@ mod tests {
         });
 
         let graph = StateGraph::new()
-            .add_node("dispatcher", make_set_action("dispatched", json!(true)))
+            .add_node("dispatcher", make_action("dispatched", json!(true)))
             .add_node("worker", worker)
             .set_entry_point("dispatcher")
             .add_conditional_edges_with_send(
@@ -2655,7 +2713,7 @@ mod tests {
         });
 
         let graph = StateGraph::new()
-            .add_node("dispatcher", make_set_action("dispatched", json!(true)))
+            .add_node("dispatcher", make_action("dispatched", json!(true)))
             .add_node("worker", worker)
             .add_node("reducer", reducer)
             .set_entry_point("dispatcher")
@@ -2719,7 +2777,7 @@ mod tests {
         });
 
         let graph = StateGraph::new()
-            .add_node("start_node", make_set_action("started", json!(true)))
+            .add_node("start_node", make_action("started", json!(true)))
             .add_node("alpha", alpha)
             .add_node("beta", beta)
             .set_entry_point("start_node")
@@ -2922,5 +2980,263 @@ mod mermaid_tests {
 
         // Check entry_point.
         assert_eq!(json_val["entry_point"], "__start__");
+    }
+
+    /// Helper: create an async node action that transforms state.
+    fn make_transform_action<F>(f: F) -> AsyncNodeAction
+    where
+        F: Fn(Value) -> Result<Value, LangGraphError> + Send + Sync + 'static,
+    {
+        Arc::new(move |state: Value| {
+            let result = f(state);
+            Box::pin(async move { result })
+        })
+    }
+
+    // ── Conditional entry point tests ──────────────────────────────────
+
+    #[tokio::test]
+    async fn test_conditional_entry_routes_to_correct_node() {
+        let graph = StateGraph::new()
+            .add_node("greet", make_action("output", json!("hello")))
+            .add_node("farewell", make_action("output", json!("goodbye")))
+            .set_conditional_entry_point(
+                Arc::new(|state: &Value| {
+                    let action = state.get("action").and_then(|v| v.as_str()).unwrap_or("");
+                    super::super::branch::RouterResult::Single(action.to_string())
+                }),
+                None,
+                None,
+            )
+            .set_finish_point("greet")
+            .set_finish_point("farewell")
+            .compile()
+            .unwrap();
+
+        let result = graph.invoke(json!({"action": "greet"})).await.unwrap();
+        assert_eq!(result["output"], json!("hello"));
+    }
+
+    #[tokio::test]
+    async fn test_conditional_entry_different_inputs_route_differently() {
+        let graph = StateGraph::new()
+            .add_node("alpha", make_action("result", json!("alpha_done")))
+            .add_node("beta", make_action("result", json!("beta_done")))
+            .set_conditional_entry_point(
+                Arc::new(|state: &Value| {
+                    let mode = state.get("mode").and_then(|v| v.as_str()).unwrap_or("alpha");
+                    super::super::branch::RouterResult::Single(mode.to_string())
+                }),
+                None,
+                None,
+            )
+            .set_finish_point("alpha")
+            .set_finish_point("beta")
+            .compile()
+            .unwrap();
+
+        let r1 = graph.invoke(json!({"mode": "alpha"})).await.unwrap();
+        assert_eq!(r1["result"], json!("alpha_done"));
+
+        let r2 = graph.invoke(json!({"mode": "beta"})).await.unwrap();
+        assert_eq!(r2["result"], json!("beta_done"));
+    }
+
+    #[tokio::test]
+    async fn test_conditional_entry_default_when_no_match() {
+        let mut path_map = HashMap::new();
+        path_map.insert("fast".to_string(), "fast_node".to_string());
+        path_map.insert("slow".to_string(), "slow_node".to_string());
+
+        let graph = StateGraph::new()
+            .add_node("fast_node", make_action("result", json!("fast")))
+            .add_node("slow_node", make_action("result", json!("slow")))
+            .add_node("fallback", make_action("result", json!("default")))
+            .set_conditional_entry_point(
+                Arc::new(|state: &Value| {
+                    let mode = state.get("mode").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    super::super::branch::RouterResult::Single(mode.to_string())
+                }),
+                Some(path_map),
+                Some("fallback".to_string()),
+            )
+            .set_finish_point("fast_node")
+            .set_finish_point("slow_node")
+            .set_finish_point("fallback")
+            .compile()
+            .unwrap();
+
+        // Known route -> fast_node
+        let r1 = graph.invoke(json!({"mode": "fast"})).await.unwrap();
+        assert_eq!(r1["result"], json!("fast"));
+
+        // Unknown route -> fallback (default)
+        let r2 = graph.invoke(json!({"mode": "unknown_mode"})).await.unwrap();
+        assert_eq!(r2["result"], json!("default"));
+    }
+
+    #[tokio::test]
+    async fn test_conditional_entry_no_match_no_default_uses_key() {
+        // Without a default, an unmapped key passes through as a literal
+        // node name. If that node doesn't exist the invoke will error.
+        let mut path_map = HashMap::new();
+        path_map.insert("known".to_string(), "real_node".to_string());
+
+        let graph = StateGraph::new()
+            .add_node("real_node", make_action("result", json!("ok")))
+            .set_conditional_entry_point(
+                Arc::new(|_state: &Value| {
+                    // Return a key that is NOT in the path_map
+                    super::super::branch::RouterResult::Single("nonexistent".to_string())
+                }),
+                Some(path_map),
+                None, // no default
+            )
+            .set_finish_point("real_node")
+            .compile()
+            .unwrap();
+
+        // The router returns "nonexistent", which is not in the path map
+        // and there is no default, so it passes through as a literal node
+        // name and fails because no such node exists.
+        let result = graph.invoke(json!({})).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_regular_entry_point_still_works() {
+        // Ensure set_entry_point (non-conditional) is unaffected.
+        let graph = StateGraph::new()
+            .add_node("only_node", make_action("visited", json!(true)))
+            .set_entry_point("only_node")
+            .set_finish_point("only_node")
+            .compile()
+            .unwrap();
+
+        let result = graph.invoke(json!({})).await.unwrap();
+        assert_eq!(result["visited"], json!(true));
+    }
+
+    #[tokio::test]
+    async fn test_conditional_entry_multiple_routes() {
+        let mut path_map = HashMap::new();
+        path_map.insert("a".to_string(), "node_a".to_string());
+        path_map.insert("b".to_string(), "node_b".to_string());
+        path_map.insert("c".to_string(), "node_c".to_string());
+
+        let graph = StateGraph::new()
+            .add_node("node_a", make_action("result", json!("from_a")))
+            .add_node("node_b", make_action("result", json!("from_b")))
+            .add_node("node_c", make_action("result", json!("from_c")))
+            .set_conditional_entry_point(
+                Arc::new(|state: &Value| {
+                    let choice = state.get("choice").and_then(|v| v.as_str()).unwrap_or("a");
+                    super::super::branch::RouterResult::Single(choice.to_string())
+                }),
+                Some(path_map),
+                None,
+            )
+            .set_finish_point("node_a")
+            .set_finish_point("node_b")
+            .set_finish_point("node_c")
+            .compile()
+            .unwrap();
+
+        let r1 = graph.invoke(json!({"choice": "a"})).await.unwrap();
+        assert_eq!(r1["result"], json!("from_a"));
+
+        let r2 = graph.invoke(json!({"choice": "b"})).await.unwrap();
+        assert_eq!(r2["result"], json!("from_b"));
+
+        let r3 = graph.invoke(json!({"choice": "c"})).await.unwrap();
+        assert_eq!(r3["result"], json!("from_c"));
+    }
+
+    #[tokio::test]
+    async fn test_conditional_entry_path_map_with_string_keys() {
+        let mut path_map = HashMap::new();
+        path_map.insert("route-one".to_string(), "handler_one".to_string());
+        path_map.insert("route-two".to_string(), "handler_two".to_string());
+
+        let graph = StateGraph::new()
+            .add_node("handler_one", make_action("handled_by", json!("one")))
+            .add_node("handler_two", make_action("handled_by", json!("two")))
+            .set_conditional_entry_point(
+                Arc::new(|state: &Value| {
+                    let route = state.get("route").and_then(|v| v.as_str()).unwrap_or("route-one");
+                    super::super::branch::RouterResult::Single(route.to_string())
+                }),
+                Some(path_map),
+                None,
+            )
+            .set_finish_point("handler_one")
+            .set_finish_point("handler_two")
+            .compile()
+            .unwrap();
+
+        let r1 = graph.invoke(json!({"route": "route-one"})).await.unwrap();
+        assert_eq!(r1["handled_by"], json!("one"));
+
+        let r2 = graph.invoke(json!({"route": "route-two"})).await.unwrap();
+        assert_eq!(r2["handled_by"], json!("two"));
+    }
+
+    #[tokio::test]
+    async fn test_conditional_entry_full_graph_integration() {
+        // Conditional entry -> processing nodes -> finish
+        // Tests that conditional entry works in a multi-step graph.
+        let mut path_map = HashMap::new();
+        path_map.insert("text".to_string(), "text_processor".to_string());
+        path_map.insert("number".to_string(), "number_processor".to_string());
+
+        let graph = StateGraph::new()
+            .add_node(
+                "text_processor",
+                make_transform_action(|state| {
+                    let input = state.get("input").and_then(|v| v.as_str()).unwrap_or("");
+                    let mut map = serde_json::Map::new();
+                    map.insert("processed".into(), json!(format!("TEXT:{}", input)));
+                    Ok(Value::Object(map))
+                }),
+            )
+            .add_node(
+                "number_processor",
+                make_transform_action(|state| {
+                    let input = state.get("input").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let mut map = serde_json::Map::new();
+                    map.insert("processed".into(), json!(input * 2));
+                    Ok(Value::Object(map))
+                }),
+            )
+            .add_node("finalizer", make_action("finalized", json!(true)))
+            .set_conditional_entry_point(
+                Arc::new(|state: &Value| {
+                    let kind = state.get("type").and_then(|v| v.as_str()).unwrap_or("text");
+                    super::super::branch::RouterResult::Single(kind.to_string())
+                }),
+                Some(path_map),
+                None,
+            )
+            .add_edge("text_processor", "finalizer")
+            .add_edge("number_processor", "finalizer")
+            .set_finish_point("finalizer")
+            .compile()
+            .unwrap();
+
+        // Text path
+        let r1 = graph
+            .invoke(json!({"type": "text", "input": "hello"}))
+            .await
+            .unwrap();
+        assert_eq!(r1["processed"], json!("TEXT:hello"));
+        assert_eq!(r1["finalized"], json!(true));
+
+        // Number path
+        let r2 = graph
+            .invoke(json!({"type": "number", "input": 21}))
+            .await
+            .unwrap();
+        assert_eq!(r2["processed"], json!(42));
+        assert_eq!(r2["finalized"], json!(true));
     }
 }

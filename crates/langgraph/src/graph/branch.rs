@@ -32,12 +32,17 @@ pub struct Branch {
     pub path: RouterFn,
     /// Optional mapping of route values to node names.
     pub ends: Option<HashMap<String, String>>,
+    /// Optional default node name used when the router returns a key not
+    /// present in `ends`. When `None` and a path map is provided, unmapped
+    /// keys pass through as literal node names (existing behaviour).
+    pub default: Option<String>,
 }
 
 impl fmt::Debug for Branch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Branch")
             .field("ends", &self.ends)
+            .field("default", &self.default)
             .field("path", &"<RouterFn>")
             .finish()
     }
@@ -46,12 +51,23 @@ impl fmt::Debug for Branch {
 impl Branch {
     /// Create a new branch with the given routing function.
     pub fn new(path: RouterFn) -> Self {
-        Self { path, ends: None }
+        Self {
+            path,
+            ends: None,
+            default: None,
+        }
     }
 
     /// Set a mapping from route values to actual node names.
     pub fn with_path_map(mut self, map: HashMap<String, String>) -> Self {
         self.ends = Some(map);
+        self
+    }
+
+    /// Set a default target node used when the router returns a key that is
+    /// not present in the path map.
+    pub fn with_default(mut self, default: String) -> Self {
+        self.default = Some(default);
         self
     }
 
@@ -61,26 +77,31 @@ impl Branch {
         self.resolve(state)
     }
 
+    /// Resolve a single route key through the path map and default.
+    fn resolve_key(&self, key: String) -> Result<String, LangGraphError> {
+        if let Some(ends) = &self.ends {
+            if let Some(mapped) = ends.get(&key) {
+                Ok(mapped.clone())
+            } else if let Some(default) = &self.default {
+                Ok(default.clone())
+            } else {
+                // Passthrough: use the key as-is (preserves existing behaviour).
+                Ok(key)
+            }
+        } else {
+            Ok(key)
+        }
+    }
+
     /// Resolve the routing result to actual destination node names.
     pub fn resolve(&self, state: &Value) -> Result<Vec<String>, LangGraphError> {
         let result = (self.path)(state);
         match result {
             RouterResult::Single(node) => {
-                if let Some(ends) = &self.ends {
-                    Ok(vec![ends.get(&node).cloned().unwrap_or(node)])
-                } else {
-                    Ok(vec![node])
-                }
+                Ok(vec![self.resolve_key(node)?])
             }
             RouterResult::Multiple(nodes) => {
-                if let Some(ends) = &self.ends {
-                    Ok(nodes
-                        .into_iter()
-                        .map(|n| ends.get(&n).cloned().unwrap_or(n))
-                        .collect())
-                } else {
-                    Ok(nodes)
-                }
+                nodes.into_iter().map(|n| self.resolve_key(n)).collect()
             }
             RouterResult::Sends(sends) => Ok(sends.into_iter().map(|s| s.node).collect()),
         }
@@ -95,23 +116,13 @@ impl Branch {
         let result = (self.path)(state);
         match result {
             RouterResult::Single(node) => {
-                let mapped = if let Some(ends) = &self.ends {
-                    ends.get(&node).cloned().unwrap_or(node)
-                } else {
-                    node
-                };
+                let mapped = self.resolve_key(node)?;
                 Ok(RouterResult::Single(mapped))
             }
             RouterResult::Multiple(nodes) => {
-                let mapped = if let Some(ends) = &self.ends {
-                    nodes
-                        .into_iter()
-                        .map(|n| ends.get(&n).cloned().unwrap_or(n))
-                        .collect()
-                } else {
-                    nodes
-                };
-                Ok(RouterResult::Multiple(mapped))
+                let mapped: Result<Vec<String>, LangGraphError> =
+                    nodes.into_iter().map(|n| self.resolve_key(n)).collect();
+                Ok(RouterResult::Multiple(mapped?))
             }
             RouterResult::Sends(sends) => {
                 let mapped = if let Some(ends) = &self.ends {
@@ -120,6 +131,8 @@ impl Branch {
                         .map(|mut s| {
                             if let Some(mapped_name) = ends.get(&s.node) {
                                 s.node = mapped_name.clone();
+                            } else if let Some(default) = &self.default {
+                                s.node = default.clone();
                             }
                             s
                         })
