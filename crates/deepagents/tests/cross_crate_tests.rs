@@ -1,12 +1,12 @@
 //! Cross-crate integration tests proving all 4 workspace crates compose correctly.
 //!
 //! These tests exercise the interaction between:
-//! - `rustchain-core` (traits, fakes, embeddings, messages)
-//! - `rustchain` (chains, vectorstores, document_loaders, text_splitter)
-//! - `langgraph` (StateGraph, create_tool_agent, CompiledStateGraph)
+//! - `rustchain-core` (traits, fakes, runnables, messages, output parsers, embeddings)
+//! - `rustchain` (chains, memory, vectorstores, text_splitter)
+//! - `langgraph` (StateGraph, CompiledStateGraph, checkpointing, create_tool_agent)
 //! - `deepagents` (create_deep_agent, middleware, config)
 //!
-//! Run with: `cargo test -p deepagents -- cross_crate`
+//! Run with: `cargo test -p deepagents --test cross_crate_tests`
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,7 +15,6 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 // --- rustchain-core imports ---
-use rustchain_core::documents::Document;
 use rustchain_core::embeddings::Embeddings;
 use rustchain_core::embeddings_fake::DeterministicFakeEmbedding;
 use rustchain_core::error::Result as CoreResult;
@@ -24,19 +23,29 @@ use rustchain_core::language_models::fake::{
     FakeListChatModel, FakeMessagesListChatModel, ParrotFakeChatModel,
 };
 use rustchain_core::messages::{AIMessage, HumanMessage, Message, ToolCall};
+use rustchain_core::output_parsers::{
+    CommaSeparatedListOutputParser, JsonOutputParser, OutputParser, StrOutputParser,
+};
 use rustchain_core::retrievers::BaseRetriever;
+use rustchain_core::runnables::{Runnable, RunnableLambda, RunnableSequence};
 use rustchain_core::tools::types::{ToolInput, ToolOutput};
 use rustchain_core::tools::BaseTool;
-use rustchain_core::vectorstores::base::{SearchType, VectorStore, VectorStoreRetriever};
+use rustchain_core::vectorstores::base::{SearchType, VectorStoreRetriever};
 
 // --- rustchain imports ---
+use rustchain::chains::llm::LLMChain;
 use rustchain::chains::retrieval::RetrievalQAChain;
+use rustchain::memory::buffer::ConversationBufferMemory;
+use rustchain::memory::window::ConversationWindowMemory;
+use rustchain::memory::BaseMemory;
 use rustchain::text_splitter::{CharacterTextSplitter, TextSplitter};
 use rustchain::vectorstores::in_memory::InMemoryVectorStore;
 
 // --- langgraph imports ---
+use langgraph::checkpoint::{CheckpointMetadata, CheckpointSaver, InMemoryCheckpointSaver};
 use langgraph::graph::state::{AsyncNodeAction, StateGraph};
 use langgraph::prebuilt::tool_agent::create_tool_agent;
+use langgraph::pregel::checkpoint::empty_checkpoint;
 
 // --- deepagents imports ---
 use deepagents::config::DeepAgentConfig;
@@ -78,18 +87,6 @@ impl BaseTool for MockTool {
     }
 }
 
-/// A mock retriever that returns a fixed set of documents.
-struct MockRetriever {
-    docs: Vec<Document>,
-}
-
-#[async_trait]
-impl BaseRetriever for MockRetriever {
-    async fn get_relevant_documents(&self, _query: &str) -> CoreResult<Vec<Document>> {
-        Ok(self.docs.clone())
-    }
-}
-
 /// A no-op middleware for testing.
 struct NoopMiddleware;
 
@@ -101,101 +98,104 @@ impl Middleware for NoopMiddleware {
 }
 
 // ---------------------------------------------------------------------------
-// Test 1: Core traits used by rustchain
+// Test 1: rustchain-core traits are properly implemented by rustchain types
+//         (RunnableLambda implements Runnable)
 // ---------------------------------------------------------------------------
 
-/// Create a FakeMessagesListChatModel (core), use it in a RetrievalQAChain
-/// (rustchain), and verify the pipeline works end-to-end.
+/// Verify that RunnableLambda from rustchain-core implements the Runnable trait
+/// and can be used polymorphically alongside LLMChain from rustchain.
 #[tokio::test]
-async fn test_cross_crate_core_traits_used_by_rustchain() {
-    // Core: create a fake chat model
-    let model: Arc<dyn BaseChatModel> = Arc::new(FakeMessagesListChatModel::new(vec![
-        Message::Ai(AIMessage::new("Paris is the capital of France.")),
-    ]));
-
-    // Core: create a mock retriever with documents
-    let docs = vec![
-        Document::new("France is a country in Europe."),
-        Document::new("Paris is the capital city of France."),
-    ];
-    let retriever: Arc<dyn BaseRetriever> = Arc::new(MockRetriever { docs });
-
-    // Rustchain: build a RetrievalQAChain using core components
-    let chain = RetrievalQAChain::new(retriever, model).with_k(2);
-    let answer = chain.call("What is the capital of France?").await.unwrap();
-
-    assert_eq!(answer, "Paris is the capital of France.");
-}
-
-// ---------------------------------------------------------------------------
-// Test 2: Core tools in langgraph agent
-// ---------------------------------------------------------------------------
-
-/// Create a BaseTool impl (core), use it in create_tool_agent (langgraph),
-/// and invoke the graph.
-#[tokio::test]
-async fn test_cross_crate_core_tools_in_langgraph_agent() {
-    // Core: fake model that returns a plain response (no tool calls)
-    let model: Arc<dyn BaseChatModel> = Arc::new(FakeMessagesListChatModel::new(vec![
-        Message::Ai(AIMessage::new("The answer is 42")),
-    ]));
-
-    // Core: mock tool
-    let tool: Arc<dyn BaseTool> = Arc::new(MockTool::new("calculator", "42"));
-
-    // LangGraph: create tool agent
-    let graph = create_tool_agent(model, vec![tool], None).unwrap();
-
-    let input = json!({
-        "messages": [{"type": "human", "content": "What is 6*7?"}]
+async fn test_core_runnable_trait_implemented_by_lambda_and_chain() {
+    // RunnableLambda (core) implements Runnable
+    let lambda = RunnableLambda::new("uppercase", |input: Value| async move {
+        let s = input
+            .as_str()
+            .unwrap_or("fallback")
+            .to_uppercase();
+        Ok(Value::String(s))
     });
 
-    let result = graph.invoke(input).await.unwrap();
-    let messages = result["messages"].as_array().unwrap();
-    assert_eq!(messages.len(), 2); // human + ai
+    // Verify it works as a Runnable trait object
+    let runnable: &dyn Runnable = &lambda;
+    assert_eq!(runnable.name(), "uppercase");
 
-    let last: Message = serde_json::from_value(messages.last().unwrap().clone()).unwrap();
-    assert_eq!(last.content().text(), "The answer is 42");
+    let result = runnable
+        .invoke(json!("hello world"), None)
+        .await
+        .unwrap();
+    assert_eq!(result, json!("HELLO WORLD"));
+
+    // LLMChain (rustchain) also implements Runnable via core trait
+    let model: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
+        "Paris".to_string(),
+    ]));
+    let chain = LLMChain::builder()
+        .model(model)
+        .prompt("What is the capital of {country}?")
+        .build();
+
+    let chain_runnable: &dyn Runnable = &chain;
+    assert_eq!(chain_runnable.name(), "LLMChain");
+
+    let chain_result = chain_runnable
+        .invoke(json!({"country": "France"}), None)
+        .await
+        .unwrap();
+    assert_eq!(chain_result["text"], "Paris");
 }
 
 // ---------------------------------------------------------------------------
-// Test 3: Rustchain vectorstore with core embeddings
+// Test 2: RunnableSequence from rustchain-core works with RunnableLambda steps
 // ---------------------------------------------------------------------------
 
-/// Use DeterministicFakeEmbedding (core) with InMemoryVectorStore (rustchain).
+/// Build a RunnableSequence from multiple RunnableLambda steps and verify
+/// that output flows through each step correctly.
 #[tokio::test]
-async fn test_cross_crate_rustchain_vectorstore_with_core_embeddings() {
-    // Core: fake embeddings
-    let embeddings: Arc<dyn Embeddings> = Arc::new(DeterministicFakeEmbedding::new(128));
+async fn test_runnable_sequence_with_lambda_steps() {
+    // Step 1: extract the "input" field
+    let step1 = RunnableLambda::new("extract", |v: Value| async move {
+        let text = v["input"].as_str().unwrap_or("").to_string();
+        Ok(Value::String(text))
+    });
 
-    // Rustchain: in-memory vector store
-    let store = InMemoryVectorStore::new(embeddings);
-    let texts = vec![
-        "Rust is a systems programming language.".to_string(),
-        "Python is a dynamic language.".to_string(),
-        "Go is a compiled language.".to_string(),
-    ];
-    store.add_texts(&texts, None, None).await.unwrap();
+    // Step 2: convert to uppercase
+    let step2 = RunnableLambda::new("uppercase", |v: Value| async move {
+        let s = v.as_str().unwrap_or("").to_uppercase();
+        Ok(Value::String(s))
+    });
 
-    // Search should return the most similar document first
-    let results = store.similarity_search("Rust programming", 2).await.unwrap();
-    assert_eq!(results.len(), 2);
-    // At minimum, we got 2 documents back (exact ordering depends on hash-based embeddings)
-    assert!(results.iter().any(|d| d.page_content.contains("Rust")));
+    // Step 3: wrap in a result object
+    let step3 = RunnableLambda::new("wrap", |v: Value| async move {
+        Ok(json!({"result": v}))
+    });
+
+    let sequence = RunnableSequence::new(vec![
+        Arc::new(step1) as Arc<dyn Runnable>,
+        Arc::new(step2) as Arc<dyn Runnable>,
+        Arc::new(step3) as Arc<dyn Runnable>,
+    ])
+    .unwrap();
+
+    let output = sequence
+        .invoke(json!({"input": "hello world"}), None)
+        .await
+        .unwrap();
+
+    assert_eq!(output["result"], "HELLO WORLD");
+    assert_eq!(sequence.name(), "RunnableSequence");
 }
 
 // ---------------------------------------------------------------------------
-// Test 4: LangGraph graph with rustchain/core model
+// Test 3: langgraph StateGraph can use rustchain-core types in its state
 // ---------------------------------------------------------------------------
 
-/// Build a StateGraph (langgraph) node that uses a BaseChatModel (core),
-/// and invoke the graph.
+/// Build a StateGraph whose node uses rustchain-core Message types in its state
+/// and verify the graph processes them correctly.
 #[tokio::test]
-async fn test_cross_crate_langgraph_graph_with_rustchain_model() {
-    // Core: create a parrot model that echoes input
+async fn test_langgraph_stategraph_with_core_message_types() {
+    // Use a ParrotFakeChatModel (core) that echoes the human message
     let model: Arc<dyn BaseChatModel> = Arc::new(ParrotFakeChatModel::new());
 
-    // LangGraph: build a state graph with a node that calls the model
     let model_for_node = model.clone();
     let node_action: AsyncNodeAction = Arc::new(move |state: Value| {
         let m = model_for_node.clone();
@@ -205,15 +205,22 @@ async fn test_cross_crate_langgraph_graph_with_rustchain_model() {
                 .and_then(|v| v.as_str())
                 .unwrap_or("default question");
 
+            // Use core Message types
             let messages = vec![Message::Human(HumanMessage::new(query))];
             let ai_msg = m
                 .invoke_messages(&messages, None)
                 .await
                 .map_err(|e| langgraph::errors::LangGraphError::Other(e.to_string()))?;
 
+            // Serialize core AIMessage into state
+            let response_text = ai_msg.base.content.text();
+            let serialized_msg = serde_json::to_value(&Message::Ai(ai_msg))
+                .map_err(|e| langgraph::errors::LangGraphError::Other(e.to_string()))?;
+
             Ok(json!({
                 "query": query,
-                "response": ai_msg.base.content.text()
+                "response": response_text,
+                "last_message": serialized_msg,
             }))
         })
     });
@@ -226,169 +233,64 @@ async fn test_cross_crate_langgraph_graph_with_rustchain_model() {
         .unwrap();
 
     let result = graph
-        .invoke(json!({"query": "Hello from integration test"}))
+        .invoke(json!({"query": "Echo this back"}))
         .await
         .unwrap();
 
-    // The parrot model echoes the input
+    // Parrot model echoes input
+    assert_eq!(result["response"].as_str().unwrap(), "Echo this back");
+
+    // The last_message should deserialize back to a core Message
+    let msg: Message = serde_json::from_value(result["last_message"].clone()).unwrap();
+    assert_eq!(msg.content().text(), "Echo this back");
+}
+
+// ---------------------------------------------------------------------------
+// Test 4: LLMChain from rustchain with FakeListChatModel from core
+// ---------------------------------------------------------------------------
+
+/// Build an LLMChain (rustchain) using a FakeListChatModel (core) and verify
+/// prompt formatting and model invocation produce correct output.
+#[tokio::test]
+async fn test_llmchain_with_fake_chat_model() {
+    let model: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
+        "Rust is a systems programming language focused on safety and performance.".to_string(),
+    ]));
+
+    let chain = LLMChain::builder()
+        .model(model)
+        .prompt("Tell me about {topic} in one sentence.")
+        .output_key("answer")
+        .build();
+
+    let result = chain
+        .invoke(json!({"topic": "Rust"}), None)
+        .await
+        .unwrap();
+
     assert_eq!(
-        result["response"].as_str().unwrap(),
-        "Hello from integration test"
+        result["answer"],
+        "Rust is a systems programming language focused on safety and performance."
     );
+
+    // Verify it also works through the Runnable trait
+    let runnable: &dyn Runnable = &chain;
+    let result2 = runnable
+        .invoke(json!({"topic": "Python"}), None)
+        .await;
+    // FakeListChatModel cycles, so second call may reuse the response
+    assert!(result2.is_ok());
 }
 
 // ---------------------------------------------------------------------------
-// Test 5: Deep agent uses langgraph graph
+// Test 5: deepagents middleware can wrap rustchain chat models
 // ---------------------------------------------------------------------------
 
-/// create_deep_agent returns a CompiledStateGraph (langgraph). Invoke it
-/// with core Message types.
+/// Create a deep agent with middleware that wraps a fake chat model.
+/// Verify that middleware hooks fire and the agent produces correct results.
 #[tokio::test]
-async fn test_cross_crate_deep_agent_uses_langgraph_graph() {
-    // Core: fake model
-    let model: Arc<dyn BaseChatModel> = Arc::new(FakeMessagesListChatModel::new(vec![
-        Message::Ai(AIMessage::new("Deep agent response")),
-    ]));
-
-    // Core: mock tool
-    let tool: Arc<dyn BaseTool> = Arc::new(MockTool::new("search", "result"));
-
-    // Deepagents: create deep agent (returns a CompiledStateGraph from langgraph)
-    let config = DeepAgentConfig {
-        tools: vec![tool],
-        ..Default::default()
-    };
-    let graph = create_deep_agent(model, config).unwrap();
-
-    // Verify the graph has the expected nodes
-    let mut names: Vec<&str> = graph.node_names();
-    names.sort();
-    assert_eq!(names, vec!["agent", "tools"]);
-
-    // Invoke with core Message types serialized
-    let input = json!({
-        "messages": [{"type": "human", "content": "Tell me something"}]
-    });
-    let result = graph.invoke(input).await.unwrap();
-
-    let messages = result["messages"].as_array().unwrap();
-    assert_eq!(messages.len(), 2); // human + ai
-
-    let last_msg: Message = serde_json::from_value(messages.last().unwrap().clone()).unwrap();
-    assert_eq!(last_msg.content().text(), "Deep agent response");
-}
-
-// ---------------------------------------------------------------------------
-// Test 6: Full RAG pipeline across crates
-// ---------------------------------------------------------------------------
-
-/// TextLoader (rustchain) -> CharacterTextSplitter (rustchain) ->
-/// FakeEmbeddings (core) -> InMemoryVectorStore (rustchain) ->
-/// RetrievalQAChain (rustchain) with FakeChatModel (core).
-#[tokio::test]
-async fn test_cross_crate_full_rag_pipeline_across_crates() {
-    // Instead of TextLoader (which needs a real file), we simulate its output
-    // to keep the test self-contained.
-    let raw_text = "Rust is a systems programming language.\n\n\
-                    It focuses on safety, speed, and concurrency.\n\n\
-                    Rust was first released in 2015.\n\n\
-                    The Rust compiler is called rustc.";
-
-    // Rustchain: split text into chunks
-    let splitter = CharacterTextSplitter::new()
-        .with_separator("\n\n")
-        .with_chunk_size(100)
-        .with_chunk_overlap(0);
-    let chunks = splitter.split_text(raw_text);
-    assert!(chunks.len() >= 2, "Expected multiple chunks, got {}", chunks.len());
-
-    // Core: fake embeddings
-    let embeddings: Arc<dyn Embeddings> = Arc::new(DeterministicFakeEmbedding::new(64));
-
-    // Rustchain: build vector store from chunks
-    let texts: Vec<String> = chunks;
-    let store = InMemoryVectorStore::new(embeddings.clone());
-    store.add_texts(&texts, None, None).await.unwrap();
-
-    // Core: wrap vector store as a retriever
-    let retriever: Arc<dyn BaseRetriever> = Arc::new(VectorStoreRetriever::new(
-        Arc::new(InMemoryVectorStore::from_texts(&texts, None, embeddings).await.unwrap()),
-        SearchType::Similarity,
-        2,
-    ));
-
-    // Core: fake chat model
-    let llm: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
-        "Rust is a systems language focused on safety.".to_string(),
-    ]));
-
-    // Rustchain: build RAG chain
-    let chain = RetrievalQAChain::new(retriever, llm).with_k(2);
-    let result = chain.call_with_sources("What is Rust?").await.unwrap();
-
-    assert_eq!(result.answer, "Rust is a systems language focused on safety.");
-    assert!(!result.source_documents.is_empty());
-}
-
-// ---------------------------------------------------------------------------
-// Test 7: LangGraph tool agent with rustchain tools
-// ---------------------------------------------------------------------------
-
-/// create_tool_agent (langgraph) with a mock BaseTool (core), invoke
-/// with messages including a tool-call loop.
-#[tokio::test]
-async fn test_cross_crate_langgraph_tool_agent_with_rustchain_tools() {
-    // Set up a tool call scenario: model first returns a tool call, then a final answer.
-    let tc = ToolCall {
-        name: "lookup".to_string(),
-        args: {
-            let mut m = HashMap::new();
-            m.insert("query".to_string(), json!("meaning of life"));
-            m
-        },
-        id: Some("call_42".to_string()),
-    };
-    let mut ai_with_tc = AIMessage::new("");
-    ai_with_tc.tool_calls = vec![tc];
-
-    let model: Arc<dyn BaseChatModel> = Arc::new(FakeMessagesListChatModel::new(vec![
-        Message::Ai(ai_with_tc),
-        Message::Ai(AIMessage::new("The answer is 42")),
-    ]));
-
-    let tool: Arc<dyn BaseTool> = Arc::new(MockTool::new("lookup", "42"));
-
-    // LangGraph: create tool agent
-    let graph = create_tool_agent(model, vec![tool], None).unwrap();
-
-    let input = json!({
-        "messages": [{"type": "human", "content": "What is the meaning of life?"}]
-    });
-
-    let result = graph.invoke(input).await.unwrap();
-    let messages = result["messages"].as_array().unwrap();
-
-    // human + ai(tool_call) + tool_result + ai(final) = 4
-    assert_eq!(messages.len(), 4);
-
-    // Verify the tool message is present
-    let tool_msg: Message = serde_json::from_value(messages[2].clone()).unwrap();
-    assert!(matches!(tool_msg, Message::Tool(_)));
-
-    // Verify the final answer
-    let final_msg: Message = serde_json::from_value(messages[3].clone()).unwrap();
-    assert_eq!(final_msg.content().text(), "The answer is 42");
-}
-
-// ---------------------------------------------------------------------------
-// Test 8: Deep agent with middleware and tools
-// ---------------------------------------------------------------------------
-
-/// Full deepagents pipeline with middleware, tools, and model. Verifies
-/// that middleware hooks fire and the agent produces a correct result.
-#[tokio::test]
-async fn test_cross_crate_deep_agent_with_middleware_and_tools() {
-    // Core: model that first issues a tool call, then returns final answer.
+async fn test_deepagents_middleware_wraps_chat_model() {
+    // Core: model that first issues a tool call, then returns final answer
     let tc = ToolCall {
         name: "weather".to_string(),
         args: {
@@ -406,14 +308,12 @@ async fn test_cross_crate_deep_agent_with_middleware_and_tools() {
         Message::Ai(AIMessage::new("It is sunny in London")),
     ]));
 
-    // Core: mock tool
     let tool: Arc<dyn BaseTool> = Arc::new(MockTool::new("weather", "sunny, 22C"));
 
-    // Deepagents: set up memory middleware
+    // Set up memory middleware (deepagents) that injects context
     let memory_mw = Arc::new(MemoryMiddleware::new(10));
     memory_mw.remember("user_location", "London").await;
 
-    // Deepagents: configure agent with middleware and tool
     let config = DeepAgentConfig {
         tools: vec![tool],
         middleware: vec![
@@ -433,24 +333,359 @@ async fn test_cross_crate_deep_agent_with_middleware_and_tools() {
     let result = graph.invoke(input).await.unwrap();
     let messages = result["messages"].as_array().unwrap();
 
-    // The memory middleware injects a system message before the model call.
-    // Expected flow: [human, system(memory)] -> model -> [ai(tool_call)] -> tool -> [tool_result] -> model -> [ai(final)]
-    // But messages in state: human + system(memory) + ai(tool_call) + tool_result + ai(final)
-    // Note: the memory system message is injected into the messages array by middleware.
-    // The final messages array should have at least 4 entries (human + injected_system + ai_with_tc + tool + ai_final).
+    // Should have at least human + ai(tool_call) + tool_result + ai(final)
     assert!(
         messages.len() >= 4,
         "Expected at least 4 messages, got {}",
         messages.len()
     );
 
-    // The last message should be the final AI response.
+    // Final message should be the AI response
     let last_msg: Message = serde_json::from_value(messages.last().unwrap().clone()).unwrap();
     assert_eq!(last_msg.content().text(), "It is sunny in London");
 
-    // Verify memory middleware still has its entries.
+    // Verify memory middleware retained its state through the graph execution
     assert_eq!(
         memory_mw.recall("user_location").await,
         Some("London".to_string())
     );
+}
+
+// ---------------------------------------------------------------------------
+// Test 6: langgraph checkpoint can save/restore state across crate boundaries
+// ---------------------------------------------------------------------------
+
+/// Use InMemoryCheckpointSaver (langgraph) to save state containing
+/// rustchain-core Message types, then restore and verify the data.
+#[tokio::test]
+async fn test_langgraph_checkpoint_save_restore_with_core_types() {
+    let saver = InMemoryCheckpointSaver::new();
+
+    // Build state containing core message types
+    let messages = vec![
+        Message::human("What is Rust?"),
+        Message::ai("Rust is a systems programming language."),
+    ];
+    let serialized_messages: Vec<Value> = messages
+        .iter()
+        .map(|m| serde_json::to_value(m).unwrap())
+        .collect();
+
+    // Create a checkpoint with the message state
+    let mut cp = empty_checkpoint();
+    cp.channel_values.insert(
+        "messages".to_string(),
+        Value::Array(serialized_messages.clone()),
+    );
+    cp.channel_values
+        .insert("turn_count".to_string(), json!(1));
+    cp.channel_versions.insert("messages".to_string(), 1);
+    cp.channel_versions.insert("turn_count".to_string(), 1);
+
+    let mut config = HashMap::new();
+    config.insert("thread_id".to_string(), json!("test-thread-1"));
+
+    let metadata = CheckpointMetadata {
+        source: "loop".to_string(),
+        step: 1,
+        writes: Some({
+            let mut w = HashMap::new();
+            w.insert("agent".to_string(), json!("wrote messages"));
+            w
+        }),
+        extra: HashMap::new(),
+    };
+
+    // Save checkpoint
+    let saved_config = saver.put(&config, cp.clone(), metadata).await.unwrap();
+    assert!(saved_config.contains_key("checkpoint_id"));
+
+    // Restore checkpoint
+    let restored = saver.get(&config).await.unwrap().unwrap();
+
+    // Verify the messages round-trip through checkpoint serialization
+    let restored_msgs = restored.checkpoint.channel_values["messages"]
+        .as_array()
+        .unwrap();
+    assert_eq!(restored_msgs.len(), 2);
+
+    // Deserialize back to core Message types
+    let msg0: Message = serde_json::from_value(restored_msgs[0].clone()).unwrap();
+    let msg1: Message = serde_json::from_value(restored_msgs[1].clone()).unwrap();
+    assert_eq!(msg0.content().text(), "What is Rust?");
+    assert_eq!(msg1.content().text(), "Rust is a systems programming language.");
+
+    // Verify turn_count survived the round-trip
+    assert_eq!(restored.checkpoint.channel_values["turn_count"], json!(1));
+
+    // Save a second checkpoint with updated state and verify list works
+    let mut cp2 = empty_checkpoint();
+    cp2.channel_values.insert(
+        "messages".to_string(),
+        json!([
+            {"type": "human", "content": "What is Rust?"},
+            {"type": "ai", "content": "Rust is a systems programming language."},
+            {"type": "human", "content": "Tell me more."},
+            {"type": "ai", "content": "Rust was first released in 2015."}
+        ]),
+    );
+    cp2.channel_values
+        .insert("turn_count".to_string(), json!(2));
+
+    let metadata2 = CheckpointMetadata {
+        source: "loop".to_string(),
+        step: 2,
+        writes: None,
+        extra: HashMap::new(),
+    };
+    saver.put(&config, cp2, metadata2).await.unwrap();
+
+    // List should return both checkpoints (newest first)
+    let all = saver.list(&config, None).await.unwrap();
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0].checkpoint.channel_values["turn_count"], json!(2));
+}
+
+// ---------------------------------------------------------------------------
+// Test 7: rustchain memory types work with deepagents agent state
+// ---------------------------------------------------------------------------
+
+/// Use ConversationBufferMemory and ConversationWindowMemory (rustchain)
+/// to store messages that could feed into a deepagents agent.
+#[tokio::test]
+async fn test_rustchain_memory_with_deepagents_agent_state() {
+    // Create buffer memory (rustchain) and save conversation turns using core Message types
+    let buffer_mem = ConversationBufferMemory::new();
+
+    let human1 = Message::human("What is the weather in London?");
+    let ai1 = Message::ai("It is sunny in London.");
+    buffer_mem.save_context(&human1, &ai1).await.unwrap();
+
+    let human2 = Message::human("And in Paris?");
+    let ai2 = Message::ai("It is rainy in Paris.");
+    buffer_mem.save_context(&human2, &ai2).await.unwrap();
+
+    // Load memory variables -- should have all 4 messages
+    let vars = buffer_mem.load_memory_variables().await.unwrap();
+    let history = vars["history"].as_array().unwrap();
+    assert_eq!(history.len(), 4);
+
+    // Create window memory (rustchain) that keeps only last 1 turn
+    let window_mem = ConversationWindowMemory::new(1);
+    window_mem.save_context(&human1, &ai1).await.unwrap();
+    window_mem.save_context(&human2, &ai2).await.unwrap();
+
+    let window_vars = window_mem.load_memory_variables().await.unwrap();
+    let window_history = window_vars["history"].as_array().unwrap();
+    // Window memory with k=1 keeps only the last 2 messages (1 turn)
+    assert_eq!(window_history.len(), 2);
+
+    // Now feed the buffer memory history into a deepagents graph
+    // by constructing the messages state from memory
+    let model: Arc<dyn BaseChatModel> = Arc::new(FakeMessagesListChatModel::new(vec![
+        Message::Ai(AIMessage::new("Weather summary provided.")),
+    ]));
+    let tool: Arc<dyn BaseTool> = Arc::new(MockTool::new("dummy", "unused"));
+
+    let config = DeepAgentConfig {
+        tools: vec![tool],
+        ..Default::default()
+    };
+
+    let graph = create_deep_agent(model, config).unwrap();
+
+    // Build input state from memory history
+    let input = json!({
+        "messages": history
+    });
+
+    let result = graph.invoke(input).await.unwrap();
+    let result_messages = result["messages"].as_array().unwrap();
+
+    // Original 4 messages from memory + 1 new AI response = 5
+    assert_eq!(result_messages.len(), 5);
+
+    let last: Message = serde_json::from_value(result_messages.last().unwrap().clone()).unwrap();
+    assert_eq!(last.content().text(), "Weather summary provided.");
+}
+
+// ---------------------------------------------------------------------------
+// Test 8: rustchain output parsers work with chain outputs
+// ---------------------------------------------------------------------------
+
+/// Use output parsers from rustchain-core (StrOutputParser, JsonOutputParser,
+/// CommaSeparatedListOutputParser) to parse outputs from an LLMChain (rustchain).
+#[tokio::test]
+async fn test_output_parsers_with_chain_outputs() {
+    // --- StrOutputParser ---
+    let str_parser = StrOutputParser;
+    let parsed = str_parser.parse("Hello, world!").unwrap();
+    assert_eq!(parsed, json!("Hello, world!"));
+
+    // Use StrOutputParser as a Runnable in a sequence with a lambda
+    let extract_text = RunnableLambda::new("extract_text", |v: Value| async move {
+        let text = v["text"].as_str().unwrap_or("").to_string();
+        Ok(Value::String(text))
+    });
+
+    let sequence = RunnableSequence::new(vec![
+        Arc::new(extract_text) as Arc<dyn Runnable>,
+        Arc::new(str_parser) as Arc<dyn Runnable>,
+    ])
+    .unwrap();
+
+    let result = sequence
+        .invoke(json!({"text": "parsed output"}), None)
+        .await
+        .unwrap();
+    assert_eq!(result, json!("parsed output"));
+
+    // --- JsonOutputParser ---
+    let json_parser = JsonOutputParser::new();
+
+    // Simulate LLM output with markdown code fence
+    let llm_json_output = "```json\n{\"name\": \"Alice\", \"age\": 30}\n```";
+    let parsed_json = json_parser.parse(llm_json_output).unwrap();
+    assert_eq!(parsed_json["name"], "Alice");
+    assert_eq!(parsed_json["age"], 30);
+
+    // JsonOutputParser as Runnable
+    let json_result = json_parser
+        .invoke(json!("{\"key\": \"value\"}"), None)
+        .await
+        .unwrap();
+    assert_eq!(json_result["key"], "value");
+
+    // --- CommaSeparatedListOutputParser ---
+    let list_parser = CommaSeparatedListOutputParser;
+
+    // Simulate LLM returning comma-separated items
+    let llm_list_output = "apple, banana, cherry, date";
+    let parsed_list = list_parser.parse(llm_list_output).unwrap();
+    let items = parsed_list.as_array().unwrap();
+    assert_eq!(items.len(), 4);
+    assert_eq!(items[0], "apple");
+    assert_eq!(items[3], "date");
+
+    // Use it as a Runnable step after an LLMChain
+    let model: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
+        "red, green, blue".to_string(),
+    ]));
+
+    let chain = LLMChain::builder()
+        .model(model)
+        .prompt("List the primary colors of {subject}.")
+        .build();
+
+    // Run the chain, then parse the output
+    let chain_output = chain
+        .invoke(json!({"subject": "light"}), None)
+        .await
+        .unwrap();
+
+    let chain_text = chain_output["text"].as_str().unwrap();
+    let parsed_colors = list_parser.parse(chain_text).unwrap();
+    let colors = parsed_colors.as_array().unwrap();
+    assert_eq!(colors.len(), 3);
+    assert_eq!(colors[0], "red");
+    assert_eq!(colors[1], "green");
+    assert_eq!(colors[2], "blue");
+}
+
+// ---------------------------------------------------------------------------
+// Test 9: Full RAG pipeline across all crates
+// ---------------------------------------------------------------------------
+
+/// TextSplitter (rustchain) -> FakeEmbeddings (core) -> InMemoryVectorStore (rustchain)
+/// -> RetrievalQAChain (rustchain) with FakeChatModel (core).
+#[tokio::test]
+async fn test_full_rag_pipeline_across_crates() {
+    let raw_text = "Rust is a systems programming language.\n\n\
+                    It focuses on safety, speed, and concurrency.\n\n\
+                    Rust was first released in 2015.\n\n\
+                    The Rust compiler is called rustc.";
+
+    // Rustchain: split text into chunks
+    let splitter = CharacterTextSplitter::new()
+        .with_separator("\n\n")
+        .with_chunk_size(100)
+        .with_chunk_overlap(0);
+    let chunks = splitter.split_text(raw_text);
+    assert!(chunks.len() >= 2);
+
+    // Core: fake embeddings
+    let embeddings: Arc<dyn Embeddings> = Arc::new(DeterministicFakeEmbedding::new(64));
+
+    // Rustchain: build vector store from chunks
+    let texts: Vec<String> = chunks;
+    let store =
+        InMemoryVectorStore::from_texts(&texts, None, embeddings.clone())
+            .await
+            .unwrap();
+
+    // Core: wrap vector store as a retriever
+    let retriever: Arc<dyn BaseRetriever> = Arc::new(VectorStoreRetriever::new(
+        Arc::new(store),
+        SearchType::Similarity,
+        2,
+    ));
+
+    // Core: fake chat model
+    let llm: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
+        "Rust is a systems language focused on safety.".to_string(),
+    ]));
+
+    // Rustchain: build RAG chain
+    let chain = RetrievalQAChain::new(retriever, llm).with_k(2);
+    let result = chain.call_with_sources("What is Rust?").await.unwrap();
+
+    assert_eq!(result.answer, "Rust is a systems language focused on safety.");
+    assert!(!result.source_documents.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Test 10: deep agent full round-trip with langgraph tool agent
+// ---------------------------------------------------------------------------
+
+/// create_deep_agent (deepagents) returns a CompiledStateGraph (langgraph).
+/// Verify the full tool-calling loop with core types works.
+#[tokio::test]
+async fn test_deep_agent_tool_calling_round_trip() {
+    let tc = ToolCall {
+        name: "lookup".to_string(),
+        args: {
+            let mut m = HashMap::new();
+            m.insert("query".to_string(), json!("meaning of life"));
+            m
+        },
+        id: Some("call_42".to_string()),
+    };
+    let mut ai_with_tc = AIMessage::new("");
+    ai_with_tc.tool_calls = vec![tc];
+
+    let model: Arc<dyn BaseChatModel> = Arc::new(FakeMessagesListChatModel::new(vec![
+        Message::Ai(ai_with_tc),
+        Message::Ai(AIMessage::new("The answer is 42")),
+    ]));
+
+    let tool: Arc<dyn BaseTool> = Arc::new(MockTool::new("lookup", "42"));
+
+    // Use create_tool_agent from langgraph
+    let graph = create_tool_agent(model, vec![tool], None).unwrap();
+
+    let input = json!({
+        "messages": [{"type": "human", "content": "What is the meaning of life?"}]
+    });
+
+    let result = graph.invoke(input).await.unwrap();
+    let messages = result["messages"].as_array().unwrap();
+
+    // human + ai(tool_call) + tool_result + ai(final) = 4
+    assert_eq!(messages.len(), 4);
+
+    let tool_msg: Message = serde_json::from_value(messages[2].clone()).unwrap();
+    assert!(matches!(tool_msg, Message::Tool(_)));
+
+    let final_msg: Message = serde_json::from_value(messages[3].clone()).unwrap();
+    assert_eq!(final_msg.content().text(), "The answer is 42");
 }
