@@ -22,3 +22,8 @@ pub mod summarize;
 pub use summarize::{
     MapReduceSummarizationChain, RefineSummarizationChain, StuffSummarizationChain,
 };
+pub mod sql;
+pub use sql::{
+    ColumnSchema, ColumnSchemaBuilder, DatabaseSchema, DatabaseSchemaBuilder, SQLQueryValidator,
+    TableSchema, TableSchemaBuilder, TextToSQLChain, TextToSQLChainBuilder,
+};
