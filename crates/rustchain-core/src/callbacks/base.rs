@@ -14,6 +14,13 @@ use crate::outputs::LLMResult;
 /// Filter flag methods control which categories of events a handler receives.
 #[async_trait]
 pub trait CallbackHandler: Send + Sync {
+    // --- Identity ---
+
+    /// Returns the name of this handler for identification and removal.
+    fn name(&self) -> &str {
+        std::any::type_name::<Self>()
+    }
+
     // --- Filter flags ---
 
     /// If true, this handler will not receive LLM events.

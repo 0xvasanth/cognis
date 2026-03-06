@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
@@ -9,8 +9,10 @@ use uuid::Uuid;
 
 use super::base::CallbackHandler;
 use crate::agents::{AgentAction, AgentFinish};
+use crate::documents::Document;
 use crate::error::Result;
 use crate::messages::ai::UsageMetadata;
+use crate::messages::Message;
 use crate::outputs::LLMResult;
 
 /// A callback handler that prints events to stdout.
@@ -477,6 +479,408 @@ impl UsageMetadataCallbackHandler {
 impl Default for UsageMetadataCallbackHandler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LoggingCallbackHandler
+// ---------------------------------------------------------------------------
+
+/// Log level for the `LoggingCallbackHandler`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogLevel::Debug => write!(f, "DEBUG"),
+            LogLevel::Info => write!(f, "INFO"),
+            LogLevel::Warn => write!(f, "WARN"),
+            LogLevel::Error => write!(f, "ERROR"),
+        }
+    }
+}
+
+/// A callback handler that logs all events using `println!`.
+///
+/// Configurable log level controls the prefix of each log line.
+/// All events are captured and stored in a thread-safe log buffer
+/// for later inspection (useful in tests).
+pub struct LoggingCallbackHandler {
+    /// The log level prefix for messages.
+    pub level: LogLevel,
+    /// Thread-safe log buffer for captured messages.
+    log_buffer: Mutex<Vec<String>>,
+}
+
+impl LoggingCallbackHandler {
+    /// Creates a new `LoggingCallbackHandler` with the given log level.
+    pub fn new(level: LogLevel) -> Self {
+        Self {
+            level,
+            log_buffer: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Returns a snapshot of all captured log messages.
+    pub fn get_logs(&self) -> Vec<String> {
+        self.log_buffer.lock().unwrap().clone()
+    }
+
+    /// Clears the log buffer.
+    pub fn clear_logs(&self) {
+        self.log_buffer.lock().unwrap().clear();
+    }
+
+    fn log(&self, event: &str, detail: &str, run_id: Uuid) {
+        let msg = format!("[{}] [{}] [{}] {}", self.level, event, run_id, detail);
+        println!("{}", msg);
+        self.log_buffer.lock().unwrap().push(msg);
+    }
+}
+
+impl Default for LoggingCallbackHandler {
+    fn default() -> Self {
+        Self::new(LogLevel::Info)
+    }
+}
+
+#[async_trait]
+impl CallbackHandler for LoggingCallbackHandler {
+    fn name(&self) -> &str {
+        "LoggingCallbackHandler"
+    }
+
+    async fn on_llm_start(
+        &self,
+        _serialized: &Value,
+        prompts: &[String],
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("llm/start", &format!("{} prompt(s)", prompts.len()), run_id);
+        Ok(())
+    }
+
+    async fn on_llm_end(
+        &self,
+        _response: &LLMResult,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("llm/end", "completed", run_id);
+        Ok(())
+    }
+
+    async fn on_llm_error(
+        &self,
+        error: &str,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("llm/error", error, run_id);
+        Ok(())
+    }
+
+    async fn on_llm_new_token(
+        &self,
+        token: &str,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("llm/new_token", token, run_id);
+        Ok(())
+    }
+
+    async fn on_chain_start(
+        &self,
+        _serialized: &Value,
+        _inputs: &Value,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("chain/start", "entering chain", run_id);
+        Ok(())
+    }
+
+    async fn on_chain_end(
+        &self,
+        _outputs: &Value,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("chain/end", "completed", run_id);
+        Ok(())
+    }
+
+    async fn on_chain_error(
+        &self,
+        error: &str,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("chain/error", error, run_id);
+        Ok(())
+    }
+
+    async fn on_tool_start(
+        &self,
+        _serialized: &Value,
+        input_str: &str,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("tool/start", &format!("input: {}", input_str), run_id);
+        Ok(())
+    }
+
+    async fn on_tool_end(
+        &self,
+        output: &str,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("tool/end", &format!("output: {}", output), run_id);
+        Ok(())
+    }
+
+    async fn on_tool_error(
+        &self,
+        error: &str,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("tool/error", error, run_id);
+        Ok(())
+    }
+
+    async fn on_retriever_start(
+        &self,
+        _serialized: &Value,
+        query: &str,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("retriever/start", &format!("query: {}", query), run_id);
+        Ok(())
+    }
+
+    async fn on_retriever_end(
+        &self,
+        documents: &[Document],
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log(
+            "retriever/end",
+            &format!("{} document(s)", documents.len()),
+            run_id,
+        );
+        Ok(())
+    }
+
+    async fn on_retriever_error(
+        &self,
+        error: &str,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("retriever/error", error, run_id);
+        Ok(())
+    }
+
+    async fn on_chat_model_start(
+        &self,
+        _serialized: &Value,
+        messages: &[Vec<Message>],
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log(
+            "chat_model/start",
+            &format!("{} message group(s)", messages.len()),
+            run_id,
+        );
+        Ok(())
+    }
+
+    async fn on_agent_action(
+        &self,
+        action: &AgentAction,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("agent/action", &format!("tool={}", action.tool), run_id);
+        Ok(())
+    }
+
+    async fn on_agent_finish(
+        &self,
+        _finish: &AgentFinish,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("agent/finish", "completed", run_id);
+        Ok(())
+    }
+
+    async fn on_text(
+        &self,
+        text: &str,
+        run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.log("text", text, run_id);
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MetricsCallbackHandler
+// ---------------------------------------------------------------------------
+
+/// A snapshot of collected metrics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MetricsSnapshot {
+    pub total_llm_calls: usize,
+    pub total_tool_calls: usize,
+    pub total_chain_calls: usize,
+    pub total_errors: usize,
+    pub total_tokens: usize,
+}
+
+/// A callback handler that tracks call counts and error metrics.
+///
+/// Uses atomic counters for thread-safe, lock-free metric accumulation.
+pub struct MetricsCallbackHandler {
+    total_llm_calls: AtomicUsize,
+    total_tool_calls: AtomicUsize,
+    total_chain_calls: AtomicUsize,
+    total_errors: AtomicUsize,
+    total_tokens: AtomicUsize,
+}
+
+impl MetricsCallbackHandler {
+    /// Creates a new `MetricsCallbackHandler` with all counters at zero.
+    pub fn new() -> Self {
+        Self {
+            total_llm_calls: AtomicUsize::new(0),
+            total_tool_calls: AtomicUsize::new(0),
+            total_chain_calls: AtomicUsize::new(0),
+            total_errors: AtomicUsize::new(0),
+            total_tokens: AtomicUsize::new(0),
+        }
+    }
+
+    /// Returns a snapshot of the current metrics.
+    pub fn get_metrics(&self) -> MetricsSnapshot {
+        MetricsSnapshot {
+            total_llm_calls: self.total_llm_calls.load(Ordering::Relaxed),
+            total_tool_calls: self.total_tool_calls.load(Ordering::Relaxed),
+            total_chain_calls: self.total_chain_calls.load(Ordering::Relaxed),
+            total_errors: self.total_errors.load(Ordering::Relaxed),
+            total_tokens: self.total_tokens.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Resets all counters to zero.
+    pub fn reset(&self) {
+        self.total_llm_calls.store(0, Ordering::Relaxed);
+        self.total_tool_calls.store(0, Ordering::Relaxed);
+        self.total_chain_calls.store(0, Ordering::Relaxed);
+        self.total_errors.store(0, Ordering::Relaxed);
+        self.total_tokens.store(0, Ordering::Relaxed);
+    }
+
+    /// Estimate token count from a list of prompts (rough: 1 token per 4 chars).
+    fn estimate_tokens_from_prompts(&self, prompts: &[String]) {
+        let chars: usize = prompts.iter().map(|p| p.len()).sum();
+        let estimated = chars / 4;
+        if estimated > 0 {
+            self.total_tokens.fetch_add(estimated, Ordering::Relaxed);
+        }
+    }
+}
+
+impl Default for MetricsCallbackHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl CallbackHandler for MetricsCallbackHandler {
+    fn name(&self) -> &str {
+        "MetricsCallbackHandler"
+    }
+
+    async fn on_llm_start(
+        &self,
+        _serialized: &Value,
+        prompts: &[String],
+        _run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.total_llm_calls.fetch_add(1, Ordering::Relaxed);
+        self.estimate_tokens_from_prompts(prompts);
+        Ok(())
+    }
+
+    async fn on_llm_error(
+        &self,
+        _error: &str,
+        _run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.total_errors.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    async fn on_chain_start(
+        &self,
+        _serialized: &Value,
+        _inputs: &Value,
+        _run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.total_chain_calls.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    async fn on_chain_error(
+        &self,
+        _error: &str,
+        _run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.total_errors.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    async fn on_tool_start(
+        &self,
+        _serialized: &Value,
+        _input_str: &str,
+        _run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.total_tool_calls.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    async fn on_tool_error(
+        &self,
+        _error: &str,
+        _run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        self.total_errors.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 }
 
