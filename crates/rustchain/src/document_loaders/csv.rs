@@ -35,6 +35,10 @@ pub struct CsvLoader {
     content_columns: Option<Vec<String>>,
     /// Columns to include as document metadata.
     metadata_columns: Option<Vec<String>>,
+    /// When true, the entire CSV is loaded as a single document instead of one per row.
+    single_document: bool,
+    /// Custom separator between column key-value pairs (default: `"\n"`).
+    separator: String,
 }
 
 impl CsvLoader {
@@ -44,6 +48,8 @@ impl CsvLoader {
             path: path.into(),
             content_columns: None,
             metadata_columns: None,
+            single_document: false,
+            separator: "\n".to_string(),
         }
     }
 
@@ -56,6 +62,18 @@ impl CsvLoader {
     /// Specify which columns to include as metadata.
     pub fn with_metadata_columns(mut self, cols: Vec<impl Into<String>>) -> Self {
         self.metadata_columns = Some(cols.into_iter().map(|c| c.into()).collect());
+        self
+    }
+
+    /// Load the entire CSV as a single document instead of one document per row.
+    pub fn as_single_document(mut self) -> Self {
+        self.single_document = true;
+        self
+    }
+
+    /// Set a custom separator between column key-value pairs (default: `"\n"`).
+    pub fn with_separator(mut self, sep: impl Into<String>) -> Self {
+        self.separator = sep.into();
         self
     }
 }
@@ -96,12 +114,12 @@ impl BaseLoader for CsvLoader {
                     .iter()
                     .filter_map(|c| row_map.get(c.as_str()).map(|v| format!("{}: {}", c, v)))
                     .collect::<Vec<_>>()
-                    .join("\n"),
+                    .join(&self.separator),
                 None => headers
                     .iter()
                     .filter_map(|h| row_map.get(h.as_str()).map(|v| format!("{}: {}", h, v)))
                     .collect::<Vec<_>>()
-                    .join("\n"),
+                    .join(&self.separator),
             };
 
             // Build metadata.
@@ -133,6 +151,28 @@ impl BaseLoader for CsvLoader {
             }
 
             docs.push(Ok(Document::new(content).with_metadata(metadata)));
+        }
+
+        if self.single_document {
+            // Merge all row documents into a single document.
+            let mut combined_content = String::new();
+            for (i, doc_result) in docs.iter().enumerate() {
+                if let Ok(doc) = doc_result {
+                    if i > 0 {
+                        combined_content.push_str("\n\n");
+                    }
+                    combined_content.push_str(&doc.page_content);
+                }
+            }
+            let mut metadata = HashMap::new();
+            metadata.insert("source".to_string(), Value::String(source));
+            metadata.insert(
+                "row_count".to_string(),
+                Value::Number((docs.len() as u64).into()),
+            );
+            return Ok(Box::pin(stream::iter(vec![Ok(
+                Document::new(combined_content).with_metadata(metadata),
+            )])));
         }
 
         Ok(Box::pin(stream::iter(docs)))
@@ -181,6 +221,51 @@ mod tests {
         assert_eq!(
             docs[0].metadata.get("id").unwrap(),
             &Value::String("1".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_csv_loader_single_document() {
+        let mut tmp = NamedTempFile::with_suffix(".csv").unwrap();
+        write!(tmp, "name,age\nAlice,30\nBob,25\nCharlie,35\n").unwrap();
+
+        let loader = CsvLoader::new(tmp.path()).as_single_document();
+        let docs = loader.load().await.unwrap();
+
+        assert_eq!(docs.len(), 1);
+        assert!(docs[0].page_content.contains("Alice"));
+        assert!(docs[0].page_content.contains("Bob"));
+        assert!(docs[0].page_content.contains("Charlie"));
+        assert_eq!(
+            docs[0].metadata.get("row_count").unwrap(),
+            &Value::Number(3.into())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_csv_loader_custom_separator() {
+        let mut tmp = NamedTempFile::with_suffix(".csv").unwrap();
+        write!(tmp, "name,age\nAlice,30\n").unwrap();
+
+        let loader = CsvLoader::new(tmp.path()).with_separator(" | ");
+        let docs = loader.load().await.unwrap();
+
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].page_content, "name: Alice | age: 30");
+    }
+
+    #[tokio::test]
+    async fn test_csv_loader_source_metadata() {
+        let mut tmp = NamedTempFile::with_suffix(".csv").unwrap();
+        write!(tmp, "x\n1\n").unwrap();
+
+        let loader = CsvLoader::new(tmp.path());
+        let docs = loader.load().await.unwrap();
+
+        assert_eq!(docs.len(), 1);
+        assert_eq!(
+            docs[0].metadata.get("source").unwrap(),
+            &Value::String(tmp.path().display().to_string())
         );
     }
 }

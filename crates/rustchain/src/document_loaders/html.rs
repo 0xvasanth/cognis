@@ -12,6 +12,43 @@ use rustchain_core::documents::Document;
 use rustchain_core::error::Result;
 use serde_json::Value;
 
+/// Extract metadata from `<meta>` tags in the HTML.
+///
+/// Looks for `<meta name="..." content="...">` and
+/// `<meta property="..." content="...">` patterns.
+pub fn extract_meta_tags(html: &str) -> HashMap<String, String> {
+    let mut meta = HashMap::new();
+    let re = Regex::new(
+        r#"(?i)<meta\s+(?:name|property)\s*=\s*["']([^"']+)["']\s+content\s*=\s*["']([^"']+)["'][^>]*/?\s*>"#,
+    )
+    .unwrap();
+    for cap in re.captures_iter(html) {
+        if let (Some(name), Some(content)) = (cap.get(1), cap.get(2)) {
+            meta.insert(name.as_str().to_string(), content.as_str().to_string());
+        }
+    }
+    // Also match reversed attribute order: content before name
+    let re_rev = Regex::new(
+        r#"(?i)<meta\s+content\s*=\s*["']([^"']+)["']\s+(?:name|property)\s*=\s*["']([^"']+)["'][^>]*/?\s*>"#,
+    )
+    .unwrap();
+    for cap in re_rev.captures_iter(html) {
+        if let (Some(content), Some(name)) = (cap.get(1), cap.get(2)) {
+            meta.insert(name.as_str().to_string(), content.as_str().to_string());
+        }
+    }
+    meta
+}
+
+/// Extract the `<title>` content from HTML.
+pub fn extract_title(html: &str) -> Option<String> {
+    let re = Regex::new(r"(?i)<title[^>]*>(.*?)</title>").unwrap();
+    re.captures(html)
+        .and_then(|cap| cap.get(1))
+        .map(|m| m.as_str().trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Extracts plain text from an HTML string.
 ///
 /// This function:
@@ -68,20 +105,58 @@ pub fn extract_text_from_html(html: &str) -> String {
 /// ```
 pub struct HTMLLoader {
     path: PathBuf,
+    /// When true, extract `<meta>` tags and `<title>` into metadata.
+    extract_metadata: bool,
+    /// Optional tag name to restrict content extraction to (e.g., `"article"`, `"main"`).
+    content_tag: Option<String>,
 }
 
 impl HTMLLoader {
     /// Create a new `HTMLLoader` for the given file path.
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
+        Self {
+            path: path.into(),
+            extract_metadata: false,
+            content_tag: None,
+        }
     }
+
+    /// Enable extraction of `<meta>` tags and `<title>` into document metadata.
+    pub fn with_metadata_extraction(mut self) -> Self {
+        self.extract_metadata = true;
+        self
+    }
+
+    /// Restrict content extraction to within a specific HTML tag (e.g., `"article"`, `"main"`).
+    ///
+    /// Only the text inside the first occurrence of the specified tag will be extracted.
+    pub fn with_content_tag(mut self, tag: impl Into<String>) -> Self {
+        self.content_tag = Some(tag.into());
+        self
+    }
+}
+
+/// Extract the content of a specific HTML tag (first occurrence).
+fn extract_tag_content(html: &str, tag: &str) -> Option<String> {
+    let pattern = format!(r"(?is)<{tag}[^>]*>(.*?)</{tag}>");
+    let re = Regex::new(&pattern).ok()?;
+    re.captures(html)
+        .and_then(|cap| cap.get(1))
+        .map(|m| m.as_str().to_string())
 }
 
 #[async_trait]
 impl BaseLoader for HTMLLoader {
     async fn lazy_load(&self) -> Result<DocumentStream> {
         let raw = tokio::fs::read_to_string(&self.path).await?;
-        let content = extract_text_from_html(&raw);
+
+        // Determine the HTML fragment to extract text from.
+        let html_fragment = match &self.content_tag {
+            Some(tag) => extract_tag_content(&raw, tag).unwrap_or_else(|| raw.clone()),
+            None => raw.clone(),
+        };
+
+        let content = extract_text_from_html(&html_fragment);
 
         let mut metadata = HashMap::new();
         metadata.insert(
@@ -92,6 +167,15 @@ impl BaseLoader for HTMLLoader {
             "content_type".to_string(),
             Value::String("text/html".to_string()),
         );
+
+        if self.extract_metadata {
+            if let Some(title) = extract_title(&raw) {
+                metadata.insert("title".to_string(), Value::String(title));
+            }
+            for (key, value) in extract_meta_tags(&raw) {
+                metadata.insert(format!("meta:{}", key), Value::String(value));
+            }
+        }
 
         let doc = Document::new(content).with_metadata(metadata);
         Ok(Box::pin(stream::iter(vec![Ok(doc)])))
@@ -168,5 +252,59 @@ mod tests {
 <div>After</div>"#;
         let text = extract_text_from_html(html);
         assert_eq!(text, "Before After");
+    }
+
+    #[tokio::test]
+    async fn test_html_loader_with_metadata_extraction() {
+        let mut tmp = NamedTempFile::with_suffix(".html").unwrap();
+        write!(
+            tmp,
+            r#"<html><head>
+            <title>My Page</title>
+            <meta name="description" content="A test page">
+            <meta property="og:title" content="OG Title">
+            </head><body><p>Content here</p></body></html>"#
+        )
+        .unwrap();
+
+        let loader = HTMLLoader::new(tmp.path()).with_metadata_extraction();
+        let docs = loader.load().await.unwrap();
+
+        assert_eq!(docs.len(), 1);
+        assert_eq!(
+            docs[0].metadata.get("title").unwrap(),
+            &Value::String("My Page".to_string())
+        );
+        assert_eq!(
+            docs[0].metadata.get("meta:description").unwrap(),
+            &Value::String("A test page".to_string())
+        );
+        assert_eq!(
+            docs[0].metadata.get("meta:og:title").unwrap(),
+            &Value::String("OG Title".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_html_loader_with_content_tag() {
+        let mut tmp = NamedTempFile::with_suffix(".html").unwrap();
+        write!(
+            tmp,
+            r#"<html><body>
+            <header>Navigation stuff</header>
+            <article><p>Important article content</p></article>
+            <footer>Footer stuff</footer>
+            </body></html>"#
+        )
+        .unwrap();
+
+        let loader = HTMLLoader::new(tmp.path()).with_content_tag("article");
+        let docs = loader.load().await.unwrap();
+
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].page_content, "Important article content");
+        // Should NOT contain header or footer text
+        assert!(!docs[0].page_content.contains("Navigation"));
+        assert!(!docs[0].page_content.contains("Footer"));
     }
 }

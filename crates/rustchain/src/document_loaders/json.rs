@@ -181,4 +181,43 @@ mod tests {
         // id should be in metadata
         assert_eq!(docs[0].metadata.get("id").unwrap(), &Value::Number(1.into()));
     }
+
+    #[tokio::test]
+    async fn test_json_loader_array_root() {
+        let mut tmp = NamedTempFile::with_suffix(".json").unwrap();
+        write!(tmp, r#"[{{"a":"one"}},{{"a":"two"}},{{"a":"three"}}]"#).unwrap();
+
+        let loader = JsonLoader::new(tmp.path()).with_text_key("a");
+        let docs = loader.load().await.unwrap();
+
+        assert_eq!(docs.len(), 3);
+        assert_eq!(docs[0].page_content, "one");
+        assert_eq!(docs[1].page_content, "two");
+        assert_eq!(docs[2].page_content, "three");
+    }
+
+    #[tokio::test]
+    async fn test_json_loader_source_metadata() {
+        let mut tmp = NamedTempFile::with_suffix(".json").unwrap();
+        write!(tmp, r#"{{"key":"value"}}"#).unwrap();
+
+        let loader = JsonLoader::new(tmp.path());
+        let docs = loader.load().await.unwrap();
+
+        assert_eq!(docs.len(), 1);
+        assert_eq!(
+            docs[0].metadata.get("source").unwrap(),
+            &Value::String(tmp.path().display().to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_json_loader_invalid_path() {
+        let mut tmp = NamedTempFile::with_suffix(".json").unwrap();
+        write!(tmp, r#"{{"a":{{"b":1}}}}"#).unwrap();
+
+        let loader = JsonLoader::new(tmp.path()).with_jq_path(".a.nonexistent");
+        let result = loader.load().await;
+        assert!(result.is_err());
+    }
 }
