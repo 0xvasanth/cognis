@@ -242,10 +242,7 @@ async fn test_assign_merges_keys() {
         Ok(json!(a * 2))
     })) as Arc<dyn Runnable>;
 
-    let mut steps = HashMap::new();
-    steps.insert("b".into(), double_a);
-
-    let assign = RunnableAssign::new(RunnableParallel::new(steps));
+    let assign = RunnableAssign::new().assign("b", double_a);
     let result = assign.invoke(json!({"a": 5}), None).await.unwrap();
 
     assert_eq!(result["a"], json!(5));
@@ -255,10 +252,8 @@ async fn test_assign_merges_keys() {
 #[tokio::test]
 async fn test_assign_non_object_errors() {
     let noop = Arc::new(RunnableLambda::new("noop", |v: Value| async move { Ok(v) })) as Arc<dyn Runnable>;
-    let mut steps = HashMap::new();
-    steps.insert("x".into(), noop);
 
-    let assign = RunnableAssign::new(RunnableParallel::new(steps));
+    let assign = RunnableAssign::new().assign("x", noop);
     let result = assign.invoke(json!(42), None).await;
     assert!(matches!(
         result.unwrap_err(),

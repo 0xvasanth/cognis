@@ -1,3 +1,4 @@
+pub mod assign;
 pub mod base;
 pub mod batch;
 pub mod binding;
@@ -38,7 +39,8 @@ pub use each::RunnableEach;
 pub use fallbacks::{RunnableWithFallbacks, with_fallbacks};
 pub use lambda::RunnableLambda;
 pub use parallel::RunnableParallel;
-pub use passthrough::{RunnableAssign, RunnablePassthrough, RunnablePick};
+pub use assign::{RunnableAssign, RunnablePick};
+pub use passthrough::RunnablePassthrough;
 pub use router::{RouterRunnable, RunnableRouter, RunnableFnBranch};
 pub use configurable::{ConfigurableField, RunnableConfigurableFields};
 pub use retry::RunnableRetry;

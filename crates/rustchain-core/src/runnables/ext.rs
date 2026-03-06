@@ -8,8 +8,7 @@ use super::binding::RunnableBinding;
 use super::config::RunnableConfig;
 use super::each::RunnableEach;
 use super::fallbacks::RunnableWithFallbacks;
-use super::parallel::RunnableParallel;
-use super::passthrough::{RunnableAssign, RunnablePick};
+use super::assign::{RunnableAssign, RunnablePick};
 use super::retry::RunnableRetry;
 use super::sequence::RunnableSequence;
 use serde_json::Value;
@@ -99,10 +98,13 @@ pub trait RunnableExt: Runnable + Sized + 'static {
     /// let chain = my_runnable.assign(hashmap!{ "answer" => answer_runnable });
     /// ```
     fn assign(self, mapping: HashMap<String, Arc<dyn Runnable>>) -> Result<RunnableSequence> {
-        let assign = RunnableAssign::new(RunnableParallel::new(mapping));
+        let mut builder = RunnableAssign::new();
+        for (key, runnable) in mapping {
+            builder = builder.assign(key, runnable);
+        }
         RunnableSequence::new(vec![
             Arc::new(self) as Arc<dyn Runnable>,
-            Arc::new(assign) as Arc<dyn Runnable>,
+            Arc::new(builder) as Arc<dyn Runnable>,
         ])
     }
 

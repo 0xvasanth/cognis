@@ -1,15 +1,13 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::error::{Result, RustChainError};
+use crate::error::Result;
 
 use super::base::Runnable;
 use super::config::RunnableConfig;
-use super::parallel::RunnableParallel;
 
 type SideEffectFn = Box<
     dyn Fn(Value) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync,
@@ -57,108 +55,9 @@ impl Runnable for RunnablePassthrough {
     }
 }
 
-/// Runs a `RunnableParallel` and merges its output keys into the input object.
-///
-/// Input must be a `Value::Object`.
-pub struct RunnableAssign {
-    parallel: Arc<RunnableParallel>,
-}
-
-impl RunnableAssign {
-    pub fn new(parallel: RunnableParallel) -> Self {
-        Self {
-            parallel: Arc::new(parallel),
-        }
-    }
-}
-
-#[async_trait]
-impl Runnable for RunnableAssign {
-    fn name(&self) -> &str {
-        "RunnableAssign"
-    }
-
-    async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
-        let obj = input.as_object().ok_or_else(|| RustChainError::TypeMismatch {
-            expected: "Object".into(),
-            got: value_type_name(&input).to_string(),
-        })?;
-
-        let parallel_output = self.parallel.invoke(input.clone(), config).await?;
-        let parallel_obj = parallel_output
-            .as_object()
-            .ok_or_else(|| RustChainError::Other("RunnableParallel did not return Object".into()))?;
-
-        let mut merged = obj.clone();
-        for (k, v) in parallel_obj {
-            merged.insert(k.clone(), v.clone());
-        }
-
-        Ok(Value::Object(merged))
-    }
-}
-
-/// Selects keys from a dict input.
-///
-/// When constructed with a single key, returns the value directly.
-/// When constructed with multiple keys, returns a dict with only those keys.
-pub struct RunnablePick {
-    keys: Vec<String>,
-}
-
-impl RunnablePick {
-    /// Create a `RunnablePick` that selects a single key (returns value directly).
-    pub fn one(key: impl Into<String>) -> Self {
-        Self {
-            keys: vec![key.into()],
-        }
-    }
-
-    /// Create a `RunnablePick` that selects multiple keys (returns a dict).
-    pub fn many(keys: Vec<String>) -> Self {
-        Self { keys }
-    }
-}
-
-#[async_trait]
-impl Runnable for RunnablePick {
-    fn name(&self) -> &str {
-        "RunnablePick"
-    }
-
-    async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let obj = input.as_object().ok_or_else(|| RustChainError::TypeMismatch {
-            expected: "Object".into(),
-            got: value_type_name(&input).to_string(),
-        })?;
-
-        if self.keys.len() == 1 {
-            Ok(obj
-                .get(&self.keys[0])
-                .cloned()
-                .unwrap_or(Value::Null))
-        } else {
-            let mut result = serde_json::Map::new();
-            for key in &self.keys {
-                if let Some(val) = obj.get(key) {
-                    result.insert(key.clone(), val.clone());
-                }
-            }
-            Ok(Value::Object(result))
-        }
-    }
-}
-
-fn value_type_name(v: &Value) -> &'static str {
-    match v {
-        Value::Null => "Null",
-        Value::Bool(_) => "Bool",
-        Value::Number(_) => "Number",
-        Value::String(_) => "String",
-        Value::Array(_) => "Array",
-        Value::Object(_) => "Object",
-    }
-}
+// RunnableAssign and RunnablePick have been moved to the `assign` module.
+// Re-export them here for backward compatibility.
+pub use super::assign::{RunnableAssign, RunnablePick};
 
 #[cfg(test)]
 mod tests {
