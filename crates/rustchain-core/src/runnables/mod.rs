@@ -1,4 +1,5 @@
 pub mod base;
+pub mod batch;
 pub mod binding;
 pub mod branch;
 pub mod config;
@@ -44,6 +45,7 @@ pub use sequence::RunnableSequence;
 pub use ext::RunnableExt;
 pub use graph::{Branch, Edge, Graph, Node, NodeData};
 pub use history::{ConfigurableFieldSpec, RunnableWithMessageHistory};
+pub use batch::{batch_invoke, RunnableBatch};
 
 /// Creates a `RunnableSequence` from a list of runnables.
 ///
