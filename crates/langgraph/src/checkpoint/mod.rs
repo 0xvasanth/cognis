@@ -16,7 +16,8 @@ pub mod sqlite;
 // Re-export the core checkpoint types and trait so users can import from
 // `langgraph::checkpoint` directly.
 pub use crate::pregel::checkpoint::{
-    Checkpoint, CheckpointMetadata, CheckpointSaver, CheckpointTuple, InMemoryCheckpointSaver,
+    Checkpoint, CheckpointEntry, CheckpointMetadata, CheckpointSaver, CheckpointTuple,
+    InMemoryCheckpointSaver,
 };
 
 #[cfg(feature = "sqlite")]

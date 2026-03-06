@@ -25,7 +25,7 @@ use sqlx::Row;
 
 use crate::errors::{LangGraphError, Result};
 use crate::pregel::checkpoint::{
-    Checkpoint, CheckpointMetadata, CheckpointSaver, CheckpointTuple,
+    Checkpoint, CheckpointEntry, CheckpointMetadata, CheckpointSaver, CheckpointTuple,
 };
 
 /// A checkpoint saver backed by SQLite via `sqlx`.
@@ -385,6 +385,64 @@ impl CheckpointSaver for SqliteCheckpointSaver {
             results.push(self.row_to_tuple(row).await?);
         }
         Ok(results)
+    }
+
+    async fn list_checkpoints(&self, thread_id: &str) -> Result<Vec<CheckpointEntry>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT * FROM checkpoints
+            WHERE thread_id = ? AND checkpoint_ns = ''
+            ORDER BY created_at ASC
+            "#,
+        )
+        .bind(thread_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| LangGraphError::Other(format!("SQLite query error: {}", e)))?;
+
+        let mut entries = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let tuple = self.row_to_tuple(row).await?;
+
+            let node_name = tuple
+                .metadata
+                .as_ref()
+                .and_then(|m| {
+                    m.writes
+                        .as_ref()
+                        .and_then(|w| w.keys().next().cloned())
+                        .or_else(|| Some(m.source.clone()))
+                })
+                .unwrap_or_default();
+
+            let timestamp = tuple
+                .checkpoint
+                .ts
+                .rsplit('+')
+                .next()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0)
+                * 1000;
+
+            let state = Value::Object(
+                tuple
+                    .checkpoint
+                    .channel_values
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            );
+
+            entries.push(CheckpointEntry {
+                checkpoint_id: tuple.checkpoint.id.clone(),
+                thread_id: thread_id.to_string(),
+                node_name,
+                timestamp,
+                state,
+            });
+        }
+
+        Ok(entries)
     }
 }
 

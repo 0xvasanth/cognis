@@ -1007,6 +1007,126 @@ impl CompiledStateGraph {
     pub fn get_output_schema(&self) -> Option<&Value> {
         self.output_schema.as_ref()
     }
+
+    // ── Time-travel API ──────────────────────────────────────────────
+
+    /// List the full checkpoint history for a thread.
+    ///
+    /// Returns a [`CheckpointEntry`] for every checkpoint stored under the
+    /// given `thread_id`, ordered from oldest to newest. This is the
+    /// primary entry-point for inspecting past states.
+    pub async fn get_state_history(
+        &self,
+        thread_id: &str,
+        saver: &dyn crate::checkpoint::CheckpointSaver,
+    ) -> Result<Vec<crate::checkpoint::CheckpointEntry>, LangGraphError> {
+        saver.list_checkpoints(thread_id).await
+    }
+
+    /// Replay execution from a historical checkpoint.
+    ///
+    /// Loads the state stored at `checkpoint_id` for the given `thread_id`
+    /// and continues graph execution from that state. The original thread
+    /// history is **not** modified; this simply re-runs the graph starting
+    /// from the historical state.
+    ///
+    /// Returns the final state after execution completes.
+    pub async fn replay_from(
+        &self,
+        thread_id: &str,
+        checkpoint_id: &str,
+        saver: &dyn crate::checkpoint::CheckpointSaver,
+    ) -> Result<Value, LangGraphError> {
+        let mut config = HashMap::new();
+        config.insert("thread_id".to_string(), Value::String(thread_id.to_string()));
+        config.insert(
+            "checkpoint_id".to_string(),
+            Value::String(checkpoint_id.to_string()),
+        );
+
+        let tuple = saver
+            .get_tuple(&config)
+            .await?
+            .ok_or_else(|| {
+                LangGraphError::Other(format!(
+                    "Checkpoint '{}' not found for thread '{}'",
+                    checkpoint_id, thread_id
+                ))
+            })?;
+
+        // Build the state from channel_values.
+        let state = Value::Object(
+            tuple
+                .checkpoint
+                .channel_values
+                .into_iter()
+                .collect(),
+        );
+
+        self.invoke(state).await
+    }
+
+    /// Fork a new thread from a historical checkpoint.
+    ///
+    /// Loads the state stored at `checkpoint_id` for `thread_id` and saves
+    /// it as the initial checkpoint of `new_thread_id`. The new thread is
+    /// completely independent of the original.
+    ///
+    /// Returns the forked state.
+    pub async fn fork_from(
+        &self,
+        thread_id: &str,
+        checkpoint_id: &str,
+        new_thread_id: &str,
+        saver: &dyn crate::checkpoint::CheckpointSaver,
+    ) -> Result<Value, LangGraphError> {
+        let mut config = HashMap::new();
+        config.insert("thread_id".to_string(), Value::String(thread_id.to_string()));
+        config.insert(
+            "checkpoint_id".to_string(),
+            Value::String(checkpoint_id.to_string()),
+        );
+
+        let tuple = saver
+            .get_tuple(&config)
+            .await?
+            .ok_or_else(|| {
+                LangGraphError::Other(format!(
+                    "Checkpoint '{}' not found for thread '{}'",
+                    checkpoint_id, thread_id
+                ))
+            })?;
+
+        // Save the checkpoint under the new thread.
+        let mut new_config = HashMap::new();
+        new_config.insert(
+            "thread_id".to_string(),
+            Value::String(new_thread_id.to_string()),
+        );
+
+        let metadata = tuple.metadata.unwrap_or_else(|| {
+            crate::checkpoint::CheckpointMetadata {
+                source: "fork".to_string(),
+                step: 0,
+                writes: None,
+                extra: HashMap::new(),
+            }
+        });
+
+        saver
+            .put(&new_config, tuple.checkpoint.clone(), metadata)
+            .await?;
+
+        let state = Value::Object(
+            tuple
+                .checkpoint
+                .channel_values
+                .into_iter()
+                .collect(),
+        );
+
+        Ok(state)
+    }
 }
 
 impl fmt::Debug for CompiledStateGraph {
@@ -1915,5 +2035,199 @@ mod tests {
         let result = outer.invoke(json!({"go_left": false})).await.unwrap();
         assert_eq!(result["routed"], json!(true));
         assert_eq!(result["path"], json!("right_subgraph"));
+    }
+
+    // ── Time-travel tests ────────────────────────────────────────────
+
+    mod time_travel {
+        use super::*;
+        use crate::checkpoint::{
+            CheckpointMetadata, CheckpointSaver, InMemoryCheckpointSaver,
+        };
+        use crate::pregel::checkpoint::empty_checkpoint;
+        use std::sync::Arc;
+
+        /// Helper: build a simple two-node graph (a -> b).
+        fn two_node_graph() -> CompiledStateGraph {
+            let action_a: AsyncNodeAction = Arc::new(|_state: Value| {
+                Box::pin(async move { Ok(json!({"a_ran": true, "count": 1})) })
+            });
+            let action_b: AsyncNodeAction = Arc::new(|state: Value| {
+                Box::pin(async move {
+                    let count = state.get("count").and_then(|v| v.as_i64()).unwrap_or(0);
+                    Ok(json!({"b_ran": true, "count": count + 10}))
+                })
+            });
+
+            StateGraph::new()
+                .add_node("a", action_a)
+                .add_node("b", action_b)
+                .set_entry_point("a")
+                .add_edge("a", "b")
+                .set_finish_point("b")
+                .compile()
+                .unwrap()
+        }
+
+        /// Populate the saver with checkpoints mimicking what a graph run would
+        /// produce (one per node execution).
+        async fn populate_checkpoints(
+            saver: &InMemoryCheckpointSaver,
+            thread_id: &str,
+        ) -> Vec<String> {
+            let mut config = std::collections::HashMap::new();
+            config.insert("thread_id".to_string(), json!(thread_id));
+
+            let mut ids = Vec::new();
+
+            // Checkpoint after node "a"
+            let mut cp_a = empty_checkpoint();
+            cp_a.channel_values
+                .insert("a_ran".to_string(), json!(true));
+            cp_a.channel_values
+                .insert("count".to_string(), json!(1));
+            let meta_a = CheckpointMetadata {
+                source: "loop".to_string(),
+                step: 1,
+                writes: Some({
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("a".to_string(), json!({"a_ran": true, "count": 1}));
+                    m
+                }),
+                extra: std::collections::HashMap::new(),
+            };
+            ids.push(cp_a.id.clone());
+            let config = saver.put(&config, cp_a, meta_a).await.unwrap();
+
+            // Checkpoint after node "b"
+            let mut cp_b = empty_checkpoint();
+            cp_b.channel_values
+                .insert("a_ran".to_string(), json!(true));
+            cp_b.channel_values
+                .insert("b_ran".to_string(), json!(true));
+            cp_b.channel_values
+                .insert("count".to_string(), json!(11));
+            let meta_b = CheckpointMetadata {
+                source: "loop".to_string(),
+                step: 2,
+                writes: Some({
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("b".to_string(), json!({"b_ran": true, "count": 11}));
+                    m
+                }),
+                extra: std::collections::HashMap::new(),
+            };
+            ids.push(cp_b.id.clone());
+            saver.put(&config, cp_b, meta_b).await.unwrap();
+
+            ids
+        }
+
+        #[tokio::test]
+        async fn test_get_state_history_lists_all_checkpoints() {
+            let saver = InMemoryCheckpointSaver::new();
+            let graph = two_node_graph();
+            let ids = populate_checkpoints(&saver, "thread-1").await;
+
+            let history = graph.get_state_history("thread-1", &saver).await.unwrap();
+
+            assert_eq!(history.len(), 2, "should have exactly 2 checkpoints");
+            assert_eq!(history[0].checkpoint_id, ids[0]);
+            assert_eq!(history[1].checkpoint_id, ids[1]);
+            assert_eq!(history[0].thread_id, "thread-1");
+            assert_eq!(history[1].thread_id, "thread-1");
+            // The first checkpoint's node_name should be "a" (from writes key).
+            assert_eq!(history[0].node_name, "a");
+            assert_eq!(history[1].node_name, "b");
+        }
+
+        #[tokio::test]
+        async fn test_get_state_history_empty_for_unknown_thread() {
+            let saver = InMemoryCheckpointSaver::new();
+            let graph = two_node_graph();
+
+            let history = graph
+                .get_state_history("nonexistent", &saver)
+                .await
+                .unwrap();
+            assert!(history.is_empty());
+        }
+
+        #[tokio::test]
+        async fn test_replay_from_checkpoint() {
+            let saver = InMemoryCheckpointSaver::new();
+            let graph = two_node_graph();
+            let ids = populate_checkpoints(&saver, "thread-1").await;
+
+            // Replay from the first checkpoint (after node "a").
+            // The state at that point is {a_ran: true, count: 1}.
+            // Re-running the graph from that state goes through a -> b again.
+            let result = graph
+                .replay_from("thread-1", &ids[0], &saver)
+                .await
+                .unwrap();
+
+            // After replaying: node "a" sets count=1, node "b" reads count
+            // and sets count=count+10. But since we feed the *state* back as
+            // input, node "a" will overwrite count to 1, then node "b" sets it
+            // to 11.
+            assert_eq!(result["b_ran"], json!(true));
+            assert_eq!(result["a_ran"], json!(true));
+            assert_eq!(result["count"], json!(11));
+        }
+
+        #[tokio::test]
+        async fn test_replay_from_nonexistent_checkpoint_fails() {
+            let saver = InMemoryCheckpointSaver::new();
+            let graph = two_node_graph();
+
+            let result = graph
+                .replay_from("thread-1", "does-not-exist", &saver)
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_fork_creates_independent_thread() {
+            let saver = InMemoryCheckpointSaver::new();
+            let graph = two_node_graph();
+            let ids = populate_checkpoints(&saver, "thread-1").await;
+
+            // Fork from the first checkpoint into a new thread.
+            let forked_state = graph
+                .fork_from("thread-1", &ids[0], "thread-2", &saver)
+                .await
+                .unwrap();
+
+            // The forked state should match checkpoint 0's state.
+            assert_eq!(forked_state["a_ran"], json!(true));
+            assert_eq!(forked_state["count"], json!(1));
+
+            // The new thread should have its own checkpoint history.
+            let history_new = graph
+                .get_state_history("thread-2", &saver)
+                .await
+                .unwrap();
+            assert_eq!(history_new.len(), 1);
+            assert_eq!(history_new[0].thread_id, "thread-2");
+
+            // The original thread should be unchanged.
+            let history_orig = graph
+                .get_state_history("thread-1", &saver)
+                .await
+                .unwrap();
+            assert_eq!(history_orig.len(), 2);
+        }
+
+        #[tokio::test]
+        async fn test_fork_from_nonexistent_checkpoint_fails() {
+            let saver = InMemoryCheckpointSaver::new();
+            let graph = two_node_graph();
+
+            let result = graph
+                .fork_from("thread-1", "nope", "thread-2", &saver)
+                .await;
+            assert!(result.is_err());
+        }
     }
 }

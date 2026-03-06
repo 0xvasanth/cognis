@@ -1,3 +1,38 @@
+//! # langgraph
+//!
+//! Orchestration layer for building stateful, multi-actor agent workflows as
+//! directed graphs. Inspired by Pregel and Apache Beam, langgraph provides a
+//! [`StateGraph`](graph::state::StateGraph) builder that compiles into an
+//! executable graph with support for checkpointing, streaming, human-in-the-loop
+//! interrupts, and subgraph composition.
+//!
+//! ## Quick Example
+//!
+//! ```rust,ignore
+//! use langgraph::graph::state::StateGraph;
+//! use langgraph::{START, END};
+//! use serde_json::{json, Value};
+//!
+//! let mut graph = StateGraph::new();
+//! graph.add_node("greet", |state: Value| {
+//!     Ok(json!({"response": "Hello!"}))
+//! });
+//! graph.add_edge(START, "greet");
+//! graph.add_edge("greet", END);
+//! let compiled = graph.compile(None).unwrap();
+//! let result = compiled.invoke(json!({})).await.unwrap();
+//! ```
+//!
+//! ## Key Modules
+//!
+//! - [`graph`] -- `StateGraph` builder, `CompiledStateGraph`, conditional branching, subgraphs.
+//! - [`pregel`] -- Pregel-style execution engine with superstep processing.
+//! - [`channels`] -- State channels: LastValue, BinaryOp, Topic, AnyValue, NamedBarrier.
+//! - [`checkpoint`] -- `CheckpointSaver` trait with SQLite backend (behind `sqlite` feature).
+//! - [`prebuilt`] -- `create_react_agent` for tool-calling ReAct loops.
+//! - [`types`] -- Core types: `StreamMode`, `InterruptType`, `RetryPolicy`, `CachePolicy`.
+//! - [`runtime`] -- Tokio-based async runtime utilities.
+
 pub mod channels;
 pub mod checkpoint;
 pub mod config;
