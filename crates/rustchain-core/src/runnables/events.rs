@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::callbacks::CallbackHandler;
 use crate::error::Result;
 use crate::tracers::event_stream::{
-    EventStreamCallbackHandler, EventType, RootEventFilter, StreamEvent,
+    EventStreamCallbackHandler, RootEventFilter, StreamEvent,
 };
 
 use super::base::Runnable;
