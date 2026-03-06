@@ -8,3 +8,5 @@ pub use llm::LLMChain;
 pub use sequential::SequentialChain;
 pub use conversation::ConversationChain;
 pub use retrieval::{RetrievalQAChain, RetrievalResult};
+pub mod conversation_retrieval;
+pub use conversation_retrieval::{ConversationalRetrievalChain, ConversationalRetrievalResult};
