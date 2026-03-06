@@ -225,6 +225,44 @@ impl StateGraph {
         self.add_node(name, async_action)
     }
 
+    /// Add a compiled subgraph as a node.
+    ///
+    /// The subgraph runs as a single step: the parent's current state is passed
+    /// to the subgraph's [`invoke`](CompiledStateGraph::invoke), and the
+    /// subgraph's final output is merged back into the parent's state.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::sync::Arc;
+    /// use serde_json::{json, Value};
+    /// use langgraph::graph::state::{StateGraph, AsyncNodeAction};
+    /// use langgraph::errors::LangGraphError;
+    ///
+    /// let action: AsyncNodeAction = Arc::new(|_s: Value| {
+    ///     Box::pin(async { Ok(json!({"from_inner": true})) })
+    /// });
+    ///
+    /// let inner = StateGraph::new()
+    ///     .add_node("a", action)
+    ///     .set_entry_point("a")
+    ///     .set_finish_point("a")
+    ///     .compile()
+    ///     .unwrap();
+    ///
+    /// let outer = StateGraph::new()
+    ///     .add_subgraph("sub", inner)
+    ///     .set_entry_point("sub")
+    ///     .set_finish_point("sub")
+    ///     .compile()
+    ///     .unwrap();
+    /// ```
+    pub fn add_subgraph(self, name: &str, subgraph: CompiledStateGraph) -> Self {
+        use super::subgraph::SubgraphNode;
+        let action = SubgraphNode::new(subgraph).into_action();
+        self.add_node(name, action)
+    }
+
     /// Add a node with metadata and optional retry policy.
     pub fn add_node_with_config(
         mut self,
@@ -1751,5 +1789,131 @@ mod tests {
         assert_eq!(update.data["state"]["val"], json!(42));
 
         assert!(stream.next().await.is_none());
+    }
+
+    // ── Subgraph composition tests ──────────────────────────────────
+
+    #[tokio::test]
+    async fn test_subgraph_simple() {
+        // Inner graph: inner_a -> inner_b
+        let inner = StateGraph::new()
+            .add_node("inner_a", make_set_action("inner_step_a", json!(true)))
+            .add_node("inner_b", make_set_action("inner_step_b", json!(true)))
+            .set_entry_point("inner_a")
+            .add_edge("inner_a", "inner_b")
+            .set_finish_point("inner_b")
+            .compile()
+            .unwrap();
+
+        // Outer graph: setup -> subgraph -> finish
+        let outer = StateGraph::new()
+            .add_node("setup", make_set_action("setup_done", json!(true)))
+            .add_subgraph("subgraph", inner)
+            .add_node("finish", make_set_action("finish_done", json!(true)))
+            .set_entry_point("setup")
+            .add_edge("setup", "subgraph")
+            .add_edge("subgraph", "finish")
+            .set_finish_point("finish")
+            .compile()
+            .unwrap();
+
+        let result = outer.invoke(json!({"input": "hello"})).await.unwrap();
+
+        assert_eq!(result["input"], json!("hello"));
+        assert_eq!(result["setup_done"], json!(true));
+        assert_eq!(result["inner_step_a"], json!(true));
+        assert_eq!(result["inner_step_b"], json!(true));
+        assert_eq!(result["finish_done"], json!(true));
+    }
+
+    #[tokio::test]
+    async fn test_subgraph_state_passthrough() {
+        // Verify that state keys from the parent flow into the subgraph and
+        // keys produced by the subgraph flow back to the parent.
+        let inner = StateGraph::new()
+            .add_node(
+                "transform",
+                make_transform_action(|state: Value| {
+                    let x = state.get("x").and_then(|v| v.as_i64()).unwrap_or(0);
+                    Ok(json!({"y": x * 2}))
+                }),
+            )
+            .set_entry_point("transform")
+            .set_finish_point("transform")
+            .compile()
+            .unwrap();
+
+        let outer = StateGraph::new()
+            .add_node("init", make_set_action("x", json!(5)))
+            .add_subgraph("sub", inner)
+            .add_node(
+                "check",
+                make_transform_action(|state: Value| {
+                    let y = state.get("y").and_then(|v| v.as_i64()).unwrap_or(0);
+                    Ok(json!({"z": y + 1}))
+                }),
+            )
+            .set_entry_point("init")
+            .add_edge("init", "sub")
+            .add_edge("sub", "check")
+            .set_finish_point("check")
+            .compile()
+            .unwrap();
+
+        let result = outer.invoke(json!({})).await.unwrap();
+
+        // init sets x=5, subgraph reads x=5 and sets y=10, check reads y=10 and sets z=11
+        assert_eq!(result["x"], json!(5));
+        assert_eq!(result["y"], json!(10));
+        assert_eq!(result["z"], json!(11));
+    }
+
+    #[tokio::test]
+    async fn test_subgraph_in_conditional_branch() {
+        // Build two subgraphs for different branches.
+        let left_sub = StateGraph::new()
+            .add_node("left_inner", make_set_action("path", json!("left_subgraph")))
+            .set_entry_point("left_inner")
+            .set_finish_point("left_inner")
+            .compile()
+            .unwrap();
+
+        let right_sub = StateGraph::new()
+            .add_node("right_inner", make_set_action("path", json!("right_subgraph")))
+            .set_entry_point("right_inner")
+            .set_finish_point("right_inner")
+            .compile()
+            .unwrap();
+
+        let outer = StateGraph::new()
+            .add_node("router", make_set_action("routed", json!(true)))
+            .add_subgraph("left_sub", left_sub)
+            .add_subgraph("right_sub", right_sub)
+            .set_entry_point("router")
+            .add_conditional_edges(
+                "router",
+                Arc::new(|state: &Value| {
+                    if state.get("go_left").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        super::super::branch::RouterResult::Single("left_sub".to_string())
+                    } else {
+                        super::super::branch::RouterResult::Single("right_sub".to_string())
+                    }
+                }),
+                None,
+            )
+            .set_finish_point("left_sub")
+            .set_finish_point("right_sub")
+            .compile()
+            .unwrap();
+
+        // Test left branch
+        let result = outer.invoke(json!({"go_left": true})).await.unwrap();
+        assert_eq!(result["routed"], json!(true));
+        assert_eq!(result["path"], json!("left_subgraph"));
+
+        // Test right branch
+        let result = outer.invoke(json!({"go_left": false})).await.unwrap();
+        assert_eq!(result["routed"], json!(true));
+        assert_eq!(result["path"], json!("right_subgraph"));
     }
 }
