@@ -4,6 +4,7 @@
 
 pub mod base;
 pub mod event_stream;
+pub mod langsmith;
 pub mod log_stream;
 pub mod otel;
 pub mod run_collector;
@@ -13,6 +14,9 @@ pub mod stdout;
 pub use base::{AsyncBaseTracer, BaseTracer};
 pub use event_stream::{
     EventData, EventStreamCallbackHandler, EventType, RootEventFilter, RunInfo, StreamEvent,
+};
+pub use langsmith::{
+    LangSmithConfig, LangSmithExporter, LangSmithRun, LangSmithRunType, LangSmithTracer,
 };
 pub use log_stream::{JsonPatchOp, LogEntry, RunLogPatch, RunState};
 pub use otel::{OtelTraceCallbackHandler, SpanEvent, SpanStatus, TraceSpan};
