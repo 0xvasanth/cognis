@@ -134,6 +134,24 @@ impl RateLimitedChatModel {
         }
     }
 
+    /// Create a new rate-limited wrapper with per-second rate and burst size.
+    ///
+    /// # Arguments
+    /// * `inner` - The chat model to wrap.
+    /// * `max_requests_per_second` - Sustained request rate (tokens added per second).
+    /// * `burst_size` - Maximum burst capacity (bucket size).
+    pub fn with_rate(
+        inner: Box<dyn BaseChatModel>,
+        max_requests_per_second: f64,
+        burst_size: usize,
+    ) -> Self {
+        Self {
+            inner,
+            request_limiter: TokenBucket::new(burst_size as f64, max_requests_per_second),
+            token_limiter: None,
+        }
+    }
+
     /// Add a token-per-minute limiter (future use).
     ///
     /// # Arguments
@@ -413,6 +431,21 @@ mod tests {
         )];
         let result = limited._generate(&messages, None).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_with_rate_constructor() {
+        let mock = MockChatModel::new();
+        let count = mock.call_count.clone();
+        // 10 requests/sec, burst of 5
+        let limited = RateLimitedChatModel::with_rate(Box::new(mock), 10.0, 5);
+
+        let messages = vec![Message::Human(
+            rustchain_core::messages::HumanMessage::new("Hi"),
+        )];
+        let result = limited._generate(&messages, None).await;
+        assert!(result.is_ok());
+        assert_eq!(count.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
