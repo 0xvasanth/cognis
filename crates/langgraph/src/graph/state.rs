@@ -16,7 +16,10 @@ use futures::Stream;
 
 use crate::constants::{END, START};
 use crate::errors::LangGraphError;
-use crate::types::{CachePolicy, InterruptType, InterruptedState, InvokeResult, RetryPolicy, Send as GraphSend, StreamMode, StreamUpdate};
+use crate::types::{
+    CachePolicy, InterruptType, InterruptedState, InvokeResult, RetryPolicy, Send as GraphSend,
+    StreamMode, StreamUpdate,
+};
 
 use super::branch::{Branch, RouterFn, RouterResult};
 
@@ -28,7 +31,10 @@ pub type NodeAction = Arc<dyn Fn(Value) -> Result<Value, LangGraphError> + Send 
 
 /// An asynchronous node action: takes state, returns a future that resolves to a state update.
 pub type AsyncNodeAction = Arc<
-    dyn Fn(Value) -> Pin<Box<dyn std::future::Future<Output = Result<Value, LangGraphError>> + Send>>
+    dyn Fn(
+            Value,
+        )
+            -> Pin<Box<dyn std::future::Future<Output = Result<Value, LangGraphError>> + Send>>
         + Send
         + Sync,
 >;
@@ -103,7 +109,7 @@ impl fmt::Debug for NodeSpec {
 
 /// Edge types in the graph.
 #[derive(Clone)]
-enum Edge {
+pub(crate) enum Edge {
     /// Direct edge from one node to another.
     Direct { from: String, to: String },
     /// Conditional edge with routing function.
@@ -231,10 +237,7 @@ impl StateGraph {
     /// Add a node with an async action to the graph.
     pub fn add_node(mut self, name: &str, action: AsyncNodeAction) -> Self {
         if name == START || name == END {
-            panic!(
-                "Cannot add a node named '{}': reserved name",
-                name
-            );
+            panic!("Cannot add a node named '{}': reserved name", name);
         }
         self.nodes.insert(
             name.to_string(),
@@ -307,10 +310,7 @@ impl StateGraph {
         retry_policy: Option<RetryPolicy>,
     ) -> Self {
         if name == START || name == END {
-            panic!(
-                "Cannot add a node named '{}': reserved name",
-                name
-            );
+            panic!("Cannot add a node named '{}': reserved name", name);
         }
         self.nodes.insert(
             name.to_string(),
@@ -340,10 +340,7 @@ impl StateGraph {
         defer: bool,
     ) -> Self {
         if name == START || name == END {
-            panic!(
-                "Cannot add a node named '{}': reserved name",
-                name
-            );
+            panic!("Cannot add a node named '{}': reserved name", name);
         }
         self.nodes.insert(
             name.to_string(),
@@ -582,8 +579,7 @@ pub struct CompiledStateGraph {
     /// The nodes in the graph.
     pub nodes: HashMap<String, NodeSpec>,
     /// All edges (kept for introspection).
-    #[allow(dead_code)]
-    edges: Vec<Edge>,
+    pub(crate) edges: Vec<Edge>,
     /// Adjacency: node name -> list of outgoing edge references.
     outgoing: HashMap<String, Vec<EdgeRef>>,
     /// Maximum number of node executions before erroring.
@@ -593,9 +589,9 @@ pub struct CompiledStateGraph {
     /// Optional output JSON schema.
     output_schema: Option<Value>,
     /// Nodes that trigger an interrupt **before** execution.
-    interrupt_before: HashSet<String>,
+    pub(crate) interrupt_before: HashSet<String>,
     /// Nodes that trigger an interrupt **after** execution.
-    interrupt_after: HashSet<String>,
+    pub(crate) interrupt_after: HashSet<String>,
 }
 
 impl Clone for CompiledStateGraph {
@@ -669,9 +665,7 @@ impl CompiledStateGraph {
                 };
 
                 let node = self.nodes.get(node_name).ok_or_else(|| {
-                    LangGraphError::Other(format!(
-                        "Node '{node_name}' not found in compiled graph"
-                    ))
+                    LangGraphError::Other(format!("Node '{node_name}' not found in compiled graph"))
                 })?;
                 let update = (node.action)(node_input).await?;
                 Self::merge_state(&mut state, update)?;
@@ -696,7 +690,10 @@ impl CompiledStateGraph {
     ///
     /// If no interrupts are configured (or none are triggered), the graph runs
     /// to completion and returns [`InvokeResult::Complete`].
-    pub async fn invoke_with_interrupt(&self, input: Value) -> Result<InvokeResult, LangGraphError> {
+    pub async fn invoke_with_interrupt(
+        &self,
+        input: Value,
+    ) -> Result<InvokeResult, LangGraphError> {
         self.run_with_interrupt(input, None, None).await
     }
 
@@ -814,9 +811,7 @@ impl CompiledStateGraph {
                 };
 
                 let node = self.nodes.get(node_name).ok_or_else(|| {
-                    LangGraphError::Other(format!(
-                        "Node '{node_name}' not found in compiled graph"
-                    ))
+                    LangGraphError::Other(format!("Node '{node_name}' not found in compiled graph"))
                 })?;
                 let update = (node.action)(node_input).await?;
                 Self::merge_state(&mut state, update)?;
@@ -856,8 +851,10 @@ impl CompiledStateGraph {
         &self,
         input: Value,
         stream_mode: StreamMode,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamUpdate, LangGraphError>> + Send>>, LangGraphError>
-    {
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<StreamUpdate, LangGraphError>> + Send>>,
+        LangGraphError,
+    > {
         let (tx, rx) = tokio::sync::mpsc::channel::<Result<StreamUpdate, LangGraphError>>(64);
 
         // Clone all the data we need to move into the spawned task.
@@ -1073,11 +1070,7 @@ impl CompiledStateGraph {
     }
 
     /// Execute a single node by name.
-    async fn execute_node(
-        &self,
-        name: &str,
-        state: &Value,
-    ) -> Result<Value, LangGraphError> {
+    async fn execute_node(&self, name: &str, state: &Value) -> Result<Value, LangGraphError> {
         let node = self.nodes.get(name).ok_or_else(|| {
             LangGraphError::Other(format!("Node '{name}' not found in compiled graph"))
         })?;
@@ -1154,30 +1147,24 @@ impl CompiledStateGraph {
         saver: &dyn crate::checkpoint::CheckpointSaver,
     ) -> Result<Value, LangGraphError> {
         let mut config = HashMap::new();
-        config.insert("thread_id".to_string(), Value::String(thread_id.to_string()));
+        config.insert(
+            "thread_id".to_string(),
+            Value::String(thread_id.to_string()),
+        );
         config.insert(
             "checkpoint_id".to_string(),
             Value::String(checkpoint_id.to_string()),
         );
 
-        let tuple = saver
-            .get_tuple(&config)
-            .await?
-            .ok_or_else(|| {
-                LangGraphError::Other(format!(
-                    "Checkpoint '{}' not found for thread '{}'",
-                    checkpoint_id, thread_id
-                ))
-            })?;
+        let tuple = saver.get_tuple(&config).await?.ok_or_else(|| {
+            LangGraphError::Other(format!(
+                "Checkpoint '{}' not found for thread '{}'",
+                checkpoint_id, thread_id
+            ))
+        })?;
 
         // Build the state from channel_values.
-        let state = Value::Object(
-            tuple
-                .checkpoint
-                .channel_values
-                .into_iter()
-                .collect(),
-        );
+        let state = Value::Object(tuple.checkpoint.channel_values.into_iter().collect());
 
         self.invoke(state).await
     }
@@ -1197,21 +1184,21 @@ impl CompiledStateGraph {
         saver: &dyn crate::checkpoint::CheckpointSaver,
     ) -> Result<Value, LangGraphError> {
         let mut config = HashMap::new();
-        config.insert("thread_id".to_string(), Value::String(thread_id.to_string()));
+        config.insert(
+            "thread_id".to_string(),
+            Value::String(thread_id.to_string()),
+        );
         config.insert(
             "checkpoint_id".to_string(),
             Value::String(checkpoint_id.to_string()),
         );
 
-        let tuple = saver
-            .get_tuple(&config)
-            .await?
-            .ok_or_else(|| {
-                LangGraphError::Other(format!(
-                    "Checkpoint '{}' not found for thread '{}'",
-                    checkpoint_id, thread_id
-                ))
-            })?;
+        let tuple = saver.get_tuple(&config).await?.ok_or_else(|| {
+            LangGraphError::Other(format!(
+                "Checkpoint '{}' not found for thread '{}'",
+                checkpoint_id, thread_id
+            ))
+        })?;
 
         // Save the checkpoint under the new thread.
         let mut new_config = HashMap::new();
@@ -1220,26 +1207,20 @@ impl CompiledStateGraph {
             Value::String(new_thread_id.to_string()),
         );
 
-        let metadata = tuple.metadata.unwrap_or_else(|| {
-            crate::checkpoint::CheckpointMetadata {
+        let metadata = tuple
+            .metadata
+            .unwrap_or_else(|| crate::checkpoint::CheckpointMetadata {
                 source: "fork".to_string(),
                 step: 0,
                 writes: None,
                 extra: HashMap::new(),
-            }
-        });
+            });
 
         saver
             .put(&new_config, tuple.checkpoint.clone(), metadata)
             .await?;
 
-        let state = Value::Object(
-            tuple
-                .checkpoint
-                .channel_values
-                .into_iter()
-                .collect(),
-        );
+        let state = Value::Object(tuple.checkpoint.channel_values.into_iter().collect());
 
         Ok(state)
     }
@@ -1251,67 +1232,21 @@ impl CompiledStateGraph {
     /// The output can be pasted into Mermaid-compatible renderers
     /// (GitHub markdown, mermaid.live, etc.).
     ///
-    /// - Start/end nodes use rounded shape `([...])`
+    /// - `__start__` / `__end__` use stadium-shaped nodes `([...])`
+    /// - Regular nodes use rectangular nodes `[...]`
     /// - Direct edges use solid arrows `-->`
-    /// - Conditional edges use dotted arrows `-. label .->`
+    /// - Conditional edges show diamond decision nodes with labelled branches
     /// - Interrupt nodes are highlighted with a special style
     pub fn draw_mermaid(&self) -> String {
-        let mut lines: Vec<String> = vec!["graph TD".to_string()];
+        super::mermaid::to_mermaid(self)
+    }
 
-        // Collect all node names. Always include __start__ and __end__.
-        let mut node_names: Vec<String> = Vec::new();
-        node_names.push(START.to_string());
-        let mut sorted_keys: Vec<&String> = self.nodes.keys().collect();
-        sorted_keys.sort();
-        for name in &sorted_keys {
-            node_names.push((*name).clone());
-        }
-        node_names.push(END.to_string());
-
-        // Emit node declarations with rounded shape.
-        for name in &node_names {
-            lines.push(format!("    {}([{}])", name, name));
-        }
-
-        // Emit edges from the stored edge list.
-        for edge in &self.edges {
-            match edge {
-                Edge::Direct { from, to } => {
-                    lines.push(format!("    {} --> {}", from, to));
-                }
-                Edge::Conditional { from, branch } => {
-                    if let Some(ref ends) = branch.ends {
-                        let mut sorted_ends: Vec<(&String, &String)> = ends.iter().collect();
-                        sorted_ends.sort_by_key(|(k, _)| (*k).clone());
-                        for (label, target) in sorted_ends {
-                            lines.push(format!("    {} -. {} .-> {}", from, label, target));
-                        }
-                    } else {
-                        // No path_map: we cannot know the targets statically,
-                        // so emit a single dotted edge with a generic label.
-                        lines.push(format!("    {} -. condition .-> ???", from));
-                    }
-                }
-            }
-        }
-
-        // Emit styles for interrupt nodes.
-        let mut interrupt_nodes: Vec<&String> = self
-            .interrupt_before
-            .iter()
-            .chain(self.interrupt_after.iter())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        interrupt_nodes.sort();
-        for name in interrupt_nodes {
-            lines.push(format!(
-                "    style {} fill:#f9f,stroke:#333",
-                name
-            ));
-        }
-
-        lines.join("\n")
+    /// Generate a [mermaid.live](https://mermaid.live) URL for this graph.
+    ///
+    /// The diagram definition is base64-encoded and embedded in the URL so
+    /// that opening it renders the graph immediately.
+    pub fn draw_mermaid_url(&self) -> String {
+        super::mermaid::to_mermaid_url(self)
     }
 
     /// Return the Mermaid diagram wrapped in a markdown code block.
@@ -1438,7 +1373,6 @@ impl CompiledStateGraph {
     }
 }
 
-
 impl fmt::Debug for CompiledStateGraph {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CompiledStateGraph")
@@ -1518,7 +1452,11 @@ mod tests {
             .add_conditional_edges(
                 "router",
                 Arc::new(|state: &Value| {
-                    if state.get("go_left").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if state
+                        .get("go_left")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                    {
                         super::super::branch::RouterResult::Single("left".to_string())
                     } else {
                         super::super::branch::RouterResult::Single("right".to_string())
@@ -1751,7 +1689,11 @@ mod tests {
             .add_node("b", make_set_action("result", json!("b")))
             .set_conditional_entry_point(
                 Arc::new(|state: &Value| {
-                    if state.get("pick_a").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if state
+                        .get("pick_a")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                    {
                         super::super::branch::RouterResult::Single("a".to_string())
                     } else {
                         super::super::branch::RouterResult::Single("b".to_string())
@@ -1953,10 +1895,7 @@ mod tests {
             .compile()
             .unwrap();
 
-        let mut stream = graph
-            .stream(json!({}), StreamMode::Updates)
-            .await
-            .unwrap();
+        let mut stream = graph.stream(json!({}), StreamMode::Updates).await.unwrap();
 
         let first = stream.next().await.unwrap().unwrap();
         assert_eq!(first.node, "a");
@@ -2046,7 +1985,10 @@ mod tests {
             .compile()
             .unwrap();
 
-        let result = graph.invoke_with_interrupt(json!({"input": "hello"})).await.unwrap();
+        let result = graph
+            .invoke_with_interrupt(json!({"input": "hello"}))
+            .await
+            .unwrap();
 
         match result {
             InvokeResult::Interrupted(interrupted) => {
@@ -2075,7 +2017,10 @@ mod tests {
             .compile()
             .unwrap();
 
-        let result = graph.invoke_with_interrupt(json!({"input": "hello"})).await.unwrap();
+        let result = graph
+            .invoke_with_interrupt(json!({"input": "hello"}))
+            .await
+            .unwrap();
 
         match result {
             InvokeResult::Interrupted(interrupted) => {
@@ -2109,7 +2054,10 @@ mod tests {
             .unwrap();
 
         // First invocation — should interrupt before B.
-        let result = graph.invoke_with_interrupt(json!({"input": "hello"})).await.unwrap();
+        let result = graph
+            .invoke_with_interrupt(json!({"input": "hello"}))
+            .await
+            .unwrap();
         let interrupted = match result {
             InvokeResult::Interrupted(i) => i,
             InvokeResult::Complete(_) => panic!("Expected interrupt"),
@@ -2136,7 +2084,10 @@ mod tests {
             .add_node(
                 "b",
                 make_transform_action(|state: Value| {
-                    let approved = state.get("human_approved").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let approved = state
+                        .get("human_approved")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     Ok(json!({"step_b": true, "was_approved": approved}))
                 }),
             )
@@ -2185,7 +2136,10 @@ mod tests {
             .compile()
             .unwrap();
 
-        let result = graph.invoke_with_interrupt(json!({"input": "hello"})).await.unwrap();
+        let result = graph
+            .invoke_with_interrupt(json!({"input": "hello"}))
+            .await
+            .unwrap();
         match result {
             InvokeResult::Complete(state) => {
                 assert_eq!(state["step_a"], json!(true));
@@ -2205,10 +2159,7 @@ mod tests {
             .compile()
             .unwrap();
 
-        let mut stream = graph
-            .stream(json!({}), StreamMode::Debug)
-            .await
-            .unwrap();
+        let mut stream = graph.stream(json!({}), StreamMode::Debug).await.unwrap();
 
         let update = stream.next().await.unwrap().unwrap();
         assert_eq!(update.node, "a");
@@ -2302,14 +2253,20 @@ mod tests {
     async fn test_subgraph_in_conditional_branch() {
         // Build two subgraphs for different branches.
         let left_sub = StateGraph::new()
-            .add_node("left_inner", make_set_action("path", json!("left_subgraph")))
+            .add_node(
+                "left_inner",
+                make_set_action("path", json!("left_subgraph")),
+            )
             .set_entry_point("left_inner")
             .set_finish_point("left_inner")
             .compile()
             .unwrap();
 
         let right_sub = StateGraph::new()
-            .add_node("right_inner", make_set_action("path", json!("right_subgraph")))
+            .add_node(
+                "right_inner",
+                make_set_action("path", json!("right_subgraph")),
+            )
             .set_entry_point("right_inner")
             .set_finish_point("right_inner")
             .compile()
@@ -2323,7 +2280,11 @@ mod tests {
             .add_conditional_edges(
                 "router",
                 Arc::new(|state: &Value| {
-                    if state.get("go_left").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if state
+                        .get("go_left")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                    {
                         super::super::branch::RouterResult::Single("left_sub".to_string())
                     } else {
                         super::super::branch::RouterResult::Single("right_sub".to_string())
@@ -2351,9 +2312,7 @@ mod tests {
 
     mod time_travel {
         use super::*;
-        use crate::checkpoint::{
-            CheckpointMetadata, CheckpointSaver, InMemoryCheckpointSaver,
-        };
+        use crate::checkpoint::{CheckpointMetadata, CheckpointSaver, InMemoryCheckpointSaver};
         use crate::pregel::checkpoint::empty_checkpoint;
         use std::sync::Arc;
 
@@ -2392,10 +2351,8 @@ mod tests {
 
             // Checkpoint after node "a"
             let mut cp_a = empty_checkpoint();
-            cp_a.channel_values
-                .insert("a_ran".to_string(), json!(true));
-            cp_a.channel_values
-                .insert("count".to_string(), json!(1));
+            cp_a.channel_values.insert("a_ran".to_string(), json!(true));
+            cp_a.channel_values.insert("count".to_string(), json!(1));
             let meta_a = CheckpointMetadata {
                 source: "loop".to_string(),
                 step: 1,
@@ -2411,12 +2368,9 @@ mod tests {
 
             // Checkpoint after node "b"
             let mut cp_b = empty_checkpoint();
-            cp_b.channel_values
-                .insert("a_ran".to_string(), json!(true));
-            cp_b.channel_values
-                .insert("b_ran".to_string(), json!(true));
-            cp_b.channel_values
-                .insert("count".to_string(), json!(11));
+            cp_b.channel_values.insert("a_ran".to_string(), json!(true));
+            cp_b.channel_values.insert("b_ran".to_string(), json!(true));
+            cp_b.channel_values.insert("count".to_string(), json!(11));
             let meta_b = CheckpointMetadata {
                 source: "loop".to_string(),
                 step: 2,
@@ -2514,18 +2468,12 @@ mod tests {
             assert_eq!(forked_state["count"], json!(1));
 
             // The new thread should have its own checkpoint history.
-            let history_new = graph
-                .get_state_history("thread-2", &saver)
-                .await
-                .unwrap();
+            let history_new = graph.get_state_history("thread-2", &saver).await.unwrap();
             assert_eq!(history_new.len(), 1);
             assert_eq!(history_new[0].thread_id, "thread-2");
 
             // The original thread should be unchanged.
-            let history_orig = graph
-                .get_state_history("thread-1", &saver)
-                .await
-                .unwrap();
+            let history_orig = graph.get_state_history("thread-1", &saver).await.unwrap();
             assert_eq!(history_orig.len(), 2);
         }
 
@@ -2555,10 +2503,7 @@ mod tests {
         });
 
         let graph = StateGraph::new()
-            .add_node(
-                "dispatcher",
-                make_set_action("dispatched", json!(true)),
-            )
+            .add_node("dispatcher", make_set_action("dispatched", json!(true)))
             .add_node("worker", worker)
             .set_entry_point("dispatcher")
             .add_conditional_edges_with_send(
@@ -2566,9 +2511,18 @@ mod tests {
                 Arc::new(|_state: &Value| {
                     use crate::types::Send as S;
                     RouterResult::Sends(vec![
-                        S { node: "worker".into(), arg: json!({"task": 1}) },
-                        S { node: "worker".into(), arg: json!({"task": 2}) },
-                        S { node: "worker".into(), arg: json!({"task": 3}) },
+                        S {
+                            node: "worker".into(),
+                            arg: json!({"task": 1}),
+                        },
+                        S {
+                            node: "worker".into(),
+                            arg: json!({"task": 2}),
+                        },
+                        S {
+                            node: "worker".into(),
+                            arg: json!({"task": 3}),
+                        },
                     ])
                 }),
                 None,
@@ -2630,9 +2584,18 @@ mod tests {
                 Arc::new(|_state: &Value| {
                     use crate::types::Send as S;
                     RouterResult::Sends(vec![
-                        S { node: "worker".into(), arg: json!({"task": 1}) },
-                        S { node: "worker".into(), arg: json!({"task": 2}) },
-                        S { node: "worker".into(), arg: json!({"task": 3}) },
+                        S {
+                            node: "worker".into(),
+                            arg: json!({"task": 1}),
+                        },
+                        S {
+                            node: "worker".into(),
+                            arg: json!({"task": 2}),
+                        },
+                        S {
+                            node: "worker".into(),
+                            arg: json!({"task": 3}),
+                        },
                     ])
                 }),
                 None,
@@ -2666,7 +2629,11 @@ mod tests {
 
         let beta: AsyncNodeAction = Arc::new(|input: Value| {
             Box::pin(async move {
-                let y = input.get("y").and_then(|v| v.as_str()).unwrap_or("").to_uppercase();
+                let y = input
+                    .get("y")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_uppercase();
                 Ok(json!({ "beta_result": y }))
             })
         });
@@ -2681,8 +2648,14 @@ mod tests {
                 Arc::new(|_state: &Value| {
                     use crate::types::Send as S;
                     RouterResult::Sends(vec![
-                        S { node: "alpha".into(), arg: json!({"x": 41}) },
-                        S { node: "beta".into(), arg: json!({"y": "hello"}) },
+                        S {
+                            node: "alpha".into(),
+                            arg: json!({"x": 41}),
+                        },
+                        S {
+                            node: "beta".into(),
+                            arg: json!({"y": "hello"}),
+                        },
                     ])
                 }),
                 None,
@@ -2735,8 +2708,8 @@ mod mermaid_tests {
         assert!(mermaid.contains("graph TD"));
         assert!(mermaid.contains("__start__([__start__])"));
         assert!(mermaid.contains("__end__([__end__])"));
-        assert!(mermaid.contains("agent([agent])"));
-        assert!(mermaid.contains("tools([tools])"));
+        assert!(mermaid.contains("agent[agent]"));
+        assert!(mermaid.contains("tools[tools]"));
         assert!(mermaid.contains("__start__ --> agent"));
         assert!(mermaid.contains("tools --> agent"));
         assert!(mermaid.contains("agent --> tools"));
@@ -2765,9 +2738,11 @@ mod mermaid_tests {
             .unwrap();
 
         let mermaid = graph.draw_mermaid();
-        // Conditional edges should use dotted lines with labels.
-        assert!(mermaid.contains("agent -. no_tool_calls .-> __end__"));
-        assert!(mermaid.contains("agent -. tool_calls .-> tools"));
+        // Conditional edges should use diamond decision nodes with labels.
+        assert!(mermaid.contains("condition_0"));
+        assert!(mermaid.contains("agent --> condition_0"));
+        assert!(mermaid.contains("|\"no_tool_calls\"|"));
+        assert!(mermaid.contains("|\"tool_calls\"|"));
         // Direct edge.
         assert!(mermaid.contains("tools --> agent"));
     }
@@ -2790,8 +2765,9 @@ mod mermaid_tests {
             .unwrap();
 
         let mermaid = graph.draw_mermaid();
-        // Without a path_map, a generic "condition" label should be used.
-        assert!(mermaid.contains("router -. condition .-> ???"));
+        // Without a path_map, a decision node with generic label should be used.
+        assert!(mermaid.contains("condition_0"));
+        assert!(mermaid.contains("router --> condition_0"));
     }
 
     #[test]
