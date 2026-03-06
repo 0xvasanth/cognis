@@ -427,16 +427,16 @@ pub fn create_chat_model(
         }
         #[cfg(feature = "azure")]
         "azure" | "azure_openai" => {
-            let resource_name = config.kwargs.get("resource_name")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| RustChainError::Other(
-                    "resource_name is required for Azure OpenAI".into()
-                ))?;
             let mut builder = super::azure::ChatAzureOpenAI::builder()
-                .resource_name(resource_name)
                 .deployment_name(&config.model_name);
+            if let Some(endpoint) = config.kwargs.get("azure_endpoint").and_then(|v| v.as_str()) {
+                builder = builder.azure_endpoint(endpoint);
+            }
             if let Some(key) = config.kwargs.get("api_key").and_then(|v| v.as_str()) {
                 builder = builder.api_key(key);
+            }
+            if let Some(token) = config.kwargs.get("azure_ad_token").and_then(|v| v.as_str()) {
+                builder = builder.azure_ad_token(token);
             }
             if let Some(temp) = config.kwargs.get("temperature").and_then(|v| v.as_f64()) {
                 builder = builder.temperature(temp);

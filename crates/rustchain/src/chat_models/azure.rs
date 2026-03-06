@@ -4,7 +4,9 @@
 //! [`BaseChatModel`] for the Azure OpenAI Chat Completions API.
 //!
 //! Azure OpenAI uses the same request/response format as OpenAI, but with
-//! different endpoint URLs and authentication headers.
+//! different endpoint URLs and authentication headers. Two authentication
+//! methods are supported: API key (`api-key` header) and Azure AD token
+//! (`Authorization: Bearer` header).
 
 use std::collections::HashMap;
 
@@ -30,13 +32,17 @@ const DEFAULT_API_VERSION: &str = "2024-08-01-preview";
 /// Builder for constructing a [`ChatAzureOpenAI`] instance.
 #[derive(Debug)]
 pub struct ChatAzureOpenAIBuilder {
-    api_key: Option<SecretString>,
-    resource_name: Option<String>,
+    azure_endpoint: Option<String>,
     deployment_name: Option<String>,
     api_version: Option<String>,
+    api_key: Option<SecretString>,
+    azure_ad_token: Option<SecretString>,
     temperature: Option<f64>,
     max_tokens: Option<u32>,
     top_p: Option<f64>,
+    frequency_penalty: Option<f64>,
+    presence_penalty: Option<f64>,
+    seed: Option<u64>,
     stop: Option<Vec<String>>,
     max_retries: Option<u32>,
     streaming: Option<bool>,
@@ -46,28 +52,28 @@ impl ChatAzureOpenAIBuilder {
     /// Create a new builder.
     pub fn new() -> Self {
         Self {
-            api_key: None,
-            resource_name: None,
+            azure_endpoint: None,
             deployment_name: None,
             api_version: None,
+            api_key: None,
+            azure_ad_token: None,
             temperature: None,
             max_tokens: None,
             top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            seed: None,
             stop: None,
             max_retries: None,
             streaming: None,
         }
     }
 
-    /// Set the API key. Falls back to `AZURE_OPENAI_API_KEY` env var.
-    pub fn api_key(mut self, key: impl Into<String>) -> Self {
-        self.api_key = Some(SecretString::from(key.into()));
-        self
-    }
-
-    /// Set the Azure resource name (required).
-    pub fn resource_name(mut self, name: impl Into<String>) -> Self {
-        self.resource_name = Some(name.into());
+    /// Set the Azure endpoint URL (e.g., `"https://myinstance.openai.azure.com"`).
+    ///
+    /// Falls back to the `AZURE_OPENAI_ENDPOINT` environment variable.
+    pub fn azure_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.azure_endpoint = Some(endpoint.into());
         self
     }
 
@@ -77,9 +83,27 @@ impl ChatAzureOpenAIBuilder {
         self
     }
 
-    /// Set the API version (default: "2024-08-01-preview").
+    /// Set the API version (default: `"2024-08-01-preview"`).
     pub fn api_version(mut self, version: impl Into<String>) -> Self {
         self.api_version = Some(version.into());
+        self
+    }
+
+    /// Set the API key for key-based authentication.
+    ///
+    /// Falls back to the `AZURE_OPENAI_API_KEY` environment variable.
+    /// Either `api_key` or `azure_ad_token` must be provided.
+    pub fn api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = Some(SecretString::from(key.into()));
+        self
+    }
+
+    /// Set the Azure AD token for token-based authentication.
+    ///
+    /// When set, the `Authorization: Bearer <token>` header is used instead
+    /// of the `api-key` header. Takes precedence over `api_key`.
+    pub fn azure_ad_token(mut self, token: impl Into<String>) -> Self {
+        self.azure_ad_token = Some(SecretString::from(token.into()));
         self
     }
 
@@ -98,6 +122,24 @@ impl ChatAzureOpenAIBuilder {
     /// Set top_p sampling parameter.
     pub fn top_p(mut self, top_p: f64) -> Self {
         self.top_p = Some(top_p);
+        self
+    }
+
+    /// Set frequency penalty.
+    pub fn frequency_penalty(mut self, penalty: f64) -> Self {
+        self.frequency_penalty = Some(penalty);
+        self
+    }
+
+    /// Set presence penalty.
+    pub fn presence_penalty(mut self, penalty: f64) -> Self {
+        self.presence_penalty = Some(penalty);
+        self
+    }
+
+    /// Set the random seed for reproducibility.
+    pub fn seed(mut self, seed: u64) -> Self {
+        self.seed = Some(seed);
         self
     }
 
@@ -121,39 +163,54 @@ impl ChatAzureOpenAIBuilder {
 
     /// Build the [`ChatAzureOpenAI`] instance.
     ///
-    /// Returns an error if `resource_name` or `deployment_name` is not set,
-    /// or if the API key cannot be resolved from the builder or environment.
+    /// Returns an error if required fields are missing or if no authentication
+    /// method is configured (neither API key nor Azure AD token).
     pub fn build(self) -> Result<ChatAzureOpenAI> {
-        let resource_name = self.resource_name.ok_or_else(|| {
-            RustChainError::Other("resource_name is required for ChatAzureOpenAI".into())
-        })?;
+        let azure_endpoint = self
+            .azure_endpoint
+            .or_else(|| std::env::var("AZURE_OPENAI_ENDPOINT").ok())
+            .ok_or_else(|| {
+                RustChainError::Other(
+                    "azure_endpoint not provided and AZURE_OPENAI_ENDPOINT env var not set".into(),
+                )
+            })?;
 
         let deployment_name = self.deployment_name.ok_or_else(|| {
             RustChainError::Other("deployment_name is required for ChatAzureOpenAI".into())
         })?;
 
+        let api_version = self
+            .api_version
+            .unwrap_or_else(|| DEFAULT_API_VERSION.to_string());
+
+        // Resolve API key from builder or environment
         let api_key = match self.api_key {
-            Some(key) => key,
-            None => {
-                let key = std::env::var("AZURE_OPENAI_API_KEY").map_err(|_| {
-                    RustChainError::Other(
-                        "api_key not provided and AZURE_OPENAI_API_KEY env var not set".into(),
-                    )
-                })?;
-                SecretString::from(key)
-            }
+            Some(key) => Some(key),
+            None => std::env::var("AZURE_OPENAI_API_KEY")
+                .ok()
+                .map(SecretString::from),
         };
 
+        let azure_ad_token = self.azure_ad_token;
+
+        if api_key.is_none() && azure_ad_token.is_none() {
+            return Err(RustChainError::Other(
+                "Either api_key or azure_ad_token must be provided for ChatAzureOpenAI".into(),
+            ));
+        }
+
         Ok(ChatAzureOpenAI {
-            api_key,
-            resource_name,
+            azure_endpoint,
             deployment_name,
-            api_version: self
-                .api_version
-                .unwrap_or_else(|| DEFAULT_API_VERSION.to_string()),
+            api_version,
+            api_key,
+            azure_ad_token,
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             top_p: self.top_p,
+            frequency_penalty: self.frequency_penalty,
+            presence_penalty: self.presence_penalty,
+            seed: self.seed,
             stop: self.stop,
             max_retries: self.max_retries.unwrap_or(2),
             streaming: self.streaming.unwrap_or(false),
@@ -176,33 +233,48 @@ impl Default for ChatAzureOpenAIBuilder {
 /// including tool calling and SSE streaming. Uses the same request/response
 /// format as OpenAI but with Azure-specific endpoint URLs and authentication.
 ///
+/// # Authentication
+///
+/// Two authentication methods are supported:
+/// - **API key**: Uses the `api-key` HTTP header.
+/// - **Azure AD token**: Uses the `Authorization: Bearer <token>` header.
+///   When both are provided, the Azure AD token takes precedence.
+///
 /// # Example
 ///
 /// ```no_run
 /// use rustchain::chat_models::azure::ChatAzureOpenAI;
 ///
 /// let model = ChatAzureOpenAI::builder()
-///     .resource_name("my-resource")
+///     .azure_endpoint("https://myinstance.openai.azure.com")
 ///     .deployment_name("gpt-4o")
 ///     .api_key("my-azure-key")
 ///     .build()
 ///     .unwrap();
 /// ```
 pub struct ChatAzureOpenAI {
-    /// Secret API key.
-    api_key: SecretString,
-    /// Azure resource name.
-    pub resource_name: String,
+    /// Azure endpoint URL (e.g., `"https://myinstance.openai.azure.com"`).
+    pub azure_endpoint: String,
     /// Deployment name (used in URL instead of model in body).
     pub deployment_name: String,
     /// Azure OpenAI API version.
     pub api_version: String,
+    /// Optional API key for key-based authentication.
+    api_key: Option<SecretString>,
+    /// Optional Azure AD token for token-based authentication.
+    azure_ad_token: Option<SecretString>,
     /// Sampling temperature.
     pub temperature: Option<f64>,
     /// Maximum tokens to generate.
     pub max_tokens: Option<u32>,
     /// Top-p nucleus sampling.
     pub top_p: Option<f64>,
+    /// Frequency penalty.
+    pub frequency_penalty: Option<f64>,
+    /// Presence penalty.
+    pub presence_penalty: Option<f64>,
+    /// Random seed for reproducibility.
+    pub seed: Option<u64>,
     /// Stop sequences.
     pub stop: Option<Vec<String>>,
     /// Maximum number of retries on transient errors.
@@ -220,7 +292,7 @@ pub struct ChatAzureOpenAI {
 impl std::fmt::Debug for ChatAzureOpenAI {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ChatAzureOpenAI")
-            .field("resource_name", &self.resource_name)
+            .field("azure_endpoint", &self.azure_endpoint)
             .field("deployment_name", &self.deployment_name)
             .field("api_version", &self.api_version)
             .field("max_tokens", &self.max_tokens)
@@ -237,11 +309,32 @@ impl ChatAzureOpenAI {
     }
 
     /// Build the Azure OpenAI endpoint URL.
+    ///
+    /// Format: `{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={version}`
     pub fn build_url(&self) -> String {
+        let endpoint = self.azure_endpoint.trim_end_matches('/');
         format!(
-            "https://{}.openai.azure.com/openai/deployments/{}/chat/completions?api-version={}",
-            self.resource_name, self.deployment_name, self.api_version
+            "{}/openai/deployments/{}/chat/completions?api-version={}",
+            endpoint, self.deployment_name, self.api_version
         )
+    }
+
+    /// Apply authentication headers to the request builder.
+    ///
+    /// When an Azure AD token is present it takes precedence and the
+    /// `Authorization: Bearer` header is used. Otherwise the `api-key`
+    /// header is used.
+    fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if let Some(ref ad_token) = self.azure_ad_token {
+            req.header(
+                "Authorization",
+                format!("Bearer {}", ad_token.expose_secret()),
+            )
+        } else if let Some(ref api_key) = self.api_key {
+            req.header("api-key", api_key.expose_secret())
+        } else {
+            req
+        }
     }
 
     /// Format messages for the Azure OpenAI Chat Completions API.
@@ -343,6 +436,18 @@ impl ChatAzureOpenAI {
 
         if let Some(tp) = self.top_p {
             payload["top_p"] = json!(tp);
+        }
+
+        if let Some(fp) = self.frequency_penalty {
+            payload["frequency_penalty"] = json!(fp);
+        }
+
+        if let Some(pp) = self.presence_penalty {
+            payload["presence_penalty"] = json!(pp);
+        }
+
+        if let Some(seed) = self.seed {
+            payload["seed"] = json!(seed);
         }
 
         // Stop sequences
@@ -548,8 +653,9 @@ impl ChatAzureOpenAI {
             let req = self
                 .client
                 .post(&url)
-                .header("api-key", self.api_key.expose_secret())
                 .header("Content-Type", "application/json");
+
+            let req = self.apply_auth(req);
 
             let response = req.json(payload).send().await.map_err(|e| {
                 RustChainError::Other(format!("HTTP request failed: {}", e))
@@ -589,8 +695,9 @@ impl ChatAzureOpenAI {
         let req = self
             .client
             .post(&url)
-            .header("api-key", self.api_key.expose_secret())
             .header("Content-Type", "application/json");
+
+        let req = self.apply_auth(req);
 
         let response = req.json(payload).send().await.map_err(|e| {
             RustChainError::Other(format!("HTTP request failed: {}", e))
@@ -711,13 +818,17 @@ impl BaseChatModel for ChatAzureOpenAI {
         let bound_tools: Vec<Value> = tools.iter().map(Self::tool_schema_to_openai).collect();
 
         Ok(Box::new(ChatAzureOpenAI {
-            api_key: self.api_key.clone(),
-            resource_name: self.resource_name.clone(),
+            azure_endpoint: self.azure_endpoint.clone(),
             deployment_name: self.deployment_name.clone(),
             api_version: self.api_version.clone(),
+            api_key: self.api_key.clone(),
+            azure_ad_token: self.azure_ad_token.clone(),
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             top_p: self.top_p,
+            frequency_penalty: self.frequency_penalty,
+            presence_penalty: self.presence_penalty,
+            seed: self.seed,
             stop: self.stop.clone(),
             max_retries: self.max_retries,
             streaming: self.streaming,
@@ -745,20 +856,242 @@ mod tests {
     use rustchain_core::messages::{HumanMessage, SystemMessage, ToolMessage};
 
     #[test]
-    fn test_builder_defaults() {
+    fn test_url_construction() {
         let model = ChatAzureOpenAI::builder()
-            .resource_name("my-resource")
+            .azure_endpoint("https://myinstance.openai.azure.com")
             .deployment_name("gpt-4o")
             .api_key("test-key")
             .build()
             .unwrap();
 
-        assert_eq!(model.resource_name, "my-resource");
+        assert_eq!(
+            model.build_url(),
+            format!(
+                "https://myinstance.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version={}",
+                DEFAULT_API_VERSION
+            )
+        );
+    }
+
+    #[test]
+    fn test_url_construction_trailing_slash() {
+        let model = ChatAzureOpenAI::builder()
+            .azure_endpoint("https://myinstance.openai.azure.com/")
+            .deployment_name("gpt-35-turbo")
+            .api_version("2024-02-01")
+            .api_key("test-key")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            model.build_url(),
+            "https://myinstance.openai.azure.com/openai/deployments/gpt-35-turbo/chat/completions?api-version=2024-02-01"
+        );
+    }
+
+    #[test]
+    fn test_api_key_auth_header() {
+        let model = ChatAzureOpenAI::builder()
+            .azure_endpoint("https://myinstance.openai.azure.com")
+            .deployment_name("gpt-4o")
+            .api_key("my-secret-key")
+            .build()
+            .unwrap();
+
+        assert!(model.api_key.is_some());
+        assert!(model.azure_ad_token.is_none());
+
+        let client = Client::new();
+        let req = client.post("https://example.com");
+        let req = model.apply_auth(req);
+        let built = req.build().unwrap();
+        assert_eq!(
+            built.headers().get("api-key").unwrap().to_str().unwrap(),
+            "my-secret-key"
+        );
+    }
+
+    #[test]
+    fn test_azure_ad_token_auth_header() {
+        let model = ChatAzureOpenAI::builder()
+            .azure_endpoint("https://myinstance.openai.azure.com")
+            .deployment_name("gpt-4o")
+            .azure_ad_token("my-ad-token-value")
+            .build()
+            .unwrap();
+
+        assert!(model.azure_ad_token.is_some());
+
+        let client = Client::new();
+        let req = client.post("https://example.com");
+        let req = model.apply_auth(req);
+        let built = req.build().unwrap();
+        assert_eq!(
+            built.headers().get("Authorization").unwrap().to_str().unwrap(),
+            "Bearer my-ad-token-value"
+        );
+    }
+
+    #[test]
+    fn test_ad_token_takes_precedence_over_api_key() {
+        let model = ChatAzureOpenAI::builder()
+            .azure_endpoint("https://myinstance.openai.azure.com")
+            .deployment_name("gpt-4o")
+            .api_key("my-api-key")
+            .azure_ad_token("my-ad-token")
+            .build()
+            .unwrap();
+
+        let client = Client::new();
+        let req = client.post("https://example.com");
+        let req = model.apply_auth(req);
+        let built = req.build().unwrap();
+        // AD token should take precedence
+        assert_eq!(
+            built.headers().get("Authorization").unwrap().to_str().unwrap(),
+            "Bearer my-ad-token"
+        );
+        assert!(built.headers().get("api-key").is_none());
+    }
+
+    #[test]
+    fn test_request_body_formatting() {
+        let model = ChatAzureOpenAI::builder()
+            .azure_endpoint("https://myinstance.openai.azure.com")
+            .deployment_name("gpt-4o")
+            .api_key("test-key")
+            .temperature(0.5)
+            .max_tokens(1024)
+            .top_p(0.9)
+            .frequency_penalty(0.3)
+            .presence_penalty(0.1)
+            .seed(42)
+            .build()
+            .unwrap();
+
+        let messages = vec![
+            Message::System(SystemMessage::new("You are helpful")),
+            Message::Human(HumanMessage::new("Hello")),
+        ];
+        let payload = model.build_payload(&messages, None, &[], false);
+
+        // Azure does NOT include the model field in the body
+        assert!(payload.get("model").is_none());
+        assert_eq!(payload["temperature"], 0.5);
+        assert_eq!(payload["max_tokens"], 1024);
+        assert_eq!(payload["top_p"], 0.9);
+        assert_eq!(payload["frequency_penalty"], 0.3);
+        assert_eq!(payload["presence_penalty"], 0.1);
+        assert_eq!(payload["seed"], 42);
+
+        let msgs = payload["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0]["role"], "system");
+        assert_eq!(msgs[0]["content"], "You are helpful");
+        assert_eq!(msgs[1]["role"], "user");
+        assert_eq!(msgs[1]["content"], "Hello");
+
+        assert!(payload.get("stream").is_none());
+    }
+
+    #[test]
+    fn test_response_parsing() {
+        let response = json!({
+            "id": "chatcmpl-azure-123",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Hello from Azure!"
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 12,
+                "completion_tokens": 8,
+                "total_tokens": 20
+            }
+        });
+
+        let result = ChatAzureOpenAI::parse_response(&response).unwrap();
+        assert_eq!(result.generations.len(), 1);
+        assert_eq!(result.generations[0].text, "Hello from Azure!");
+
+        if let Message::Ai(ref ai) = result.generations[0].message {
+            assert!(ai.tool_calls.is_empty());
+            let usage = ai.usage_metadata.as_ref().unwrap();
+            assert_eq!(usage.input_tokens, 12);
+            assert_eq!(usage.output_tokens, 8);
+            assert_eq!(usage.total_tokens, 20);
+            assert_eq!(ai.base.id, Some("chatcmpl-azure-123".to_string()));
+        } else {
+            panic!("Expected AIMessage");
+        }
+    }
+
+    #[test]
+    fn test_tool_call_response_parsing() {
+        let response = json!({
+            "id": "chatcmpl-azure-456",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_abc",
+                        "type": "function",
+                        "function": {
+                            "name": "web_search",
+                            "arguments": "{\"query\":\"azure openai\"}"
+                        }
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }],
+            "usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 15,
+                "total_tokens": 35
+            }
+        });
+
+        let result = ChatAzureOpenAI::parse_response(&response).unwrap();
+        assert_eq!(result.generations.len(), 1);
+
+        if let Message::Ai(ref ai) = result.generations[0].message {
+            assert_eq!(ai.tool_calls.len(), 1);
+            assert_eq!(ai.tool_calls[0].name, "web_search");
+            assert_eq!(ai.tool_calls[0].id, Some("call_abc".to_string()));
+            assert_eq!(
+                ai.tool_calls[0].args.get("query"),
+                Some(&json!("azure openai"))
+            );
+        } else {
+            panic!("Expected AIMessage");
+        }
+    }
+
+    #[test]
+    fn test_builder_defaults() {
+        let model = ChatAzureOpenAI::builder()
+            .azure_endpoint("https://myinstance.openai.azure.com")
+            .deployment_name("gpt-4o")
+            .api_key("test-key")
+            .build()
+            .unwrap();
+
+        assert_eq!(model.azure_endpoint, "https://myinstance.openai.azure.com");
         assert_eq!(model.deployment_name, "gpt-4o");
         assert_eq!(model.api_version, DEFAULT_API_VERSION);
         assert_eq!(model.temperature, None);
         assert_eq!(model.max_tokens, None);
         assert_eq!(model.top_p, None);
+        assert_eq!(model.frequency_penalty, None);
+        assert_eq!(model.presence_penalty, None);
+        assert_eq!(model.seed, None);
         assert_eq!(model.max_retries, 2);
         assert!(!model.streaming);
     }
@@ -766,106 +1099,152 @@ mod tests {
     #[test]
     fn test_builder_all_fields() {
         let model = ChatAzureOpenAI::builder()
-            .resource_name("my-resource")
-            .deployment_name("gpt-4o")
+            .azure_endpoint("https://custom.openai.azure.com")
+            .deployment_name("my-deployment")
             .api_key("test-key")
             .api_version("2024-06-01")
             .temperature(0.7)
             .max_tokens(2048)
             .top_p(0.9)
+            .frequency_penalty(0.4)
+            .presence_penalty(0.2)
+            .seed(99)
             .stop(vec!["STOP".to_string()])
             .max_retries(5)
             .streaming(true)
             .build()
             .unwrap();
 
+        assert_eq!(model.azure_endpoint, "https://custom.openai.azure.com");
         assert_eq!(model.api_version, "2024-06-01");
         assert_eq!(model.temperature, Some(0.7));
         assert_eq!(model.max_tokens, Some(2048));
         assert_eq!(model.top_p, Some(0.9));
+        assert_eq!(model.frequency_penalty, Some(0.4));
+        assert_eq!(model.presence_penalty, Some(0.2));
+        assert_eq!(model.seed, Some(99));
         assert_eq!(model.stop, Some(vec!["STOP".to_string()]));
         assert_eq!(model.max_retries, 5);
         assert!(model.streaming);
     }
 
     #[test]
-    fn test_builder_requires_resource_name() {
+    fn test_builder_requires_endpoint() {
         let result = ChatAzureOpenAI::builder()
             .deployment_name("gpt-4o")
             .api_key("test-key")
             .build();
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("resource_name is required"));
+        assert!(err.contains("azure_endpoint") || err.contains("AZURE_OPENAI_ENDPOINT"));
     }
 
     #[test]
     fn test_builder_requires_deployment_name() {
         let result = ChatAzureOpenAI::builder()
-            .resource_name("my-resource")
+            .azure_endpoint("https://myinstance.openai.azure.com")
             .api_key("test-key")
             .build();
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("deployment_name is required"));
+        assert!(err.contains("deployment_name"));
     }
 
     #[test]
-    fn test_url_construction() {
+    fn test_builder_requires_auth() {
+        let result = ChatAzureOpenAI::builder()
+            .azure_endpoint("https://myinstance.openai.azure.com")
+            .deployment_name("gpt-4o")
+            .build();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("api_key") || err.contains("azure_ad_token"));
+    }
+
+    #[test]
+    fn test_llm_type() {
         let model = ChatAzureOpenAI::builder()
-            .resource_name("my-resource")
+            .azure_endpoint("https://myinstance.openai.azure.com")
             .deployment_name("gpt-4o")
             .api_key("test-key")
             .build()
             .unwrap();
 
-        let url = model.build_url();
-        assert_eq!(
-            url,
-            format!(
-                "https://my-resource.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version={}",
-                DEFAULT_API_VERSION
-            )
-        );
+        assert_eq!(model.llm_type(), "azure_openai");
     }
 
     #[test]
-    fn test_url_construction_custom_api_version() {
-        let model = ChatAzureOpenAI::builder()
-            .resource_name("prod-openai")
-            .deployment_name("my-gpt4")
-            .api_key("test-key")
-            .api_version("2024-06-01")
-            .build()
-            .unwrap();
+    fn test_parse_stream_event_content() {
+        let event = json!({
+            "id": "chatcmpl-azure-789",
+            "object": "chat.completion.chunk",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "content": "Hello"
+                },
+                "finish_reason": null
+            }]
+        });
 
-        let url = model.build_url();
-        assert_eq!(
-            url,
-            "https://prod-openai.openai.azure.com/openai/deployments/my-gpt4/chat/completions?api-version=2024-06-01"
-        );
+        let chunk = ChatAzureOpenAI::parse_stream_event(&event).unwrap();
+        assert_eq!(chunk.text, "Hello");
+        assert_eq!(chunk.message.base.content.text(), "Hello");
     }
 
     #[test]
-    fn test_payload_no_model_field() {
-        let model = ChatAzureOpenAI::builder()
-            .resource_name("my-resource")
-            .deployment_name("gpt-4o")
-            .api_key("test-key")
-            .temperature(0.5)
-            .max_tokens(1024)
-            .build()
-            .unwrap();
+    fn test_parse_stream_event_tool_call() {
+        let event = json!({
+            "id": "chatcmpl-azure-stream",
+            "object": "chat.completion.chunk",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call_xyz",
+                        "type": "function",
+                        "function": {
+                            "name": "calculator",
+                            "arguments": "{\"expr\":"
+                        }
+                    }]
+                },
+                "finish_reason": null
+            }]
+        });
 
-        let messages = vec![Message::Human(HumanMessage::new("Hi"))];
-        let payload = model.build_payload(&messages, None, &[], false);
+        let chunk = ChatAzureOpenAI::parse_stream_event(&event).unwrap();
+        assert_eq!(chunk.message.tool_call_chunks.len(), 1);
+        assert_eq!(
+            chunk.message.tool_call_chunks[0].name,
+            Some("calculator".to_string())
+        );
+        assert_eq!(
+            chunk.message.tool_call_chunks[0].id,
+            Some("call_xyz".to_string())
+        );
+        assert_eq!(chunk.message.tool_call_chunks[0].index, Some(0));
+    }
 
-        // Azure does NOT include the model field in the body
-        assert!(payload.get("model").is_none());
-        assert_eq!(payload["temperature"], 0.5);
-        assert_eq!(payload["max_tokens"], 1024);
-        assert_eq!(payload["messages"].as_array().unwrap().len(), 1);
-        assert!(payload.get("stream").is_none());
+    #[test]
+    fn test_parse_stream_event_finish() {
+        let event = json!({
+            "id": "chatcmpl-azure-fin",
+            "object": "chat.completion.chunk",
+            "choices": [{
+                "index": 0,
+                "delta": {},
+                "finish_reason": "stop"
+            }]
+        });
+
+        let chunk = ChatAzureOpenAI::parse_stream_event(&event).unwrap();
+        assert_eq!(chunk.message.chunk_position, Some("last".to_string()));
+        assert_eq!(
+            chunk.message.base.response_metadata.get("finish_reason"),
+            Some(&json!("stop"))
+        );
     }
 
     #[test]
@@ -921,168 +1300,50 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_response_text() {
-        let response = json!({
-            "id": "chatcmpl-123",
-            "object": "chat.completion",
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": "Hello from Azure!"
-                },
-                "finish_reason": "stop"
-            }],
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 5,
-                "total_tokens": 15
-            }
-        });
-
-        let result = ChatAzureOpenAI::parse_response(&response).unwrap();
-        assert_eq!(result.generations.len(), 1);
-        assert_eq!(result.generations[0].text, "Hello from Azure!");
-
-        if let Message::Ai(ref ai) = result.generations[0].message {
-            assert!(ai.tool_calls.is_empty());
-            let usage = ai.usage_metadata.as_ref().unwrap();
-            assert_eq!(usage.input_tokens, 10);
-            assert_eq!(usage.output_tokens, 5);
-            assert_eq!(usage.total_tokens, 15);
-            assert_eq!(ai.base.id, Some("chatcmpl-123".to_string()));
-        } else {
-            panic!("Expected AIMessage");
-        }
-    }
-
-    #[test]
-    fn test_parse_response_tool_calls() {
-        let response = json!({
-            "id": "chatcmpl-456",
-            "object": "chat.completion",
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": null,
-                    "tool_calls": [{
-                        "id": "call_abc",
-                        "type": "function",
-                        "function": {
-                            "name": "web_search",
-                            "arguments": "{\"query\":\"rust programming\"}"
-                        }
-                    }]
-                },
-                "finish_reason": "tool_calls"
-            }],
-            "usage": {
-                "prompt_tokens": 20,
-                "completion_tokens": 15,
-                "total_tokens": 35
-            }
-        });
-
-        let result = ChatAzureOpenAI::parse_response(&response).unwrap();
-        assert_eq!(result.generations.len(), 1);
-
-        if let Message::Ai(ref ai) = result.generations[0].message {
-            assert_eq!(ai.tool_calls.len(), 1);
-            assert_eq!(ai.tool_calls[0].name, "web_search");
-            assert_eq!(ai.tool_calls[0].id, Some("call_abc".to_string()));
-            assert_eq!(
-                ai.tool_calls[0].args.get("query"),
-                Some(&json!("rust programming"))
-            );
-        } else {
-            panic!("Expected AIMessage");
-        }
-    }
-
-    #[test]
-    fn test_parse_stream_event_content() {
-        let event = json!({
-            "id": "chatcmpl-123",
-            "object": "chat.completion.chunk",
-            "choices": [{
-                "index": 0,
-                "delta": {
-                    "content": "Hello"
-                },
-                "finish_reason": null
-            }]
-        });
-
-        let chunk = ChatAzureOpenAI::parse_stream_event(&event).unwrap();
-        assert_eq!(chunk.text, "Hello");
-        assert_eq!(chunk.message.base.content.text(), "Hello");
-    }
-
-    #[test]
-    fn test_parse_stream_event_tool_call() {
-        let event = json!({
-            "id": "chatcmpl-123",
-            "object": "chat.completion.chunk",
-            "choices": [{
-                "index": 0,
-                "delta": {
-                    "tool_calls": [{
-                        "index": 0,
-                        "id": "call_xyz",
-                        "type": "function",
-                        "function": {
-                            "name": "calculator",
-                            "arguments": "{\"expr\":"
-                        }
-                    }]
-                },
-                "finish_reason": null
-            }]
-        });
-
-        let chunk = ChatAzureOpenAI::parse_stream_event(&event).unwrap();
-        assert_eq!(chunk.message.tool_call_chunks.len(), 1);
-        assert_eq!(
-            chunk.message.tool_call_chunks[0].name,
-            Some("calculator".to_string())
-        );
-        assert_eq!(
-            chunk.message.tool_call_chunks[0].id,
-            Some("call_xyz".to_string())
-        );
-        assert_eq!(chunk.message.tool_call_chunks[0].index, Some(0));
-    }
-
-    #[test]
-    fn test_parse_stream_event_finish() {
-        let event = json!({
-            "id": "chatcmpl-123",
-            "object": "chat.completion.chunk",
-            "choices": [{
-                "index": 0,
-                "delta": {},
-                "finish_reason": "stop"
-            }]
-        });
-
-        let chunk = ChatAzureOpenAI::parse_stream_event(&event).unwrap();
-        assert_eq!(chunk.message.chunk_position, Some("last".to_string()));
-        assert_eq!(
-            chunk.message.base.response_metadata.get("finish_reason"),
-            Some(&json!("stop"))
-        );
-    }
-
-    #[test]
-    fn test_llm_type() {
+    fn test_payload_with_tools_and_stream() {
         let model = ChatAzureOpenAI::builder()
-            .resource_name("my-resource")
+            .azure_endpoint("https://myinstance.openai.azure.com")
             .deployment_name("gpt-4o")
             .api_key("test-key")
             .build()
             .unwrap();
 
-        assert_eq!(model.llm_type(), "azure_openai");
+        let tools = vec![json!({
+            "type": "function",
+            "function": {
+                "name": "search",
+                "description": "Search the web",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"}
+                    }
+                }
+            }
+        })];
+
+        let messages = vec![Message::Human(HumanMessage::new("Search for rust"))];
+        let payload = model.build_payload(&messages, None, &tools, true);
+
+        assert!(payload.get("tools").is_some());
+        assert_eq!(payload["tools"].as_array().unwrap().len(), 1);
+        assert_eq!(payload["stream"], true);
+    }
+
+    #[test]
+    fn test_profile() {
+        let model = ChatAzureOpenAI::builder()
+            .azure_endpoint("https://myinstance.openai.azure.com")
+            .deployment_name("gpt-4o")
+            .api_key("test-key")
+            .build()
+            .unwrap();
+
+        let profile = model.profile();
+        assert_eq!(profile.tool_calling, Some(true));
+        assert_eq!(profile.structured_output, Some(true));
+        assert_eq!(profile.text_inputs, Some(true));
+        assert_eq!(profile.text_outputs, Some(true));
+        assert_eq!(profile.image_inputs, Some(true));
     }
 }
