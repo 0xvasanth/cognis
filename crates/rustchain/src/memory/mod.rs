@@ -8,10 +8,12 @@
 
 pub mod buffer;
 pub mod summary;
+pub mod vector;
 pub mod window;
 
 pub use buffer::ConversationBufferMemory;
 pub use summary::ConversationSummaryMemory;
+pub use vector::VectorStoreMemory;
 pub use window::ConversationWindowMemory;
 
 use std::collections::HashMap;
