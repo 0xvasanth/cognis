@@ -15,7 +15,10 @@ pub use structured_output::{
     ResponseFormat, SchemaKind, SchemaSpec, StructuredOutputError,
     StructuredOutputValidationError, MultipleStructuredOutputsError, ToolStrategy,
 };
-pub use executor::{AgentExecutor, AgentExecutorBuilder, AgentResult};
+pub use executor::{
+    AgentAction, AgentExecutor, AgentExecutorBuilder, AgentResult, AgentStep,
+    EarlyStoppingMethod,
+};
 pub use tool_calling::{
     AgentOutput, format_to_tool_messages, parse_ai_message_to_agent_output,
 };
