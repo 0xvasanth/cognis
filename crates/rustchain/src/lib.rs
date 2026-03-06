@@ -45,6 +45,7 @@ pub mod chat_models;
 pub mod document_loaders;
 pub mod embeddings;
 pub mod memory;
+pub mod retrievers;
 pub mod text_splitter;
 pub mod tools;
 pub mod vectorstores;
