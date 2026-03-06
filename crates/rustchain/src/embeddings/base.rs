@@ -272,6 +272,22 @@ pub fn create_embeddings(
 
             Ok(Box::new(builder.build()))
         }
+        #[cfg(feature = "google")]
+        "google" | "google_genai" => {
+            let mut builder = super::google::GoogleEmbeddings::builder();
+
+            if let Some(key) = kwargs.get("api_key").and_then(|v| v.as_str()) {
+                builder = builder.api_key(key);
+            }
+            if let Some(model) = kwargs.get("model").and_then(|v| v.as_str()) {
+                builder = builder.model(model);
+            }
+            if let Some(tt) = kwargs.get("task_type").and_then(|v| v.as_str()) {
+                builder = builder.task_type(tt);
+            }
+
+            Ok(Box::new(builder.build()?))
+        }
         _ => Err(RustChainError::Other(format!(
             "Unknown or disabled embedding provider '{}'. \
              Make sure the corresponding feature flag is enabled.",

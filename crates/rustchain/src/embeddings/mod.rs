@@ -8,5 +8,7 @@ pub mod base;
 pub mod openai;
 #[cfg(feature = "ollama")]
 pub mod ollama;
+#[cfg(feature = "google")]
+pub mod google;
 
 pub use base::*;
