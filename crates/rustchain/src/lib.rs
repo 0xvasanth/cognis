@@ -44,6 +44,7 @@ pub mod cache;
 pub mod chains;
 pub mod chat_models;
 pub mod document_loaders;
+pub mod document_transformers;
 pub mod embeddings;
 pub mod memory;
 pub mod output_parsers;
