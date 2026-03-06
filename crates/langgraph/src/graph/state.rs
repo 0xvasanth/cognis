@@ -5,7 +5,7 @@
 //! [`StateGraph::compile`] produces a [`CompiledStateGraph`] that can be invoked
 //! to run the graph to completion.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use futures::Stream;
 
 use crate::constants::{END, START};
 use crate::errors::LangGraphError;
-use crate::types::{CachePolicy, RetryPolicy, StreamMode, StreamUpdate};
+use crate::types::{CachePolicy, InterruptType, InterruptedState, InvokeResult, RetryPolicy, StreamMode, StreamUpdate};
 
 use super::branch::{Branch, RouterFn};
 
@@ -143,6 +143,8 @@ pub struct StateGraph {
     recursion_limit: usize,
     input_schema: Option<Value>,
     output_schema: Option<Value>,
+    interrupt_before: HashSet<String>,
+    interrupt_after: HashSet<String>,
 }
 
 impl StateGraph {
@@ -156,12 +158,38 @@ impl StateGraph {
             recursion_limit: DEFAULT_RECURSION_LIMIT,
             input_schema: None,
             output_schema: None,
+            interrupt_before: HashSet::new(),
+            interrupt_after: HashSet::new(),
         }
     }
 
     /// Set the recursion limit for graph execution (default: 25).
     pub fn with_recursion_limit(mut self, limit: usize) -> Self {
         self.recursion_limit = limit;
+        self
+    }
+
+    /// Configure nodes that should pause execution **before** they run.
+    ///
+    /// When the graph reaches one of these nodes, execution is interrupted and
+    /// an [`InterruptedState`] is returned so a human can inspect the state,
+    /// optionally modify it, and then call [`CompiledStateGraph::resume`] to
+    /// continue.
+    pub fn interrupt_before(mut self, nodes: Vec<&str>) -> Self {
+        for n in nodes {
+            self.interrupt_before.insert(n.to_string());
+        }
+        self
+    }
+
+    /// Configure nodes that should pause execution **after** they run.
+    ///
+    /// The node's action executes and its output is merged into the state, but
+    /// execution pauses before continuing to successor nodes.
+    pub fn interrupt_after(mut self, nodes: Vec<&str>) -> Self {
+        for n in nodes {
+            self.interrupt_after.insert(n.to_string());
+        }
         self
     }
 
@@ -430,6 +458,8 @@ impl StateGraph {
             recursion_limit: self.recursion_limit,
             input_schema: self.input_schema,
             output_schema: self.output_schema,
+            interrupt_before: self.interrupt_before,
+            interrupt_after: self.interrupt_after,
         })
     }
 }
@@ -450,6 +480,8 @@ impl fmt::Debug for StateGraph {
             .field("recursion_limit", &self.recursion_limit)
             .field("input_schema", &self.input_schema)
             .field("output_schema", &self.output_schema)
+            .field("interrupt_before", &self.interrupt_before)
+            .field("interrupt_after", &self.interrupt_after)
             .finish()
     }
 }
@@ -472,6 +504,10 @@ pub struct CompiledStateGraph {
     input_schema: Option<Value>,
     /// Optional output JSON schema.
     output_schema: Option<Value>,
+    /// Nodes that trigger an interrupt **before** execution.
+    interrupt_before: HashSet<String>,
+    /// Nodes that trigger an interrupt **after** execution.
+    interrupt_after: HashSet<String>,
 }
 
 impl CompiledStateGraph {
@@ -528,6 +564,148 @@ impl CompiledStateGraph {
         }
 
         Ok(state)
+    }
+
+    /// Invoke the graph with interrupt support for human-in-the-loop workflows.
+    ///
+    /// Behaves like [`invoke`](Self::invoke) but checks for configured interrupt
+    /// points. When a node in `interrupt_before` or `interrupt_after` is
+    /// encountered, execution pauses and an [`InvokeResult::Interrupted`] is
+    /// returned containing the current state and metadata needed to resume.
+    ///
+    /// If no interrupts are configured (or none are triggered), the graph runs
+    /// to completion and returns [`InvokeResult::Complete`].
+    pub async fn invoke_with_interrupt(&self, input: Value) -> Result<InvokeResult, LangGraphError> {
+        self.run_with_interrupt(input, None, None).await
+    }
+
+    /// Resume execution after an interrupt.
+    ///
+    /// Takes the state from an [`InterruptedState`] (possibly modified by a
+    /// human) and an optional state update to merge before continuing. Execution
+    /// picks up from the point where it was interrupted.
+    ///
+    /// * For `InterruptType::Before` interrupts the interrupted node is executed
+    ///   first.
+    /// * For `InterruptType::After` interrupts execution continues with the
+    ///   successor nodes.
+    pub async fn resume(
+        &self,
+        interrupted: InterruptedState,
+        update: Option<Value>,
+    ) -> Result<InvokeResult, LangGraphError> {
+        let mut state = interrupted.state;
+
+        // Apply the optional human-provided update.
+        if let Some(upd) = update {
+            Self::merge_state(&mut state, upd)?;
+        }
+
+        // Determine where to pick up.
+        let (resume_nodes, skip_interrupt_for) = match interrupted.interrupt_type {
+            InterruptType::Before => {
+                // The node hasn't run yet — start from it, and skip its
+                // interrupt_before check so we don't loop.
+                (
+                    vec![interrupted.interrupted_at.clone()],
+                    Some(interrupted.interrupted_at),
+                )
+            }
+            InterruptType::After => {
+                // The node already ran — continue with its successors.
+                (interrupted.next_nodes, None)
+            }
+        };
+
+        self.run_with_interrupt(state, Some(resume_nodes), skip_interrupt_for)
+            .await
+    }
+
+    /// Internal execution loop shared by `invoke_with_interrupt` and `resume`.
+    ///
+    /// When `resume_from` is `None` the graph starts from START. Otherwise it
+    /// starts from the provided node list. `skip_interrupt_for` names a node
+    /// whose interrupt check should be skipped once (used when resuming from a
+    /// `Before` interrupt so the same node does not immediately re-interrupt).
+    async fn run_with_interrupt(
+        &self,
+        input: Value,
+        resume_from: Option<Vec<String>>,
+        skip_interrupt_for: Option<String>,
+    ) -> Result<InvokeResult, LangGraphError> {
+        let mut state = input;
+        let mut step_count: usize = 0;
+        let mut skip_node = skip_interrupt_for;
+
+        let mut current_nodes = match resume_from {
+            Some(nodes) => nodes,
+            None => self.get_next_nodes(START, &state)?,
+        };
+
+        loop {
+            if current_nodes.is_empty() {
+                break;
+            }
+
+            let executable: Vec<String> = current_nodes
+                .iter()
+                .filter(|n| n.as_str() != END)
+                .cloned()
+                .collect();
+
+            if executable.is_empty() {
+                break;
+            }
+
+            let mut next_nodes: Vec<String> = Vec::new();
+
+            for node_name in &executable {
+                step_count += 1;
+                if step_count > self.recursion_limit {
+                    return Err(LangGraphError::GraphRecursionError(format!(
+                        "Recursion limit of {} reached after {} steps",
+                        self.recursion_limit, step_count
+                    )));
+                }
+
+                // --- interrupt_before check ---
+                let should_skip = skip_node.as_deref() == Some(node_name.as_str());
+                if !should_skip && self.interrupt_before.contains(node_name) {
+                    let successors = self.get_next_nodes(node_name, &state)?;
+                    return Ok(InvokeResult::Interrupted(InterruptedState {
+                        state,
+                        interrupted_at: node_name.clone(),
+                        interrupt_type: InterruptType::Before,
+                        next_nodes: successors,
+                    }));
+                }
+                // Clear skip after the first node is processed.
+                if should_skip {
+                    skip_node = None;
+                }
+
+                let update = self.execute_node(node_name, &state).await?;
+                Self::merge_state(&mut state, update)?;
+
+                // --- interrupt_after check ---
+                if self.interrupt_after.contains(node_name) {
+                    let successors = self.get_next_nodes(node_name, &state)?;
+                    return Ok(InvokeResult::Interrupted(InterruptedState {
+                        state,
+                        interrupted_at: node_name.clone(),
+                        interrupt_type: InterruptType::After,
+                        next_nodes: successors,
+                    }));
+                }
+
+                let mut successors = self.get_next_nodes(node_name, &state)?;
+                next_nodes.append(&mut successors);
+            }
+
+            current_nodes = next_nodes;
+        }
+
+        Ok(InvokeResult::Complete(state))
     }
 
     /// Stream state updates as the graph executes.
@@ -802,6 +980,8 @@ impl fmt::Debug for CompiledStateGraph {
             .field("recursion_limit", &self.recursion_limit)
             .field("input_schema", &self.input_schema)
             .field("output_schema", &self.output_schema)
+            .field("interrupt_before", &self.interrupt_before)
+            .field("interrupt_after", &self.interrupt_after)
             .finish()
     }
 }
@@ -1379,6 +1559,172 @@ mod tests {
         assert_eq!(second.data["branch"], json!("right"));
 
         assert!(stream.next().await.is_none());
+    }
+
+    // ── Interrupt / Human-in-the-loop tests ─────────────────────────
+
+    #[tokio::test]
+    async fn test_interrupt_before() {
+        // A -> B -> C, interrupt before B
+        let graph = StateGraph::new()
+            .add_node("a", make_set_action("step_a", json!(true)))
+            .add_node("b", make_set_action("step_b", json!(true)))
+            .add_node("c", make_set_action("step_c", json!(true)))
+            .set_entry_point("a")
+            .add_edge("a", "b")
+            .add_edge("b", "c")
+            .set_finish_point("c")
+            .interrupt_before(vec!["b"])
+            .compile()
+            .unwrap();
+
+        let result = graph.invoke_with_interrupt(json!({"input": "hello"})).await.unwrap();
+
+        match result {
+            InvokeResult::Interrupted(interrupted) => {
+                assert_eq!(interrupted.interrupted_at, "b");
+                assert_eq!(interrupted.interrupt_type, InterruptType::Before);
+                // Node A should have run, but not B.
+                assert_eq!(interrupted.state["step_a"], json!(true));
+                assert!(interrupted.state.get("step_b").is_none());
+            }
+            InvokeResult::Complete(_) => panic!("Expected interrupt, got completion"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_interrupt_after() {
+        // A -> B -> C, interrupt after B
+        let graph = StateGraph::new()
+            .add_node("a", make_set_action("step_a", json!(true)))
+            .add_node("b", make_set_action("step_b", json!(true)))
+            .add_node("c", make_set_action("step_c", json!(true)))
+            .set_entry_point("a")
+            .add_edge("a", "b")
+            .add_edge("b", "c")
+            .set_finish_point("c")
+            .interrupt_after(vec!["b"])
+            .compile()
+            .unwrap();
+
+        let result = graph.invoke_with_interrupt(json!({"input": "hello"})).await.unwrap();
+
+        match result {
+            InvokeResult::Interrupted(interrupted) => {
+                assert_eq!(interrupted.interrupted_at, "b");
+                assert_eq!(interrupted.interrupt_type, InterruptType::After);
+                // Both A and B should have run.
+                assert_eq!(interrupted.state["step_a"], json!(true));
+                assert_eq!(interrupted.state["step_b"], json!(true));
+                // C should not have run.
+                assert!(interrupted.state.get("step_c").is_none());
+                // Next nodes should include C.
+                assert!(interrupted.next_nodes.contains(&"c".to_string()));
+            }
+            InvokeResult::Complete(_) => panic!("Expected interrupt, got completion"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_interrupt_resume_after_interrupt() {
+        // A -> B -> C, interrupt before B, then resume.
+        let graph = StateGraph::new()
+            .add_node("a", make_set_action("step_a", json!(true)))
+            .add_node("b", make_set_action("step_b", json!(true)))
+            .add_node("c", make_set_action("step_c", json!(true)))
+            .set_entry_point("a")
+            .add_edge("a", "b")
+            .add_edge("b", "c")
+            .set_finish_point("c")
+            .interrupt_before(vec!["b"])
+            .compile()
+            .unwrap();
+
+        // First invocation — should interrupt before B.
+        let result = graph.invoke_with_interrupt(json!({"input": "hello"})).await.unwrap();
+        let interrupted = match result {
+            InvokeResult::Interrupted(i) => i,
+            InvokeResult::Complete(_) => panic!("Expected interrupt"),
+        };
+        assert_eq!(interrupted.interrupted_at, "b");
+
+        // Resume without update — should run B and C to completion.
+        let result = graph.resume(interrupted, None).await.unwrap();
+        match result {
+            InvokeResult::Complete(state) => {
+                assert_eq!(state["step_a"], json!(true));
+                assert_eq!(state["step_b"], json!(true));
+                assert_eq!(state["step_c"], json!(true));
+            }
+            InvokeResult::Interrupted(_) => panic!("Expected completion after resume"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_interrupt_resume_with_update() {
+        // A -> B -> C, interrupt before B, human provides state update.
+        let graph = StateGraph::new()
+            .add_node("a", make_set_action("step_a", json!(true)))
+            .add_node(
+                "b",
+                make_transform_action(|state: Value| {
+                    let approved = state.get("human_approved").and_then(|v| v.as_bool()).unwrap_or(false);
+                    Ok(json!({"step_b": true, "was_approved": approved}))
+                }),
+            )
+            .add_node("c", make_set_action("step_c", json!(true)))
+            .set_entry_point("a")
+            .add_edge("a", "b")
+            .add_edge("b", "c")
+            .set_finish_point("c")
+            .interrupt_before(vec!["b"])
+            .compile()
+            .unwrap();
+
+        let result = graph.invoke_with_interrupt(json!({})).await.unwrap();
+        let interrupted = match result {
+            InvokeResult::Interrupted(i) => i,
+            InvokeResult::Complete(_) => panic!("Expected interrupt"),
+        };
+
+        // Human provides an update before resuming.
+        let result = graph
+            .resume(interrupted, Some(json!({"human_approved": true})))
+            .await
+            .unwrap();
+
+        match result {
+            InvokeResult::Complete(state) => {
+                assert_eq!(state["step_a"], json!(true));
+                assert_eq!(state["step_b"], json!(true));
+                assert_eq!(state["was_approved"], json!(true));
+                assert_eq!(state["step_c"], json!(true));
+                assert_eq!(state["human_approved"], json!(true));
+            }
+            InvokeResult::Interrupted(_) => panic!("Expected completion"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_interrupt_no_interrupt_normal_flow() {
+        // No interrupts configured — should complete normally.
+        let graph = StateGraph::new()
+            .add_node("a", make_set_action("step_a", json!(true)))
+            .add_node("b", make_set_action("step_b", json!(true)))
+            .set_entry_point("a")
+            .add_edge("a", "b")
+            .set_finish_point("b")
+            .compile()
+            .unwrap();
+
+        let result = graph.invoke_with_interrupt(json!({"input": "hello"})).await.unwrap();
+        match result {
+            InvokeResult::Complete(state) => {
+                assert_eq!(state["step_a"], json!(true));
+                assert_eq!(state["step_b"], json!(true));
+            }
+            InvokeResult::Interrupted(_) => panic!("Expected completion, got interrupt"),
+        }
     }
 
     #[tokio::test]

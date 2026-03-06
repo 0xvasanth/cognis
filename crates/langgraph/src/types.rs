@@ -173,6 +173,37 @@ impl Default for Command {
     }
 }
 
+/// The type of interrupt that occurred during graph execution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InterruptType {
+    /// Execution paused before the node ran.
+    Before,
+    /// Execution paused after the node ran.
+    After,
+}
+
+/// State captured when graph execution is interrupted for human-in-the-loop.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InterruptedState {
+    /// The current graph state at the point of interruption.
+    pub state: Value,
+    /// The node at which execution was interrupted.
+    pub interrupted_at: String,
+    /// Whether the interrupt occurred before or after the node executed.
+    pub interrupt_type: InterruptType,
+    /// The nodes that would execute next if resumed.
+    pub next_nodes: Vec<String>,
+}
+
+/// Result of invoking a graph that may be interrupted.
+#[derive(Debug, Clone)]
+pub enum InvokeResult {
+    /// Graph ran to completion.
+    Complete(Value),
+    /// Graph was interrupted and awaits human input.
+    Interrupted(InterruptedState),
+}
+
 /// An overwrite value for a channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Overwrite {
