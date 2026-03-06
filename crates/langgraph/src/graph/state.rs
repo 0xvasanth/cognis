@@ -301,6 +301,64 @@ impl StateGraph {
         self.add_node(name, action)
     }
 
+    /// Add a compiled subgraph as a node with explicit input/output state mappings.
+    ///
+    /// - `input_mapping`: `parent_key -> subgraph_key` — which keys from the
+    ///   parent state are extracted and renamed for the subgraph input.
+    /// - `output_mapping`: `subgraph_key -> parent_key` — which keys from the
+    ///   subgraph output are extracted and renamed for the parent state.
+    ///
+    /// State isolation is enforced: the subgraph receives only the mapped
+    /// inputs, and only mapped outputs propagate back to the parent.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::collections::HashMap;
+    /// use std::sync::Arc;
+    /// use serde_json::{json, Value};
+    /// use langgraph::graph::state::{StateGraph, AsyncNodeAction};
+    /// use langgraph::errors::LangGraphError;
+    ///
+    /// let action: AsyncNodeAction = Arc::new(|state: Value| {
+    ///     Box::pin(async move {
+    ///         let v = state.get("in_key").and_then(|v| v.as_i64()).unwrap_or(0);
+    ///         Ok(json!({"out_key": v + 1}))
+    ///     })
+    /// });
+    ///
+    /// let inner = StateGraph::new()
+    ///     .add_node("a", action)
+    ///     .set_entry_point("a")
+    ///     .set_finish_point("a")
+    ///     .compile()
+    ///     .unwrap();
+    ///
+    /// let mut input_map = HashMap::new();
+    /// input_map.insert("parent_in".to_string(), "in_key".to_string());
+    /// let mut output_map = HashMap::new();
+    /// output_map.insert("out_key".to_string(), "parent_out".to_string());
+    ///
+    /// let outer = StateGraph::new()
+    ///     .add_subgraph_with_mapping("sub", inner, input_map, output_map)
+    ///     .set_entry_point("sub")
+    ///     .set_finish_point("sub")
+    ///     .compile()
+    ///     .unwrap();
+    /// ```
+    pub fn add_subgraph_with_mapping(
+        self,
+        name: &str,
+        subgraph: CompiledStateGraph,
+        input_mapping: HashMap<String, String>,
+        output_mapping: HashMap<String, String>,
+    ) -> Self {
+        use super::subgraph::SubgraphNode;
+        let action = SubgraphNode::with_mapping(subgraph, input_mapping, output_mapping)
+            .into_action();
+        self.add_node(name, action)
+    }
+
     /// Add a node with metadata and optional retry policy.
     pub fn add_node_with_config(
         mut self,
