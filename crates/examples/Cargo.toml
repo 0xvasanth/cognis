@@ -1,0 +1,55 @@
+[package]
+name = "rustchain-examples"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Example programs for the RustChain workspace"
+
+[dependencies]
+rustchain-core.workspace = true
+rustchain = { workspace = true, features = ["all-providers"] }
+langgraph.workspace = true
+deepagents.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+tempfile = "3"
+
+[[example]]
+name = "simple_chain"
+path = "../../examples/simple_chain.rs"
+
+[[example]]
+name = "rag_pipeline"
+path = "../../examples/rag_pipeline.rs"
+
+[[example]]
+name = "langgraph_agent"
+path = "../../examples/langgraph_agent.rs"
+
+[[example]]
+name = "streaming"
+path = "../../examples/streaming.rs"
+
+[[example]]
+name = "tool_agent"
+path = "../../examples/tool_agent.rs"
+
+[[example]]
+name = "rag_with_vectorstore"
+path = "../../examples/rag_with_vectorstore.rs"
+
+[[example]]
+name = "conversational_agent"
+path = "../../examples/conversational_agent.rs"
+
+[[example]]
+name = "graph_with_checkpoints"
+path = "../../examples/graph_with_checkpoints.rs"
+
+[[example]]
+name = "semantic_router"
+path = "../../examples/semantic_router.rs"

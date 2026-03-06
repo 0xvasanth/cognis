@@ -5,6 +5,7 @@ members = [
     "crates/rustchain",
     "crates/langgraph",
     "crates/deepagents",
+    "crates/examples",
 ]
 
 [workspace.package]
