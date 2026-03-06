@@ -3,6 +3,7 @@
 //! This module provides the core graph construction and execution primitives
 //! for building stateful, multi-actor agent workflows.
 
+pub mod annotations;
 pub mod branch;
 pub mod human_in_loop;
 pub mod mermaid;
@@ -16,6 +17,10 @@ pub mod subgraph;
 pub mod time_travel;
 pub mod ui;
 
+pub use annotations::{
+    AnnotatedState, AnnotatedStateBuilder, AnnotatedStateGraph, CompiledAnnotatedStateGraph,
+    FieldAnnotation, JsonType, apply_annotations,
+};
 pub use branch::{AsyncBranch, AsyncRouterFn, Branch, RouterFn, RouterResult};
 pub use human_in_loop::{ApprovalRequest, HumanAction, HumanInTheLoop, HumanInTheLoopResult};
 pub use mermaid::{to_mermaid, to_mermaid_url};
