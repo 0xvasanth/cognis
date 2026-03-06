@@ -4,6 +4,7 @@
 //! and utilities for parsing model strings.
 
 pub mod base;
+pub mod cached;
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "ollama")]
