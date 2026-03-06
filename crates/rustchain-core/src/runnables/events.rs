@@ -141,6 +141,7 @@ pub async fn stream_events_with_filter(
 mod tests {
     use super::*;
     use crate::runnables::{RunnableLambda, RunnableSequence};
+    use crate::tracers::EventType;
     use futures::StreamExt;
     use serde_json::json;
 

@@ -781,6 +781,120 @@ async fn test_ext_assign_multiple_keys() {
     assert_eq!(result["name_length"], json!(5));
 }
 
+// ─── Stream Tests ───
+
+#[tokio::test]
+async fn test_stream_single_runnable_returns_result() {
+    let double = RunnableLambda::new("double", |v: Value| async move {
+        Ok(json!(v.as_i64().unwrap() * 2))
+    });
+
+    let mut stream = double.stream(json!(5), None).await.unwrap();
+    let first = stream.next().await.unwrap().unwrap();
+    assert_eq!(first, json!(10));
+    assert!(stream.next().await.is_none(), "default stream should yield exactly one item");
+}
+
+#[tokio::test]
+async fn test_stream_sequence_propagates_last_step() {
+    let add_one = Arc::new(RunnableLambda::new("add_one", |v: Value| async move {
+        Ok(json!(v.as_i64().unwrap() + 1))
+    }));
+    let triple = Arc::new(RunnableLambda::new("triple", |v: Value| async move {
+        Ok(json!(v.as_i64().unwrap() * 3))
+    }));
+
+    let seq = RunnableSequence::new(vec![add_one, triple]).unwrap();
+    let mut stream = seq.stream(json!(4), None).await.unwrap();
+
+    // (4 + 1) * 3 = 15
+    let first = stream.next().await.unwrap().unwrap();
+    assert_eq!(first, json!(15));
+    assert!(stream.next().await.is_none());
+}
+
+/// A mock runnable whose `stream()` returns multiple chunks.
+struct MultiChunkRunnable {
+    chunks: Vec<Value>,
+}
+
+impl MultiChunkRunnable {
+    fn new(chunks: Vec<Value>) -> Self {
+        Self { chunks }
+    }
+}
+
+#[async_trait::async_trait]
+impl Runnable for MultiChunkRunnable {
+    fn name(&self) -> &str {
+        "MultiChunkRunnable"
+    }
+
+    async fn invoke(&self, _input: Value, _config: Option<&RunnableConfig>) -> rustchain_core::error::Result<Value> {
+        // For invoke, concatenate all chunks into a single string
+        let combined: String = self.chunks.iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        Ok(json!(combined))
+    }
+
+    async fn stream(
+        &self,
+        _input: Value,
+        _config: Option<&RunnableConfig>,
+    ) -> rustchain_core::error::Result<rustchain_core::runnables::RunnableStream> {
+        let chunks: Vec<rustchain_core::error::Result<Value>> =
+            self.chunks.iter().map(|c| Ok(c.clone())).collect();
+        Ok(Box::pin(futures::stream::iter(chunks)))
+    }
+}
+
+#[tokio::test]
+async fn test_stream_multi_chunk_runnable() {
+    let chunker = MultiChunkRunnable::new(vec![
+        json!("Hello"),
+        json!(", "),
+        json!("world"),
+        json!("!"),
+    ]);
+
+    let mut stream = chunker.stream(json!(null), None).await.unwrap();
+    let mut collected = Vec::new();
+    while let Some(item) = stream.next().await {
+        collected.push(item.unwrap());
+    }
+    assert_eq!(collected, vec![json!("Hello"), json!(", "), json!("world"), json!("!")]);
+}
+
+#[tokio::test]
+async fn test_stream_sequence_with_multi_chunk_last_step() {
+    // First step transforms input, last step streams multiple chunks
+    let add_prefix = Arc::new(RunnableLambda::new("add_prefix", |v: Value| async move {
+        let s = v.as_str().unwrap_or("unknown");
+        Ok(json!(format!("prefix_{}", s)))
+    }));
+
+    let chunker = Arc::new(MultiChunkRunnable::new(vec![
+        json!("chunk1"),
+        json!("chunk2"),
+        json!("chunk3"),
+    ]));
+
+    let seq = RunnableSequence::new(vec![
+        add_prefix as Arc<dyn Runnable>,
+        chunker as Arc<dyn Runnable>,
+    ]).unwrap();
+
+    let mut stream = seq.stream(json!("input"), None).await.unwrap();
+    let mut collected = Vec::new();
+    while let Some(item) = stream.next().await {
+        collected.push(item.unwrap());
+    }
+    // The multi-chunk runnable ignores input for streaming, returns its fixed chunks
+    assert_eq!(collected.len(), 3);
+    assert_eq!(collected, vec![json!("chunk1"), json!("chunk2"), json!("chunk3")]);
+}
+
 // ─── RunnableExt: batch (via trait) Tests ───
 
 #[tokio::test]
