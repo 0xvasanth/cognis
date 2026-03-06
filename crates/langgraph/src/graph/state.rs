@@ -1155,6 +1155,28 @@ impl CompiledStateGraph {
         }
     }
 
+    /// Public (crate-visible) wrapper around `get_next_nodes_static` that
+    /// uses the graph's own outgoing map.
+    ///
+    /// Used by [`stream_events::stream_graph_events`](super::stream_events::stream_graph_events).
+    pub(crate) fn get_next_nodes_static_pub(
+        &self,
+        current: &str,
+        state: &Value,
+    ) -> Result<Vec<String>, LangGraphError> {
+        Self::get_next_nodes_static(&self.outgoing, current, state)
+    }
+
+    /// Public (crate-visible) wrapper around `merge_state`.
+    ///
+    /// Used by [`stream_events::stream_graph_events`](super::stream_events::stream_graph_events).
+    pub(crate) fn merge_state_pub(
+        current: &mut Value,
+        update: Value,
+    ) -> Result<(), LangGraphError> {
+        Self::merge_state(current, update)
+    }
+
     /// Get the names of all nodes in the graph (excluding START and END).
     pub fn node_names(&self) -> Vec<&str> {
         self.nodes.keys().map(|s| s.as_str()).collect()
