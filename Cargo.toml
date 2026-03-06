@@ -4,6 +4,7 @@ members = [
     "crates/rustchain-core",
     "crates/rustchain",
     "crates/langgraph",
+    "crates/deepagents",
 ]
 
 [workspace.package]
@@ -28,3 +29,4 @@ secrecy = { version = "0.10", features = ["serde"] }
 rustchain = { path = "crates/rustchain" }
 rustchain-core = { path = "crates/rustchain-core" }
 langgraph = { path = "crates/langgraph" }
+deepagents = { path = "crates/deepagents" }
