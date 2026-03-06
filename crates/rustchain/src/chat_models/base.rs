@@ -817,7 +817,8 @@ mod tests {
     fn test_create_chat_model_azure() {
         let mut kwargs = HashMap::new();
         kwargs.insert("api_key".to_string(), serde_json::json!("test-key"));
-        kwargs.insert("resource_name".to_string(), serde_json::json!("my-resource"));
+        kwargs.insert("azure_endpoint".to_string(), serde_json::json!("https://my-resource.openai.azure.com"));
+        kwargs.insert("deployment_name".to_string(), serde_json::json!("gpt-4o"));
         let model = create_chat_model("azure_openai:gpt-4o", Some(kwargs)).unwrap();
         assert_eq!(model.llm_type(), "azure_openai");
     }
