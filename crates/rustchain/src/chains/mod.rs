@@ -14,3 +14,5 @@ pub use map_reduce::MapReduceChain;
 pub use refine::RefineChain;
 pub mod conversation_retrieval;
 pub use conversation_retrieval::{ConversationalRetrievalChain, ConversationalRetrievalResult};
+pub mod router;
+pub use router::{Route, RouterChain, RouterResult, SemanticRouter};
