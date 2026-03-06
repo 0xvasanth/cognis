@@ -47,6 +47,7 @@ pub mod embeddings;
 pub mod memory;
 pub mod text_splitter;
 pub mod tools;
+pub mod vectorstores;
 
 // Re-export core for convenience
 pub use rustchain_core as core;
