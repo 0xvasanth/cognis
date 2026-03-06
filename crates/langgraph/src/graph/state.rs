@@ -1346,6 +1346,67 @@ impl CompiledStateGraph {
             "interrupt_after": self.interrupt_after.iter().collect::<Vec<_>>(),
         })
     }
+
+    /// Export the graph topology as a serializable [`GraphDefinition`].
+    ///
+    /// This captures all structural information (nodes, edges, conditional
+    /// routing targets, interrupts) but not the runtime closures.
+    pub fn to_definition(&self) -> super::serialize::GraphDefinition {
+        use super::serialize::{ConditionalEdgeDef, GraphDefinition};
+
+        let mut node_names: Vec<String> = self.nodes.keys().cloned().collect();
+        node_names.sort();
+
+        let mut direct_edges: Vec<(String, String)> = Vec::new();
+        let mut conditional_edges: Vec<ConditionalEdgeDef> = Vec::new();
+
+        for edge in &self.edges {
+            match edge {
+                Edge::Direct { from, to } => {
+                    direct_edges.push((from.clone(), to.clone()));
+                }
+                Edge::Conditional { from, branch } => {
+                    let targets: Vec<String> = if let Some(ref ends) = branch.ends {
+                        ends.values().cloned().collect()
+                    } else {
+                        Vec::new()
+                    };
+
+                    let labels = branch.ends.clone();
+
+                    conditional_edges.push(ConditionalEdgeDef {
+                        from: from.clone(),
+                        targets,
+                        labels,
+                    });
+                }
+            }
+        }
+
+        // Determine entry point from the outgoing edges of START.
+        let entry_point = direct_edges
+            .iter()
+            .find(|(from, _)| from == START)
+            .map(|(_, to)| to.clone())
+            .unwrap_or_else(|| {
+                // Fall back: first node in sorted order.
+                node_names.first().cloned().unwrap_or_default()
+            });
+
+        let mut interrupt_before: Vec<String> = self.interrupt_before.iter().cloned().collect();
+        interrupt_before.sort();
+        let mut interrupt_after: Vec<String> = self.interrupt_after.iter().cloned().collect();
+        interrupt_after.sort();
+
+        GraphDefinition {
+            nodes: node_names,
+            edges: direct_edges,
+            conditional_edges,
+            entry_point,
+            interrupt_before,
+            interrupt_after,
+        }
+    }
 }
 
 
