@@ -4,6 +4,8 @@
 //! and utilities for parsing model strings.
 
 pub mod base;
+pub mod cached;
+pub mod rate_limited;
 pub mod structured;
 #[cfg(feature = "anthropic")]
 pub mod anthropic;
