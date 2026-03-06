@@ -12,6 +12,10 @@ pub mod markdown;
 #[cfg(feature = "pdf")]
 pub mod pdf;
 pub mod text;
+#[cfg(feature = "toml-loader")]
+pub mod toml_loader;
+#[cfg(feature = "yaml")]
+pub mod yaml;
 
 #[cfg(any(
     feature = "openai",
@@ -30,6 +34,10 @@ pub use markdown::MarkdownLoader;
 #[cfg(feature = "pdf")]
 pub use pdf::PdfLoader;
 pub use text::TextLoader;
+#[cfg(feature = "toml-loader")]
+pub use toml_loader::TomlDocumentLoader;
+#[cfg(feature = "yaml")]
+pub use yaml::YamlDocumentLoader;
 
 #[cfg(any(
     feature = "openai",
