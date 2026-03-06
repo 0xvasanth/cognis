@@ -4,6 +4,7 @@
 //! and utilities for parsing model strings.
 
 pub mod base;
+pub mod structured;
 #[cfg(feature = "anthropic")]
 pub mod anthropic;
 #[cfg(feature = "openai")]
@@ -12,3 +13,4 @@ pub mod openai;
 pub mod ollama;
 
 pub use base::*;
+pub use structured::*;
