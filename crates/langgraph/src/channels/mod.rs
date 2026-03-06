@@ -31,6 +31,7 @@ pub mod binop;
 pub mod ephemeral_value;
 pub mod last_value;
 pub mod named_barrier;
+pub mod reducers;
 pub mod topic;
 pub mod untracked;
 
@@ -40,5 +41,9 @@ pub use binop::{BinOp, BinaryOperatorAggregate};
 pub use ephemeral_value::EphemeralValue;
 pub use last_value::{LastValue, LastValueAfterFinish};
 pub use named_barrier::{NamedBarrierValue, NamedBarrierValueAfterFinish};
+pub use reducers::{
+    reduce_state, AppendReducer, BinaryOpReducer, FieldSpec, LastValueReducer, MergeReducer,
+    Reducer, StateSchema, StateSchemaBuilder,
+};
 pub use topic::Topic;
 pub use untracked::UntrackedValue;
