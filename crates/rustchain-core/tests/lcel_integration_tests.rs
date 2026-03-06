@@ -14,13 +14,13 @@ use rustchain_core::chain;
 use rustchain_core::error::{Result, RustChainError};
 use rustchain_core::language_models::{ChatModelRunnable, FakeListChatModel};
 use rustchain_core::output_parsers::{JsonOutputParser, StrOutputParser};
-use rustchain_core::prompts::chat::ChatPromptTemplate;
 use rustchain_core::prompts::base::PromptTemplate;
-use rustchain_core::runnables::{
-    Runnable, RunnableBranch, RunnableExt, RunnableLambda, RunnableParallel,
-    RunnablePassthrough, RunnablePick,
-};
+use rustchain_core::prompts::chat::ChatPromptTemplate;
 use rustchain_core::runnables::config::RunnableConfig;
+use rustchain_core::runnables::{
+    Runnable, RunnableBranch, RunnableExt, RunnableLambda, RunnableParallel, RunnablePassthrough,
+    RunnablePick,
+};
 
 // ---------------------------------------------------------------------------
 // Test 1: Simple pipe chain
@@ -103,7 +103,7 @@ async fn test_prompt_model_parser_chain() {
 
     // Build a fake chat model that always returns a fixed response
     let model = ChatModelRunnable::new(Arc::new(FakeListChatModel::new(vec![
-        "The answer is 42.".to_string(),
+        "The answer is 42.".to_string()
     ])));
 
     // StrOutputParser extracts the string
@@ -147,7 +147,10 @@ async fn test_chat_prompt_template_as_runnable() {
     .unwrap();
 
     let result = prompt
-        .invoke(json!({"role": "a pirate", "question": "Where is the treasure?"}), None)
+        .invoke(
+            json!({"role": "a pirate", "question": "Where is the treasure?"}),
+            None,
+        )
         .await
         .unwrap();
 
@@ -209,10 +212,7 @@ async fn test_parallel_in_pipe_chain() {
     let parallel = RunnableParallel::new(steps);
     let chain = extract.pipe(parallel).unwrap();
 
-    let result = chain
-        .invoke(json!({"text": "world"}), None)
-        .await
-        .unwrap();
+    let result = chain.invoke(json!({"text": "world"}), None).await.unwrap();
 
     assert_eq!(result["upper"], json!("WORLD"));
     assert_eq!(result["length"], json!(5));
@@ -260,9 +260,7 @@ async fn test_assign_and_pick() {
 #[tokio::test]
 async fn test_pick_single_key() {
     let passthrough = RunnablePassthrough::new();
-    let chain = passthrough
-        .pick(vec!["name".to_string()])
-        .unwrap();
+    let chain = passthrough.pick(vec!["name".to_string()]).unwrap();
 
     let result = chain
         .invoke(json!({"name": "Bob", "age": 25}), None)
@@ -289,9 +287,8 @@ async fn test_runnable_branch_first_condition() {
     let is_zero = RunnableLambda::new("is_zero", |v: Value| async move {
         Ok(json!(v.as_i64().unwrap() == 0))
     });
-    let zero_handler = RunnableLambda::new("zero", |_v: Value| async move {
-        Ok(json!("it's zero"))
-    });
+    let zero_handler =
+        RunnableLambda::new("zero", |_v: Value| async move { Ok(json!("it's zero")) });
 
     let default_handler = RunnableLambda::new("negative", |v: Value| async move {
         Ok(json!(format!("{} is negative", v.as_i64().unwrap())))
@@ -326,12 +323,12 @@ async fn test_runnable_branch_first_condition() {
 
 #[tokio::test]
 async fn test_branch_default_fallthrough() {
-    let always_false = RunnableLambda::new("false", |_v: Value| async move {
-        Ok(json!(false))
-    });
-    let never_handler = RunnableLambda::new("never", |_v: Value| async move {
-        Ok(json!("should not reach"))
-    });
+    let always_false = RunnableLambda::new("false", |_v: Value| async move { Ok(json!(false)) });
+    let never_handler =
+        RunnableLambda::new(
+            "never",
+            |_v: Value| async move { Ok(json!("should not reach")) },
+        );
     let default_handler = RunnableLambda::new("default", |v: Value| async move {
         Ok(json!(format!("default: {}", v)))
     });
@@ -378,7 +375,10 @@ impl Runnable for FailNTimesThenSucceed {
         if attempt < self.fail_count {
             Err(RustChainError::Other(format!("attempt {} failed", attempt)))
         } else {
-            Ok(json!(format!("success after {} failures: {}", attempt, input)))
+            Ok(json!(format!(
+                "success after {} failures: {}",
+                attempt, input
+            )))
         }
     }
 }
@@ -412,9 +412,7 @@ async fn test_pipe_with_fallbacks() {
         Ok(json!(format!("fallback handled: {}", v)))
     });
 
-    let with_fallbacks = failing.with_fallbacks(vec![
-        Arc::new(fallback) as Arc<dyn Runnable>,
-    ]);
+    let with_fallbacks = failing.with_fallbacks(vec![Arc::new(fallback) as Arc<dyn Runnable>]);
 
     let step1 = RunnableLambda::new("prep", |v: Value| async move {
         Ok(json!(v.as_str().unwrap().to_uppercase()))
@@ -439,9 +437,7 @@ async fn test_retry_and_fallbacks_combined() {
         Ok(json!({"recovered": true, "input": v}))
     });
 
-    let chain = retrying_fails.with_fallbacks(vec![
-        Arc::new(fallback) as Arc<dyn Runnable>,
-    ]);
+    let chain = retrying_fails.with_fallbacks(vec![Arc::new(fallback) as Arc<dyn Runnable>]);
 
     let result = chain.invoke(json!("test"), None).await.unwrap();
     assert_eq!(result["recovered"], json!(true));
@@ -454,9 +450,8 @@ async fn test_retry_and_fallbacks_combined() {
 
 #[tokio::test]
 async fn test_str_output_parser_in_chain() {
-    let make_string = RunnableLambda::new("make", |_v: Value| async move {
-        Ok(json!("hello world"))
-    });
+    let make_string =
+        RunnableLambda::new("make", |_v: Value| async move { Ok(json!("hello world")) });
     let parser = StrOutputParser;
     let chain = make_string.pipe(parser).unwrap();
 
@@ -524,7 +519,9 @@ async fn test_complex_multi_step_chain() {
         let prompt_text = v.as_str().unwrap_or("");
         // Simulate model producing JSON output based on the prompt
         if prompt_text.contains("animals") {
-            Ok(json!(r#"{"category": "animals", "examples": ["cat", "dog"]}"#))
+            Ok(json!(
+                r#"{"category": "animals", "examples": ["cat", "dog"]}"#
+            ))
         } else {
             Ok(json!(r#"{"category": "unknown", "examples": []}"#))
         }

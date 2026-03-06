@@ -82,9 +82,7 @@ impl PostgresCheckpointSaver {
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| {
-            LangGraphError::Other(format!("Failed to create checkpoints table: {}", e))
-        })?;
+        .map_err(|e| LangGraphError::Other(format!("Failed to create checkpoints table: {}", e)))?;
 
         sqlx::query(
             r#"
@@ -268,10 +266,7 @@ impl CheckpointSaver for PostgresCheckpointSaver {
         }
     }
 
-    async fn get_tuple(
-        &self,
-        config: &HashMap<String, Value>,
-    ) -> Result<Option<CheckpointTuple>> {
+    async fn get_tuple(&self, config: &HashMap<String, Value>) -> Result<Option<CheckpointTuple>> {
         self.get(config).await
     }
 
@@ -316,10 +311,7 @@ impl CheckpointSaver for PostgresCheckpointSaver {
         .map_err(|e| LangGraphError::Other(format!("Postgres insert error: {}", e)))?;
 
         let mut new_config = config.clone();
-        new_config.insert(
-            "checkpoint_id".to_string(),
-            Value::String(checkpoint.id),
-        );
+        new_config.insert("checkpoint_id".to_string(), Value::String(checkpoint.id));
 
         Ok(new_config)
     }
@@ -331,9 +323,8 @@ impl CheckpointSaver for PostgresCheckpointSaver {
         task_id: &str,
     ) -> Result<()> {
         let (thread_id, checkpoint_ns, checkpoint_id) = Self::extract_config(config);
-        let checkpoint_id = checkpoint_id.ok_or_else(|| {
-            LangGraphError::Other("checkpoint_id required for put_writes".into())
-        })?;
+        let checkpoint_id = checkpoint_id
+            .ok_or_else(|| LangGraphError::Other("checkpoint_id required for put_writes".into()))?;
 
         for (channel, value) in &writes {
             let value_json = serde_json::to_value(value).map_err(|e| {
@@ -461,8 +452,10 @@ mod tests {
     #[test]
     fn test_checkpoint_jsonb_roundtrip() {
         let mut cp = empty_checkpoint();
-        cp.channel_values
-            .insert("state".to_string(), json!({"count": 42, "items": [1, 2, 3]}));
+        cp.channel_values.insert(
+            "state".to_string(),
+            json!({"count": 42, "items": [1, 2, 3]}),
+        );
         cp.channel_versions.insert("state".to_string(), 5);
         cp.versions_seen.insert("agent".to_string(), {
             let mut m = HashMap::new();
@@ -533,9 +526,11 @@ mod tests {
             config: config.clone(),
             metadata: Some(metadata),
             parent_config: None,
-            pending_writes: Some(vec![
-                ("task-1".to_string(), "state".to_string(), json!({"key": "value"})),
-            ]),
+            pending_writes: Some(vec![(
+                "task-1".to_string(),
+                "state".to_string(),
+                json!({"key": "value"}),
+            )]),
         };
 
         let as_value = serde_json::to_value(&tuple).unwrap();
@@ -590,10 +585,7 @@ mod tests {
         let mut cp2 = empty_checkpoint();
         cp2.updated_channels = Some(vec!["a".to_string(), "b".to_string()]);
         let as_value2 = serde_json::to_value(&cp2).unwrap();
-        assert_eq!(
-            as_value2["updated_channels"],
-            json!(["a", "b"])
-        );
+        assert_eq!(as_value2["updated_channels"], json!(["a", "b"]));
 
         // Round-trip
         let restored: Checkpoint = serde_json::from_value(as_value2).unwrap();

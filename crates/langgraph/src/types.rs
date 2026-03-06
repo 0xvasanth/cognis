@@ -159,9 +159,7 @@ impl Command {
     /// Convert the update field to a list of (key, value) tuples.
     pub fn update_as_tuples(&self) -> Vec<(String, Value)> {
         match &self.update {
-            Some(Value::Object(map)) => {
-                map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-            }
+            Some(Value::Object(map)) => map.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             _ => Vec::new(),
         }
     }

@@ -9,9 +9,7 @@ use async_trait::async_trait;
 use rustchain_core::error::Result;
 use rustchain_core::language_models::chat_model::BaseChatModel;
 
-use super::types::{
-    AgentMiddleware, AsyncModelHandler, ModelCallResult, ModelRequest,
-};
+use super::types::{AgentMiddleware, AsyncModelHandler, ModelCallResult, ModelRequest};
 
 /// Middleware that tries alternative models when the primary model fails.
 pub struct ModelFallbackMiddleware {

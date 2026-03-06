@@ -24,8 +24,8 @@ pub mod write;
 
 pub use executor::PregelExecutor;
 pub use protocol::PregelProtocol;
-pub use utils::{get_new_channel_versions, ChannelVersion, ChannelVersions};
 pub use types::{
     All, ChannelWrite, InterruptConfig, PregelConfig, PregelNodeAction, PregelNodeSpec,
     PregelStatus, PregelTaskDescription, StreamChunk, TaskResult,
 };
+pub use utils::{get_new_channel_versions, ChannelVersion, ChannelVersions};

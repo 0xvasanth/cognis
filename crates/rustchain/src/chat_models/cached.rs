@@ -11,7 +11,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use rustchain_core::error::Result;
-use rustchain_core::language_models::chat_model::{BaseChatModel, ChatStream, ModelProfile, ToolChoice};
+use rustchain_core::language_models::chat_model::{
+    BaseChatModel, ChatStream, ModelProfile, ToolChoice,
+};
 use rustchain_core::messages::Message;
 use rustchain_core::outputs::ChatResult;
 use rustchain_core::tools::ToolSchema;
@@ -53,11 +55,7 @@ impl CachedChatModel {
 
 #[async_trait]
 impl BaseChatModel for CachedChatModel {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         let key = compute_cache_key(messages, stop);
 
         // Return cached result on hit.
@@ -78,11 +76,7 @@ impl BaseChatModel for CachedChatModel {
         Box::leak(s.into_boxed_str())
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         // Streams are not cached; delegate directly.
         self.inner._stream(messages, stop).await
     }
@@ -169,7 +163,11 @@ mod tests {
         let r2 = cached._generate(&msgs, None).await.unwrap();
 
         assert_eq!(r1, r2);
-        assert_eq!(call_count.load(Ordering::SeqCst), 1, "inner model called only once");
+        assert_eq!(
+            call_count.load(Ordering::SeqCst),
+            1,
+            "inner model called only once"
+        );
     }
 
     #[tokio::test]
@@ -228,7 +226,11 @@ mod tests {
 
         // Access "a" to make it recently used.
         let _ = cached._generate(&[human("a")], None).await.unwrap();
-        assert_eq!(call_count.load(Ordering::SeqCst), 2, "a should be a cache hit");
+        assert_eq!(
+            call_count.load(Ordering::SeqCst),
+            2,
+            "a should be a cache hit"
+        );
 
         // Insert "c" — should evict "b".
         let _ = cached._generate(&[human("c")], None).await.unwrap();
@@ -236,7 +238,11 @@ mod tests {
 
         // "b" should now be a miss.
         let _ = cached._generate(&[human("b")], None).await.unwrap();
-        assert_eq!(call_count.load(Ordering::SeqCst), 4, "b should be evicted and re-fetched");
+        assert_eq!(
+            call_count.load(Ordering::SeqCst),
+            4,
+            "b should be evicted and re-fetched"
+        );
     }
 
     #[tokio::test]
@@ -252,6 +258,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(call_count.load(Ordering::SeqCst), 2, "different stop seqs = different keys");
+        assert_eq!(
+            call_count.load(Ordering::SeqCst),
+            2,
+            "different stop seqs = different keys"
+        );
     }
 }

@@ -86,8 +86,7 @@ impl LLMToolEmulator {
         tool_description: &str,
         input: &Value,
     ) -> Result<Value> {
-        let input_str =
-            serde_json::to_string_pretty(input).unwrap_or_else(|_| input.to_string());
+        let input_str = serde_json::to_string_pretty(input).unwrap_or_else(|_| input.to_string());
 
         // Build messages for the emulation LLM
         let system_prompt = self.system_prompt.as_deref().unwrap_or(
@@ -146,7 +145,8 @@ impl AgentMiddleware for LLMToolEmulator {
         handler: &(dyn for<'a, 'b> Fn(&'a dyn BaseTool, &'b Value) -> Result<Value> + Send + Sync),
     ) -> Result<Value> {
         if self.should_emulate(tool.name()) {
-            self.emulate_tool_call(tool.name(), tool.description(), input).await
+            self.emulate_tool_call(tool.name(), tool.description(), input)
+                .await
         } else {
             handler(tool, input)
         }
@@ -174,7 +174,10 @@ mod tests {
             _messages: &[Message],
             _stop: Option<&[String]>,
         ) -> Result<ChatResult> {
-            Ok(ChatResult { generations: vec![], llm_output: None })
+            Ok(ChatResult {
+                generations: vec![],
+                llm_output: None,
+            })
         }
     }
 
@@ -192,10 +195,8 @@ mod tests {
 
     #[test]
     fn test_emulator_specific_tools() {
-        let emulator = LLMToolEmulator::for_tools(
-            mock_model(),
-            vec!["search".into(), "calculator".into()],
-        );
+        let emulator =
+            LLMToolEmulator::for_tools(mock_model(), vec!["search".into(), "calculator".into()]);
         assert!(!emulator.emulate_all);
         assert!(emulator.should_emulate("search"));
         assert!(emulator.should_emulate("calculator"));
@@ -223,8 +224,7 @@ mod tests {
 
     #[test]
     fn test_emulator_with_system_prompt() {
-        let emulator = LLMToolEmulator::all(mock_model())
-            .with_system_prompt("Custom prompt");
+        let emulator = LLMToolEmulator::all(mock_model()).with_system_prompt("Custom prompt");
         assert_eq!(emulator.system_prompt.as_deref(), Some("Custom prompt"));
     }
 

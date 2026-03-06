@@ -56,8 +56,8 @@ impl Backend for FilesystemBackend {
             .await
             .map_err(|e| DeepAgentError::BackendError(e.to_string()))?;
 
-        let value: Value = serde_json::from_str(&data)
-            .map_err(|e| DeepAgentError::BackendError(e.to_string()))?;
+        let value: Value =
+            serde_json::from_str(&data).map_err(|e| DeepAgentError::BackendError(e.to_string()))?;
 
         Ok(Some(value))
     }

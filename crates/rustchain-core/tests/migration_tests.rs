@@ -224,16 +224,8 @@ fn test_operation_new() {
     let op = Operation::new(
         Operator::And,
         vec![
-            FilterDirective::Comparison(Comparison::new(
-                Comparator::Eq,
-                "genre",
-                json!("fantasy"),
-            )),
-            FilterDirective::Comparison(Comparison::new(
-                Comparator::Gt,
-                "year",
-                json!(2000),
-            )),
+            FilterDirective::Comparison(Comparison::new(Comparator::Eq, "genre", json!("fantasy"))),
+            FilterDirective::Comparison(Comparison::new(Comparator::Gt, "year", json!(2000))),
         ],
     );
     assert_eq!(op.operator, Operator::And);
@@ -340,11 +332,8 @@ fn test_visitor_structured_query() {
 #[test]
 fn test_filter_directive_accept() {
     let visitor = TestVisitor;
-    let directive = FilterDirective::Comparison(Comparison::new(
-        Comparator::Lt,
-        "price",
-        json!(100),
-    ));
+    let directive =
+        FilterDirective::Comparison(Comparison::new(Comparator::Lt, "price", json!(100)));
     let result = directive.accept(&visitor).unwrap();
     assert_eq!(result, json!({"price": {"lt": 100}}));
 }
@@ -353,9 +342,7 @@ fn test_filter_directive_accept() {
 // Indexing
 // ============================================================
 
-use rustchain_core::indexing::{
-    InMemoryRecordManager, RecordManager,
-};
+use rustchain_core::indexing::{InMemoryRecordManager, RecordManager};
 
 #[tokio::test]
 async fn test_record_manager_create_schema() {
@@ -393,11 +380,7 @@ async fn test_record_manager_list_keys() {
     let rm = InMemoryRecordManager::new("test");
     rm.update(
         &["a".into(), "b".into(), "c".into()],
-        &[
-            Some("g1".into()),
-            Some("g1".into()),
-            Some("g2".into()),
-        ],
+        &[Some("g1".into()), Some("g1".into()), Some("g2".into())],
         None,
     )
     .await
@@ -449,7 +432,10 @@ async fn test_record_manager_time_at_least() {
         .unwrap();
 
     // Key should exist with the forced timestamp
-    let keys = rm.list_keys(Some(future_time), None, None, None).await.unwrap();
+    let keys = rm
+        .list_keys(Some(future_time), None, None, None)
+        .await
+        .unwrap();
     assert!(keys.is_empty()); // updated_at == future_time, not < future_time
 
     let keys = rm
@@ -463,8 +449,8 @@ async fn test_record_manager_time_at_least() {
 // Tracers
 // ============================================================
 
-use rustchain_core::tracers::schemas::{Run, RunType};
 use rustchain_core::tracers::base::{BaseTracer, InMemoryTracer};
+use rustchain_core::tracers::schemas::{Run, RunType};
 
 #[test]
 fn test_run_new() {
@@ -567,7 +553,8 @@ fn test_tracer_create_tool_run() {
 
 #[test]
 fn test_tracer_create_retriever_run() {
-    let run = InMemoryTracer::create_retriever_run(Uuid::new_v4(), "retriever", "search terms", None);
+    let run =
+        InMemoryTracer::create_retriever_run(Uuid::new_v4(), "retriever", "search terms", None);
     assert_eq!(run.run_type, RunType::Retriever);
     assert_eq!(run.inputs, json!("search terms"));
 }
@@ -577,7 +564,7 @@ fn test_tracer_create_retriever_run() {
 // ============================================================
 
 use rustchain_core::load::serializable::{
-    Serializable, dumpd, dumps, make_serialized_secret, to_json_not_implemented,
+    dumpd, dumps, make_serialized_secret, to_json_not_implemented, Serializable,
 };
 
 #[allow(dead_code)]
@@ -637,10 +624,7 @@ fn test_serializable_lc_id() {
         name: "test".into(),
         api_key: "secret".into(),
     };
-    assert_eq!(
-        obj.lc_id(),
-        vec!["rustchain", "llms", "TestLLM"]
-    );
+    assert_eq!(obj.lc_id(), vec!["rustchain", "llms", "TestLLM"]);
 }
 
 #[test]
@@ -735,10 +719,7 @@ impl BaseLoader for TestDocLoader {
 #[tokio::test]
 async fn test_doc_loader_load() {
     let loader = TestDocLoader {
-        docs: vec![
-            Document::new("doc1"),
-            Document::new("doc2"),
-        ],
+        docs: vec![Document::new("doc1"), Document::new("doc2")],
     };
     let loaded = loader.load().await.unwrap();
     assert_eq!(loaded.len(), 2);

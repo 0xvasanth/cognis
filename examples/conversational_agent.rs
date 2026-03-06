@@ -58,7 +58,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .to_string();
 
         if !history.is_empty() {
-            println!("  [Memory] Current history:\n    {}", history.replace('\n', "\n    "));
+            println!(
+                "  [Memory] Current history:\n    {}",
+                history.replace('\n', "\n    ")
+            );
         } else {
             println!("  [Memory] No history yet.");
         }

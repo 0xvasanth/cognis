@@ -61,7 +61,6 @@ pub enum StreamingMode {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModelProfile {
     // --- Input constraints ---
-
     /// Maximum context window (tokens).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_input_tokens: Option<usize>,
@@ -99,7 +98,6 @@ pub struct ModelProfile {
     pub pdf_tool_message: Option<bool>,
 
     // --- Output constraints ---
-
     /// Maximum output tokens.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<usize>,
@@ -125,7 +123,6 @@ pub struct ModelProfile {
     pub video_outputs: Option<bool>,
 
     // --- Tool calling ---
-
     /// Whether the model supports tool calling.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calling: Option<bool>,
@@ -135,7 +132,6 @@ pub struct ModelProfile {
     pub tool_choice: Option<bool>,
 
     // --- Structured output ---
-
     /// Whether the model supports a native structured output feature.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub structured_output: Option<bool>,
@@ -145,8 +141,7 @@ pub struct ModelProfile {
 pub type ModelProfileRegistry = HashMap<String, ModelProfile>;
 
 /// Type alias for a chat model stream.
-pub type ChatStream =
-    Pin<Box<dyn Stream<Item = Result<ChatGenerationChunk>> + Send>>;
+pub type ChatStream = Pin<Box<dyn Stream<Item = Result<ChatGenerationChunk>> + Send>>;
 
 /// Trait for chat-based language models (messages in, AIMessage out).
 ///
@@ -155,21 +150,13 @@ pub type ChatStream =
 #[async_trait]
 pub trait BaseChatModel: Send + Sync {
     /// Core generation method. Implementors must override this.
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult>;
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult>;
 
     /// The model type identifier (e.g., "openai", "anthropic").
     fn llm_type(&self) -> &str;
 
     /// Optional streaming support.
-    async fn _stream(
-        &self,
-        _messages: &[Message],
-        _stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, _messages: &[Message], _stop: Option<&[String]>) -> Result<ChatStream> {
         Err(RustChainError::NotImplemented(
             "Streaming not supported for this chat model".into(),
         ))
@@ -183,9 +170,10 @@ pub trait BaseChatModel: Send + Sync {
         _tools: &[ToolSchema],
         _tool_choice: Option<ToolChoice>,
     ) -> Result<Box<dyn BaseChatModel>> {
-        Err(RustChainError::NotImplemented(
-            format!("{} does not support tool binding", self.llm_type()),
-        ))
+        Err(RustChainError::NotImplemented(format!(
+            "{} does not support tool binding",
+            self.llm_type()
+        )))
     }
 
     /// Get model capability profile.
@@ -196,10 +184,7 @@ pub trait BaseChatModel: Send + Sync {
     /// Get the number of tokens for the given messages.
     fn get_num_tokens_from_messages(&self, messages: &[Message]) -> usize {
         // Default rough estimate
-        messages
-            .iter()
-            .map(|m| m.content().text().len() / 4)
-            .sum()
+        messages.iter().map(|m| m.content().text().len() / 4).sum()
     }
 
     /// Bind a JSON schema for structured output.
@@ -298,8 +283,7 @@ impl Runnable for ChatModelRunnable {
         use futures::StreamExt;
         let mapped = chat_stream.map(|chunk_result| {
             chunk_result.and_then(|chunk| {
-                serde_json::to_value(&chunk)
-                    .map_err(|e| RustChainError::Other(e.to_string()))
+                serde_json::to_value(&chunk).map_err(|e| RustChainError::Other(e.to_string()))
             })
         });
         Ok(Box::pin(mapped))

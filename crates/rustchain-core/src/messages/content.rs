@@ -452,5 +452,8 @@ pub const KNOWN_BLOCK_TYPES: &[&str] = &[
 
 /// Check if a content block type string is a known data content block type.
 pub fn is_data_content_block_type(block_type: &str) -> bool {
-    matches!(block_type, "image" | "video" | "audio" | "text-plain" | "file")
+    matches!(
+        block_type,
+        "image" | "video" | "audio" | "text-plain" | "file"
+    )
 }

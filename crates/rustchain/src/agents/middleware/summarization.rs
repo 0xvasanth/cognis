@@ -175,9 +175,7 @@ impl AgentMiddleware for SummarizationMiddleware {
         // Generate summary using LLM if available, otherwise fallback
         let summary_text = if let Some(model) = &self.model {
             // Build messages for the summarization LLM call
-            let mut summarize_messages = vec![
-                Message::system(&self.config.summary_prompt),
-            ];
+            let mut summarize_messages = vec![Message::system(&self.config.summary_prompt)];
             // Include the conversation to summarize as a human message
             let conversation_text = self.fallback_summarize(to_summarize);
             summarize_messages.push(Message::human(format!(

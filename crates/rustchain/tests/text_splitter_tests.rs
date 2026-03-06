@@ -104,7 +104,8 @@ fn test_recursive_splitter_from_language() {
     let splitter = RecursiveCharacterTextSplitter::from_language(Language::Rust)
         .with_chunk_size(50)
         .with_chunk_overlap(0);
-    let code = "fn main() {\n    println!(\"hello\");\n}\n\nfn other() {\n    println!(\"world\");\n}";
+    let code =
+        "fn main() {\n    println!(\"hello\");\n}\n\nfn other() {\n    println!(\"world\");\n}";
     let chunks = splitter.split_text(code);
     assert!(chunks.len() >= 1);
 }
@@ -112,8 +113,12 @@ fn test_recursive_splitter_from_language() {
 #[test]
 fn test_language_separators_not_empty() {
     let langs = vec![
-        Language::Python, Language::JavaScript, Language::Rust,
-        Language::Go, Language::Java, Language::Markdown,
+        Language::Python,
+        Language::JavaScript,
+        Language::Rust,
+        Language::Go,
+        Language::Java,
+        Language::Markdown,
     ];
     for lang in langs {
         let seps = lang.get_separators();
@@ -158,10 +163,7 @@ fn test_token_splitter_overlap() {
 // Markdown header splitter tests
 #[test]
 fn test_markdown_header_splitter() {
-    let splitter = MarkdownHeaderTextSplitter::new(vec![
-        ("#", "Header 1"),
-        ("##", "Header 2"),
-    ]);
+    let splitter = MarkdownHeaderTextSplitter::new(vec![("#", "Header 1"), ("##", "Header 2")]);
     let text = "# Intro\nSome intro text.\n## Details\nDetail text here.\n## More\nMore text.";
     let docs = splitter.split_text(text);
     assert!(docs.len() >= 2);
@@ -181,10 +183,7 @@ fn test_markdown_text_splitter() {
 // HTML header splitter tests
 #[test]
 fn test_html_header_splitter() {
-    let splitter = HTMLHeaderTextSplitter::new(vec![
-        ("h1", "Header 1"),
-        ("h2", "Header 2"),
-    ]);
+    let splitter = HTMLHeaderTextSplitter::new(vec![("h1", "Header 1"), ("h2", "Header 2")]);
     let text = "<h1>Title</h1>\n<p>Intro text.</p>\n<h2>Section</h2>\n<p>Section text.</p>";
     let docs = splitter.split_text(text);
     assert!(docs.len() >= 1);

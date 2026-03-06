@@ -286,16 +286,11 @@ fn test_chat_prompt_template_partial() {
 
 #[tokio::test]
 async fn test_chat_prompt_template_runnable_invoke() {
-    let cpt = ChatPromptTemplate::from_messages(vec![
-        ("system", "Be concise."),
-        ("human", "{query}"),
-    ])
-    .unwrap();
+    let cpt =
+        ChatPromptTemplate::from_messages(vec![("system", "Be concise."), ("human", "{query}")])
+            .unwrap();
 
-    let result = cpt
-        .invoke(json!({"query": "Hello"}), None)
-        .await
-        .unwrap();
+    let result = cpt.invoke(json!({"query": "Hello"}), None).await.unwrap();
 
     let msgs: Vec<serde_json::Value> = serde_json::from_value(result).unwrap();
     assert_eq!(msgs.len(), 2);
@@ -303,10 +298,7 @@ async fn test_chat_prompt_template_runnable_invoke() {
 
 #[test]
 fn test_chat_prompt_template_append() {
-    let mut cpt = ChatPromptTemplate::from_messages(vec![
-        ("system", "You are helpful."),
-    ])
-    .unwrap();
+    let mut cpt = ChatPromptTemplate::from_messages(vec![("system", "You are helpful.")]).unwrap();
 
     cpt.append("human", "Ask about {topic}").unwrap();
     assert!(cpt.input_variables.contains(&"topic".to_string()));
@@ -483,8 +475,7 @@ async fn test_few_shot_chat_with_selector() {
     });
 
     let example_prompt = MessagePromptTemplate::from_role("human", "{text}").unwrap();
-    let fsct =
-        FewShotChatMessagePromptTemplate::with_example_selector(selector, example_prompt);
+    let fsct = FewShotChatMessagePromptTemplate::with_example_selector(selector, example_prompt);
 
     let kwargs = HashMap::new();
     let messages = fsct.format_messages_async(&kwargs).await.unwrap();
@@ -558,8 +549,7 @@ fn test_image_prompt_template_basic() {
 
 #[test]
 fn test_image_prompt_template_with_detail() {
-    let it = ImagePromptTemplate::new("https://img.com/{id}")
-        .with_detail("high");
+    let it = ImagePromptTemplate::new("https://img.com/{id}").with_detail("high");
     assert_eq!(it.detail, "high");
 
     let mut kwargs = HashMap::new();

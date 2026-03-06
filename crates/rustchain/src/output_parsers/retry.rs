@@ -118,10 +118,7 @@ impl RetryOutputParser {
         original_output: &str,
         last_error: &RustChainError,
     ) -> Result<String> {
-        let format_instructions = self
-            .parser
-            .get_format_instructions()
-            .unwrap_or_default();
+        let format_instructions = self.parser.get_format_instructions().unwrap_or_default();
 
         let system_msg = Message::System(SystemMessage::new(
             "You are a helpful assistant that corrects malformed output. \
@@ -145,7 +142,10 @@ impl RetryOutputParser {
         ));
 
         let user_msg = Message::Human(HumanMessage::new(&user_content));
-        let ai_msg = self.llm.invoke_messages(&[system_msg, user_msg], None).await?;
+        let ai_msg = self
+            .llm
+            .invoke_messages(&[system_msg, user_msg], None)
+            .await?;
         Ok(ai_msg.base.content.text())
     }
 }

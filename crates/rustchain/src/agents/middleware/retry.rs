@@ -113,8 +113,7 @@ impl RetryConfig {
             self.backoff_multiplier
         };
 
-        let base_ms = self.initial_delay_ms as f64
-            * effective_multiplier.powi(attempt as i32);
+        let base_ms = self.initial_delay_ms as f64 * effective_multiplier.powi(attempt as i32);
         let capped_ms = base_ms.min(self.max_delay_ms as f64);
 
         let final_ms = if self.jitter {
@@ -215,23 +214,40 @@ mod tests {
     #[test]
     fn test_should_retry_any_error() {
         let cond = RetryCondition::AnyError;
-        assert!(should_retry(&RustChainError::Other("timeout".into()), &cond));
-        assert!(should_retry(&RustChainError::ToolException("bad".into()), &cond));
+        assert!(should_retry(
+            &RustChainError::Other("timeout".into()),
+            &cond
+        ));
+        assert!(should_retry(
+            &RustChainError::ToolException("bad".into()),
+            &cond
+        ));
     }
 
     #[test]
     fn test_should_retry_error_contains() {
         let cond = RetryCondition::ErrorContains(vec!["timeout".into()]);
-        assert!(should_retry(&RustChainError::Other("connection timeout".into()), &cond));
-        assert!(!should_retry(&RustChainError::Other("bad input".into()), &cond));
+        assert!(should_retry(
+            &RustChainError::Other("connection timeout".into()),
+            &cond
+        ));
+        assert!(!should_retry(
+            &RustChainError::Other("bad input".into()),
+            &cond
+        ));
     }
 
     #[test]
     fn test_should_retry_custom() {
-        let cond = RetryCondition::Custom(Arc::new(|e| {
-            matches!(e, RustChainError::HttpError { .. })
-        }));
-        assert!(should_retry(&RustChainError::HttpError { status: 500, body: "err".into() }, &cond));
+        let cond =
+            RetryCondition::Custom(Arc::new(|e| matches!(e, RustChainError::HttpError { .. })));
+        assert!(should_retry(
+            &RustChainError::HttpError {
+                status: 500,
+                body: "err".into()
+            },
+            &cond
+        ));
         assert!(!should_retry(&RustChainError::Other("nope".into()), &cond));
     }
 

@@ -16,8 +16,8 @@ use langgraph::prebuilt::create_react_agent;
 use rustchain_core::language_models::FakeMessagesListChatModel;
 use rustchain_core::messages::tool_types::ToolCall;
 use rustchain_core::messages::{AIMessage, Message};
-use rustchain_core::tools::BaseTool;
 use rustchain_core::tools::types::{ToolInput, ToolOutput};
+use rustchain_core::tools::BaseTool;
 
 /// A simple lookup tool that returns a hardcoded answer.
 ///
@@ -39,23 +39,22 @@ impl BaseTool for LookupTool {
         // Extract the query from the tool input.
         let query = match &input {
             ToolInput::Text(s) => s.clone(),
-            ToolInput::Structured(map) => {
-                map.get("query")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string()
-            }
-            ToolInput::ToolCall(tc) => {
-                tc.args.get("query")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string()
-            }
+            ToolInput::Structured(map) => map
+                .get("query")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            ToolInput::ToolCall(tc) => tc
+                .args
+                .get("query")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
         };
         println!("  [LookupTool] Looking up: {query}");
-        Ok(ToolOutput::Content(serde_json::Value::String(
-            format!("The capital of France is Paris. It has a population of about 2.1 million.")
-        )))
+        Ok(ToolOutput::Content(serde_json::Value::String(format!(
+            "The capital of France is Paris. It has a population of about 2.1 million."
+        ))))
     }
 }
 
@@ -80,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let ai_final = AIMessage::new(
-        "The capital of France is Paris, with a population of about 2.1 million people."
+        "The capital of France is Paris, with a population of about 2.1 million people.",
     );
 
     let model = Arc::new(FakeMessagesListChatModel::new(vec![

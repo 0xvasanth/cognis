@@ -4,9 +4,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::error::{Result, RustChainError};
 use super::base::BaseTool;
 use super::types::{ErrorHandler, ResponseFormat, ToolInput, ToolOutput};
+use crate::error::{Result, RustChainError};
 
 /// A sync function that takes a single string and returns a string.
 type SimpleSyncFn = Arc<dyn Fn(&str) -> Result<String> + Send + Sync>;
@@ -280,7 +280,10 @@ mod tests {
             Ok(format!("echo: {}", input))
         });
 
-        let result = tool._run(ToolInput::Text("hello".to_string())).await.unwrap();
+        let result = tool
+            ._run(ToolInput::Text("hello".to_string()))
+            .await
+            .unwrap();
         match result {
             ToolOutput::Content(v) => assert_eq!(v, Value::String("echo: hello".to_string())),
             _ => panic!("Expected Content output"),
@@ -321,7 +324,10 @@ mod tests {
             Ok(format!("async: {}", input))
         });
 
-        let result = tool._run(ToolInput::Text("test".to_string())).await.unwrap();
+        let result = tool
+            ._run(ToolInput::Text("test".to_string()))
+            .await
+            .unwrap();
         match result {
             ToolOutput::Content(v) => assert_eq!(v, Value::String("async: test".to_string())),
             _ => panic!("Expected Content output"),
@@ -337,7 +343,10 @@ mod tests {
         assert_eq!(tool.name(), "greet");
         assert_eq!(tool.description(), "Greet someone");
 
-        let result = tool._run(ToolInput::Text("Alice".to_string())).await.unwrap();
+        let result = tool
+            ._run(ToolInput::Text("Alice".to_string()))
+            .await
+            .unwrap();
         match result {
             ToolOutput::Content(v) => assert_eq!(v, Value::String("Hello, Alice!".to_string())),
             _ => panic!("Expected Content output"),

@@ -1,7 +1,7 @@
 //! JSON Schema utilities for dereferencing $ref pointers.
 
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Dereference all $ref pointers in a JSON schema.
 /// Returns a new schema with all references resolved inline.
@@ -23,7 +23,11 @@ pub fn dereference_refs(schema: &Value) -> Value {
     result
 }
 
-fn dereference_helper(value: &Value, definitions: &HashMap<String, Value>, stack: &mut Vec<String>) -> Value {
+fn dereference_helper(
+    value: &Value,
+    definitions: &HashMap<String, Value>,
+    stack: &mut Vec<String>,
+) -> Value {
     match value {
         Value::Object(map) => {
             if let Some(ref_val) = map.get("$ref").and_then(|r| r.as_str()) {
@@ -56,9 +60,11 @@ fn dereference_helper(value: &Value, definitions: &HashMap<String, Value>, stack
             }
             Value::Object(new_map)
         }
-        Value::Array(arr) => {
-            Value::Array(arr.iter().map(|v| dereference_helper(v, definitions, stack)).collect())
-        }
+        Value::Array(arr) => Value::Array(
+            arr.iter()
+                .map(|v| dereference_helper(v, definitions, stack))
+                .collect(),
+        ),
         other => other.clone(),
     }
 }

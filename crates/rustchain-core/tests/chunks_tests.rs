@@ -1,6 +1,6 @@
 use rustchain_core::messages::{
     AIMessageChunk, ChatMessageChunk, FunctionMessageChunk, HumanMessageChunk, MessageChunkTrait,
-    RemoveMessage, SystemMessageChunk, ToolMessageChunk, UsageMetadata, ToolCallChunk,
+    RemoveMessage, SystemMessageChunk, ToolCallChunk, ToolMessageChunk, UsageMetadata,
 };
 
 #[test]

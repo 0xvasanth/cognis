@@ -12,8 +12,7 @@ pub struct FunctionMessage {
 impl FunctionMessage {
     pub fn new(name: impl Into<String>, content: impl Into<String>) -> Self {
         Self {
-            base: BaseMessageFields::new(MessageContent::Text(content.into()))
-                .with_name(name),
+            base: BaseMessageFields::new(MessageContent::Text(content.into())).with_name(name),
         }
     }
 }

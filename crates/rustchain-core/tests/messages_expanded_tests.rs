@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use serde_json::json;
 use rustchain_core::messages::*;
+use serde_json::json;
+use std::collections::HashMap;
 
 // --- Task 6: OpenAI messages ---
 #[test]
@@ -75,7 +75,7 @@ fn test_mixed_messages_to_openai() {
 fn test_count_tokens_approximately() {
     let msgs = vec![
         Message::Human(HumanMessage::new("Hello world")), // 11 chars
-        Message::Ai(AIMessage::new("Hi")),                 // 2 chars
+        Message::Ai(AIMessage::new("Hi")),                // 2 chars
     ];
     let tokens = count_tokens_approximately(&msgs, 4.0, 3.0);
     // (11/4 + 3) + (2/4 + 3) = 5.75 + 3.5 = 9.25 -> ceil = 10
@@ -151,9 +151,7 @@ fn test_default_tool_parser_string_args() {
 
 #[test]
 fn test_default_tool_chunk_parser() {
-    let raw = vec![
-        json!({"name": "search", "args": "{\"q\":\"rust\"}", "id": "tc_1", "index": 0}),
-    ];
+    let raw = vec![json!({"name": "search", "args": "{\"q\":\"rust\"}", "id": "tc_1", "index": 0})];
     let chunks = default_tool_chunk_parser(&raw);
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0].name, Some("search".into()));

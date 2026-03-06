@@ -54,7 +54,12 @@ impl TextSplitter for CharacterTextSplitter {
             .filter(|s| !s.is_empty())
             .collect();
 
-        merge_splits(&good_splits, &self.separator, self.chunk_size, self.chunk_overlap)
+        merge_splits(
+            &good_splits,
+            &self.separator,
+            self.chunk_size,
+            self.chunk_overlap,
+        )
     }
 
     fn chunk_size(&self) -> usize {

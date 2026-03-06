@@ -260,9 +260,7 @@ mod tests {
     #[test]
     fn test_all_at_once() {
         let mut ch = NamedBarrierValue::new("barrier", vec!["x", "y"]);
-        let changed = ch
-            .update(vec![Value::from("x"), Value::from("y")])
-            .unwrap();
+        let changed = ch.update(vec![Value::from("x"), Value::from("y")]).unwrap();
         assert!(changed);
         assert!(ch.is_complete());
     }

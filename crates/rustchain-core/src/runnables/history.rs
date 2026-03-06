@@ -164,10 +164,7 @@ impl Runnable for RunnableWithMessageHistory {
         // Build an enriched input that includes the loaded history.
         let mut enriched_input = input.clone();
         if let Value::Object(ref mut map) = enriched_input {
-            let history_key = self
-                .history_messages_key
-                .as_deref()
-                .unwrap_or("history");
+            let history_key = self.history_messages_key.as_deref().unwrap_or("history");
             let history_value = serde_json::to_value(&existing_messages)?;
             map.insert(history_key.to_string(), history_value);
         }

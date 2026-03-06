@@ -106,10 +106,7 @@ impl VectorStore for InMemoryVectorStore {
         metadatas: Option<&[HashMap<String, Value>]>,
         ids: Option<&[String]>,
     ) -> Result<Vec<String>> {
-        let embeddings_vec = self
-            .embeddings
-            .embed_documents(texts.to_vec())
-            .await?;
+        let embeddings_vec = self.embeddings.embed_documents(texts.to_vec()).await?;
 
         let mut entries = self.entries.write().await;
         let mut result_ids = Vec::with_capacity(texts.len());
@@ -147,10 +144,7 @@ impl VectorStore for InMemoryVectorStore {
         let metadatas: Vec<HashMap<String, Value>> =
             documents.iter().map(|d| d.metadata.clone()).collect();
         let id_refs: Option<Vec<String>> = ids.or_else(|| {
-            let doc_ids: Vec<String> = documents
-                .iter()
-                .filter_map(|d| d.id.clone())
-                .collect();
+            let doc_ids: Vec<String> = documents.iter().filter_map(|d| d.id.clone()).collect();
             if doc_ids.len() == documents.len() {
                 Some(doc_ids)
             } else {
@@ -158,8 +152,7 @@ impl VectorStore for InMemoryVectorStore {
             }
         });
         let id_slice_ref: Option<&[String]> = id_refs.as_deref();
-        self.add_texts(&texts, Some(&metadatas), id_slice_ref)
-            .await
+        self.add_texts(&texts, Some(&metadatas), id_slice_ref).await
     }
 
     async fn delete(&self, ids: Option<&[String]>) -> Result<bool> {
@@ -250,8 +243,12 @@ impl VectorStore for InMemoryVectorStore {
             .map(|&(idx, _)| entries[idx].embedding.iter().map(|&v| v as f64).collect())
             .collect();
 
-        let mmr_indices =
-            maximal_marginal_relevance(&query_emb_f64, &candidate_embeddings, lambda_mult as f64, k);
+        let mmr_indices = maximal_marginal_relevance(
+            &query_emb_f64,
+            &candidate_embeddings,
+            lambda_mult as f64,
+            k,
+        );
 
         let docs = mmr_indices
             .into_iter()
@@ -349,10 +346,7 @@ mod tests {
         let texts = vec!["a".into()];
         store.add_texts(&texts, None, None).await.unwrap();
 
-        let deleted = store
-            .delete(Some(&["nonexistent".into()]))
-            .await
-            .unwrap();
+        let deleted = store.delete(Some(&["nonexistent".into()])).await.unwrap();
         assert!(!deleted);
     }
 
@@ -379,10 +373,7 @@ mod tests {
         let texts = vec!["cat".into(), "dog".into(), "fish".into()];
         store.add_texts(&texts, None, None).await.unwrap();
 
-        let results = store
-            .similarity_search_with_score("cat", 3)
-            .await
-            .unwrap();
+        let results = store.similarity_search_with_score("cat", 3).await.unwrap();
         assert_eq!(results.len(), 3);
         // The first result should be "cat" itself with the highest score.
         assert_eq!(results[0].0.page_content, "cat");
@@ -439,10 +430,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_from_documents() {
-        let docs = vec![
-            Document::new("hello world"),
-            Document::new("goodbye world"),
-        ];
+        let docs = vec![Document::new("hello world"), Document::new("goodbye world")];
         let store = InMemoryVectorStore::from_documents(docs, make_embeddings())
             .await
             .unwrap();

@@ -7,7 +7,10 @@ fn get_buffer_string_basic() {
         Message::Ai(AIMessage::new("Rust is a systems programming language.")),
     ];
     let result = get_buffer_string(&messages, "Human", "AI");
-    assert_eq!(result, "Human: What is Rust?\nAI: Rust is a systems programming language.");
+    assert_eq!(
+        result,
+        "Human: What is Rust?\nAI: Rust is a systems programming language."
+    );
 }
 
 #[test]
@@ -102,18 +105,8 @@ fn filter_messages_exclude_type() {
 fn filter_messages_by_id() {
     let mut msg = HumanMessage::new("Hello");
     msg.base.id = Some("msg-1".into());
-    let messages = vec![
-        Message::Human(msg),
-        Message::Ai(AIMessage::new("Hi")),
-    ];
-    let filtered = filter_messages(
-        &messages,
-        None,
-        None,
-        None,
-        None,
-        Some(&["msg-1"]),
-    );
+    let messages = vec![Message::Human(msg), Message::Ai(AIMessage::new("Hi"))];
+    let filtered = filter_messages(&messages, None, None, None, None, Some(&["msg-1"]));
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].message_type(), MessageType::Ai);
 }
@@ -314,18 +307,8 @@ fn filter_messages_include_names() {
     msg1.base.name = Some("alice".into());
     let mut msg2 = HumanMessage::new("Goodbye");
     msg2.base.name = Some("bob".into());
-    let messages = vec![
-        Message::Human(msg1),
-        Message::Human(msg2),
-    ];
-    let filtered = filter_messages(
-        &messages,
-        Some(&["alice"]),
-        None,
-        None,
-        None,
-        None,
-    );
+    let messages = vec![Message::Human(msg1), Message::Human(msg2)];
+    let filtered = filter_messages(&messages, Some(&["alice"]), None, None, None, None);
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].content().text(), "Hello");
 }
@@ -336,18 +319,8 @@ fn filter_messages_exclude_names() {
     msg1.base.name = Some("alice".into());
     let mut msg2 = AIMessage::new("Response");
     msg2.base.name = Some("bot".into());
-    let messages = vec![
-        Message::Human(msg1),
-        Message::Ai(msg2),
-    ];
-    let filtered = filter_messages(
-        &messages,
-        None,
-        None,
-        Some(&["bot"]),
-        None,
-        None,
-    );
+    let messages = vec![Message::Human(msg1), Message::Ai(msg2)];
+    let filtered = filter_messages(&messages, None, None, Some(&["bot"]), None, None);
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].message_type(), MessageType::Human);
 }
@@ -367,14 +340,7 @@ fn filter_messages_exclude_tool_calls() {
         Message::Ai(AIMessage::new("It's sunny")),
     ];
     let filtered = filter_messages_full(
-        &messages,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        true, // exclude_tool_calls
+        &messages, None, None, None, None, None, None, true, // exclude_tool_calls
     );
     assert_eq!(filtered.len(), 2);
     assert_eq!(filtered[0].message_type(), MessageType::Human);
@@ -408,10 +374,7 @@ fn filter_messages_include_ids() {
     msg1.base.id = Some("msg-1".into());
     let mut msg2 = AIMessage::new("Hello");
     msg2.base.id = Some("msg-2".into());
-    let messages = vec![
-        Message::Human(msg1),
-        Message::Ai(msg2),
-    ];
+    let messages = vec![Message::Human(msg1), Message::Ai(msg2)];
     let filtered = filter_messages_full(
         &messages,
         None,
@@ -630,9 +593,9 @@ fn message_chunk_to_message_system_chunk() {
 #[test]
 fn message_chunk_to_message_tool_chunk() {
     let chunk = Message::ToolChunk(ToolMessageChunk {
-        base: rustchain_core::messages::BaseMessageFields::new(
-            MessageContent::Text("result".into()),
-        ),
+        base: rustchain_core::messages::BaseMessageFields::new(MessageContent::Text(
+            "result".into(),
+        )),
         tool_call_id: "tc-1".into(),
         tool_call_chunks: Vec::new(),
         artifact: None,
@@ -666,9 +629,9 @@ fn get_buffer_string_with_ai_tool_calls() {
         args: HashMap::new(),
         id: Some("call_1".into()),
     };
-    let messages = vec![
-        Message::Ai(AIMessage::new("Searching...").with_tool_calls(vec![tc])),
-    ];
+    let messages = vec![Message::Ai(
+        AIMessage::new("Searching...").with_tool_calls(vec![tc]),
+    )];
     let result = get_buffer_string(&messages, "Human", "AI");
     assert!(result.contains("AI: Searching..."));
     assert!(result.contains("search"));
@@ -676,9 +639,7 @@ fn get_buffer_string_with_ai_tool_calls() {
 
 #[test]
 fn get_buffer_string_chat_message() {
-    let messages = vec![
-        Message::Chat(ChatMessage::new("moderator", "Welcome")),
-    ];
+    let messages = vec![Message::Chat(ChatMessage::new("moderator", "Welcome"))];
     let result = get_buffer_string(&messages, "Human", "AI");
     assert_eq!(result, "moderator: Welcome");
 }

@@ -13,7 +13,8 @@ pub fn stringify_value(val: &serde_json::Value) -> String {
 
 /// Serialize a dict to a human-readable string.
 pub fn stringify_dict(dict: &std::collections::HashMap<String, serde_json::Value>) -> String {
-    let parts: Vec<String> = dict.iter()
+    let parts: Vec<String> = dict
+        .iter()
         .map(|(k, v)| format!("{}: {}", k, stringify_value(v)))
         .collect();
     parts.join(", ")

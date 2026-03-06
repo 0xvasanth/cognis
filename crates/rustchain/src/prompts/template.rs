@@ -119,10 +119,7 @@ fn extract_variables(template: &str) -> Vec<String> {
 }
 
 /// Render a template string by replacing `{var}` placeholders.
-fn format_template_str(
-    template: &str,
-    variables: &HashMap<String, String>,
-) -> Result<String> {
+fn format_template_str(template: &str, variables: &HashMap<String, String>) -> Result<String> {
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
 
@@ -182,8 +179,8 @@ mod tests {
 
     #[test]
     fn test_partial_variables() {
-        let t = PromptTemplate::new("Hello {name}, welcome to {place}!")
-            .with_partial("place", "Rust");
+        let t =
+            PromptTemplate::new("Hello {name}, welcome to {place}!").with_partial("place", "Rust");
 
         assert_eq!(t.input_variables(), vec!["name"]);
 
@@ -214,10 +211,7 @@ mod tests {
     #[tokio::test]
     async fn test_runnable_invoke_non_string_values() {
         let t = PromptTemplate::new("Count: {n}");
-        let result = t
-            .invoke(serde_json::json!({"n": 42}), None)
-            .await
-            .unwrap();
+        let result = t.invoke(serde_json::json!({"n": 42}), None).await.unwrap();
         assert_eq!(result, Value::String("Count: 42".into()));
     }
 }

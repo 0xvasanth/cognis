@@ -278,10 +278,7 @@ impl Evaluator for LLMJudge {
             .with_reasoning(format!("LLM rated {} out of {}", raw_score, self.scale))
             .with_metadata("raw_score".to_string(), serde_json::json!(raw_score))
             .with_metadata("scale".to_string(), serde_json::json!(self.scale))
-            .with_metadata(
-                "llm_response".to_string(),
-                serde_json::json!(response_text),
-            ))
+            .with_metadata("llm_response".to_string(), serde_json::json!(response_text)))
     }
 
     fn name(&self) -> &str {
@@ -292,11 +289,7 @@ impl Evaluator for LLMJudge {
 /// Parse the first floating-point number from a string.
 fn parse_score(text: &str) -> Option<f64> {
     let re = regex::Regex::new(r"(\d+(?:\.\d+)?)").ok()?;
-    re.captures(text)?
-        .get(1)?
-        .as_str()
-        .parse::<f64>()
-        .ok()
+    re.captures(text)?.get(1)?.as_str().parse::<f64>().ok()
 }
 
 // ─── CriteriaEvaluator ───
@@ -370,8 +363,7 @@ impl Evaluator for CriteriaEvaluator {
             total / self.criteria.len() as f64
         };
 
-        let criteria_breakdown: Value = serde_json::to_value(&scores)
-            .unwrap_or(Value::Null);
+        let criteria_breakdown: Value = serde_json::to_value(&scores).unwrap_or(Value::Null);
 
         Ok(EvalResult::new(avg)
             .with_reasoning(format!(
@@ -380,10 +372,7 @@ impl Evaluator for CriteriaEvaluator {
                 avg
             ))
             .with_metadata("criteria_scores".to_string(), criteria_breakdown)
-            .with_metadata(
-                "criteria".to_string(),
-                serde_json::json!(self.criteria),
-            ))
+            .with_metadata("criteria".to_string(), serde_json::json!(self.criteria)))
     }
 
     fn name(&self) -> &str {
@@ -510,10 +499,7 @@ impl BatchEvaluator {
     }
 
     /// Evaluate all examples in the dataset and produce a report.
-    pub async fn evaluate_dataset(
-        &self,
-        dataset: &EvaluationDataset,
-    ) -> Result<EvaluationReport> {
+    pub async fn evaluate_dataset(&self, dataset: &EvaluationDataset) -> Result<EvaluationReport> {
         let mut results = Vec::with_capacity(dataset.examples.len());
 
         for example in &dataset.examples {
@@ -630,11 +616,7 @@ mod tests {
     async fn test_contains_evaluator() {
         let eval = ContainsEvaluator::new();
         let result = eval
-            .evaluate(
-                "question",
-                "The capital of France is Paris.",
-                Some("Paris"),
-            )
+            .evaluate("question", "The capital of France is Paris.", Some("Paris"))
             .await
             .unwrap();
         assert!((result.score - 1.0).abs() < f64::EPSILON);
@@ -786,10 +768,7 @@ mod tests {
             .prompt_template("Score the output: {output}. Scale: 0-{scale}.")
             .scale(5.0)
             .build();
-        let result = judge
-            .evaluate("input", "output text", None)
-            .await
-            .unwrap();
+        let result = judge.evaluate("input", "output text", None).await.unwrap();
         // 5/5 = 1.0
         assert!((result.score - 1.0).abs() < f64::EPSILON);
     }
@@ -859,9 +838,7 @@ mod tests {
     #[tokio::test]
     async fn test_llm_judge_scale_normalization() {
         let model = Arc::new(FakeListChatModel::new(vec!["50".to_string()]));
-        let judge = LLMJudge::builder(model)
-            .scale(100.0)
-            .build();
+        let judge = LLMJudge::builder(model).scale(100.0).build();
         let result = judge
             .evaluate("input", "output", Some("ref"))
             .await

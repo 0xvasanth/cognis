@@ -191,11 +191,7 @@ impl CircuitBreakerChatModel {
 
 #[async_trait]
 impl BaseChatModel for CircuitBreakerChatModel {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         // We need to capture references for the closure
         let inner = &self.inner;
         self.breaker
@@ -207,11 +203,7 @@ impl BaseChatModel for CircuitBreakerChatModel {
         self.inner.llm_type()
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         let inner = &self.inner;
         self.breaker
             .call(|| async move { inner._stream(messages, stop).await })

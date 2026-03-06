@@ -81,7 +81,10 @@ impl MessageContent {
                 for block in b {
                     // Try to merge adjacent text blocks
                     if let ContentBlock::Text { text, .. } = block {
-                        if let Some(ContentBlock::Text { text: last_text, .. }) = merged.last_mut() {
+                        if let Some(ContentBlock::Text {
+                            text: last_text, ..
+                        }) = merged.last_mut()
+                        {
                             last_text.push_str(text);
                             continue;
                         }
@@ -95,7 +98,10 @@ impl MessageContent {
                     return Self::Blocks(a.clone());
                 }
                 let mut merged = a.clone();
-                if let Some(ContentBlock::Text { text: last_text, .. }) = merged.last_mut() {
+                if let Some(ContentBlock::Text {
+                    text: last_text, ..
+                }) = merged.last_mut()
+                {
                     last_text.push_str(b);
                 } else {
                     merged.push(ContentBlock::text_only(b.clone()));

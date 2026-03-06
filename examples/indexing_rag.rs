@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use rustchain::chains::RetrievalQAChain;
-use rustchain::indexing::{CleanupMode, IndexingPipeline, InMemoryRecordManager};
+use rustchain::indexing::{CleanupMode, InMemoryRecordManager, IndexingPipeline};
 use rustchain::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
 use rustchain_core::documents::Document;
 use rustchain_core::embeddings::Embeddings;
@@ -98,7 +98,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("  Indexing {} documents...", initial_docs.len());
     let result1 = pipeline.index(initial_docs).await?;
-    println!("  Result: added={}, skipped={}, deleted={}",
+    println!(
+        "  Result: added={}, skipped={}, deleted={}",
         result1.num_added, result1.num_skipped, result1.num_deleted
     );
 
@@ -118,7 +119,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let result2 = pipeline.index(same_docs).await?;
-    println!("  Result: added={}, skipped={}, deleted={}",
+    println!(
+        "  Result: added={}, skipped={}, deleted={}",
         result2.num_added, result2.num_skipped, result2.num_deleted
     );
     println!("  (All documents were skipped because content is unchanged)\n");
@@ -136,7 +138,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let result3 = pipeline.index(updated_docs).await?;
-    println!("  Result: added={}, skipped={}, deleted={}",
+    println!(
+        "  Result: added={}, skipped={}, deleted={}",
         result3.num_added, result3.num_skipped, result3.num_deleted
     );
     println!("  (Cargo chunks added, Rust/Tokio skipped, Serde chunks deleted)\n");
@@ -197,7 +200,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  Q: {query}");
         let answer = qa_chain.call_with_sources(query).await?;
         println!("  A: {}", answer.answer);
-        println!("  Sources: {} document(s) retrieved", answer.source_documents.len());
+        println!(
+            "  Sources: {} document(s) retrieved",
+            answer.source_documents.len()
+        );
         for (i, doc) in answer.source_documents.iter().enumerate() {
             let preview = doc.page_content.replace('\n', " ");
             let preview = if preview.len() > 60 {

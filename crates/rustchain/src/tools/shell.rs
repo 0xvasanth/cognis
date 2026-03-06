@@ -59,8 +59,7 @@ impl BaseTool for ShellTool {
         if let Some(ref allowed) = self.allowed_commands {
             let cmd_trimmed = command.trim();
             let is_allowed = allowed.iter().any(|prefix| {
-                cmd_trimmed == prefix.as_str()
-                    || cmd_trimmed.starts_with(&format!("{} ", prefix))
+                cmd_trimmed == prefix.as_str() || cmd_trimmed.starts_with(&format!("{} ", prefix))
             });
             if !is_allowed {
                 return Err(RustChainError::ToolException(format!(
@@ -84,7 +83,9 @@ impl BaseTool for ShellTool {
                     self.timeout_secs
                 ))
             })?
-            .map_err(|e| RustChainError::ToolException(format!("Failed to execute command: {e}")))?;
+            .map_err(|e| {
+                RustChainError::ToolException(format!("Failed to execute command: {e}"))
+            })?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -134,9 +135,12 @@ mod tests {
     async fn test_shell_echo() {
         let tool = ShellTool::default();
         let input = ToolInput::Structured(
-            [("command".to_string(), Value::String("echo hello".to_string()))]
-                .into_iter()
-                .collect(),
+            [(
+                "command".to_string(),
+                Value::String("echo hello".to_string()),
+            )]
+            .into_iter()
+            .collect(),
         );
         let result = tool._run(input).await.unwrap();
         match result {
@@ -154,9 +158,12 @@ mod tests {
 
         // Allowed command should succeed
         let input = ToolInput::Structured(
-            [("command".to_string(), Value::String("echo hello".to_string()))]
-                .into_iter()
-                .collect(),
+            [(
+                "command".to_string(),
+                Value::String("echo hello".to_string()),
+            )]
+            .into_iter()
+            .collect(),
         );
         let result = tool._run(input).await;
         assert!(result.is_ok());

@@ -46,15 +46,15 @@ pub mod chat_models;
 pub mod document_loaders;
 pub mod document_transformers;
 pub mod embeddings;
+pub mod evaluation;
+pub mod indexing;
 pub mod memory;
 pub mod output_parsers;
 pub mod prompts;
 pub mod retrievers;
 pub mod text_splitter;
-pub mod indexing;
 pub mod tools;
 pub mod vectorstores;
-pub mod evaluation;
 
 // Re-export core for convenience
 pub use rustchain_core as core;

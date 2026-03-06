@@ -9,7 +9,7 @@ use crate::documents::Document;
 use crate::embeddings::Embeddings;
 use crate::error::Result;
 
-use super::base::{cosine_similarity, VectorStore, VectorStoreRetriever, SearchType};
+use super::base::{cosine_similarity, SearchType, VectorStore, VectorStoreRetriever};
 use super::utils::maximal_marginal_relevance;
 
 /// An entry stored in the in-memory vector store.
@@ -198,7 +198,10 @@ impl VectorStore for InMemoryVectorStore {
         let results = self
             .similarity_search_by_vector_with_score(&query_vec, k)
             .await?;
-        Ok(results.into_iter().map(|(doc, score, _)| (doc, score)).collect())
+        Ok(results
+            .into_iter()
+            .map(|(doc, score, _)| (doc, score))
+            .collect())
     }
 
     async fn similarity_search_by_vector(
@@ -237,12 +240,8 @@ impl VectorStore for InMemoryVectorStore {
             .map(|(_, _, vec)| vec.iter().map(|&x| x as f64).collect())
             .collect();
 
-        let selected_indices = maximal_marginal_relevance(
-            &query_f64,
-            &candidate_embeddings,
-            lambda_mult as f64,
-            k,
-        );
+        let selected_indices =
+            maximal_marginal_relevance(&query_f64, &candidate_embeddings, lambda_mult as f64, k);
 
         Ok(selected_indices
             .into_iter()
@@ -374,10 +373,7 @@ mod tests {
         store.add_documents(docs, None).await.unwrap();
 
         // Text-based search embeds the query and searches.
-        let results = store
-            .similarity_search("programming", 2)
-            .await
-            .unwrap();
+        let results = store.similarity_search("programming", 2).await.unwrap();
         assert_eq!(results.len(), 2);
     }
 
@@ -416,20 +412,14 @@ mod tests {
 
         // Create a retriever with k=2.
         let retriever = store.as_retriever_with(SearchType::Similarity, 2);
-        let results = retriever
-            .get_relevant_documents("document")
-            .await
-            .unwrap();
+        let results = retriever.get_relevant_documents("document").await.unwrap();
         assert_eq!(results.len(), 2);
     }
 
     #[tokio::test]
     async fn test_from_texts() {
         let emb = make_embedding();
-        let texts = vec![
-            "hello".to_string(),
-            "world".to_string(),
-        ];
+        let texts = vec!["hello".to_string(), "world".to_string()];
         let store = InMemoryVectorStore::from_texts(texts, emb, None)
             .await
             .unwrap();

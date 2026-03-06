@@ -143,11 +143,9 @@ impl Runnable for RunnableBatch {
     async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
         let items = input
             .as_array()
-            .ok_or_else(|| {
-                RustChainError::TypeMismatch {
-                    expected: "Array".into(),
-                    got: format!("{}", input_type_name(&input)),
-                }
+            .ok_or_else(|| RustChainError::TypeMismatch {
+                expected: "Array".into(),
+                got: format!("{}", input_type_name(&input)),
             })?
             .clone();
 
@@ -203,11 +201,9 @@ mod tests {
     /// Helper: creates a RunnableLambda that doubles an integer input.
     fn doubler() -> RunnableLambda {
         RunnableLambda::new("doubler", |v: Value| async move {
-            let n = v.as_i64().ok_or_else(|| {
-                RustChainError::TypeMismatch {
-                    expected: "integer".into(),
-                    got: format!("{v}"),
-                }
+            let n = v.as_i64().ok_or_else(|| RustChainError::TypeMismatch {
+                expected: "integer".into(),
+                got: format!("{v}"),
             })?;
             Ok(json!(n * 2))
         })
@@ -349,12 +345,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_batch_invoke_with_config() {
-        let runnable = RunnableLambda::with_config("config_reader", |v, config: Option<RunnableConfig>| async move {
-            let tag = config
-                .and_then(|c| c.tags.first().cloned())
-                .unwrap_or_else(|| "none".to_string());
-            Ok(json!({"value": v, "tag": tag}))
-        });
+        let runnable = RunnableLambda::with_config(
+            "config_reader",
+            |v, config: Option<RunnableConfig>| async move {
+                let tag = config
+                    .and_then(|c| c.tags.first().cloned())
+                    .unwrap_or_else(|| "none".to_string());
+                Ok(json!({"value": v, "tag": tag}))
+            },
+        );
 
         let mut config = RunnableConfig::default();
         config.tags = vec!["test_tag".to_string()];

@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use crate::runnables::base::Runnable;
 use super::base::BaseTool;
 use super::simple::SimpleTool;
 use super::structured::StructuredTool;
+use crate::runnables::base::Runnable;
 
 /// Convert a single tool to OpenAI function-calling format.
 pub fn convert_to_openai_tool(tool: &dyn BaseTool) -> Value {
@@ -77,20 +77,16 @@ pub fn convert_runnable_to_tool(
         let runnable_clone = Arc::clone(&runnable);
         // SimpleTool uses a sync function; we block on the async invoke.
         // For true async usage, callers should use the async variant or StructuredTool.
-        let simple = SimpleTool::new_async(
-            tool_name,
-            tool_description,
-            move |input: String| {
-                let r = Arc::clone(&runnable_clone);
-                async move {
-                    let result = r.invoke(Value::String(input), None).await?;
-                    match result {
-                        Value::String(s) => Ok(s),
-                        other => Ok(other.to_string()),
-                    }
+        let simple = SimpleTool::new_async(tool_name, tool_description, move |input: String| {
+            let r = Arc::clone(&runnable_clone);
+            async move {
+                let result = r.invoke(Value::String(input), None).await?;
+                match result {
+                    Value::String(s) => Ok(s),
+                    other => Ok(other.to_string()),
                 }
-            },
-        );
+            }
+        });
         Box::new(simple)
     } else {
         // Wrap as a StructuredTool for object input.
@@ -101,20 +97,15 @@ pub fn convert_runnable_to_tool(
             })
         });
         let runnable_clone = Arc::clone(&runnable);
-        let structured = StructuredTool::new(
-            tool_name,
-            tool_description,
-            tool_schema,
-            move |args| {
+        let structured =
+            StructuredTool::new(tool_name, tool_description, tool_schema, move |args| {
                 let r = Arc::clone(&runnable_clone);
                 async move {
-                    let input = Value::Object(
-                        args.into_iter().collect::<serde_json::Map<String, Value>>(),
-                    );
+                    let input =
+                        Value::Object(args.into_iter().collect::<serde_json::Map<String, Value>>());
                     r.invoke(input, None).await
                 }
-            },
-        );
+            });
         Box::new(structured)
     }
 }
@@ -122,8 +113,8 @@ pub fn convert_runnable_to_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runnables::config::RunnableConfig;
     use crate::error::Result;
+    use crate::runnables::config::RunnableConfig;
     use async_trait::async_trait;
     use serde_json::json;
 
@@ -181,13 +172,17 @@ mod tests {
     #[tokio::test]
     async fn test_convert_runnable_to_simple_tool() {
         let runnable = Arc::new(EchoRunnable);
-        let tool = convert_runnable_to_tool(runnable, Some("echo_tool"), Some("Echoes input"), None);
+        let tool =
+            convert_runnable_to_tool(runnable, Some("echo_tool"), Some("Echoes input"), None);
 
         assert_eq!(tool.name(), "echo_tool");
         assert_eq!(tool.description(), "Echoes input");
 
         use crate::tools::types::ToolInput;
-        let result = tool._run(ToolInput::Text("hello".to_string())).await.unwrap();
+        let result = tool
+            ._run(ToolInput::Text("hello".to_string()))
+            .await
+            .unwrap();
         match result {
             crate::tools::types::ToolOutput::Content(v) => {
                 assert_eq!(v, Value::String("hello".to_string()));
@@ -207,7 +202,12 @@ mod tests {
             },
             "required": ["a", "b"]
         });
-        let tool = convert_runnable_to_tool(runnable, Some("add_tool"), Some("Add numbers"), Some(schema));
+        let tool = convert_runnable_to_tool(
+            runnable,
+            Some("add_tool"),
+            Some("Add numbers"),
+            Some(schema),
+        );
 
         assert_eq!(tool.name(), "add_tool");
 

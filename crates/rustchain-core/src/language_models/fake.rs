@@ -6,9 +6,7 @@ use futures::stream;
 
 use crate::error::{Result, RustChainError};
 use crate::messages::{AIMessage, AIMessageChunk, Message};
-use crate::outputs::{
-    ChatGeneration, ChatGenerationChunk, ChatResult, Generation, LLMResult,
-};
+use crate::outputs::{ChatGeneration, ChatGenerationChunk, ChatResult, Generation, LLMResult};
 
 use super::base::BaseLanguageModel;
 use super::chat_model::{BaseChatModel, ChatStream};
@@ -64,11 +62,7 @@ impl BaseLanguageModel for FakeListLLM {
 
 #[async_trait]
 impl BaseLLM for FakeListLLM {
-    async fn _generate(
-        &self,
-        prompts: &[String],
-        _stop: Option<&[String]>,
-    ) -> Result<LLMResult> {
+    async fn _generate(&self, prompts: &[String], _stop: Option<&[String]>) -> Result<LLMResult> {
         if let Some(ms) = self.sleep_ms {
             tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
         }
@@ -149,11 +143,7 @@ impl BaseLanguageModel for FakeStreamingListLLM {
 
 #[async_trait]
 impl BaseLLM for FakeStreamingListLLM {
-    async fn _generate(
-        &self,
-        prompts: &[String],
-        _stop: Option<&[String]>,
-    ) -> Result<LLMResult> {
+    async fn _generate(&self, prompts: &[String], _stop: Option<&[String]>) -> Result<LLMResult> {
         if let Some(ms) = self.sleep_ms {
             tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
         }
@@ -247,22 +237,14 @@ impl BaseChatModel for FakeListChatModel {
         "fake_list_chat_model"
     }
 
-    async fn _stream(
-        &self,
-        _messages: &[Message],
-        _stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, _messages: &[Message], _stop: Option<&[String]>) -> Result<ChatStream> {
         if let Some(ms) = self.sleep_ms {
             tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
         }
         let response = self.next_response();
         let chunks: Vec<Result<ChatGenerationChunk>> = response
             .chars()
-            .map(|c| {
-                Ok(ChatGenerationChunk::new(AIMessageChunk::new(
-                    c.to_string(),
-                )))
-            })
+            .map(|c| Ok(ChatGenerationChunk::new(AIMessageChunk::new(c.to_string()))))
             .collect();
         Ok(Box::pin(stream::iter(chunks)))
     }
@@ -464,11 +446,7 @@ impl BaseChatModel for GenericFakeChatModel {
     ///
     /// Uses a regex-style split that preserves whitespace tokens as separate
     /// chunks (e.g. `"hello world"` becomes `["hello", " ", "world"]`).
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         let result = self._generate(messages, stop).await?;
         let message = result
             .generations
@@ -483,9 +461,7 @@ impl BaseChatModel for GenericFakeChatModel {
         } else {
             split_preserving_whitespace(&content)
                 .into_iter()
-                .map(|token| {
-                    Ok(ChatGenerationChunk::new(AIMessageChunk::new(token)))
-                })
+                .map(|token| Ok(ChatGenerationChunk::new(AIMessageChunk::new(token))))
                 .collect()
         };
 
@@ -564,15 +540,23 @@ mod tests {
         let stream = llm._stream("prompt", None).await.unwrap();
         let chunks: Vec<_> = stream.collect::<Vec<_>>().await;
         assert_eq!(chunks.len(), 3);
-        assert_eq!(chunks[0].as_ref().unwrap(), &serde_json::Value::String("a".into()));
-        assert_eq!(chunks[1].as_ref().unwrap(), &serde_json::Value::String("b".into()));
-        assert_eq!(chunks[2].as_ref().unwrap(), &serde_json::Value::String("c".into()));
+        assert_eq!(
+            chunks[0].as_ref().unwrap(),
+            &serde_json::Value::String("a".into())
+        );
+        assert_eq!(
+            chunks[1].as_ref().unwrap(),
+            &serde_json::Value::String("b".into())
+        );
+        assert_eq!(
+            chunks[2].as_ref().unwrap(),
+            &serde_json::Value::String("c".into())
+        );
     }
 
     #[tokio::test]
     async fn test_fake_streaming_llm_error_on_chunk() {
-        let llm = FakeStreamingListLLM::new(vec!["abc".into()])
-            .with_error_on_chunk(1);
+        let llm = FakeStreamingListLLM::new(vec!["abc".into()]).with_error_on_chunk(1);
         let stream = llm._stream("prompt", None).await.unwrap();
         let chunks: Vec<_> = stream.collect::<Vec<_>>().await;
         assert!(chunks[0].is_ok());
@@ -720,10 +704,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generic_fake_from_strings() {
-        let model = GenericFakeChatModel::from_strings(vec![
-            "alpha".into(),
-            "beta".into(),
-        ]);
+        let model = GenericFakeChatModel::from_strings(vec!["alpha".into(), "beta".into()]);
         let msgs = vec![human("go")];
         let r1 = model._generate(&msgs, None).await.unwrap();
         assert_eq!(r1.generations[0].message.content().text(), "alpha");
@@ -743,8 +724,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generic_fake_stream_splits_on_whitespace() {
-        let model =
-            GenericFakeChatModel::from_messages(vec![AIMessage::new("hello world foo")]);
+        let model = GenericFakeChatModel::from_messages(vec![AIMessage::new("hello world foo")]);
         let msgs = vec![human("go")];
         let stream = model._stream(&msgs, None).await.unwrap();
         let chunks: Vec<_> = stream.collect().await;
@@ -772,7 +752,10 @@ mod tests {
         let stream = model._stream(&msgs, None).await.unwrap();
         let chunks: Vec<_> = stream.collect().await;
         assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0].as_ref().unwrap().message.base.content.text(), "hello");
+        assert_eq!(
+            chunks[0].as_ref().unwrap().message.base.content.text(),
+            "hello"
+        );
     }
 
     #[tokio::test]

@@ -354,8 +354,8 @@ impl StateGraph {
         output_mapping: HashMap<String, String>,
     ) -> Self {
         use super::subgraph::SubgraphNode;
-        let action = SubgraphNode::with_mapping(subgraph, input_mapping, output_mapping)
-            .into_action();
+        let action =
+            SubgraphNode::with_mapping(subgraph, input_mapping, output_mapping).into_action();
         self.add_node(name, action)
     }
 
@@ -2391,20 +2391,14 @@ mod tests {
     async fn test_subgraph_in_conditional_branch() {
         // Build two subgraphs for different branches.
         let left_sub = StateGraph::new()
-            .add_node(
-                "left_inner",
-                make_action("path", json!("left_subgraph")),
-            )
+            .add_node("left_inner", make_action("path", json!("left_subgraph")))
             .set_entry_point("left_inner")
             .set_finish_point("left_inner")
             .compile()
             .unwrap();
 
         let right_sub = StateGraph::new()
-            .add_node(
-                "right_inner",
-                make_action("path", json!("right_subgraph")),
-            )
+            .add_node("right_inner", make_action("path", json!("right_subgraph")))
             .set_entry_point("right_inner")
             .set_finish_point("right_inner")
             .compile()
@@ -3024,7 +3018,10 @@ mod mermaid_tests {
             .add_node("beta", make_action("result", json!("beta_done")))
             .set_conditional_entry_point(
                 Arc::new(|state: &Value| {
-                    let mode = state.get("mode").and_then(|v| v.as_str()).unwrap_or("alpha");
+                    let mode = state
+                        .get("mode")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("alpha");
                     super::super::branch::RouterResult::Single(mode.to_string())
                 }),
                 None,
@@ -3054,7 +3051,10 @@ mod mermaid_tests {
             .add_node("fallback", make_action("result", json!("default")))
             .set_conditional_entry_point(
                 Arc::new(|state: &Value| {
-                    let mode = state.get("mode").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    let mode = state
+                        .get("mode")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
                     super::super::branch::RouterResult::Single(mode.to_string())
                 }),
                 Some(path_map),
@@ -3163,7 +3163,10 @@ mod mermaid_tests {
             .add_node("handler_two", make_action("handled_by", json!("two")))
             .set_conditional_entry_point(
                 Arc::new(|state: &Value| {
-                    let route = state.get("route").and_then(|v| v.as_str()).unwrap_or("route-one");
+                    let route = state
+                        .get("route")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("route-one");
                     super::super::branch::RouterResult::Single(route.to_string())
                 }),
                 Some(path_map),

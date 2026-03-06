@@ -173,10 +173,7 @@ mod tests {
             .build();
 
         // First turn
-        let r1 = chain
-            .invoke(json!({"input": "Hello"}), None)
-            .await
-            .unwrap();
+        let r1 = chain.invoke(json!({"input": "Hello"}), None).await.unwrap();
         assert_eq!(r1["response"], "First reply");
         assert_eq!(r1["history"].as_array().unwrap().len(), 2);
 
@@ -197,10 +194,7 @@ mod tests {
             .build();
 
         // First turn
-        chain
-            .invoke(json!({"input": "Hello"}), None)
-            .await
-            .unwrap();
+        chain.invoke(json!({"input": "Hello"}), None).await.unwrap();
 
         // Clear
         chain.clear_history().await;

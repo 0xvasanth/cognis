@@ -197,10 +197,7 @@ mod tests {
         // The subgraph expects "input_val" and produces "output_val".
         let inner_action: AsyncNodeAction = Arc::new(|state: Value| {
             Box::pin(async move {
-                let val = state
-                    .get("input_val")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                let val = state.get("input_val").and_then(|v| v.as_i64()).unwrap_or(0);
                 Ok(json!({ "output_val": val + 100 }))
             })
         });
@@ -397,10 +394,7 @@ mod tests {
     async fn test_add_subgraph_with_mapping_convenience() {
         let inner_action: AsyncNodeAction = Arc::new(|state: Value| {
             Box::pin(async move {
-                let val = state
-                    .get("sub_input")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                let val = state.get("sub_input").and_then(|v| v.as_i64()).unwrap_or(0);
                 Ok(json!({ "sub_output": val + 50 }))
             })
         });
@@ -420,10 +414,7 @@ mod tests {
             .compile()
             .unwrap();
 
-        let result = outer
-            .invoke(json!({ "parent_val": 25 }))
-            .await
-            .unwrap();
+        let result = outer.invoke(json!({ "parent_val": 25 })).await.unwrap();
 
         assert_eq!(result["parent_result"], 75);
         assert_eq!(result["parent_val"], 25);

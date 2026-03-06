@@ -173,8 +173,12 @@ fn merge_artifact(left: Option<Value>, right: Option<Value>) -> Option<Value> {
     match (left, right) {
         (None, r) => r,
         (l, None) => l,
-        (Some(Value::String(l)), Some(Value::String(r))) => Some(Value::String(format!("{}{}", l, r))),
-        (Some(l @ Value::Object(_)), Some(r @ Value::Object(_))) => Some(merge_dicts(&l, &[&r]).unwrap_or(l)),
+        (Some(Value::String(l)), Some(Value::String(r))) => {
+            Some(Value::String(format!("{}{}", l, r)))
+        }
+        (Some(l @ Value::Object(_)), Some(r @ Value::Object(_))) => {
+            Some(merge_dicts(&l, &[&r]).unwrap_or(l))
+        }
         (Some(Value::Array(mut l)), Some(Value::Array(r))) => {
             l.extend(r);
             Some(Value::Array(l))

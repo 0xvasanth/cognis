@@ -143,7 +143,11 @@ struct MockCompressor;
 
 #[async_trait]
 impl BaseDocumentCompressor for MockCompressor {
-    async fn compress_documents(&self, documents: &[Document], query: &str) -> Result<Vec<Document>> {
+    async fn compress_documents(
+        &self,
+        documents: &[Document],
+        query: &str,
+    ) -> Result<Vec<Document>> {
         Ok(documents
             .iter()
             .filter(|d| d.page_content.contains(query))
@@ -190,7 +194,10 @@ async fn document_transformer_uppercases() {
 #[tokio::test]
 async fn document_compressor_empty_input() {
     let compressor = MockCompressor;
-    let result = compressor.compress_documents(&[], "anything").await.unwrap();
+    let result = compressor
+        .compress_documents(&[], "anything")
+        .await
+        .unwrap();
     assert!(result.is_empty());
 }
 
@@ -251,10 +258,7 @@ async fn scoring_compressor_with_threshold() {
         Document::new("python"),
     ];
     let compressor = ScoringCompressor { threshold: 2 };
-    let result = compressor
-        .compress_documents(&docs, "rust")
-        .await
-        .unwrap();
+    let result = compressor.compress_documents(&docs, "rust").await.unwrap();
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].page_content, "rust rust rust");
 }

@@ -56,10 +56,7 @@ pub struct MultiVectorRetriever {
 
 impl MultiVectorRetriever {
     /// Create a new `MultiVectorRetriever`.
-    pub fn new(
-        vectorstore: Arc<dyn VectorStore>,
-        docstore: Arc<InMemoryDocStore>,
-    ) -> Self {
+    pub fn new(vectorstore: Arc<dyn VectorStore>, docstore: Arc<InMemoryDocStore>) -> Self {
         Self {
             vectorstore,
             docstore,
@@ -89,11 +86,7 @@ impl MultiVectorRetriever {
     /// # Panics
     ///
     /// Panics if `docs.len() != summaries.len()`.
-    pub async fn add_documents(
-        &self,
-        docs: Vec<Document>,
-        summaries: Vec<Document>,
-    ) -> Result<()> {
+    pub async fn add_documents(&self, docs: Vec<Document>, summaries: Vec<Document>) -> Result<()> {
         assert_eq!(
             docs.len(),
             summaries.len(),
@@ -107,15 +100,12 @@ impl MultiVectorRetriever {
             self.docstore.add(&doc_id, doc).await;
 
             // Tag the summary with the original document's ID.
-            summary.metadata.insert(
-                self.id_key.clone(),
-                serde_json::Value::String(doc_id),
-            );
+            summary
+                .metadata
+                .insert(self.id_key.clone(), serde_json::Value::String(doc_id));
 
             // Add the summary to the vectorstore.
-            self.vectorstore
-                .add_documents(vec![summary], None)
-                .await?;
+            self.vectorstore.add_documents(vec![summary], None).await?;
         }
 
         Ok(())
@@ -222,10 +212,7 @@ mod tests {
 
         let retriever = MultiVectorRetriever::new(vectorstore, docstore);
 
-        let results = retriever
-            .get_relevant_documents("anything")
-            .await
-            .unwrap();
+        let results = retriever.get_relevant_documents("anything").await.unwrap();
 
         assert!(results.is_empty());
     }

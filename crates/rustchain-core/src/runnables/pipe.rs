@@ -62,10 +62,7 @@ impl RunnablePipe {
 ///
 /// This is a free function alternative to the `RunnableExt::pipe` method,
 /// useful when working with trait objects directly.
-pub fn pipe(
-    first: Arc<dyn Runnable>,
-    second: Arc<dyn Runnable>,
-) -> Arc<dyn Runnable> {
+pub fn pipe(first: Arc<dyn Runnable>, second: Arc<dyn Runnable>) -> Arc<dyn Runnable> {
     Arc::new(RunnablePipe::new(first, second))
 }
 
@@ -91,9 +88,7 @@ pub struct PipeBuilder {
 impl PipeBuilder {
     /// Start building a pipe chain with the first runnable.
     pub fn new(first: Arc<dyn Runnable>) -> Self {
-        Self {
-            steps: vec![first],
-        }
+        Self { steps: vec![first] }
     }
 
     /// Append a runnable to the chain.
@@ -175,7 +170,9 @@ mod tests {
 
     fn failing_runnable() -> Arc<dyn Runnable> {
         Arc::new(RunnableLambda::new("fail", |_v: Value| async move {
-            Err(crate::error::RustChainError::Other("intentional failure".into()))
+            Err(crate::error::RustChainError::Other(
+                "intentional failure".into(),
+            ))
         }))
     }
 
@@ -262,14 +259,12 @@ mod tests {
         let parallel: Arc<dyn Runnable> = Arc::new(RunnableParallel::new(steps));
 
         // Extract the "added" field
-        let extract = Arc::new(RunnableLambda::new("extract_added", |v: Value| async move {
-            Ok(v["added"].clone())
-        }));
+        let extract = Arc::new(RunnableLambda::new(
+            "extract_added",
+            |v: Value| async move { Ok(v["added"].clone()) },
+        ));
 
-        let chain = PipeBuilder::new(parallel)
-            .pipe(extract)
-            .build()
-            .unwrap();
+        let chain = PipeBuilder::new(parallel).pipe(extract).build().unwrap();
 
         let result = chain.invoke(json!(5), None).await.unwrap();
         assert_eq!(result, json!(6));

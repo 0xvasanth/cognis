@@ -165,13 +165,9 @@ async fn record_manager_update_and_list_with_time_filters() {
     .unwrap();
 
     // Insert with current time (no time_at_least)
-    rm.update(
-        &["now_key".into()],
-        &[Some("group1".into())],
-        None,
-    )
-    .await
-    .unwrap();
+    rm.update(&["now_key".into()], &[Some("group1".into())], None)
+        .await
+        .unwrap();
 
     // List keys before far_future: now_key should appear (its timestamp is current time)
     let keys = rm
@@ -200,22 +196,14 @@ async fn record_manager_delete_nonexistent_key() {
 #[tokio::test]
 async fn record_manager_update_overwrites() {
     let rm = InMemoryRecordManager::new("test");
-    rm.update(
-        &["key1".into()],
-        &[Some("group_a".into())],
-        None,
-    )
-    .await
-    .unwrap();
+    rm.update(&["key1".into()], &[Some("group_a".into())], None)
+        .await
+        .unwrap();
 
     // Overwrite with different group
-    rm.update(
-        &["key1".into()],
-        &[Some("group_b".into())],
-        None,
-    )
-    .await
-    .unwrap();
+    rm.update(&["key1".into()], &[Some("group_b".into())], None)
+        .await
+        .unwrap();
 
     // Should only appear in group_b
     let keys_a = rm

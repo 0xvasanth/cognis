@@ -89,8 +89,10 @@ fn format_value(
             Ok(Value::Object(result))
         }
         Value::Array(arr) => {
-            let result: Result<Vec<Value>> =
-                arr.iter().map(|v| format_value(v, format, kwargs)).collect();
+            let result: Result<Vec<Value>> = arr
+                .iter()
+                .map(|v| format_value(v, format, kwargs))
+                .collect();
             Ok(Value::Array(result?))
         }
         other => Ok(other.clone()),

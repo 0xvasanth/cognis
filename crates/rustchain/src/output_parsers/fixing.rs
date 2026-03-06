@@ -91,10 +91,7 @@ impl OutputFixingParser {
 
     /// Attempt to fix malformed output by sending it to the LLM.
     async fn fix_output(&self, malformed: &str, error: &RustChainError) -> Result<Value> {
-        let format_instructions = self
-            .parser
-            .get_format_instructions()
-            .unwrap_or_default();
+        let format_instructions = self.parser.get_format_instructions().unwrap_or_default();
 
         let system_msg = Message::System(SystemMessage::new(
             "You are a helpful assistant that fixes malformed output. \
@@ -110,7 +107,10 @@ impl OutputFixingParser {
         );
         let user_msg = Message::Human(HumanMessage::new(&user_content));
 
-        let ai_msg = self.llm.invoke_messages(&[system_msg, user_msg], None).await?;
+        let ai_msg = self
+            .llm
+            .invoke_messages(&[system_msg, user_msg], None)
+            .await?;
         let fixed_text = ai_msg.base.content.text();
         self.parser.parse(&fixed_text)
     }

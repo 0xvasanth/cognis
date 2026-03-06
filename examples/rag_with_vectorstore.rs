@@ -15,11 +15,11 @@ use rustchain::chains::RetrievalQAChain;
 use rustchain::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
 use rustchain_core::documents::Document;
 use rustchain_core::embeddings::Embeddings;
+use rustchain_core::embeddings_fake::DeterministicFakeEmbedding;
 use rustchain_core::language_models::chat_model::BaseChatModel;
 use rustchain_core::language_models::FakeListChatModel;
 use rustchain_core::retrievers::BaseRetriever;
 use rustchain_core::vectorstores::base::{SearchType, VectorStore};
-use rustchain_core::embeddings_fake::DeterministicFakeEmbedding;
 use rustchain_core::vectorstores::in_memory::InMemoryVectorStore;
 
 /// Sample knowledge base about Rust programming.
@@ -55,7 +55,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 1: Create documents from the sample text.
     let doc = Document::new(SAMPLE_TEXT.trim());
-    println!("Step 1: Created source document ({} chars)\n", doc.page_content.len());
+    println!(
+        "Step 1: Created source document ({} chars)\n",
+        doc.page_content.len()
+    );
 
     // Step 2: Split into chunks using RecursiveCharacterTextSplitter.
     let splitter = RecursiveCharacterTextSplitter::new()
@@ -63,7 +66,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_chunk_overlap(30);
 
     let chunks = splitter.split_documents(&[doc]);
-    println!("Step 2: Split into {} chunks (chunk_size=200, overlap=30)", chunks.len());
+    println!(
+        "Step 2: Split into {} chunks (chunk_size=200, overlap=30)",
+        chunks.len()
+    );
     for (i, chunk) in chunks.iter().enumerate() {
         let preview = chunk.page_content.replace('\n', " ");
         let preview = if preview.len() > 70 {
@@ -71,7 +77,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             preview
         };
-        println!("  Chunk {}: {} chars - {}", i + 1, chunk.page_content.len(), preview);
+        println!(
+            "  Chunk {}: {} chars - {}",
+            i + 1,
+            chunk.page_content.len(),
+            preview
+        );
     }
     println!();
 
@@ -84,10 +95,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Add chunks to the vector store.
     let ids = store.add_documents(chunks, None).await?;
-    println!("Step 3: Stored {} chunks in InMemoryVectorStore\n", ids.len());
+    println!(
+        "Step 3: Stored {} chunks in InMemoryVectorStore\n",
+        ids.len()
+    );
 
     // Step 4: Create a retriever from the vector store.
-    let retriever: Arc<dyn BaseRetriever> = Arc::new(store.as_retriever_with(SearchType::Similarity, 3));
+    let retriever: Arc<dyn BaseRetriever> =
+        Arc::new(store.as_retriever_with(SearchType::Similarity, 3));
 
     // Step 5: Create a RetrievalQAChain with a fake LLM.
     //
@@ -115,7 +130,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  Q: {query}");
         let result = chain.call_with_sources(query).await?;
         println!("  A: {}", result.answer);
-        println!("  Sources: {} document(s) retrieved", result.source_documents.len());
+        println!(
+            "  Sources: {} document(s) retrieved",
+            result.source_documents.len()
+        );
         for (i, doc) in result.source_documents.iter().enumerate() {
             let preview = doc.page_content.replace('\n', " ");
             let preview = if preview.len() > 60 {

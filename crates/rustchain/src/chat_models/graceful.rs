@@ -80,11 +80,7 @@ impl GracefulChatModel {
 
 #[async_trait]
 impl BaseChatModel for GracefulChatModel {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         match self.inner._generate(messages, stop).await {
             Ok(result) => Ok(result),
             Err(e) => {
@@ -100,11 +96,7 @@ impl BaseChatModel for GracefulChatModel {
         self.inner.llm_type()
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         match self.inner._stream(messages, stop).await {
             Ok(stream) => Ok(stream),
             Err(e) => {
@@ -196,10 +188,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_graceful_passes_through_on_success() {
-        let model = GracefulChatModel::new(
-            Box::new(SuccessModel),
-            "Fallback message".into(),
-        );
+        let model = GracefulChatModel::new(Box::new(SuccessModel), "Fallback message".into());
 
         let msgs = vec![Message::Human(HumanMessage::new("hi"))];
         let result = model._generate(&msgs, None).await;
@@ -210,16 +199,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_graceful_returns_fallback_on_error() {
-        let model = GracefulChatModel::new(
-            Box::new(FailModel),
-            "Sorry, service unavailable".into(),
-        );
+        let model =
+            GracefulChatModel::new(Box::new(FailModel), "Sorry, service unavailable".into());
 
         let msgs = vec![Message::Human(HumanMessage::new("hi"))];
         let result = model._generate(&msgs, None).await;
         assert!(result.is_ok());
         let chat_result = result.unwrap();
-        assert_eq!(chat_result.generations[0].text, "Sorry, service unavailable");
+        assert_eq!(
+            chat_result.generations[0].text,
+            "Sorry, service unavailable"
+        );
     }
 
     #[tokio::test]
@@ -227,17 +217,18 @@ mod tests {
         let error_logged = Arc::new(AtomicBool::new(false));
         let error_logged_clone = error_logged.clone();
 
-        let model = GracefulChatModel::new(
-            Box::new(FailModel),
-            "Fallback".into(),
-        )
-        .with_on_error(move |_err| {
-            error_logged_clone.store(true, Ordering::SeqCst);
-        });
+        let model = GracefulChatModel::new(Box::new(FailModel), "Fallback".into()).with_on_error(
+            move |_err| {
+                error_logged_clone.store(true, Ordering::SeqCst);
+            },
+        );
 
         let msgs = vec![Message::Human(HumanMessage::new("hi"))];
         let result = model._generate(&msgs, None).await;
         assert!(result.is_ok());
-        assert!(error_logged.load(Ordering::SeqCst), "on_error callback should have been called");
+        assert!(
+            error_logged.load(Ordering::SeqCst),
+            "on_error callback should have been called"
+        );
     }
 }

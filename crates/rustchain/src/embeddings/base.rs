@@ -359,8 +359,7 @@ mod tests {
 
     #[test]
     fn test_parse_model_string_infer_bedrock() {
-        let (provider, model) =
-            parse_model_string("amazon.titan-embed-text-v1").unwrap();
+        let (provider, model) = parse_model_string("amazon.titan-embed-text-v1").unwrap();
         assert_eq!(provider, "bedrock");
         assert_eq!(model, "amazon.titan-embed-text-v1");
     }
@@ -374,8 +373,7 @@ mod tests {
 
     #[test]
     fn test_parse_model_string_infer_google() {
-        let (provider, model) =
-            parse_model_string("models/embedding-001").unwrap();
+        let (provider, model) = parse_model_string("models/embedding-001").unwrap();
         assert_eq!(provider, "google_genai");
         assert_eq!(model, "models/embedding-001");
     }

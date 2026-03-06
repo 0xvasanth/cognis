@@ -134,9 +134,9 @@ impl ChatAnthropicBuilder {
     /// Returns an error if `model` is not set or if the API key cannot be
     /// resolved from the builder or environment.
     pub fn build(self) -> Result<ChatAnthropic> {
-        let model = self.model.ok_or_else(|| {
-            RustChainError::Other("model is required for ChatAnthropic".into())
-        })?;
+        let model = self
+            .model
+            .ok_or_else(|| RustChainError::Other("model is required for ChatAnthropic".into()))?;
 
         let api_key = match self.api_key {
             Some(key) => key,
@@ -156,9 +156,7 @@ impl ChatAnthropicBuilder {
             api_url: self
                 .api_url
                 .unwrap_or_else(|| "https://api.anthropic.com".into()),
-            api_version: self
-                .api_version
-                .unwrap_or_else(|| "2023-06-01".into()),
+            api_version: self.api_version.unwrap_or_else(|| "2023-06-01".into()),
             max_tokens: self.max_tokens.unwrap_or(1024),
             temperature: self.temperature,
             top_p: self.top_p,
@@ -431,14 +429,8 @@ impl ChatAnthropic {
 
         // Parse usage metadata
         let usage_metadata = response.get("usage").map(|u| {
-            let input_tokens = u
-                .get("input_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let output_tokens = u
-                .get("output_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
+            let input_tokens = u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+            let output_tokens = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
             UsageMetadata::new(input_tokens, output_tokens, input_tokens + output_tokens)
         });
 
@@ -467,7 +459,10 @@ impl ChatAnthropic {
             "content_block_start" => {
                 let content_block = event.get("content_block")?;
                 let block_type = content_block.get("type").and_then(|v| v.as_str())?;
-                let index = event.get("index").and_then(|v| v.as_u64()).map(|n| n as usize);
+                let index = event
+                    .get("index")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize);
 
                 if block_type == "tool_use" {
                     let name = content_block
@@ -494,14 +489,14 @@ impl ChatAnthropic {
             "content_block_delta" => {
                 let delta = event.get("delta")?;
                 let delta_type = delta.get("type").and_then(|v| v.as_str())?;
-                let index = event.get("index").and_then(|v| v.as_u64()).map(|n| n as usize);
+                let index = event
+                    .get("index")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize);
 
                 match delta_type {
                     "text_delta" => {
-                        let text = delta
-                            .get("text")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
+                        let text = delta.get("text").and_then(|v| v.as_str()).unwrap_or("");
                         let chunk = AIMessageChunk::new(text);
                         Some(ChatGenerationChunk::new(chunk))
                     }
@@ -530,10 +525,8 @@ impl ChatAnthropic {
                 chunk.chunk_position = Some("last".to_string());
 
                 if let Some(u) = usage {
-                    let output_tokens = u
-                        .get("output_tokens")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
+                    let output_tokens =
+                        u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
                     chunk.usage_metadata =
                         Some(UsageMetadata::new(0, output_tokens, output_tokens));
                 }
@@ -582,9 +575,11 @@ impl ChatAnthropic {
                 req = req.header(key.as_str(), value.as_str());
             }
 
-            let response = req.json(payload).send().await.map_err(|e| {
-                RustChainError::Other(format!("HTTP request failed: {}", e))
-            })?;
+            let response = req
+                .json(payload)
+                .send()
+                .await
+                .map_err(|e| RustChainError::Other(format!("HTTP request failed: {}", e)))?;
 
             let status = response.status().as_u16();
 
@@ -629,9 +624,11 @@ impl ChatAnthropic {
             req = req.header(key.as_str(), value.as_str());
         }
 
-        let response = req.json(payload).send().await.map_err(|e| {
-            RustChainError::Other(format!("HTTP request failed: {}", e))
-        })?;
+        let response = req
+            .json(payload)
+            .send()
+            .await
+            .map_err(|e| RustChainError::Other(format!("HTTP request failed: {}", e)))?;
 
         let status = response.status().as_u16();
         if status < 200 || status >= 300 {
@@ -665,12 +662,10 @@ impl ChatAnthropic {
                                     }
                                     match serde_json::from_str::<Value>(trimmed) {
                                         Ok(val) => events.push(Ok(val)),
-                                        Err(e) => events.push(Err(
-                                            RustChainError::Other(format!(
-                                                "Failed to parse SSE event: {}",
-                                                e
-                                            )),
-                                        )),
+                                        Err(e) => events.push(Err(RustChainError::Other(format!(
+                                            "Failed to parse SSE event: {}",
+                                            e
+                                        )))),
                                     }
                                 }
                             }
@@ -706,11 +701,7 @@ impl ChatAnthropic {
 
 #[async_trait]
 impl BaseChatModel for ChatAnthropic {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         let payload = self.build_payload(messages, stop, &self.bound_tools, false);
         let response = self.call_api(&payload).await?;
         Self::parse_response(&response)
@@ -720,18 +711,13 @@ impl BaseChatModel for ChatAnthropic {
         "anthropic"
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         let payload = self.build_payload(messages, stop, &self.bound_tools, true);
         let event_stream = self.call_api_stream(&payload).await?;
 
         let chunk_stream = event_stream.filter_map(|event_result| async move {
             match event_result {
-                Ok(event) => ChatAnthropic::parse_stream_event(&event)
-                    .map(Ok),
+                Ok(event) => ChatAnthropic::parse_stream_event(&event).map(Ok),
                 Err(e) => Some(Err(e)),
             }
         });
@@ -744,10 +730,7 @@ impl BaseChatModel for ChatAnthropic {
         tools: &[ToolSchema],
         tool_choice: Option<ToolChoice>,
     ) -> Result<Box<dyn BaseChatModel>> {
-        let bound_tools: Vec<Value> = tools
-            .iter()
-            .map(Self::tool_schema_to_anthropic)
-            .collect();
+        let bound_tools: Vec<Value> = tools.iter().map(Self::tool_schema_to_anthropic).collect();
 
         Ok(Box::new(ChatAnthropic {
             model: self.model.clone(),
@@ -812,10 +795,7 @@ mod tests {
         assert_eq!(model.temperature, Some(0.7));
         assert_eq!(model.top_p, Some(0.9));
         assert_eq!(model.top_k, Some(40));
-        assert_eq!(
-            model.stop_sequences,
-            Some(vec!["STOP".to_string()])
-        );
+        assert_eq!(model.stop_sequences, Some(vec!["STOP".to_string()]));
         assert_eq!(model.max_retries, 3);
         assert!(model.streaming);
         assert_eq!(
@@ -826,9 +806,7 @@ mod tests {
 
     #[test]
     fn test_builder_requires_model() {
-        let result = ChatAnthropic::builder()
-            .api_key("test-key")
-            .build();
+        let result = ChatAnthropic::builder().api_key("test-key").build();
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("model is required"));
@@ -954,10 +932,7 @@ mod tests {
         if let Message::Ai(ref ai) = result.generations[0].message {
             assert_eq!(ai.tool_calls.len(), 1);
             assert_eq!(ai.tool_calls[0].name, "web_search");
-            assert_eq!(
-                ai.tool_calls[0].id,
-                Some("toolu_abc".to_string())
-            );
+            assert_eq!(ai.tool_calls[0].id, Some("toolu_abc".to_string()));
             assert_eq!(
                 ai.tool_calls[0].args.get("query"),
                 Some(&json!("rust programming"))

@@ -1,50 +1,51 @@
-pub mod content;
-pub mod base;
-pub mod multimodal;
-pub mod tool_types;
-pub mod human;
 pub mod ai;
-pub mod system;
-pub mod tool;
-pub mod function;
+pub mod base;
+pub mod block_translators;
 pub mod chat;
 pub mod chunks;
+pub mod content;
+pub mod function;
+pub mod human;
+pub mod multimodal;
 pub mod openai;
+pub mod system;
+pub mod tool;
+pub mod tool_types;
 pub mod utils;
-pub mod block_translators;
 
 use serde::{Deserialize, Serialize};
 
-pub use self::ai::{AIMessage, AIMessageChunk, InputTokenDetails, OutputTokenDetails, UsageMetadata, add_usage};
-pub use self::base::{BaseMessageFields, MessageContent, MessageType, merge_content};
+pub use self::ai::{
+    add_usage, AIMessage, AIMessageChunk, InputTokenDetails, OutputTokenDetails, UsageMetadata,
+};
+pub use self::base::{merge_content, BaseMessageFields, MessageContent, MessageType};
+pub use self::block_translators::{
+    get_translator, AnthropicBlockTranslator, BlockTranslator, GoogleGenAIBlockTranslator,
+    OpenAIBlockTranslator,
+};
 pub use self::chat::ChatMessage;
 pub use self::chunks::{
     ChatMessageChunk, FunctionMessageChunk, HumanMessageChunk, MessageChunkTrait, RemoveMessage,
     SystemMessageChunk, ToolMessageChunk,
 };
 pub use self::content::{
-    Annotation, Citation, ContentBlock, ImageUrlInfo,
-    KNOWN_BLOCK_TYPES, is_data_content_block_type,
+    is_data_content_block_type, Annotation, Citation, ContentBlock, ImageUrlInfo, KNOWN_BLOCK_TYPES,
 };
 pub use self::function::FunctionMessage;
 pub use self::human::HumanMessage;
 pub use self::multimodal::{ContentPart, ImageDetail, ImageUrlContent};
+pub use self::openai::{convert_to_openai_messages, count_tokens_approximately};
 pub use self::system::SystemMessage;
 pub use self::tool::{ToolMessage, ToolStatus};
-pub use self::openai::{convert_to_openai_messages, count_tokens_approximately};
 pub use self::tool_types::{
     default_tool_chunk_parser, default_tool_parser, invalid_tool_call, tool_call, tool_call_chunk,
     InvalidToolCall, ToolCall, ToolCallChunk,
 };
-pub use self::block_translators::{
-    BlockTranslator, OpenAIBlockTranslator, AnthropicBlockTranslator,
-    GoogleGenAIBlockTranslator, get_translator,
-};
 pub use self::utils::{
     convert_to_messages, convert_to_messages_flex, filter_messages, filter_messages_full,
-    get_buffer_string, get_buffer_string_full, merge_message_runs, merge_message_runs_with_separator,
-    message_chunk_to_message, messages_from_dict, messages_to_dict, trim_messages, trim_messages_full,
-    MessageLike, TrimStrategy,
+    get_buffer_string, get_buffer_string_full, merge_message_runs,
+    merge_message_runs_with_separator, message_chunk_to_message, messages_from_dict,
+    messages_to_dict, trim_messages, trim_messages_full, MessageLike, TrimStrategy,
 };
 
 /// Unified message enum for dispatching across message types.
@@ -112,7 +113,10 @@ impl Message {
     }
 
     /// Create an AI message with tool calls.
-    pub fn ai_with_tool_calls(content: impl Into<String>, tool_calls: Vec<serde_json::Value>) -> Self {
+    pub fn ai_with_tool_calls(
+        content: impl Into<String>,
+        tool_calls: Vec<serde_json::Value>,
+    ) -> Self {
         let mut msg = AIMessage::new(content);
         msg.tool_calls = tool_calls
             .into_iter()

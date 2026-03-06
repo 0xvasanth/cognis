@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::errors::{LangGraphError, Result};
 use crate::pregel::checkpoint::{
-    CheckpointEntry, CheckpointMetadata, CheckpointSaver, empty_checkpoint,
+    empty_checkpoint, CheckpointEntry, CheckpointMetadata, CheckpointSaver,
 };
 
 use super::state::CompiledStateGraph;
@@ -76,7 +76,9 @@ impl TimeTravelEngine {
     /// Returns an error if the checkpoint is not found.
     pub async fn get_state_at(&self, checkpoint_id: &str) -> Result<Value> {
         let tuple = self.load_checkpoint(checkpoint_id).await?;
-        Ok(Self::state_from_channel_values(&tuple.checkpoint.channel_values))
+        Ok(Self::state_from_channel_values(
+            &tuple.checkpoint.channel_values,
+        ))
     }
 
     // ---------------------------------------------------------------
@@ -144,10 +146,7 @@ impl TimeTravelEngine {
         );
 
         self.saver.get_tuple(&config).await?.ok_or_else(|| {
-            LangGraphError::Other(format!(
-                "Checkpoint not found: {}",
-                checkpoint_id
-            ))
+            LangGraphError::Other(format!("Checkpoint not found: {}", checkpoint_id))
         })
     }
 
@@ -181,12 +180,7 @@ impl TimeTravelEngine {
     }
 
     /// Save a result state as a checkpoint under the given thread.
-    async fn save_result(
-        &self,
-        thread_id: &str,
-        state: &Value,
-        source: &str,
-    ) -> Result<()> {
+    async fn save_result(&self, thread_id: &str, state: &Value, source: &str) -> Result<()> {
         let mut cp = empty_checkpoint();
 
         if let Value::Object(map) = state {
@@ -294,11 +288,12 @@ mod tests {
         let saver = Arc::new(InMemoryCheckpointSaver::new());
         let thread = "tt-list";
 
-        let ids = populate_checkpoints(graph.clone(), saver.clone(), thread, vec![
-            json!({"count": 0}),
-            json!({}),
-            json!({}),
-        ])
+        let ids = populate_checkpoints(
+            graph.clone(),
+            saver.clone(),
+            thread,
+            vec![json!({"count": 0}), json!({}), json!({})],
+        )
         .await;
 
         let engine = TimeTravelEngine::new(graph, saver, thread);
@@ -320,10 +315,12 @@ mod tests {
         let saver = Arc::new(InMemoryCheckpointSaver::new());
         let thread = "tt-state-at";
 
-        let ids = populate_checkpoints(graph.clone(), saver.clone(), thread, vec![
-            json!({"count": 0}),
-            json!({}),
-        ])
+        let ids = populate_checkpoints(
+            graph.clone(),
+            saver.clone(),
+            thread,
+            vec![json!({"count": 0}), json!({})],
+        )
         .await;
 
         let engine = TimeTravelEngine::new(graph, saver, thread);
@@ -342,11 +339,12 @@ mod tests {
         let thread = "tt-replay";
 
         // Build history: count goes 0->1, 1->2, 2->3
-        let ids = populate_checkpoints(graph.clone(), saver.clone(), thread, vec![
-            json!({"count": 0}),
-            json!({}),
-            json!({}),
-        ])
+        let ids = populate_checkpoints(
+            graph.clone(),
+            saver.clone(),
+            thread,
+            vec![json!({"count": 0}), json!({}), json!({})],
+        )
         .await;
 
         let engine = TimeTravelEngine::new(graph, saver, thread);
@@ -362,9 +360,12 @@ mod tests {
         let saver = Arc::new(InMemoryCheckpointSaver::new());
         let thread = "tt-fork-mod";
 
-        let ids = populate_checkpoints(graph.clone(), saver.clone(), thread, vec![
-            json!({"count": 0}),
-        ])
+        let ids = populate_checkpoints(
+            graph.clone(),
+            saver.clone(),
+            thread,
+            vec![json!({"count": 0})],
+        )
         .await;
 
         let engine = TimeTravelEngine::new(graph, saver, thread);
@@ -383,9 +384,12 @@ mod tests {
         let saver = Arc::new(InMemoryCheckpointSaver::new());
         let thread = "tt-fork-thread";
 
-        let ids = populate_checkpoints(graph.clone(), saver.clone(), thread, vec![
-            json!({"count": 0}),
-        ])
+        let ids = populate_checkpoints(
+            graph.clone(),
+            saver.clone(),
+            thread,
+            vec![json!({"count": 0})],
+        )
         .await;
 
         let engine = TimeTravelEngine::new(graph, saver.clone(), thread);
@@ -417,11 +421,12 @@ mod tests {
         let saver = Arc::new(InMemoryCheckpointSaver::new());
         let thread = "tt-replay-latest";
 
-        let ids = populate_checkpoints(graph.clone(), saver.clone(), thread, vec![
-            json!({"count": 0}),
-            json!({}),
-            json!({}),
-        ])
+        let ids = populate_checkpoints(
+            graph.clone(),
+            saver.clone(),
+            thread,
+            vec![json!({"count": 0}), json!({}), json!({})],
+        )
         .await;
 
         let engine = TimeTravelEngine::new(graph, saver, thread);
@@ -438,9 +443,12 @@ mod tests {
         let thread = "tt-multi-node";
 
         // value=5 => double(5)=10 => add_ten(10)=20
-        let ids = populate_checkpoints(graph.clone(), saver.clone(), thread, vec![
-            json!({"value": 5}),
-        ])
+        let ids = populate_checkpoints(
+            graph.clone(),
+            saver.clone(),
+            thread,
+            vec![json!({"value": 5})],
+        )
         .await;
 
         let engine = TimeTravelEngine::new(graph.clone(), saver.clone(), thread);

@@ -63,7 +63,9 @@ impl ToolRetryBackoff {
                 .unwrap_or_default()
                 .subsec_nanos() as u64;
             // Simple hash: mix attempt and time
-            let hash = now_nanos.wrapping_mul(6364136223846793005).wrapping_add(attempt as u64);
+            let hash = now_nanos
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(attempt as u64);
             // Map to jitter factor in range [0.75, 1.25]
             let jitter_factor = 0.75 + (hash % 1000) as f64 / 2000.0;
             let jittered = (capped * jitter_factor).min(self.max_delay_ms as f64);
@@ -82,8 +84,7 @@ impl ToolRetryBackoff {
 }
 
 /// Conditions under which a tool call should be retried.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum RetryOn {
     /// Retry on any error.
     #[default]
@@ -93,7 +94,6 @@ pub enum RetryOn {
     /// Retry on specific error types.
     ErrorTypes(Vec<String>),
 }
-
 
 impl RetryOn {
     /// Check if an error matches this retry condition.
@@ -120,8 +120,7 @@ impl RetryOn {
 }
 
 /// Tool filter: which tools this retry middleware applies to.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum ToolFilter {
     /// Apply to all tools.
     #[default]
@@ -131,7 +130,6 @@ pub enum ToolFilter {
     /// Apply to all tools except those with these names.
     Except(HashSet<String>),
 }
-
 
 impl ToolFilter {
     /// Check if a tool name matches this filter.
@@ -215,18 +213,16 @@ impl AgentMiddleware for ToolRetryMiddleware {
                         // All retries exhausted or non-retryable error
                         return match &self.on_failure {
                             OnToolFailure::Error => Err(e),
-                            OnToolFailure::Continue => {
-                                Ok(serde_json::json!({
-                                    "error": true,
-                                    "message": format!(
-                                        "Tool '{}' failed after {} retries: {}",
-                                        tool.name(),
-                                        self.max_retries,
-                                        e
-                                    ),
-                                    "tool": tool.name()
-                                }))
-                            }
+                            OnToolFailure::Continue => Ok(serde_json::json!({
+                                "error": true,
+                                "message": format!(
+                                    "Tool '{}' failed after {} retries: {}",
+                                    tool.name(),
+                                    self.max_retries,
+                                    e
+                                ),
+                                "tool": tool.name()
+                            })),
                         };
                     }
                     last_error = Some(e);
@@ -237,11 +233,11 @@ impl AgentMiddleware for ToolRetryMiddleware {
         }
 
         match &self.on_failure {
-            OnToolFailure::Error => {
-                Err(last_error.unwrap_or_else(|| RustChainError::Other("Unknown tool retry error".into())))
-            }
+            OnToolFailure::Error => Err(last_error
+                .unwrap_or_else(|| RustChainError::Other("Unknown tool retry error".into()))),
             OnToolFailure::Continue => {
-                let error = last_error.unwrap_or_else(|| RustChainError::Other("Unknown tool retry error".into()));
+                let error = last_error
+                    .unwrap_or_else(|| RustChainError::Other("Unknown tool retry error".into()));
                 Ok(serde_json::json!({
                     "error": true,
                     "message": format!(
@@ -315,7 +311,11 @@ mod tests {
         };
         // With jitter, delay should vary but stay within [750, 1250]
         let delay = backoff.calculate_delay(0).as_millis();
-        assert!(delay >= 750 && delay <= 1250, "Jittered delay {} out of expected range", delay);
+        assert!(
+            delay >= 750 && delay <= 1250,
+            "Jittered delay {} out of expected range",
+            delay
+        );
     }
 
     #[test]
@@ -373,8 +373,7 @@ mod tests {
 
     #[test]
     fn test_tool_retry_builder_with_on_failure() {
-        let mw = ToolRetryMiddleware::new(3)
-            .with_on_failure(OnToolFailure::Continue);
+        let mw = ToolRetryMiddleware::new(3).with_on_failure(OnToolFailure::Continue);
         assert!(matches!(mw.on_failure, OnToolFailure::Continue));
     }
 

@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::errors::{LangGraphError, Result};
 use crate::pregel::checkpoint::{
-    Checkpoint, CheckpointMetadata, CheckpointSaver, empty_checkpoint,
+    empty_checkpoint, Checkpoint, CheckpointMetadata, CheckpointSaver,
 };
 
 use super::state::CompiledStateGraph;
@@ -99,12 +99,7 @@ impl PersistentGraph {
     }
 
     /// Save the given result state as a new checkpoint and return the state.
-    async fn save_checkpoint(
-        &self,
-        state: &Value,
-        step: i64,
-        source: &str,
-    ) -> Result<()> {
+    async fn save_checkpoint(&self, state: &Value, step: i64, source: &str) -> Result<()> {
         let mut cp = empty_checkpoint();
 
         // Populate channel_values from the state object.
@@ -182,16 +177,9 @@ impl PersistentGraph {
             Value::String(checkpoint_id.to_string()),
         );
 
-        let tuple = self
-            .saver
-            .get_tuple(&config)
-            .await?
-            .ok_or_else(|| {
-                LangGraphError::Other(format!(
-                    "Checkpoint not found: {}",
-                    checkpoint_id
-                ))
-            })?;
+        let tuple = self.saver.get_tuple(&config).await?.ok_or_else(|| {
+            LangGraphError::Other(format!("Checkpoint not found: {}", checkpoint_id))
+        })?;
 
         let mut state = Self::state_from_checkpoint(&tuple.checkpoint);
         if let Some(upd) = update {
@@ -200,11 +188,7 @@ impl PersistentGraph {
 
         let result = self.graph.invoke(state).await?;
 
-        let step = tuple
-            .metadata
-            .as_ref()
-            .map(|m| m.step + 1)
-            .unwrap_or(0);
+        let step = tuple.metadata.as_ref().map(|m| m.step + 1).unwrap_or(0);
         self.save_checkpoint(&result, step, "resume").await?;
         Ok(result)
     }
@@ -233,27 +217,16 @@ impl PersistentGraph {
     /// Loads the checkpoint identified by `checkpoint_id`, saves it under
     /// `new_thread_id`, and returns a new `PersistentGraph` bound to that
     /// thread.
-    pub async fn fork(
-        &self,
-        checkpoint_id: &str,
-        new_thread_id: &str,
-    ) -> Result<PersistentGraph> {
+    pub async fn fork(&self, checkpoint_id: &str, new_thread_id: &str) -> Result<PersistentGraph> {
         let mut config = self.thread_config();
         config.insert(
             "checkpoint_id".to_string(),
             Value::String(checkpoint_id.to_string()),
         );
 
-        let tuple = self
-            .saver
-            .get_tuple(&config)
-            .await?
-            .ok_or_else(|| {
-                LangGraphError::Other(format!(
-                    "Checkpoint not found for fork: {}",
-                    checkpoint_id
-                ))
-            })?;
+        let tuple = self.saver.get_tuple(&config).await?.ok_or_else(|| {
+            LangGraphError::Other(format!("Checkpoint not found for fork: {}", checkpoint_id))
+        })?;
 
         // Save the checkpoint state under the new thread.
         let mut new_config = HashMap::new();
@@ -294,10 +267,7 @@ mod tests {
     fn build_test_graph() -> CompiledStateGraph {
         let action: AsyncNodeAction = StdArc::new(|state: Value| {
             Box::pin(async move {
-                let count = state
-                    .get("count")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                let count = state.get("count").and_then(|v| v.as_i64()).unwrap_or(0);
                 Ok(json!({ "count": count + 1 }))
             })
         });

@@ -108,7 +108,9 @@ mod tests {
         store.add("a", Document::new("alpha")).await;
         store.add("b", Document::new("beta")).await;
 
-        let results = store.mget(&["a".into(), "missing".into(), "b".into()]).await;
+        let results = store
+            .mget(&["a".into(), "missing".into(), "b".into()])
+            .await;
         assert_eq!(results.len(), 3);
         assert_eq!(results[0].as_ref().unwrap().page_content, "alpha");
         assert!(results[1].is_none());

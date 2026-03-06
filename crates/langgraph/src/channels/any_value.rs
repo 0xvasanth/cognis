@@ -63,9 +63,7 @@ impl BaseChannel for AnyValue {
     }
 
     fn get(&self) -> Result<Value, LangGraphError> {
-        self.value
-            .clone()
-            .ok_or(LangGraphError::EmptyChannelError)
+        self.value.clone().ok_or(LangGraphError::EmptyChannelError)
     }
 
     fn is_available(&self) -> bool {
@@ -116,7 +114,9 @@ mod tests {
     #[test]
     fn test_update_multiple_values_takes_last() {
         let mut ch = AnyValue::new("test");
-        let changed = ch.update(vec![Value::from(1), Value::from(2), Value::from(3)]).unwrap();
+        let changed = ch
+            .update(vec![Value::from(1), Value::from(2), Value::from(3)])
+            .unwrap();
         assert!(changed);
         assert_eq!(ch.get().unwrap(), Value::from(3));
     }

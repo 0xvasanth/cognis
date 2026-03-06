@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use super::types::{ErrorHandler, ResponseFormat, ToolInput, ToolOutput};
+use crate::error::{Result, RustChainError};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use crate::error::{Result, RustChainError};
-use super::types::{ErrorHandler, ResponseFormat, ToolInput, ToolOutput};
+use std::collections::HashMap;
 
 /// Schema description for a tool's input.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -95,14 +95,12 @@ pub trait BaseTool: Send + Sync {
                 ErrorHandler::StaticMessage(s) => Ok(Value::String(s.clone())),
                 ErrorHandler::Dynamic(f) => Ok(Value::String(f(&msg))),
             },
-            Err(RustChainError::ToolValidationError(msg)) => {
-                match self.handle_validation_error() {
-                    ErrorHandler::Propagate => Err(RustChainError::ToolValidationError(msg)),
-                    ErrorHandler::DefaultMessage => Ok(Value::String(msg)),
-                    ErrorHandler::StaticMessage(s) => Ok(Value::String(s.clone())),
-                    ErrorHandler::Dynamic(f) => Ok(Value::String(f(&msg))),
-                }
-            }
+            Err(RustChainError::ToolValidationError(msg)) => match self.handle_validation_error() {
+                ErrorHandler::Propagate => Err(RustChainError::ToolValidationError(msg)),
+                ErrorHandler::DefaultMessage => Ok(Value::String(msg)),
+                ErrorHandler::StaticMessage(s) => Ok(Value::String(s.clone())),
+                ErrorHandler::Dynamic(f) => Ok(Value::String(f(&msg))),
+            },
             Err(e) => Err(e),
         }
     }

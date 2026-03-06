@@ -10,8 +10,8 @@ use serde_json::{json, Value};
 // ============================================================
 
 use rustchain_core::prompts::base::PromptTemplate;
-use rustchain_core::prompts::example_selectors::LengthBasedExampleSelector;
 use rustchain_core::prompts::example_selector::BaseExampleSelector;
+use rustchain_core::prompts::example_selectors::LengthBasedExampleSelector;
 
 fn make_example(input: &str, output: &str) -> HashMap<String, Value> {
     let mut m = HashMap::new();
@@ -23,10 +23,7 @@ fn make_example(input: &str, output: &str) -> HashMap<String, Value> {
 #[tokio::test]
 async fn test_length_selector_selects_all_when_fits() {
     let prompt = PromptTemplate::from_template("Input: {input}\nOutput: {output}");
-    let examples = vec![
-        make_example("happy", "sad"),
-        make_example("tall", "short"),
-    ];
+    let examples = vec![make_example("happy", "sad"), make_example("tall", "short")];
     let selector = LengthBasedExampleSelector::new(examples, prompt, 100);
 
     let input = {
@@ -66,7 +63,10 @@ async fn test_length_selector_empty_when_input_exceeds() {
     let selector = LengthBasedExampleSelector::new(examples, prompt, 1);
 
     let mut input = HashMap::new();
-    input.insert("input".to_string(), json!("this is a very long input string that exceeds"));
+    input.insert(
+        "input".to_string(),
+        json!("this is a very long input string that exceeds"),
+    );
     let selected = selector.select_examples(&input).await.unwrap();
     assert!(selected.is_empty());
 }
@@ -76,7 +76,10 @@ async fn test_length_selector_add_example() {
     let prompt = PromptTemplate::from_template("{input} -> {output}");
     let selector = LengthBasedExampleSelector::new(vec![], prompt, 100);
 
-    selector.add_example(make_example("hot", "cold")).await.unwrap();
+    selector
+        .add_example(make_example("hot", "cold"))
+        .await
+        .unwrap();
 
     let mut input = HashMap::new();
     input.insert("input".to_string(), json!("x"));
@@ -143,7 +146,7 @@ async fn test_constant_embedding_documents() {
 // ============================================================
 
 use rustchain_core::output_parsers::openai_tools::{
-    parse_tool_call, parse_tool_calls, OpenAIToolsOutputParser, JsonOutputKeyToolsParser,
+    parse_tool_call, parse_tool_calls, JsonOutputKeyToolsParser, OpenAIToolsOutputParser,
 };
 use rustchain_core::output_parsers::OutputParser;
 
@@ -322,8 +325,8 @@ fn test_schema_parser_strips_markdown() {
 // ============================================================
 
 use rustchain_core::utils::function_calling::{
-    convert_json_schema_to_openai_function, convert_to_openai_tool,
-    set_additional_properties_false, build_parameters_schema, ParameterInfo,
+    build_parameters_schema, convert_json_schema_to_openai_function, convert_to_openai_tool,
+    set_additional_properties_false, ParameterInfo,
 };
 
 #[test]
@@ -343,7 +346,8 @@ fn test_convert_json_schema_to_function() {
 #[test]
 fn test_convert_json_schema_custom_name() {
     let schema = json!({"properties": {}});
-    let func = convert_json_schema_to_openai_function(&schema, Some("my_func"), Some("desc"), false);
+    let func =
+        convert_json_schema_to_openai_function(&schema, Some("my_func"), Some("desc"), false);
     assert_eq!(func.name, "my_func");
     assert_eq!(func.description.unwrap(), "desc");
 }
@@ -361,7 +365,9 @@ fn test_convert_json_schema_rm_titles() {
     });
     let func = convert_json_schema_to_openai_function(&schema, Some("test"), None, true);
     assert!(func.parameters.get("title").is_none());
-    assert!(func.parameters["properties"]["nested"].get("title").is_none());
+    assert!(func.parameters["properties"]["nested"]
+        .get("title")
+        .is_none());
 }
 
 #[test]
@@ -389,7 +395,10 @@ fn test_set_additional_properties_false() {
     });
     set_additional_properties_false(&mut schema);
     assert_eq!(schema["additionalProperties"], false);
-    assert_eq!(schema["properties"]["nested"]["additionalProperties"], false);
+    assert_eq!(
+        schema["properties"]["nested"]["additionalProperties"],
+        false
+    );
 }
 
 #[test]
@@ -493,21 +502,13 @@ fn test_mustache_object_section() {
 
 #[test]
 fn test_mustache_dot_key() {
-    let result = render(
-        "{{#items}}({{.}}){{/items}}",
-        &json!({"items": [1, 2, 3]}),
-    )
-    .unwrap();
+    let result = render("{{#items}}({{.}}){{/items}}", &json!({"items": [1, 2, 3]})).unwrap();
     assert_eq!(result, "(1)(2)(3)");
 }
 
 #[test]
 fn test_mustache_nested_key() {
-    let result = render(
-        "{{person.name}}",
-        &json!({"person": {"name": "Bob"}}),
-    )
-    .unwrap();
+    let result = render("{{person.name}}", &json!({"person": {"name": "Bob"}})).unwrap();
     assert_eq!(result, "Bob");
 }
 
@@ -549,7 +550,7 @@ fn test_template_vars_comments_excluded() {
 // ============================================================
 
 use rustchain_core::utils::{
-    merge_dicts, generate_id, ensure_id, get_from_dict_or_env, python_to_json_type,
+    ensure_id, generate_id, get_from_dict_or_env, merge_dicts, python_to_json_type,
 };
 
 #[test]

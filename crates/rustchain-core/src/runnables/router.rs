@@ -291,8 +291,14 @@ mod tests {
 
         let err = router.invoke(json!("test"), None).await.unwrap_err();
         let msg = format!("{}", err);
-        assert!(msg.contains("missing"), "Error should mention the missing route key: {msg}");
-        assert!(msg.contains("No route found"), "Error should indicate no route found: {msg}");
+        assert!(
+            msg.contains("missing"),
+            "Error should mention the missing route key: {msg}"
+        );
+        assert!(
+            msg.contains("No route found"),
+            "Error should indicate no route found: {msg}"
+        );
     }
 
     #[tokio::test]
@@ -316,11 +322,11 @@ mod tests {
             ("chat", "chatbot"),
             ("search", "searcher"),
         ] {
-            let result = router
-                .invoke(json!({"category": cat}), None)
-                .await
-                .unwrap();
-            assert_eq!(result["from"], expected, "Route '{cat}' should go to '{expected}'");
+            let result = router.invoke(json!({"category": cat}), None).await.unwrap();
+            assert_eq!(
+                result["from"], expected,
+                "Route '{cat}' should go to '{expected}'"
+            );
         }
     }
 
@@ -368,28 +374,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_router_routing_based_on_json_field_value() {
-        let router = RunnableRouter::new(|input| {
-            match input.get("priority").and_then(|v| v.as_i64()) {
-                Some(p) if p >= 10 => "high".to_string(),
-                Some(_) => "low".to_string(),
-                None => "unknown".to_string(),
-            }
-        })
-        .route("high", label_runnable("high_priority"))
-        .route("low", label_runnable("low_priority"))
-        .default(label_runnable("unknown_priority"))
-        .build();
+        let router =
+            RunnableRouter::new(
+                |input| match input.get("priority").and_then(|v| v.as_i64()) {
+                    Some(p) if p >= 10 => "high".to_string(),
+                    Some(_) => "low".to_string(),
+                    None => "unknown".to_string(),
+                },
+            )
+            .route("high", label_runnable("high_priority"))
+            .route("low", label_runnable("low_priority"))
+            .default(label_runnable("unknown_priority"))
+            .build();
 
-        let result = router
-            .invoke(json!({"priority": 15}), None)
-            .await
-            .unwrap();
+        let result = router.invoke(json!({"priority": 15}), None).await.unwrap();
         assert_eq!(result["from"], "high_priority");
 
-        let result = router
-            .invoke(json!({"priority": 3}), None)
-            .await
-            .unwrap();
+        let result = router.invoke(json!({"priority": 3}), None).await.unwrap();
         assert_eq!(result["from"], "low_priority");
 
         let result = router.invoke(json!({}), None).await.unwrap();
@@ -436,7 +437,10 @@ mod tests {
         assert_eq!(result["from"], "create_order");
 
         let result = router
-            .invoke(json!({"request": {"domain": "billing", "action": "refund"}}), None)
+            .invoke(
+                json!({"request": {"domain": "billing", "action": "refund"}}),
+                None,
+            )
             .await
             .unwrap();
         assert_eq!(result["from"], "unknown_action");

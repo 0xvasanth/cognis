@@ -76,9 +76,7 @@ pub fn parse_ai_message_to_agent_output(ai_message: &Value) -> Result<AgentOutpu
 /// Each step becomes a pair of messages:
 /// 1. An AI message with the tool call
 /// 2. A Tool message with the observation
-pub fn format_to_tool_messages(
-    intermediate_steps: &[(AgentAction, String)],
-) -> Vec<Message> {
+pub fn format_to_tool_messages(intermediate_steps: &[(AgentAction, String)]) -> Vec<Message> {
     let mut messages = Vec::new();
     for (action, observation) in intermediate_steps {
         // Add a tool message for the observation
@@ -152,12 +150,10 @@ mod tests {
 
     #[test]
     fn test_format_to_tool_messages() {
-        let steps = vec![
-            (
-                AgentAction::new("search", json!({"q": "test"}), "Calling search"),
-                "Search result: found it".to_string(),
-            ),
-        ];
+        let steps = vec![(
+            AgentAction::new("search", json!({"q": "test"}), "Calling search"),
+            "Search result: found it".to_string(),
+        )];
         let messages = format_to_tool_messages(&steps);
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].content().text(), "Search result: found it");

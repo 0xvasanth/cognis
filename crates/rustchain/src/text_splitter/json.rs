@@ -50,7 +50,9 @@ impl RecursiveJsonSplitter {
 
                 for item in arr {
                     let item_str = serde_json::to_string(item).unwrap_or_default();
-                    if current_size + item_str.len() + 1 > self.max_chunk_size && !current_batch.is_empty() {
+                    if current_size + item_str.len() + 1 > self.max_chunk_size
+                        && !current_batch.is_empty()
+                    {
                         chunks.push(Value::Array(std::mem::take(&mut current_batch)));
                         current_size = 2;
                     }

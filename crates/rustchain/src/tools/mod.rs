@@ -23,7 +23,7 @@ pub mod web_search;
 ))]
 pub mod wikipedia;
 
-pub use cached::{CachedTool, CacheEntry, CacheStats};
+pub use cached::{CacheEntry, CacheStats, CachedTool};
 pub use calculator::CalculatorTool;
 pub use json_query::JsonQueryTool;
 pub use openapi::{

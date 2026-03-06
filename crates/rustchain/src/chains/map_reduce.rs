@@ -6,8 +6,7 @@ use rustchain_core::language_models::chat_model::BaseChatModel;
 use rustchain_core::messages::{HumanMessage, Message};
 
 /// Default map prompt template applied to each document.
-const DEFAULT_MAP_PROMPT: &str =
-    "Summarize the following text:\n\n{text}\n\nSummary:";
+const DEFAULT_MAP_PROMPT: &str = "Summarize the following text:\n\n{text}\n\nSummary:";
 
 /// Default reduce prompt template applied to the combined summaries.
 const DEFAULT_REDUCE_PROMPT: &str =
@@ -148,7 +147,10 @@ mod tests {
         let llm = fake_model(vec!["Summary of doc 1", "Summary of doc 2", "Final"]);
         let chain = MapReduceChain::new(llm);
 
-        let docs = vec![make_doc("Document one content"), make_doc("Document two content")];
+        let docs = vec![
+            make_doc("Document one content"),
+            make_doc("Document two content"),
+        ];
         let map_results = chain.map(&docs).await.unwrap();
 
         assert_eq!(map_results.len(), 2);

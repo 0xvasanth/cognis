@@ -18,12 +18,16 @@ use crate::error::{Result, RustChainError};
 /// Convert a list of messages to a readable string with role prefixes.
 ///
 /// Supports customizable prefixes for all message types and a configurable separator.
-pub fn get_buffer_string(
-    messages: &[Message],
-    human_prefix: &str,
-    ai_prefix: &str,
-) -> String {
-    get_buffer_string_full(messages, human_prefix, ai_prefix, "System", "Function", "Tool", "\n")
+pub fn get_buffer_string(messages: &[Message], human_prefix: &str, ai_prefix: &str) -> String {
+    get_buffer_string_full(
+        messages,
+        human_prefix,
+        ai_prefix,
+        "System",
+        "Function",
+        "Tool",
+        "\n",
+    )
 }
 
 /// Full version of `get_buffer_string` with all configurable prefixes and separator.
@@ -94,22 +98,17 @@ fn convert_single(item: MessageLike) -> Result<Message> {
         MessageLike::Text(s) => Ok(Message::Human(HumanMessage::new(s))),
         MessageLike::Tuple(role, content) => Ok(create_message_from_role(&role, &content)),
         MessageLike::Dict(v) => {
-            let obj = v
-                .as_object()
-                .ok_or_else(|| RustChainError::Other("Expected JSON object for message dict".into()))?;
+            let obj = v.as_object().ok_or_else(|| {
+                RustChainError::Other("Expected JSON object for message dict".into())
+            })?;
             let role = obj
                 .get("role")
                 .or_else(|| obj.get("type"))
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| {
-                    RustChainError::Other(
-                        "Message dict must have 'role' or 'type' key".into(),
-                    )
+                    RustChainError::Other("Message dict must have 'role' or 'type' key".into())
                 })?;
-            let content = obj
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let content = obj.get("content").and_then(|v| v.as_str()).unwrap_or("");
             Ok(create_message_from_role(role, content))
         }
     }
@@ -219,7 +218,8 @@ pub fn filter_messages_full(
             }
 
             // Inclusion phase
-            let has_include = include_names.is_some() || include_types.is_some() || include_ids.is_some();
+            let has_include =
+                include_names.is_some() || include_types.is_some() || include_ids.is_some();
             if has_include {
                 let mut included = false;
                 if let Some(types) = include_types {
@@ -315,7 +315,10 @@ pub fn merge_message_runs(messages: &[Message]) -> Vec<Message> {
 }
 
 /// Merge consecutive messages of the same type with a configurable separator.
-pub fn merge_message_runs_with_separator(messages: &[Message], chunk_separator: &str) -> Vec<Message> {
+pub fn merge_message_runs_with_separator(
+    messages: &[Message],
+    chunk_separator: &str,
+) -> Vec<Message> {
     if messages.is_empty() {
         return Vec::new();
     }
@@ -409,7 +412,15 @@ pub fn trim_messages(
     token_counter: &dyn Fn(&str) -> usize,
     strategy: TrimStrategy,
 ) -> Vec<Message> {
-    trim_messages_full(messages, max_tokens, token_counter, strategy, false, None, None)
+    trim_messages_full(
+        messages,
+        max_tokens,
+        token_counter,
+        strategy,
+        false,
+        None,
+        None,
+    )
 }
 
 /// Full trim with `include_system`, `start_on`, and `end_on` options.
@@ -585,10 +596,7 @@ mod tests {
         let trimmed = trim_messages(&messages, 10, &counter, TrimStrategy::Last);
         // Should keep the most recent messages that fit
         assert!(!trimmed.is_empty());
-        assert_eq!(
-            trimmed.last().unwrap().content().text(),
-            "Fourth message"
-        );
+        assert_eq!(trimmed.last().unwrap().content().text(), "Fourth message");
         assert!(trimmed.len() <= messages.len());
     }
 
@@ -604,10 +612,7 @@ mod tests {
         let trimmed = trim_messages(&messages, 10, &counter, TrimStrategy::First);
         // Should keep the oldest messages that fit
         assert!(!trimmed.is_empty());
-        assert_eq!(
-            trimmed.first().unwrap().content().text(),
-            "First message"
-        );
+        assert_eq!(trimmed.first().unwrap().content().text(), "First message");
         assert!(trimmed.len() <= messages.len());
     }
 
@@ -688,7 +693,9 @@ mod tests {
             None,
         );
         assert_eq!(filtered.len(), 2);
-        assert!(filtered.iter().all(|m| m.message_type() == MessageType::Human));
+        assert!(filtered
+            .iter()
+            .all(|m| m.message_type() == MessageType::Human));
     }
 
     #[test]
@@ -708,7 +715,9 @@ mod tests {
             None,
         );
         assert_eq!(filtered.len(), 3);
-        assert!(filtered.iter().all(|m| m.message_type() != MessageType::System));
+        assert!(filtered
+            .iter()
+            .all(|m| m.message_type() != MessageType::System));
     }
 
     // -----------------------------------------------------------------------

@@ -107,10 +107,7 @@ pub fn load_prompt_from_config(config: &Value) -> Result<LoadedPrompt> {
 pub fn load_prompt<P: AsRef<Path>>(path: P) -> Result<LoadedPrompt> {
     let path = path.as_ref();
 
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
     // Check extension before reading the file
     if extension != "json" {
@@ -134,10 +131,7 @@ pub fn load_prompt<P: AsRef<Path>>(path: P) -> Result<LoadedPrompt> {
 /// If `{var_name}_path` exists in the config, reads the `.txt` file at
 /// that path and sets `{var_name}` to its contents. It is an error if
 /// both `{var_name}_path` and `{var_name}` are present.
-fn load_template(
-    var_name: &str,
-    config: &mut serde_json::Map<String, Value>,
-) -> Result<()> {
+fn load_template(var_name: &str, config: &mut serde_json::Map<String, Value>) -> Result<()> {
     let path_key = format!("{}_path", var_name);
 
     if let Some(path_val) = config.remove(&path_key) {
@@ -148,12 +142,12 @@ fn load_template(
             )));
         }
 
-        let path_str = path_val.as_str().ok_or_else(|| {
-            RustChainError::TypeMismatch {
+        let path_str = path_val
+            .as_str()
+            .ok_or_else(|| RustChainError::TypeMismatch {
                 expected: "String".into(),
                 got: format!("{}", path_val),
-            }
-        })?;
+            })?;
 
         let path = Path::new(path_str);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -271,12 +265,12 @@ fn load_few_shot_config(config: &serde_json::Map<String, Value>) -> Result<Loade
                 "Only one of example_prompt and example_prompt_path should be specified.".into(),
             ));
         }
-        let path_str = path_val.as_str().ok_or_else(|| {
-            RustChainError::TypeMismatch {
+        let path_str = path_val
+            .as_str()
+            .ok_or_else(|| RustChainError::TypeMismatch {
                 expected: "String".into(),
                 got: format!("{}", path_val),
-            }
-        })?;
+            })?;
         match load_prompt(path_str)? {
             LoadedPrompt::Prompt(pt) => pt,
             _ => {
@@ -354,9 +348,7 @@ fn load_chat_config(config: &serde_json::Map<String, Value>) -> Result<LoadedPro
         .and_then(|m| m.get("prompt"))
         .and_then(|p| p.get("template"))
         .and_then(|t| t.as_str())
-        .ok_or_else(|| {
-            RustChainError::Other("Can't load chat prompt without template".into())
-        })?;
+        .ok_or_else(|| RustChainError::Other("Can't load chat prompt without template".into()))?;
 
     let chat_template = ChatPromptTemplate::from_messages(vec![("human", template)])?;
 
@@ -364,10 +356,7 @@ fn load_chat_config(config: &serde_json::Map<String, Value>) -> Result<LoadedPro
 }
 
 /// Extract an array of strings from a config map field.
-fn extract_string_array(
-    config: &serde_json::Map<String, Value>,
-    key: &str,
-) -> Vec<String> {
+fn extract_string_array(config: &serde_json::Map<String, Value>, key: &str) -> Vec<String> {
     config
         .get(key)
         .and_then(|v| v.as_array())
@@ -557,10 +546,7 @@ mod tests {
     #[test]
     fn test_load_examples_inline() {
         let mut config = serde_json::Map::new();
-        config.insert(
-            "examples".to_string(),
-            serde_json::json!([{"a": "b"}]),
-        );
+        config.insert("examples".to_string(), serde_json::json!([{"a": "b"}]));
 
         load_examples(&mut config).unwrap();
         assert!(config.get("examples").unwrap().is_array());

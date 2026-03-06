@@ -31,10 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let classify: AsyncNodeAction = Arc::new(|state: Value| {
         Box::pin(async move {
-            let input = state
-                .get("input")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let input = state.get("input").and_then(|v| v.as_str()).unwrap_or("");
             let category = if input.contains("error") || input.contains("bug") {
                 "issue"
             } else if input.contains("feature") || input.contains("add") {
@@ -102,7 +99,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let saver = Arc::new(InMemoryCheckpointSaver::new());
     let persistent = PersistentGraph::new(graph, saver.clone(), "ticket-thread-1");
 
-    println!("--- First Invocation (thread: {}) ---\n", persistent.thread_id());
+    println!(
+        "--- First Invocation (thread: {}) ---\n",
+        persistent.thread_id()
+    );
 
     let result = persistent
         .invoke(json!({ "input": "There is a bug in the login page" }))
@@ -163,7 +163,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let forked_result = forked
         .invoke(json!({ "input": "error in payment processing" }))
         .await?;
-    println!("\n  Forked result: {}\n", serde_json::to_string_pretty(&forked_result)?);
+    println!(
+        "\n  Forked result: {}\n",
+        serde_json::to_string_pretty(&forked_result)?
+    );
 
     // Verify original thread is unaffected.
     let original_state = persistent.get_state().await?.unwrap();

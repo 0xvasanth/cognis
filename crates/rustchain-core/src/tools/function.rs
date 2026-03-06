@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use async_trait::async_trait;
-use serde_json::Value;
-use crate::error::Result;
 use super::base::{BaseTool, ToolSchema};
 use super::types::{ErrorHandler, ResponseFormat, ToolInput, ToolOutput};
+use crate::error::Result;
+use async_trait::async_trait;
+use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 type SyncToolFn = Arc<dyn Fn(ToolInput) -> Result<ToolOutput> + Send + Sync>;
 
@@ -169,26 +169,21 @@ pub fn tool_from_function<F>(
 where
     F: Fn(Value) -> Result<Value> + Send + Sync + 'static,
 {
-    FunctionTool::new(
-        name,
-        description,
-        Some(schema),
-        move |input: ToolInput| {
-            let json_input = match input {
-                ToolInput::Text(s) => {
-                    serde_json::from_str::<Value>(&s).unwrap_or(Value::String(s))
-                }
-                ToolInput::Structured(map) => Value::Object(
-                    map.into_iter().collect::<serde_json::Map<String, Value>>(),
-                ),
-                ToolInput::ToolCall(tc) => Value::Object(
-                    tc.args.into_iter().collect::<serde_json::Map<String, Value>>(),
-                ),
-            };
-            let result = func(json_input)?;
-            Ok(ToolOutput::Content(result))
-        },
-    )
+    FunctionTool::new(name, description, Some(schema), move |input: ToolInput| {
+        let json_input = match input {
+            ToolInput::Text(s) => serde_json::from_str::<Value>(&s).unwrap_or(Value::String(s)),
+            ToolInput::Structured(map) => {
+                Value::Object(map.into_iter().collect::<serde_json::Map<String, Value>>())
+            }
+            ToolInput::ToolCall(tc) => Value::Object(
+                tc.args
+                    .into_iter()
+                    .collect::<serde_json::Map<String, Value>>(),
+            ),
+        };
+        let result = func(json_input)?;
+        Ok(ToolOutput::Content(result))
+    })
 }
 
 #[cfg(test)]
@@ -203,7 +198,9 @@ mod tests {
             None,
             |input: ToolInput| match input {
                 ToolInput::Text(s) => Ok(ToolOutput::Content(Value::String(s.to_uppercase()))),
-                _ => Ok(ToolOutput::Content(Value::String("unsupported".to_string()))),
+                _ => Ok(ToolOutput::Content(Value::String(
+                    "unsupported".to_string(),
+                ))),
             },
         )
     }
@@ -247,7 +244,10 @@ mod tests {
         assert!(tool.return_direct());
         assert_eq!(tool.response_format(), ResponseFormat::ContentAndArtifact);
         assert_eq!(tool.tags(), &["test".to_string()]);
-        assert!(matches!(tool.handle_tool_error(), ErrorHandler::DefaultMessage));
+        assert!(matches!(
+            tool.handle_tool_error(),
+            ErrorHandler::DefaultMessage
+        ));
     }
 
     #[test]
@@ -289,16 +289,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_function_tool_error_handling() {
-        let tool = FunctionTool::new(
-            "failing",
-            "A tool that fails",
-            None,
-            |_input: ToolInput| {
-                Err(crate::error::RustChainError::ToolException(
-                    "something went wrong".to_string(),
-                ))
-            },
-        )
+        let tool = FunctionTool::new("failing", "A tool that fails", None, |_input: ToolInput| {
+            Err(crate::error::RustChainError::ToolException(
+                "something went wrong".to_string(),
+            ))
+        })
         .with_error_handler(ErrorHandler::StaticMessage("handled".to_string()));
 
         // Using `run` (not `_run`) to trigger error handling.

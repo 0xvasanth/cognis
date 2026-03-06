@@ -5,9 +5,9 @@ pub mod run_manager;
 
 pub use base::CallbackHandler;
 pub use handlers::{
-    FileCallbackHandler, LogLevel, LoggingCallbackHandler, MetricsCallbackHandler,
-    MetricsSnapshot, StdOutCallbackHandler, StreamingStdOutCallbackHandler,
-    UsageMetadataCallbackHandler, UsageSummary,
+    FileCallbackHandler, LogLevel, LoggingCallbackHandler, MetricsCallbackHandler, MetricsSnapshot,
+    StdOutCallbackHandler, StreamingStdOutCallbackHandler, UsageMetadataCallbackHandler,
+    UsageSummary,
 };
 pub use manager::CallbackManager;
 pub use run_manager::{

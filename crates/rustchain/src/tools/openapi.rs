@@ -123,10 +123,12 @@ impl OpenAPISpec {
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
-                    .filter_map(|s| s.get("url").and_then(|u| u.as_str()).map(|u| {
-                        // Strip trailing slash for consistency.
-                        u.trim_end_matches('/').to_string()
-                    }))
+                    .filter_map(|s| {
+                        s.get("url").and_then(|u| u.as_str()).map(|u| {
+                            // Strip trailing slash for consistency.
+                            u.trim_end_matches('/').to_string()
+                        })
+                    })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
@@ -179,8 +181,7 @@ impl OpenAPISpec {
                         Self::merge_params(&mut info.parameters, &shared_params);
                         operations.push(info);
                     } else {
-                        let mut info =
-                            Self::parse_operation(op, &operation_id, method, path);
+                        let mut info = Self::parse_operation(op, &operation_id, method, path);
                         Self::merge_params(&mut info.parameters, &shared_params);
                         operations.push(info);
                     }
@@ -255,10 +256,7 @@ impl OpenAPISpec {
                     .and_then(|v| v.as_str())
                     .unwrap_or("query")
                     .to_string();
-                let required = p
-                    .get("required")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let required = p.get("required").and_then(|v| v.as_bool()).unwrap_or(false);
                 let schema = p.get("schema").cloned();
                 let description = p
                     .get("description")
@@ -373,9 +371,10 @@ impl HttpExecutor for ReqwestExecutor {
             req = req.json(body_val);
         }
 
-        let response = req.send().await.map_err(|e| {
-            RustChainError::ToolException(format!("HTTP request failed: {}", e))
-        })?;
+        let response = req
+            .send()
+            .await
+            .map_err(|e| RustChainError::ToolException(format!("HTTP request failed: {}", e)))?;
 
         let status = response.status().as_u16();
         let response_body = response.text().await.map_err(|e| {
@@ -935,10 +934,7 @@ mod tests {
         match result {
             ToolOutput::Content(v) => {
                 assert_eq!(v["method"], "GET");
-                assert!(v["url"]
-                    .as_str()
-                    .unwrap()
-                    .contains("limit=10"));
+                assert!(v["url"].as_str().unwrap().contains("limit=10"));
             }
             _ => panic!("Expected Content output"),
         }

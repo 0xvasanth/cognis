@@ -50,9 +50,7 @@ pub fn count_message_tokens(messages: &[Message], tokens_per_message: usize) -> 
         if let Message::Ai(ai) = msg {
             for tc in &ai.tool_calls {
                 total += estimate_token_count(&tc.name);
-                total += estimate_token_count(
-                    &serde_json::to_string(&tc.args).unwrap_or_default(),
-                );
+                total += estimate_token_count(&serde_json::to_string(&tc.args).unwrap_or_default());
             }
         }
     }
@@ -118,16 +116,16 @@ pub fn trim_messages(
     let mut used_tokens: usize = 0;
 
     for msg in other_messages.iter().rev() {
-        let msg_tokens =
-            tokens_per_message + estimate_token_count(&(*msg).content().text());
+        let msg_tokens = tokens_per_message + estimate_token_count(&(*msg).content().text());
         // Account for tool call tokens on AI messages.
         let tool_tokens = if let Message::Ai(ai) = *msg {
-            ai.tool_calls.iter().map(|tc| {
-                estimate_token_count(&tc.name)
-                    + estimate_token_count(
-                        &serde_json::to_string(&tc.args).unwrap_or_default(),
-                    )
-            }).sum::<usize>()
+            ai.tool_calls
+                .iter()
+                .map(|tc| {
+                    estimate_token_count(&tc.name)
+                        + estimate_token_count(&serde_json::to_string(&tc.args).unwrap_or_default())
+                })
+                .sum::<usize>()
         } else {
             0
         };
@@ -181,8 +179,8 @@ pub fn get_model_context_window(model: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messages::{AIMessage, Message};
     use crate::messages::tool_types::ToolCall;
+    use crate::messages::{AIMessage, Message};
     use std::collections::HashMap;
 
     #[test]
@@ -202,10 +200,7 @@ mod tests {
 
     #[test]
     fn test_count_message_tokens_basic() {
-        let messages = vec![
-            Message::human("Hello"),
-            Message::ai("Hi there!"),
-        ];
+        let messages = vec![Message::human("Hello"), Message::ai("Hi there!")];
         let tokens = count_message_tokens(&messages, 3);
         // Human: 3 (overhead) + ceil(5/4)=2 = 5
         // AI:    3 (overhead) + ceil(9/4)=3 = 6
@@ -243,14 +238,14 @@ mod tests {
         // Use a small budget that can fit system + newest question only
         let trimmed = trim_messages(&messages, 20, 3);
         // System message should always be first
-        assert_eq!(trimmed[0].message_type(), crate::messages::MessageType::System);
+        assert_eq!(
+            trimmed[0].message_type(),
+            crate::messages::MessageType::System
+        );
         // Should have dropped some older messages
         assert!(trimmed.len() < messages.len());
         // Last message should be the newest question
-        assert_eq!(
-            trimmed.last().unwrap().content().text(),
-            "Newest question"
-        );
+        assert_eq!(trimmed.last().unwrap().content().text(), "Newest question");
     }
 
     #[test]
@@ -272,10 +267,7 @@ mod tests {
 
     #[test]
     fn test_trim_messages_all_fit() {
-        let messages = vec![
-            Message::system("Be helpful."),
-            Message::human("Hi"),
-        ];
+        let messages = vec![Message::system("Be helpful."), Message::human("Hi")];
         let trimmed = trim_messages(&messages, 1000, 3);
         assert_eq!(trimmed.len(), messages.len());
     }
@@ -284,7 +276,10 @@ mod tests {
     fn test_get_model_context_window_known() {
         assert_eq!(get_model_context_window("gpt-4o"), Some(128_000));
         assert_eq!(get_model_context_window("gpt-4o-mini"), Some(128_000));
-        assert_eq!(get_model_context_window("gpt-4-turbo-preview"), Some(128_000));
+        assert_eq!(
+            get_model_context_window("gpt-4-turbo-preview"),
+            Some(128_000)
+        );
         assert_eq!(get_model_context_window("gpt-4"), Some(8_192));
         assert_eq!(get_model_context_window("gpt-3.5-turbo"), Some(16_385));
         assert_eq!(get_model_context_window("claude-3-opus"), Some(200_000));

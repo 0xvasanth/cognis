@@ -241,10 +241,7 @@ async fn test_interrupt_after_and_resume() {
         .compile()
         .unwrap();
 
-    let result = graph
-        .invoke_with_interrupt(json!({}))
-        .await
-        .unwrap();
+    let result = graph.invoke_with_interrupt(json!({})).await.unwrap();
 
     match result {
         InvokeResult::Interrupted(interrupted) => {
@@ -323,10 +320,7 @@ async fn test_streaming_updates_mode() {
         .compile()
         .unwrap();
 
-    let stream = graph
-        .stream(json!({}), StreamMode::Updates)
-        .await
-        .unwrap();
+    let stream = graph.stream(json!({}), StreamMode::Updates).await.unwrap();
 
     let updates: Vec<_> = stream.collect().await;
 
@@ -404,10 +398,7 @@ mod tool_agent_helpers {
             "mock tool for testing"
         }
 
-        async fn _run(
-            &self,
-            _input: ToolInput,
-        ) -> rustchain_core::error::Result<ToolOutput> {
+        async fn _run(&self, _input: ToolInput) -> rustchain_core::error::Result<ToolOutput> {
             Ok(ToolOutput::Content(Value::String(self.result.clone())))
         }
     }
@@ -514,10 +505,7 @@ async fn test_parallel_fan_out() {
             "worker",
             transform(|state| {
                 // Each worker invocation receives a custom input with a "task_id".
-                let task_id = state
-                    .get("task_id")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(-1);
+                let task_id = state.get("task_id").and_then(|v| v.as_i64()).unwrap_or(-1);
                 Ok(json!({ "last_task": task_id }))
             }),
         )
@@ -571,10 +559,7 @@ async fn test_graph_with_many_nodes() {
         builder = builder.add_node(
             &name,
             transform(move |state: Value| {
-                let count = state
-                    .get("steps")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                let count = state.get("steps").and_then(|v| v.as_i64()).unwrap_or(0);
                 let mut visited: Vec<String> = state
                     .get("visited")
                     .and_then(|v| serde_json::from_value(v.clone()).ok())
@@ -660,10 +645,7 @@ async fn test_streaming_debug_mode() {
         .compile()
         .unwrap();
 
-    let stream = graph
-        .stream(json!({}), StreamMode::Debug)
-        .await
-        .unwrap();
+    let stream = graph.stream(json!({}), StreamMode::Debug).await.unwrap();
 
     let updates: Vec<_> = stream.collect().await;
     assert_eq!(updates.len(), 1);

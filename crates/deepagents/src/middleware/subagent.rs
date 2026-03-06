@@ -287,7 +287,10 @@ mod tests {
         let input = ToolInput::Structured({
             let mut m = HashMap::new();
             m.insert("task".into(), json!("Analyze data"));
-            m.insert("context".into(), json!("The data is about weather patterns"));
+            m.insert(
+                "context".into(),
+                json!("The data is about weather patterns"),
+            );
             m
         });
 

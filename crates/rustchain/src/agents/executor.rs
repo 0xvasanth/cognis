@@ -251,7 +251,9 @@ impl AgentExecutor {
             "messages": initial_messages.iter().map(|m| m.content().text()).collect::<Vec<_>>()
         });
 
-        let _ = cb.on_chain_start(&serialized_chain, &inputs, chain_run_id).await;
+        let _ = cb
+            .on_chain_start(&serialized_chain, &inputs, chain_run_id)
+            .await;
 
         let mut messages: Vec<Message> = initial_messages.to_vec();
         let mut intermediate_steps: Vec<AgentStep> = Vec::new();
@@ -264,18 +266,18 @@ impl AgentExecutor {
                     let reason = "Agent exceeded time limit";
                     match self.early_stopping_method {
                         Some(_) => {
-                            return self.handle_early_stop(
-                                &cb,
-                                chain_run_id,
-                                &mut messages,
-                                intermediate_steps,
-                                reason,
-                            ).await;
+                            return self
+                                .handle_early_stop(
+                                    &cb,
+                                    chain_run_id,
+                                    &mut messages,
+                                    intermediate_steps,
+                                    reason,
+                                )
+                                .await;
                         }
                         None => {
-                            let err = RustChainError::RecursionLimitExceeded(
-                                reason.to_string(),
-                            );
+                            let err = RustChainError::RecursionLimitExceeded(reason.to_string());
                             let _ = cb.on_chain_error(&err.to_string(), chain_run_id).await;
                             return Err(err);
                         }
@@ -358,16 +360,14 @@ impl AgentExecutor {
 
                 let tool_run_id = Uuid::new_v4();
                 let serialized_tool = serde_json::json!({"name": &tool_call.name});
-                let tool_input_str =
-                    serde_json::to_string(&tool_call.args).unwrap_or_default();
+                let tool_input_str = serde_json::to_string(&tool_call.args).unwrap_or_default();
                 let _ = cb
                     .on_tool_start(&serialized_tool, &tool_input_str, tool_run_id)
                     .await;
 
                 let result_text = match self.tools.get(&tool_call.name) {
                     Some(tool) => {
-                        let args_value =
-                            serde_json::to_value(&tool_call.args).unwrap_or_default();
+                        let args_value = serde_json::to_value(&tool_call.args).unwrap_or_default();
                         match tool.run_json(&args_value).await {
                             Ok(value) => {
                                 let text = match value {
@@ -389,8 +389,7 @@ impl AgentExecutor {
                         }
                     }
                     None => {
-                        let err_text =
-                            format!("Error: tool '{}' not found", tool_call.name);
+                        let err_text = format!("Error: tool '{}' not found", tool_call.name);
                         let _ = cb.on_tool_error(&err_text, tool_run_id).await;
                         err_text
                     }
@@ -400,8 +399,7 @@ impl AgentExecutor {
                 intermediate_steps.push(AgentStep {
                     action: AgentAction {
                         tool_name: tool_call.name.clone(),
-                        tool_input: serde_json::to_value(&tool_call.args)
-                            .unwrap_or_default(),
+                        tool_input: serde_json::to_value(&tool_call.args).unwrap_or_default(),
                         log: format!(
                             "Calling tool `{}` with args: {}",
                             tool_call.name, tool_input_str
@@ -410,10 +408,7 @@ impl AgentExecutor {
                     observation: result_text.clone(),
                 });
 
-                messages.push(Message::Tool(ToolMessage::new(
-                    &result_text,
-                    &tool_call_id,
-                )));
+                messages.push(Message::Tool(ToolMessage::new(&result_text, &tool_call_id)));
             }
         }
 
@@ -451,7 +446,9 @@ impl AgentExecutor {
         reason: &str,
     ) -> Result<AgentResult> {
         // early_stopping_method is guaranteed to be Some when this is called
-        let method = self.early_stopping_method.unwrap_or(EarlyStoppingMethod::Force);
+        let method = self
+            .early_stopping_method
+            .unwrap_or(EarlyStoppingMethod::Force);
         match method {
             EarlyStoppingMethod::Force => {
                 // Return whatever we have — use the last AI message content or
@@ -483,9 +480,10 @@ impl AgentExecutor {
                 ));
                 match self.model._generate(messages, None).await {
                     Ok(result) => {
-                        let generation = result.generations.into_iter().next().ok_or_else(
-                            || RustChainError::Other("No generations returned".into()),
-                        )?;
+                        let generation =
+                            result.generations.into_iter().next().ok_or_else(|| {
+                                RustChainError::Other("No generations returned".into())
+                            })?;
                         let output = generation.message.content().text();
                         messages.push(generation.message);
                         let outputs = serde_json::json!({"output": &output});
@@ -530,8 +528,7 @@ impl Runnable for AgentExecutor {
         let mut output = serde_json::json!({ "output": result.output });
         if self.return_intermediate_steps {
             output["intermediate_steps"] =
-                serde_json::to_value(&result.intermediate_steps)
-                    .unwrap_or(Value::Array(vec![]));
+                serde_json::to_value(&result.intermediate_steps).unwrap_or(Value::Array(vec![]));
         }
         Ok(output)
     }
@@ -684,10 +681,7 @@ mod tests {
                 let mut ai = AIMessage::new("I'll use the calculator");
                 ai.tool_calls.push(ToolCall {
                     name: "calculator".to_string(),
-                    args: HashMap::from([(
-                        "expr".to_string(),
-                        Value::String("2+2".to_string()),
-                    )]),
+                    args: HashMap::from([("expr".to_string(), Value::String("2+2".to_string()))]),
                     id: Some("call_1".to_string()),
                 });
                 Ok(ChatResult {
@@ -907,10 +901,7 @@ mod tests {
     async fn test_single_tool_call() {
         let model: Arc<dyn BaseChatModel> = Arc::new(ToolThenAnswerModel::new());
         let tool: Arc<dyn BaseTool> = Arc::new(CalculatorTool);
-        let executor = AgentExecutor::builder()
-            .model(model)
-            .tool(tool)
-            .build();
+        let executor = AgentExecutor::builder().model(model).tool(tool).build();
 
         let result = executor
             .run(&[Message::human("What is 2+2?")])
@@ -1042,8 +1033,7 @@ mod tests {
             // GenerateResponse call: final answer
             Message::Ai(AIMessage::new("Final summary answer")),
         ];
-        let model: Arc<dyn BaseChatModel> =
-            Arc::new(FakeMessagesListChatModel::new(responses));
+        let model: Arc<dyn BaseChatModel> = Arc::new(FakeMessagesListChatModel::new(responses));
         let tool: Arc<dyn BaseTool> = Arc::new(CalculatorTool);
         let executor = AgentExecutor::builder()
             .model(model)
@@ -1124,8 +1114,7 @@ mod tests {
 
     #[test]
     fn test_builder_pattern() {
-        let model: Arc<dyn BaseChatModel> =
-            Arc::new(FakeListChatModel::new(vec!["ok".into()]));
+        let model: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec!["ok".into()]));
         let tool: Arc<dyn BaseTool> = Arc::new(CalculatorTool);
 
         let executor = AgentExecutor::builder()
@@ -1193,10 +1182,7 @@ mod tests {
         let executor = AgentExecutor::builder().model(model).build();
 
         let input = serde_json::json!({ "input": "What is 2+2?" });
-        let result = executor
-            .invoke(input, None)
-            .await
-            .expect("should succeed");
+        let result = executor.invoke(input, None).await.expect("should succeed");
 
         assert_eq!(result["output"], "from input");
     }
@@ -1205,8 +1191,7 @@ mod tests {
 
     #[test]
     fn test_runnable_name() {
-        let model: Arc<dyn BaseChatModel> =
-            Arc::new(FakeListChatModel::new(vec!["ok".into()]));
+        let model: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec!["ok".into()]));
         let executor = AgentExecutor::builder().model(model).build();
         assert_eq!(executor.name(), "AgentExecutor");
     }
@@ -1278,9 +1263,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_generic_fake_chat_model_agent() {
-        let model: Arc<dyn BaseChatModel> = Arc::new(GenericFakeChatModel::from_messages(
-            vec![AIMessage::new("The capital of France is Paris")],
-        ));
+        let model: Arc<dyn BaseChatModel> =
+            Arc::new(GenericFakeChatModel::from_messages(vec![AIMessage::new(
+                "The capital of France is Paris",
+            )]));
         let executor = AgentExecutor::builder().model(model).build();
 
         let result = executor
@@ -1308,8 +1294,7 @@ mod tests {
             },
             Message::Ai(AIMessage::new("I see the tool was not found")),
         ];
-        let model: Arc<dyn BaseChatModel> =
-            Arc::new(FakeMessagesListChatModel::new(responses));
+        let model: Arc<dyn BaseChatModel> = Arc::new(FakeMessagesListChatModel::new(responses));
         let executor = AgentExecutor::builder()
             .model(model)
             .return_intermediate_steps(true)

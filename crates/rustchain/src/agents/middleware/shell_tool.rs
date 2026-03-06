@@ -77,11 +77,7 @@ impl ShellToolMiddleware {
             tool_name: "shell".into(),
             timeout: Duration::from_secs(120),
             env_vars: HashMap::new(),
-            blocked_commands: vec![
-                "rm -rf /".into(),
-                "mkfs".into(),
-                "dd if=/dev/zero".into(),
-            ],
+            blocked_commands: vec!["rm -rf /".into(), "mkfs".into(), "dd if=/dev/zero".into()],
             max_output_lines: 100,
         }
     }
@@ -234,7 +230,10 @@ mod tests {
         let mw = ShellToolMiddleware::new("/nonexistent/path/that/does/not/exist");
         assert_eq!(mw.tool_name, "shell");
         // Should have created a temp dir instead
-        assert_ne!(mw.workspace_root, PathBuf::from("/nonexistent/path/that/does/not/exist"));
+        assert_ne!(
+            mw.workspace_root,
+            PathBuf::from("/nonexistent/path/that/does/not/exist")
+        );
         assert!(mw.workspace_root.exists());
     }
 
@@ -303,8 +302,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_timeout() {
-        let mw = ShellToolMiddleware::new("/tmp")
-            .with_timeout(Duration::from_millis(100));
+        let mw = ShellToolMiddleware::new("/tmp").with_timeout(Duration::from_millis(100));
         let result = mw.execute("sleep 10").await.unwrap();
         assert!(result.timed_out);
         assert!(!result.success());

@@ -1,5 +1,5 @@
-use serde_json::{json, Value};
 use super::{Message, ToolCall};
+use serde_json::{json, Value};
 
 fn get_openai_role(msg: &Message) -> &'static str {
     match msg {

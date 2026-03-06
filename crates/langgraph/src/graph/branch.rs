@@ -97,9 +97,7 @@ impl Branch {
     pub fn resolve(&self, state: &Value) -> Result<Vec<String>, LangGraphError> {
         let result = (self.path)(state);
         match result {
-            RouterResult::Single(node) => {
-                Ok(vec![self.resolve_key(node)?])
-            }
+            RouterResult::Single(node) => Ok(vec![self.resolve_key(node)?]),
             RouterResult::Multiple(nodes) => {
                 nodes.into_iter().map(|n| self.resolve_key(n)).collect()
             }
@@ -147,11 +145,8 @@ impl Branch {
 }
 
 /// An async routing function.
-pub type AsyncRouterFn = Arc<
-    dyn Fn(&Value) -> Pin<Box<dyn Future<Output = RouterResult> + Send + '_>>
-        + Send
-        + Sync,
->;
+pub type AsyncRouterFn =
+    Arc<dyn Fn(&Value) -> Pin<Box<dyn Future<Output = RouterResult> + Send + '_>> + Send + Sync>;
 
 /// A branch with an async routing function.
 #[derive(Clone)]
@@ -263,10 +258,7 @@ mod tests {
         }));
 
         let result = branch.resolve(&json!({})).unwrap();
-        assert_eq!(
-            result,
-            vec!["worker".to_string(), "worker".to_string()]
-        );
+        assert_eq!(result, vec!["worker".to_string(), "worker".to_string()]);
     }
 
     #[tokio::test]

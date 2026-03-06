@@ -1,7 +1,7 @@
 //! JSON parsing utilities.
 
-use serde_json::Value;
 use crate::error::{Result, RustChainError};
+use serde_json::Value;
 
 /// Parse potentially incomplete JSON string (useful for streaming).
 /// Attempts to fix common issues: missing closing brackets, trailing commas.
@@ -33,7 +33,8 @@ pub fn parse_partial_json(s: &str) -> Result<Value> {
         attempt.push('}');
     }
 
-    serde_json::from_str(&attempt).map_err(|e| RustChainError::Other(format!("Failed to parse partial JSON: {}", e)))
+    serde_json::from_str(&attempt)
+        .map_err(|e| RustChainError::Other(format!("Failed to parse partial JSON: {}", e)))
 }
 
 /// Parse JSON from a markdown code block.
@@ -41,7 +42,8 @@ pub fn parse_json_markdown(text: &str) -> Result<Value> {
     let trimmed = text.trim();
     let json_str = if trimmed.starts_with("```") {
         // Strip code fence
-        let after = trimmed.strip_prefix("```json")
+        let after = trimmed
+            .strip_prefix("```json")
             .or_else(|| trimmed.strip_prefix("```JSON"))
             .or_else(|| trimmed.strip_prefix("```"))
             .unwrap_or(trimmed);
@@ -49,7 +51,8 @@ pub fn parse_json_markdown(text: &str) -> Result<Value> {
     } else {
         trimmed
     };
-    serde_json::from_str(json_str).map_err(|e| RustChainError::Other(format!("Failed to parse JSON from markdown: {}", e)))
+    serde_json::from_str(json_str)
+        .map_err(|e| RustChainError::Other(format!("Failed to parse JSON from markdown: {}", e)))
 }
 
 /// Parse JSON from markdown and validate expected keys exist.
@@ -58,7 +61,10 @@ pub fn parse_and_check_json_markdown(text: &str, expected_keys: &[&str]) -> Resu
     if let Value::Object(ref map) = parsed {
         for key in expected_keys {
             if !map.contains_key(*key) {
-                return Err(RustChainError::Other(format!("Missing expected key '{}' in JSON output", key)));
+                return Err(RustChainError::Other(format!(
+                    "Missing expected key '{}' in JSON output",
+                    key
+                )));
             }
         }
     }

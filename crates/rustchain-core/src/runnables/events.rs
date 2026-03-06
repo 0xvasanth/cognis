@@ -16,9 +16,7 @@ use uuid::Uuid;
 
 use crate::callbacks::CallbackHandler;
 use crate::error::Result;
-use crate::tracers::event_stream::{
-    EventStreamCallbackHandler, RootEventFilter, StreamEvent,
-};
+use crate::tracers::event_stream::{EventStreamCallbackHandler, RootEventFilter, StreamEvent};
 
 use super::base::Runnable;
 use super::config::{ensure_config, RunnableConfig};
@@ -111,9 +109,7 @@ pub async fn stream_events_with_filter(
 
         match &result {
             Ok(output) => {
-                let _ = handler_for_task
-                    .on_chain_end(output, run_id, None)
-                    .await;
+                let _ = handler_for_task.on_chain_end(output, run_id, None).await;
             }
             Err(e) => {
                 let _ = handler_for_task
@@ -147,10 +143,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_events_produces_chain_start_and_end() {
-        let runnable: Arc<dyn Runnable> = Arc::new(RunnableLambda::new("doubler", |v: Value| async move {
-            let n = v.as_i64().unwrap();
-            Ok(json!(n * 2))
-        }));
+        let runnable: Arc<dyn Runnable> =
+            Arc::new(RunnableLambda::new("doubler", |v: Value| async move {
+                let n = v.as_i64().unwrap();
+                Ok(json!(n * 2))
+            }));
 
         let mut stream = stream_events(runnable, json!(5), None).await.unwrap();
 
@@ -176,9 +173,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_events_correct_event_types() {
-        let runnable: Arc<dyn Runnable> = Arc::new(RunnableLambda::new("identity", |v: Value| async move {
-            Ok(v)
-        }));
+        let runnable: Arc<dyn Runnable> = Arc::new(RunnableLambda::new(
+            "identity",
+            |v: Value| async move { Ok(v) },
+        ));
 
         let mut stream = stream_events(runnable, json!("hello"), None).await.unwrap();
 
@@ -202,10 +200,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_events_completes_after_invoke() {
-        let runnable: Arc<dyn Runnable> = Arc::new(RunnableLambda::new("slow", |v: Value| async move {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            Ok(v)
-        }));
+        let runnable: Arc<dyn Runnable> =
+            Arc::new(RunnableLambda::new("slow", |v: Value| async move {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                Ok(v)
+            }));
 
         let mut stream = stream_events(runnable, json!(42), None).await.unwrap();
 
@@ -216,7 +215,10 @@ mod tests {
         }
 
         // Stream must have completed (the while loop exited).
-        assert!(count >= 2, "stream should have yielded events before completing");
+        assert!(
+            count >= 2,
+            "stream should have yielded events before completing"
+        );
     }
 
     #[tokio::test]
@@ -231,9 +233,8 @@ mod tests {
             Ok(json!(n * 2))
         })) as Arc<dyn Runnable>;
 
-        let sequence = Arc::new(
-            RunnableSequence::new(vec![step1, step2]).unwrap()
-        ) as Arc<dyn Runnable>;
+        let sequence =
+            Arc::new(RunnableSequence::new(vec![step1, step2]).unwrap()) as Arc<dyn Runnable>;
 
         let mut stream = stream_events(sequence, json!(3), None).await.unwrap();
 
@@ -256,9 +257,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_events_carries_input_in_start() {
-        let runnable: Arc<dyn Runnable> = Arc::new(RunnableLambda::new("echo", |v: Value| async move {
-            Ok(v)
-        }));
+        let runnable: Arc<dyn Runnable> =
+            Arc::new(RunnableLambda::new("echo", |v: Value| async move { Ok(v) }));
 
         let input = json!({"query": "test"});
         let mut stream = stream_events(runnable, input.clone(), None).await.unwrap();
@@ -270,9 +270,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_events_error_produces_chain_error() {
-        let runnable: Arc<dyn Runnable> = Arc::new(RunnableLambda::new("failing", |_v: Value| async move {
-            Err(crate::error::RustChainError::Other("deliberate failure".into()))
-        }));
+        let runnable: Arc<dyn Runnable> =
+            Arc::new(RunnableLambda::new("failing", |_v: Value| async move {
+                Err(crate::error::RustChainError::Other(
+                    "deliberate failure".into(),
+                ))
+            }));
 
         let mut stream = stream_events(runnable, json!(1), None).await.unwrap();
 

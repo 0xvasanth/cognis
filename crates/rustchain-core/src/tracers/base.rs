@@ -54,12 +54,7 @@ pub trait BaseTracer: CallbackHandler {
     }
 
     /// Create an LLM run from callback parameters.
-    fn create_llm_run(
-        run_id: Uuid,
-        name: &str,
-        inputs: Value,
-        parent_run_id: Option<Uuid>,
-    ) -> Run {
+    fn create_llm_run(run_id: Uuid, name: &str, inputs: Value, parent_run_id: Option<Uuid>) -> Run {
         let mut run = Run::new(run_id, name, RunType::Llm, inputs);
         run.parent_run_id = parent_run_id;
         run
@@ -91,13 +86,13 @@ pub trait BaseTracer: CallbackHandler {
     }
 
     /// Create a tool run from callback parameters.
-    fn create_tool_run(
-        run_id: Uuid,
-        name: &str,
-        input: &str,
-        parent_run_id: Option<Uuid>,
-    ) -> Run {
-        let mut run = Run::new(run_id, name, RunType::Tool, Value::String(input.to_string()));
+    fn create_tool_run(run_id: Uuid, name: &str, input: &str, parent_run_id: Option<Uuid>) -> Run {
+        let mut run = Run::new(
+            run_id,
+            name,
+            RunType::Tool,
+            Value::String(input.to_string()),
+        );
         run.parent_run_id = parent_run_id;
         run
     }

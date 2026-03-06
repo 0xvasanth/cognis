@@ -38,15 +38,18 @@ impl ToolCallOutputParser {
     pub fn parse_chat_generation(&self, generation: &ChatGeneration) -> Result<Value> {
         let tool_calls = match &generation.message {
             crate::messages::Message::Ai(ai_msg) => &ai_msg.tool_calls,
-            _ => return if self.first_tool_only {
-                Err(RustChainError::OutputParserError {
-                    message: "Expected AIMessage in ChatGeneration for tool call parsing".into(),
-                    observation: None,
-                    llm_output: Some(generation.text.clone()),
-                })
-            } else {
-                Ok(json!([]))
-            },
+            _ => {
+                return if self.first_tool_only {
+                    Err(RustChainError::OutputParserError {
+                        message: "Expected AIMessage in ChatGeneration for tool call parsing"
+                            .into(),
+                        observation: None,
+                        llm_output: Some(generation.text.clone()),
+                    })
+                } else {
+                    Ok(json!([]))
+                }
+            }
         };
         if tool_calls.is_empty() {
             return if self.first_tool_only {

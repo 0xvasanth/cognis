@@ -96,7 +96,9 @@ impl ParentDocumentRetriever {
             self.docstore.add(&parent_id, parent.clone()).await;
 
             // Split parent into child chunks.
-            let child_docs = self.child_splitter.split_documents(std::slice::from_ref(parent));
+            let child_docs = self
+                .child_splitter
+                .split_documents(std::slice::from_ref(parent));
 
             // Add parent_id metadata to each child and store in vectorstore.
             let children_with_meta: Vec<Document> = child_docs
@@ -191,12 +193,7 @@ mod tests {
         let docstore = Arc::new(InMemoryDocStore::new());
         let splitter: Arc<dyn TextSplitterTrait> = Arc::new(MockTextSplitter::new(5));
 
-        let retriever = ParentDocumentRetriever::new(
-            vectorstore,
-            docstore,
-            splitter,
-        )
-        .with_k(4);
+        let retriever = ParentDocumentRetriever::new(vectorstore, docstore, splitter).with_k(4);
 
         let parent = Document::new("Hello World, this is a test document with enough text.");
         retriever.add_documents(vec![parent.clone()]).await.unwrap();
@@ -216,12 +213,7 @@ mod tests {
         // Small chunk size so we get many chunks from one parent.
         let splitter: Arc<dyn TextSplitterTrait> = Arc::new(MockTextSplitter::new(3));
 
-        let retriever = ParentDocumentRetriever::new(
-            vectorstore,
-            docstore,
-            splitter,
-        )
-        .with_k(10);
+        let retriever = ParentDocumentRetriever::new(vectorstore, docstore, splitter).with_k(10);
 
         let parent = Document::new("abcdefghijklmnop");
         retriever.add_documents(vec![parent.clone()]).await.unwrap();
@@ -240,12 +232,7 @@ mod tests {
         let docstore = Arc::new(InMemoryDocStore::new());
         let splitter: Arc<dyn TextSplitterTrait> = Arc::new(MockTextSplitter::new(10));
 
-        let retriever = ParentDocumentRetriever::new(
-            vectorstore,
-            docstore,
-            splitter,
-        )
-        .with_k(10);
+        let retriever = ParentDocumentRetriever::new(vectorstore, docstore, splitter).with_k(10);
 
         let parents = vec![
             Document::new("First parent document with some content here"),

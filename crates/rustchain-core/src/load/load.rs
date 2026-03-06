@@ -127,10 +127,7 @@ impl Reviver {
                 // Recurse into kwargs
                 let mut result = serde_json::Map::new();
                 result.insert("lc".to_string(), Value::Number(1.into()));
-                result.insert(
-                    "type".to_string(),
-                    Value::String("constructor".to_string()),
-                );
+                result.insert("type".to_string(), Value::String("constructor".to_string()));
                 if let Some(id) = map.get("id") {
                     result.insert("id".to_string(), id.clone());
                 }

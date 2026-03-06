@@ -83,11 +83,7 @@ impl VectorStoreMemory {
     ///
     /// Returns up to `k` documents (or a custom count) from the vector store
     /// that are most semantically similar to the query.
-    pub async fn retrieve_relevant(
-        &self,
-        query: &str,
-        k: Option<usize>,
-    ) -> Result<Vec<Document>> {
+    pub async fn retrieve_relevant(&self, query: &str, k: Option<usize>) -> Result<Vec<Document>> {
         let num = k.unwrap_or(self.k);
         self.vectorstore.similarity_search(query, num).await
     }

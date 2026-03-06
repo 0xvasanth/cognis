@@ -59,12 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .on_llm_start(&json!({}), &["What is Rust?".to_string()], run_id, None)
         .await?;
     metrics_handler
-        .on_llm_start(
-            &json!({}),
-            &["What is Rust?".to_string()],
-            run_id,
-            None,
-        )
+        .on_llm_start(&json!({}), &["What is Rust?".to_string()], run_id, None)
         .await?;
 
     println!("  Streaming response token by token:");
@@ -101,7 +96,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .on_llm_end(&llm_result, run_id, None)
         .await?;
 
-    println!("  Received {token_count} tokens, {} chars total", full_response.len());
+    println!(
+        "  Received {token_count} tokens, {} chars total",
+        full_response.len()
+    );
     println!();
 
     // -------------------------------------------------------------------------
@@ -120,12 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Fire callbacks.
     let run_id2 = Uuid::new_v4();
     metrics_handler
-        .on_llm_start(
-            &json!({}),
-            &["borrow checker".to_string()],
-            run_id2,
-            None,
-        )
+        .on_llm_start(&json!({}), &["borrow checker".to_string()], run_id2, None)
         .await?;
 
     println!("  Streaming character by character:");
@@ -154,9 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     println!("--- Step 4: Collecting streamed output ---\n");
 
-    let collect_model = FakeListChatModel::new(vec![
-        "Ownership, borrowing, and lifetimes.".into(),
-    ]);
+    let collect_model = FakeListChatModel::new(vec!["Ownership, borrowing, and lifetimes.".into()]);
     let messages = vec![Message::Human(HumanMessage::new("Key Rust concepts?"))];
 
     let stream = collect_model._stream(&messages, None).await?;

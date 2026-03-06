@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::error::{Result, RustChainError};
-use crate::messages::{
-    AIMessage, ChatMessage, HumanMessage, Message, SystemMessage,
-};
+use crate::messages::{AIMessage, ChatMessage, HumanMessage, Message, SystemMessage};
 
 use super::base::PromptTemplate;
 
@@ -14,7 +12,10 @@ pub enum MessagePromptTemplate {
     Human(PromptTemplate),
     Ai(PromptTemplate),
     System(PromptTemplate),
-    Chat { template: PromptTemplate, role: String },
+    Chat {
+        template: PromptTemplate,
+        role: String,
+    },
 }
 
 impl MessagePromptTemplate {
@@ -41,10 +42,7 @@ impl MessagePromptTemplate {
     }
 
     /// Format the template into a single message.
-    pub fn format_messages(
-        &self,
-        kwargs: &HashMap<String, Value>,
-    ) -> Result<Vec<Message>> {
+    pub fn format_messages(&self, kwargs: &HashMap<String, Value>) -> Result<Vec<Message>> {
         match self {
             Self::Human(pt) => {
                 let text = pt.format(kwargs)?;
@@ -100,10 +98,7 @@ impl MessagesPlaceholder {
         }
     }
 
-    pub fn format_messages(
-        &self,
-        kwargs: &HashMap<String, Value>,
-    ) -> Result<Vec<Message>> {
+    pub fn format_messages(&self, kwargs: &HashMap<String, Value>) -> Result<Vec<Message>> {
         let value = kwargs.get(&self.variable_name);
 
         let messages_value = match (value, self.optional) {
@@ -117,13 +112,12 @@ impl MessagesPlaceholder {
             }
         };
 
-        let messages: Vec<Message> =
-            serde_json::from_value(messages_value).map_err(|e| {
-                RustChainError::Other(format!(
-                    "Failed to deserialize messages for '{}': {}",
-                    self.variable_name, e
-                ))
-            })?;
+        let messages: Vec<Message> = serde_json::from_value(messages_value).map_err(|e| {
+            RustChainError::Other(format!(
+                "Failed to deserialize messages for '{}': {}",
+                self.variable_name, e
+            ))
+        })?;
 
         let messages = if let Some(n) = self.n_messages {
             if messages.len() > n {

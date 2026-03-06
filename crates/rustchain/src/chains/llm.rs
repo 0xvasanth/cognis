@@ -178,7 +178,10 @@ mod tests {
         let result = chain.invoke(json!({"topic": "rust"}), None).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("language"), "Error should mention missing key: {err}");
+        assert!(
+            err.contains("language"),
+            "Error should mention missing key: {err}"
+        );
     }
 
     #[tokio::test]
@@ -190,7 +193,10 @@ mod tests {
             .build();
 
         let runnable: &dyn Runnable = &chain;
-        let result = runnable.invoke(json!({"q": "meaning of life"}), None).await.unwrap();
+        let result = runnable
+            .invoke(json!({"q": "meaning of life"}), None)
+            .await
+            .unwrap();
         assert_eq!(result["answer"], "42");
         assert_eq!(runnable.name(), "LLMChain");
     }

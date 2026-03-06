@@ -20,9 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // FakeListChatModel streams each character of the response as a separate chunk.
     println!("--- Part 1: Character-level streaming (FakeListChatModel) ---\n");
 
-    let model = FakeListChatModel::new(vec![
-        "Hello! I am a streaming assistant.".into(),
-    ]);
+    let model = FakeListChatModel::new(vec!["Hello! I am a streaming assistant.".into()]);
 
     let messages = vec![Message::Human(HumanMessage::new("Say hello"))];
 
@@ -44,9 +42,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // yielding words and spaces as separate tokens.
     println!("--- Part 2: Word-level streaming (GenericFakeChatModel) ---\n");
 
-    let model = GenericFakeChatModel::from_messages(vec![
-        AIMessage::new("The quick brown fox jumps over the lazy dog"),
-    ]);
+    let model = GenericFakeChatModel::from_messages(vec![AIMessage::new(
+        "The quick brown fox jumps over the lazy dog",
+    )]);
 
     let messages = vec![Message::Human(HumanMessage::new("Tell me a sentence"))];
 
@@ -68,10 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // FakeListChatModel supports an optional sleep delay between chunks.
     println!("--- Part 3: Streaming with simulated latency ---\n");
 
-    let model = FakeListChatModel::new(vec![
-        "Rust is blazingly fast!".into(),
-    ])
-    .with_sleep(30); // 30ms delay before starting (initial delay only)
+    let model = FakeListChatModel::new(vec!["Rust is blazingly fast!".into()]).with_sleep(30); // 30ms delay before starting (initial delay only)
 
     let messages = vec![Message::Human(HumanMessage::new("Tell me about Rust"))];
 
@@ -91,9 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // You can also collect all chunks into a final string.
     println!("--- Part 4: Collecting streamed chunks ---\n");
 
-    let model = FakeListChatModel::new(vec![
-        "Collected output from streaming.".into(),
-    ]);
+    let model = FakeListChatModel::new(vec!["Collected output from streaming.".into()]);
 
     let messages = vec![Message::Human(HumanMessage::new("Collect this"))];
 

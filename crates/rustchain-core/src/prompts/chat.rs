@@ -117,10 +117,7 @@ impl ChatPromptTemplate {
     }
 
     /// Format all messages with the given variables.
-    pub fn format_messages(
-        &self,
-        kwargs: &HashMap<String, Value>,
-    ) -> Result<Vec<Message>> {
+    pub fn format_messages(&self, kwargs: &HashMap<String, Value>) -> Result<Vec<Message>> {
         let merged = self.merge_variables(kwargs);
         let mut result = Vec::new();
 
@@ -142,10 +139,7 @@ impl ChatPromptTemplate {
     }
 
     /// Format all messages and wrap as a `ChatPromptValue`.
-    pub fn format_prompt(
-        &self,
-        kwargs: &HashMap<String, Value>,
-    ) -> Result<Box<dyn PromptValue>> {
+    pub fn format_prompt(&self, kwargs: &HashMap<String, Value>) -> Result<Box<dyn PromptValue>> {
         let messages = self.format_messages(kwargs)?;
         Ok(Box::new(ChatPromptValue::new(messages)))
     }
@@ -157,8 +151,9 @@ impl ChatPromptTemplate {
                 .trim_start_matches('{')
                 .trim_end_matches('}')
                 .to_string();
-            self.messages
-                .push(MessageLike::Placeholder(MessagesPlaceholder::new(var_name).optional(true)));
+            self.messages.push(MessageLike::Placeholder(
+                MessagesPlaceholder::new(var_name).optional(true),
+            ));
         } else {
             let template = MessagePromptTemplate::from_role(role, content)?;
             for v in template.input_variables() {
@@ -245,10 +240,8 @@ mod tests {
 
     #[test]
     fn test_append() {
-        let mut template = ChatPromptTemplate::from_messages(vec![
-            ("system", "You are helpful"),
-        ])
-        .unwrap();
+        let mut template =
+            ChatPromptTemplate::from_messages(vec![("system", "You are helpful")]).unwrap();
         template.append("human", "{question}").unwrap();
         assert_eq!(template.messages.len(), 2);
         assert!(template.input_variables.contains(&"question".to_string()));
@@ -256,14 +249,14 @@ mod tests {
 
     #[test]
     fn test_extend() {
-        let mut template = ChatPromptTemplate::from_messages(vec![
-            ("system", "You are helpful"),
-        ])
-        .unwrap();
-        template.extend(vec![
-            ("human", "{question}"),
-            ("ai", "Let me help with {question}"),
-        ]).unwrap();
+        let mut template =
+            ChatPromptTemplate::from_messages(vec![("system", "You are helpful")]).unwrap();
+        template
+            .extend(vec![
+                ("human", "{question}"),
+                ("ai", "Let me help with {question}"),
+            ])
+            .unwrap();
         assert_eq!(template.messages.len(), 3);
     }
 
@@ -296,10 +289,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_runnable_invoke() {
-        let template = ChatPromptTemplate::from_messages(vec![
-            ("human", "Hello {name}"),
-        ])
-        .unwrap();
+        let template = ChatPromptTemplate::from_messages(vec![("human", "Hello {name}")]).unwrap();
         let result = template
             .invoke(json!({"name": "World"}), None)
             .await

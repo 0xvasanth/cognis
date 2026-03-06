@@ -142,9 +142,9 @@ impl ChatOpenAIBuilder {
     /// Returns an error if `model` is not set or if the API key cannot be
     /// resolved from the builder or environment.
     pub fn build(self) -> Result<ChatOpenAI> {
-        let model = self.model.ok_or_else(|| {
-            RustChainError::Other("model is required for ChatOpenAI".into())
-        })?;
+        let model = self
+            .model
+            .ok_or_else(|| RustChainError::Other("model is required for ChatOpenAI".into()))?;
 
         let api_key = match self.api_key {
             Some(key) => key,
@@ -415,9 +415,9 @@ impl ChatOpenAI {
             RustChainError::Other("Empty 'choices' array in OpenAI response".into())
         })?;
 
-        let message = choice.get("message").ok_or_else(|| {
-            RustChainError::Other("Missing 'message' in choice".into())
-        })?;
+        let message = choice
+            .get("message")
+            .ok_or_else(|| RustChainError::Other("Missing 'message' in choice".into()))?;
 
         let content = message
             .get("content")
@@ -434,10 +434,7 @@ impl ChatOpenAI {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let id = tc
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                let id = tc.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
                 // arguments is a JSON string in OpenAI responses
                 let args_str = function
                     .get("arguments")
@@ -451,10 +448,7 @@ impl ChatOpenAI {
 
         // Parse usage metadata
         let usage_metadata = response.get("usage").map(|u| {
-            let prompt_tokens = u
-                .get("prompt_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
+            let prompt_tokens = u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
             let completion_tokens = u
                 .get("completion_tokens")
                 .and_then(|v| v.as_u64())
@@ -491,10 +485,7 @@ impl ChatOpenAI {
         let delta = choice.get("delta")?;
         let finish_reason = choice.get("finish_reason");
 
-        let content = delta
-            .get("content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let content = delta.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
         let mut chunk = AIMessageChunk::new(content);
 
@@ -549,8 +540,11 @@ impl ChatOpenAI {
                     .get("total_tokens")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(prompt_tokens + completion_tokens);
-                chunk.usage_metadata =
-                    Some(UsageMetadata::new(prompt_tokens, completion_tokens, total_tokens));
+                chunk.usage_metadata = Some(UsageMetadata::new(
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                ));
             }
         }
 
@@ -586,9 +580,11 @@ impl ChatOpenAI {
                 req = req.header("OpenAI-Organization", org.as_str());
             }
 
-            let response = req.json(payload).send().await.map_err(|e| {
-                RustChainError::Other(format!("HTTP request failed: {}", e))
-            })?;
+            let response = req
+                .json(payload)
+                .send()
+                .await
+                .map_err(|e| RustChainError::Other(format!("HTTP request failed: {}", e)))?;
 
             let status = response.status().as_u16();
 
@@ -635,9 +631,11 @@ impl ChatOpenAI {
             req = req.header("OpenAI-Organization", org.as_str());
         }
 
-        let response = req.json(payload).send().await.map_err(|e| {
-            RustChainError::Other(format!("HTTP request failed: {}", e))
-        })?;
+        let response = req
+            .json(payload)
+            .send()
+            .await
+            .map_err(|e| RustChainError::Other(format!("HTTP request failed: {}", e)))?;
 
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
@@ -671,12 +669,10 @@ impl ChatOpenAI {
                                     }
                                     match serde_json::from_str::<Value>(trimmed) {
                                         Ok(val) => events.push(Ok(val)),
-                                        Err(e) => events.push(Err(
-                                            RustChainError::Other(format!(
-                                                "Failed to parse SSE event: {}",
-                                                e
-                                            )),
-                                        )),
+                                        Err(e) => events.push(Err(RustChainError::Other(format!(
+                                            "Failed to parse SSE event: {}",
+                                            e
+                                        )))),
                                     }
                                 }
                             }
@@ -715,11 +711,7 @@ impl ChatOpenAI {
 
 #[async_trait]
 impl BaseChatModel for ChatOpenAI {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         let payload = self.build_payload(messages, stop, &self.bound_tools, false);
         let response = self.call_api(&payload).await?;
         Self::parse_response(&response)
@@ -729,11 +721,7 @@ impl BaseChatModel for ChatOpenAI {
         "openai"
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         let payload = self.build_payload(messages, stop, &self.bound_tools, true);
         let event_stream = self.call_api_stream(&payload).await?;
 

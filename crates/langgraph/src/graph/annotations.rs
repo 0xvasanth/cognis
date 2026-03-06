@@ -135,9 +135,9 @@ impl AnnotatedState {
     /// 1. Required fields must be present (and not `null`).
     /// 2. Present fields must match the declared [`JsonType`] (unless `Any`).
     pub fn validate(&self, state: &Value) -> Result<(), LangGraphError> {
-        let obj = state.as_object().ok_or_else(|| {
-            LangGraphError::Other("State must be a JSON object".to_string())
-        })?;
+        let obj = state
+            .as_object()
+            .ok_or_else(|| LangGraphError::Other("State must be a JSON object".to_string()))?;
 
         for (name, annotation) in &self.fields {
             match obj.get(name) {
@@ -162,7 +162,6 @@ impl AnnotatedState {
 
         Ok(())
     }
-
 }
 
 /// Return a human-readable name for a JSON value's type.
@@ -484,8 +483,8 @@ impl fmt::Debug for CompiledAnnotatedStateGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::channels::reducers::{AppendReducer, BinaryOpReducer, MergeReducer};
     use serde_json::json;
-    use crate::channels::reducers::{AppendReducer, MergeReducer, BinaryOpReducer};
 
     // -----------------------------------------------------------------------
     // 1. Basic annotated state with required fields
@@ -494,11 +493,11 @@ mod tests {
     fn test_basic_annotated_state_with_required_fields() {
         let annotations = AnnotatedState::builder()
             .field("name")
-                .field_type(JsonType::String)
-                .required()
+            .field_type(JsonType::String)
+            .required()
             .field("age")
-                .field_type(JsonType::Number)
-                .required()
+            .field_type(JsonType::Number)
+            .required()
             .build();
 
         let state = json!({"name": "Alice", "age": 30});
@@ -512,15 +511,18 @@ mod tests {
     fn test_validation_catches_missing_required_field() {
         let annotations = AnnotatedState::builder()
             .field("name")
-                .field_type(JsonType::String)
-                .required()
+            .field_type(JsonType::String)
+            .required()
             .build();
 
         let state = json!({"age": 30});
         let result = annotations.validate(&state);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("name"), "Error should mention field name: {err_msg}");
+        assert!(
+            err_msg.contains("name"),
+            "Error should mention field name: {err_msg}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -530,15 +532,21 @@ mod tests {
     fn test_validation_catches_wrong_type() {
         let annotations = AnnotatedState::builder()
             .field("count")
-                .field_type(JsonType::Number)
+            .field_type(JsonType::Number)
             .build();
 
         let state = json!({"count": "not a number"});
         let result = annotations.validate(&state);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("count"), "Error should mention field name: {err_msg}");
-        assert!(err_msg.contains("number"), "Error should mention expected type: {err_msg}");
+        assert!(
+            err_msg.contains("count"),
+            "Error should mention field name: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("number"),
+            "Error should mention expected type: {err_msg}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -548,11 +556,11 @@ mod tests {
     fn test_default_values_applied() {
         let annotations = AnnotatedState::builder()
             .field("status")
-                .field_type(JsonType::String)
-                .with_default(json!("idle"))
+            .field_type(JsonType::String)
+            .with_default(json!("idle"))
             .field("count")
-                .field_type(JsonType::Number)
-                .with_default(json!(0))
+            .field_type(JsonType::Number)
+            .with_default(json!(0))
             .build();
 
         let current = json!({});
@@ -568,9 +576,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[test]
     fn test_messages_field_shortcut() {
-        let annotations = AnnotatedState::builder()
-            .messages_field("messages")
-            .build();
+        let annotations = AnnotatedState::builder().messages_field("messages").build();
 
         // Verify the annotation was created correctly.
         let ann = &annotations.fields["messages"];
@@ -591,12 +597,18 @@ mod tests {
     #[test]
     fn test_multiple_field_types() {
         let annotations = AnnotatedState::builder()
-            .field("name").field_type(JsonType::String)
-            .field("age").field_type(JsonType::Number)
-            .field("active").field_type(JsonType::Boolean)
-            .field("tags").field_type(JsonType::Array)
-            .field("meta").field_type(JsonType::Object)
-            .field("anything").field_type(JsonType::Any)
+            .field("name")
+            .field_type(JsonType::String)
+            .field("age")
+            .field_type(JsonType::Number)
+            .field("active")
+            .field_type(JsonType::Boolean)
+            .field("tags")
+            .field_type(JsonType::Array)
+            .field("meta")
+            .field_type(JsonType::Object)
+            .field("anything")
+            .field_type(JsonType::Any)
             .build();
 
         let state = json!({
@@ -617,16 +629,16 @@ mod tests {
     fn test_apply_annotations_merges_with_reducers() {
         let annotations = AnnotatedState::builder()
             .field("messages")
-                .field_type(JsonType::Array)
-                .with_reducer(AppendReducer)
-                .with_default(json!([]))
+            .field_type(JsonType::Array)
+            .with_reducer(AppendReducer)
+            .with_default(json!([]))
             .field("config")
-                .field_type(JsonType::Object)
-                .with_reducer(MergeReducer)
-                .with_default(json!({}))
+            .field_type(JsonType::Object)
+            .with_reducer(MergeReducer)
+            .with_default(json!({}))
             .field("status")
-                .field_type(JsonType::String)
-                .with_default(json!("idle"))
+            .field_type(JsonType::String)
+            .with_default(json!("idle"))
             .build();
 
         let current = json!({
@@ -653,15 +665,15 @@ mod tests {
     fn test_builder_pattern_fluent_api() {
         let annotations = AnnotatedState::builder()
             .field("counter")
-                .field_type(JsonType::Number)
-                .with_reducer(BinaryOpReducer::new(|a, b| {
-                    let a_num = a.as_i64().unwrap_or(0);
-                    let b_num = b.as_i64().unwrap_or(0);
-                    json!(a_num + b_num)
-                }))
-                .with_default(json!(0))
-                .required()
-                .description("Running counter")
+            .field_type(JsonType::Number)
+            .with_reducer(BinaryOpReducer::new(|a, b| {
+                let a_num = a.as_i64().unwrap_or(0);
+                let b_num = b.as_i64().unwrap_or(0);
+                json!(a_num + b_num)
+            }))
+            .with_default(json!(0))
+            .required()
+            .description("Running counter")
             .build();
 
         assert_eq!(annotations.fields.len(), 1);
@@ -685,11 +697,11 @@ mod tests {
     fn test_description_metadata() {
         let annotations = AnnotatedState::builder()
             .field("query")
-                .field_type(JsonType::String)
-                .description("The user's search query")
+            .field_type(JsonType::String)
+            .description("The user's search query")
             .field("results")
-                .field_type(JsonType::Array)
-                .description("Search results")
+            .field_type(JsonType::Array)
+            .description("Search results")
             .build();
 
         assert_eq!(
@@ -709,8 +721,8 @@ mod tests {
     fn test_optional_fields_pass_when_absent() {
         let annotations = AnnotatedState::builder()
             .field("optional_field")
-                .field_type(JsonType::String)
-                // not marked required
+            .field_type(JsonType::String)
+            // not marked required
             .build();
 
         let state = json!({});
@@ -722,20 +734,18 @@ mod tests {
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn test_annotated_state_graph_integration() {
-        use std::sync::Arc;
         use crate::graph::state::StateGraph;
+        use std::sync::Arc;
 
         let annotations = AnnotatedState::builder()
             .messages_field("messages")
             .field("status")
-                .field_type(JsonType::String)
-                .with_default(json!("idle"))
+            .field_type(JsonType::String)
+            .with_default(json!("idle"))
             .build();
 
         let action: crate::graph::state::AsyncNodeAction = Arc::new(move |_state: Value| {
-            Box::pin(async move {
-                Ok(json!({"messages": "processed", "status": "done"}))
-            })
+            Box::pin(async move { Ok(json!({"messages": "processed", "status": "done"})) })
         });
 
         let annotated_graph = StateGraph::new()
@@ -765,9 +775,9 @@ mod tests {
     fn test_required_field_with_default_passes() {
         let annotations = AnnotatedState::builder()
             .field("items")
-                .field_type(JsonType::Array)
-                .required()
-                .with_default(json!([]))
+            .field_type(JsonType::Array)
+            .required()
+            .with_default(json!([]))
             .build();
 
         // The field is required but has a default, so apply_annotations
@@ -785,7 +795,8 @@ mod tests {
     #[test]
     fn test_validation_rejects_non_object_state() {
         let annotations = AnnotatedState::builder()
-            .field("x").field_type(JsonType::Number)
+            .field("x")
+            .field_type(JsonType::Number)
             .build();
 
         let state = json!(42);

@@ -66,9 +66,7 @@ impl GoogleEmbeddingsBuilder {
 
         Ok(GoogleEmbeddings {
             api_key,
-            model: self
-                .model
-                .unwrap_or_else(|| "text-embedding-004".into()),
+            model: self.model.unwrap_or_else(|| "text-embedding-004".into()),
             task_type: self.task_type,
             client: Client::new(),
         })
@@ -236,9 +234,7 @@ impl GoogleEmbeddings {
                 .get("values")
                 .and_then(|v| v.as_array())
                 .ok_or_else(|| {
-                    RustChainError::Other(
-                        "Missing 'values' array in embedding object".into(),
-                    )
+                    RustChainError::Other("Missing 'values' array in embedding object".into())
                 })?;
 
             let vec = Self::parse_f32_array(values)?;
@@ -267,13 +263,9 @@ impl GoogleEmbeddings {
     fn parse_f32_array(arr: &[Value]) -> Result<Vec<f32>> {
         arr.iter()
             .map(|v| {
-                v.as_f64()
-                    .map(|f| f as f32)
-                    .ok_or_else(|| {
-                        RustChainError::Other(
-                            "Non-numeric value in embedding array".into(),
-                        )
-                    })
+                v.as_f64().map(|f| f as f32).ok_or_else(|| {
+                    RustChainError::Other("Non-numeric value in embedding array".into())
+                })
             })
             .collect()
     }

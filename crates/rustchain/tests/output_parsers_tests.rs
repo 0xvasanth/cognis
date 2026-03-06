@@ -54,9 +54,7 @@ async fn test_output_fixing_parser_passes_through_valid_output() {
 #[tokio::test]
 async fn test_output_fixing_parser_when_fix_also_fails() {
     // LLM returns something that also fails to parse.
-    let llm = Arc::new(FakeListChatModel::new(vec![
-        "still broken {{{".to_string(),
-    ]));
+    let llm = Arc::new(FakeListChatModel::new(vec!["still broken {{{".to_string()]));
     let parser = OutputFixingParser::builder()
         .parser(JsonOutputParser::new())
         .llm(llm)
@@ -121,10 +119,7 @@ async fn test_retry_parser_exhausts_retries() {
         .build();
 
     let result = parser
-        .invoke(
-            serde_json::Value::String("not json".to_string()),
-            None,
-        )
+        .invoke(serde_json::Value::String("not json".to_string()), None)
         .await;
 
     assert!(result.is_err());
@@ -136,7 +131,7 @@ async fn test_retry_parser_exhausts_retries() {
 async fn test_retry_parser_with_max_retries_zero() {
     // With max_retries=0, should fail immediately on parse error.
     let llm = Arc::new(FakeListChatModel::new(vec![
-        r#"{"fixed": true}"#.to_string(),
+        r#"{"fixed": true}"#.to_string()
     ]));
     let parser = RetryOutputParser::builder()
         .parser(JsonOutputParser::new())
@@ -145,10 +140,7 @@ async fn test_retry_parser_with_max_retries_zero() {
         .build();
 
     let result = parser
-        .invoke(
-            serde_json::Value::String("not json".to_string()),
-            None,
-        )
+        .invoke(serde_json::Value::String("not json".to_string()), None)
         .await;
 
     assert!(result.is_err());
@@ -334,10 +326,7 @@ async fn test_structured_parser_runnable_invoke() {
     );
 
     let result = parser
-        .invoke(
-            serde_json::Value::String(r#"{"id": 1}"#.to_string()),
-            None,
-        )
+        .invoke(serde_json::Value::String(r#"{"id": 1}"#.to_string()), None)
         .await
         .unwrap();
 

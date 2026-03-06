@@ -25,7 +25,10 @@ pub struct CumulativeTransformParser<P: OutputParser> {
 
 impl<P: OutputParser> CumulativeTransformParser<P> {
     pub fn new(parser: P) -> Self {
-        Self { parser, diff: false }
+        Self {
+            parser,
+            diff: false,
+        }
     }
 
     pub fn with_diff(mut self, diff: bool) -> Self {

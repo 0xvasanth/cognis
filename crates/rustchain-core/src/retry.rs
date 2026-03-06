@@ -40,9 +40,7 @@ pub struct DefaultRetryClassifier;
 impl RetryClassifier for DefaultRetryClassifier {
     fn is_retryable(&self, error: &RustChainError) -> bool {
         match error {
-            RustChainError::HttpError { status, .. } => {
-                *status == 429 || *status >= 500
-            }
+            RustChainError::HttpError { status, .. } => *status == 429 || *status >= 500,
             RustChainError::Other(msg) => {
                 let lower = msg.to_lowercase();
                 lower.contains("rate limit")

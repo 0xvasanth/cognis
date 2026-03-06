@@ -29,11 +29,11 @@ impl CallbackHandler for StdOutCallbackHandler {
         run_id: Uuid,
         _parent_run_id: Option<Uuid>,
     ) -> Result<()> {
+        println!("\n\n\x1b[1m> Entering new chain run ({})\x1b[0m", run_id);
         println!(
-            "\n\n\x1b[1m> Entering new chain run ({})\x1b[0m",
-            run_id
+            "Inputs: {}",
+            serde_json::to_string_pretty(inputs).unwrap_or_default()
         );
-        println!("Inputs: {}", serde_json::to_string_pretty(inputs).unwrap_or_default());
         Ok(())
     }
 
@@ -43,11 +43,11 @@ impl CallbackHandler for StdOutCallbackHandler {
         run_id: Uuid,
         _parent_run_id: Option<Uuid>,
     ) -> Result<()> {
+        println!("\n\x1b[1m> Finished chain run ({})\x1b[0m", run_id);
         println!(
-            "\n\x1b[1m> Finished chain run ({})\x1b[0m",
-            run_id
+            "Outputs: {}",
+            serde_json::to_string_pretty(outputs).unwrap_or_default()
         );
-        println!("Outputs: {}", serde_json::to_string_pretty(outputs).unwrap_or_default());
         Ok(())
     }
 
@@ -57,10 +57,7 @@ impl CallbackHandler for StdOutCallbackHandler {
         run_id: Uuid,
         _parent_run_id: Option<Uuid>,
     ) -> Result<()> {
-        println!(
-            "\n\x1b[31m> Chain error ({}): {}\x1b[0m",
-            run_id, error
-        );
+        println!("\n\x1b[31m> Chain error ({}): {}\x1b[0m", run_id, error);
         Ok(())
     }
 
@@ -455,11 +452,7 @@ impl UsageMetadataCallbackHandler {
 
     /// Extract usage data from an `AIMessage.usage_metadata` field when available
     /// in `llm_output` as a serialized structure.
-    fn extract_usage_metadata(
-        &self,
-        usage: &UsageMetadata,
-        model_name: Option<&str>,
-    ) {
+    fn extract_usage_metadata(&self, usage: &UsageMetadata, model_name: Option<&str>) {
         self.total_input_tokens
             .fetch_add(usage.input_tokens, Ordering::Relaxed);
         self.total_output_tokens
@@ -729,12 +722,7 @@ impl CallbackHandler for LoggingCallbackHandler {
         Ok(())
     }
 
-    async fn on_text(
-        &self,
-        text: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_text(&self, text: &str, run_id: Uuid, _parent_run_id: Option<Uuid>) -> Result<()> {
         self.log("text", text, run_id);
         Ok(())
     }
@@ -899,9 +887,7 @@ impl CallbackHandler for UsageMetadataCallbackHandler {
         if let Some(llm_output) = &response.llm_output {
             if let Some(usage_val) = llm_output.get("usage_metadata") {
                 if let Ok(usage) = serde_json::from_value::<UsageMetadata>(usage_val.clone()) {
-                    let model_name = llm_output
-                        .get("model_name")
-                        .and_then(|v| v.as_str());
+                    let model_name = llm_output.get("model_name").and_then(|v| v.as_str());
                     self.extract_usage_metadata(&usage, model_name);
                     found_structured = true;
                 }

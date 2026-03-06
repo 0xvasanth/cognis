@@ -155,11 +155,7 @@ impl HumanInTheLoopMiddleware {
     }
 
     /// Create a HITL request for a tool call.
-    pub fn create_tool_request(
-        &self,
-        tool_name: &str,
-        tool_input: &Value,
-    ) -> HITLRequest {
+    pub fn create_tool_request(&self, tool_name: &str, tool_input: &Value) -> HITLRequest {
         HITLRequest {
             action_requests: vec![ActionRequest {
                 action: Action {
@@ -186,7 +182,11 @@ impl AgentMiddleware for HumanInTheLoopMiddleware {
 
     async fn after_model(&self, state: &AgentState) -> Result<Option<HashMap<String, Value>>> {
         // Find the last AI message
-        let last_ai = state.messages.iter().rev().find(|m| m.message_type() == MessageType::Ai);
+        let last_ai = state
+            .messages
+            .iter()
+            .rev()
+            .find(|m| m.message_type() == MessageType::Ai);
 
         let last_ai = match last_ai {
             Some(msg) => msg,
@@ -247,10 +247,7 @@ impl AgentMiddleware for HumanInTheLoopMiddleware {
                     }
                     Decision::Edit { edited_action } => {
                         // Store edited tool call args in state for the executor to pick up
-                        updates.insert(
-                            format!("hitl_edit_{}", i),
-                            edited_action.clone(),
-                        );
+                        updates.insert(format!("hitl_edit_{}", i), edited_action.clone());
                     }
                     Decision::Reject { message } => {
                         any_rejected = true;
@@ -292,18 +289,22 @@ impl AgentMiddleware for HumanInTheLoopMiddleware {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustchain_core::messages::{AIMessage, tool_types::ToolCall};
+    use rustchain_core::messages::{tool_types::ToolCall, AIMessage};
 
     #[test]
     fn test_decision_serde() {
         let approve_json = serde_json::to_string(&Decision::Approve).unwrap();
         assert!(approve_json.contains("approve"));
 
-        let edit = Decision::Edit { edited_action: serde_json::json!({"query": "new"}) };
+        let edit = Decision::Edit {
+            edited_action: serde_json::json!({"query": "new"}),
+        };
         let edit_json = serde_json::to_string(&edit).unwrap();
         assert!(edit_json.contains("edit"));
 
-        let reject = Decision::Reject { message: Some("too risky".into()) };
+        let reject = Decision::Reject {
+            message: Some("too risky".into()),
+        };
         let reject_json = serde_json::to_string(&reject).unwrap();
         let parsed: Decision = serde_json::from_str(&reject_json).unwrap();
         match parsed {
@@ -356,7 +357,9 @@ mod tests {
         let resp = HITLResponse {
             decisions: vec![
                 Decision::Approve,
-                Decision::Edit { edited_action: serde_json::json!({"query": "modified"}) },
+                Decision::Edit {
+                    edited_action: serde_json::json!({"query": "modified"}),
+                },
             ],
             feedback: Some("Looks good with edit".into()),
         };
@@ -367,8 +370,8 @@ mod tests {
 
     #[test]
     fn test_hitl_with_message_template() {
-        let mw = HumanInTheLoopMiddleware::on_tool_calls()
-            .with_message_template("Please review: {}");
+        let mw =
+            HumanInTheLoopMiddleware::on_tool_calls().with_message_template("Please review: {}");
         assert_eq!(mw.message_template, Some("Please review: {}".into()));
     }
 
@@ -380,8 +383,7 @@ mod tests {
                 feedback: None,
             })
         });
-        let mw = HumanInTheLoopMiddleware::on_tool_calls()
-            .with_interrupt_handler(handler);
+        let mw = HumanInTheLoopMiddleware::on_tool_calls().with_interrupt_handler(handler);
         assert!(mw.interrupt_handler.is_some());
     }
 
@@ -403,8 +405,7 @@ mod tests {
                 feedback: None,
             })
         });
-        let mw = HumanInTheLoopMiddleware::on_tool_calls()
-            .with_interrupt_handler(handler);
+        let mw = HumanInTheLoopMiddleware::on_tool_calls().with_interrupt_handler(handler);
 
         let mut ai_msg = AIMessage::new("Let me search");
         ai_msg.tool_calls = vec![ToolCall {
@@ -428,12 +429,13 @@ mod tests {
     async fn test_after_model_with_reject() {
         let handler: InterruptHandler = Arc::new(|_req| {
             Ok(HITLResponse {
-                decisions: vec![Decision::Reject { message: Some("Nope".into()) }],
+                decisions: vec![Decision::Reject {
+                    message: Some("Nope".into()),
+                }],
                 feedback: None,
             })
         });
-        let mw = HumanInTheLoopMiddleware::on_tool_calls()
-            .with_interrupt_handler(handler);
+        let mw = HumanInTheLoopMiddleware::on_tool_calls().with_interrupt_handler(handler);
 
         let mut ai_msg = AIMessage::new("");
         ai_msg.tool_calls = vec![ToolCall {
@@ -447,7 +449,10 @@ mod tests {
         assert!(result.is_some());
         let updates = result.unwrap();
         assert_eq!(updates.get("hitl_rejected"), Some(&serde_json::json!(true)));
-        assert_eq!(updates.get("hitl_rejection_message"), Some(&serde_json::json!("Nope")));
+        assert_eq!(
+            updates.get("hitl_rejection_message"),
+            Some(&serde_json::json!("Nope"))
+        );
     }
 
     #[tokio::test]

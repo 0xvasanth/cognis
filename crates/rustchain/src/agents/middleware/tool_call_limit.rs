@@ -173,10 +173,7 @@ impl AgentMiddleware for ToolCallLimitMiddleware {
                             )));
                         }
                         LimitExceededBehavior::End => {
-                            updates.insert(
-                                "jump_to".into(),
-                                serde_json::json!("end"),
-                            );
+                            updates.insert("jump_to".into(), serde_json::json!("end"));
                             return Ok(Some(updates));
                         }
                         LimitExceededBehavior::Continue => {
@@ -195,8 +192,13 @@ impl AgentMiddleware for ToolCallLimitMiddleware {
                 updates.insert("tool_call_count".into(), serde_json::json!(new_total));
 
                 let tool_key = format!("tool_call_count:{}", name);
-                let new_tool_count = self.call_counts.lock().unwrap()
-                    .get(name).copied().unwrap_or(0);
+                let new_tool_count = self
+                    .call_counts
+                    .lock()
+                    .unwrap()
+                    .get(name)
+                    .copied()
+                    .unwrap_or(0);
                 updates.insert(tool_key, serde_json::json!(new_tool_count));
             }
 
@@ -230,8 +232,7 @@ mod tests {
 
     #[test]
     fn test_tool_call_limit_with_tool_name() {
-        let mw = ToolCallLimitMiddleware::new(Some(5))
-            .with_tool_name("search");
+        let mw = ToolCallLimitMiddleware::new(Some(5)).with_tool_name("search");
         assert_eq!(mw.tool_name_filter, Some("search".to_string()));
         assert_eq!(mw.name(), "ToolCallLimitMiddleware[search]");
     }
@@ -248,8 +249,7 @@ mod tests {
 
     #[test]
     fn test_per_tool_limit() {
-        let mw = ToolCallLimitMiddleware::new(None)
-            .with_per_tool_limit("search", 1);
+        let mw = ToolCallLimitMiddleware::new(None).with_per_tool_limit("search", 1);
         assert!(!mw.would_exceed("search"));
         mw.record_call("search");
         assert!(mw.would_exceed("search"));
@@ -258,8 +258,7 @@ mod tests {
 
     #[test]
     fn test_would_exceed_from_state() {
-        let mw = ToolCallLimitMiddleware::new(Some(2))
-            .with_per_tool_limit("search", 1);
+        let mw = ToolCallLimitMiddleware::new(Some(2)).with_per_tool_limit("search", 1);
         let mut state = AgentState::default();
         state.set_extra("tool_call_count", serde_json::json!(1));
         state.set_extra("tool_call_count:search", serde_json::json!(1));

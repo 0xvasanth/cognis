@@ -118,9 +118,7 @@ impl ModelRequest {
 
     /// Get the system prompt text, if set.
     pub fn system_prompt(&self) -> Option<String> {
-        self.system_message
-            .as_ref()
-            .map(|m| m.content().text())
+        self.system_message.as_ref().map(|m| m.content().text())
     }
 
     /// Create a new request with overridden fields.
@@ -212,8 +210,7 @@ pub fn normalize_model_call_result(result: ModelCallResult) -> ModelResponse {
 }
 
 /// Handler function type for model call wrapping.
-pub type ModelHandler =
-    Box<dyn Fn(&ModelRequest) -> Result<ModelResponse> + Send + Sync>;
+pub type ModelHandler = Box<dyn Fn(&ModelRequest) -> Result<ModelResponse> + Send + Sync>;
 
 /// Async handler function type for model call wrapping.
 pub type AsyncModelHandler = Box<
@@ -329,7 +326,10 @@ mod tests {
         updates.insert("my_field".into(), serde_json::json!("value"));
         state.apply_updates(updates);
         assert_eq!(state.jump_to, Some(JumpTo::End));
-        assert_eq!(state.extra.get("my_field"), Some(&serde_json::json!("value")));
+        assert_eq!(
+            state.extra.get("my_field"),
+            Some(&serde_json::json!("value"))
+        );
     }
 
     #[test]
@@ -356,20 +356,15 @@ mod tests {
 
     #[test]
     fn test_normalize_model_call_result_message() {
-        let result = normalize_model_call_result(ModelCallResult::Message(Box::new(Message::ai("hi"))));
+        let result =
+            normalize_model_call_result(ModelCallResult::Message(Box::new(Message::ai("hi"))));
         assert_eq!(result.result.len(), 1);
     }
 
     #[test]
     fn test_jump_to_serialize() {
-        assert_eq!(
-            serde_json::to_string(&JumpTo::End).unwrap(),
-            "\"end\""
-        );
-        assert_eq!(
-            serde_json::to_string(&JumpTo::Tools).unwrap(),
-            "\"tools\""
-        );
+        assert_eq!(serde_json::to_string(&JumpTo::End).unwrap(), "\"end\"");
+        assert_eq!(serde_json::to_string(&JumpTo::Tools).unwrap(), "\"tools\"");
     }
 
     #[test]

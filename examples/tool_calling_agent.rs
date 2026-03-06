@@ -71,14 +71,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "required": ["a", "b", "operation"]
         }),
         |args: HashMap<String, Value>| async move {
-            let a = args
-                .get("a")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
-            let b = args
-                .get("b")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
+            let a = args.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let b = args.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let op = args
                 .get("operation")
                 .and_then(|v| v.as_str())
@@ -135,7 +129,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = ToolInput::Text("Rust ownership".to_string());
     let result1 = cached_search._run(input.clone()).await?;
     let stats1 = cached_search.cache_stats();
-    println!("    First call:  hits={}, misses={}", stats1.hits, stats1.misses);
+    println!(
+        "    First call:  hits={}, misses={}",
+        stats1.hits, stats1.misses
+    );
 
     let _result2 = cached_search._run(input).await?;
     let stats2 = cached_search.cache_stats();
@@ -148,10 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let rustchain_core::tools::types::ToolOutput::Content(v) = result1 {
         let preview = v.as_str().unwrap_or("");
-        println!(
-            "    Result: {}...",
-            &preview[..preview.len().min(60)]
-        );
+        println!("    Result: {}...", &preview[..preview.len().min(60)]);
     }
     println!();
 
@@ -235,7 +229,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     // Step 5: Display the conversation
     // -------------------------------------------------------------------------
-    println!("--- Step 5: Full Conversation ({} messages) ---\n", result.messages.len());
+    println!(
+        "--- Step 5: Full Conversation ({} messages) ---\n",
+        result.messages.len()
+    );
 
     for (i, msg) in result.messages.iter().enumerate() {
         let (role, content) = match msg {
@@ -244,7 +241,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if ai.tool_calls.is_empty() {
                     ("AI (final)", msg.content().text())
                 } else {
-                    let tool_names: Vec<_> = ai.tool_calls.iter().map(|tc| tc.name.as_str()).collect();
+                    let tool_names: Vec<_> =
+                        ai.tool_calls.iter().map(|tc| tc.name.as_str()).collect();
                     (
                         "AI (tool call)",
                         format!("{} -> calls {:?}", msg.content().text(), tool_names),
@@ -253,7 +251,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Message::Tool(t) => (
                 "Tool Result",
-                format!("[{}] {}", t.tool_call_id, &t.base.content.text()[..t.base.content.text().len().min(80)]),
+                format!(
+                    "[{}] {}",
+                    t.tool_call_id,
+                    &t.base.content.text()[..t.base.content.text().len().min(80)]
+                ),
             ),
             Message::System(_) => ("System", msg.content().text()),
             _ => ("Other", msg.content().text()),

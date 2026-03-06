@@ -15,17 +15,14 @@ use super::base::OutputParser;
 /// Parse a single raw tool call dict into a structured form.
 ///
 /// Expects `{"function": {"name": "...", "arguments": "..."}, "id": "..."}`.
-pub fn parse_tool_call(
-    raw: &Value,
-    return_id: bool,
-) -> Result<Value> {
-    let function = raw.get("function").ok_or_else(|| {
-        RustChainError::OutputParserError {
+pub fn parse_tool_call(raw: &Value, return_id: bool) -> Result<Value> {
+    let function = raw
+        .get("function")
+        .ok_or_else(|| RustChainError::OutputParserError {
             message: "Tool call missing 'function' key".into(),
             observation: Some(raw.to_string()),
             llm_output: None,
-        }
-    })?;
+        })?;
 
     let name = function
         .get("name")
@@ -54,10 +51,7 @@ pub fn parse_tool_call(
 }
 
 /// Parse a list of raw tool calls.
-pub fn parse_tool_calls(
-    raw_calls: &[Value],
-    return_id: bool,
-) -> Result<Vec<Value>> {
+pub fn parse_tool_calls(raw_calls: &[Value], return_id: bool) -> Result<Vec<Value>> {
     raw_calls
         .iter()
         .map(|raw| parse_tool_call(raw, return_id))
@@ -103,13 +97,12 @@ impl Default for OpenAIToolsOutputParser {
 impl OutputParser for OpenAIToolsOutputParser {
     fn parse(&self, text: &str) -> Result<Value> {
         // Try to parse as JSON containing tool_calls
-        let parsed: Value = serde_json::from_str(text).map_err(|e| {
-            RustChainError::OutputParserError {
+        let parsed: Value =
+            serde_json::from_str(text).map_err(|e| RustChainError::OutputParserError {
                 message: format!("Failed to parse tool calls JSON: {}", e),
                 observation: Some(text.to_string()),
                 llm_output: None,
-            }
-        })?;
+            })?;
 
         self.extract_tool_calls(&parsed)
     }
@@ -156,11 +149,7 @@ impl OpenAIToolsOutputParser {
                     .get("additional_kwargs")
                     .and_then(|ak| ak.get("tool_calls"))
             })
-            .or_else(|| {
-                value
-                    .get("message")
-                    .and_then(|m| m.get("tool_calls"))
-            });
+            .or_else(|| value.get("message").and_then(|m| m.get("tool_calls")));
 
         match tool_calls {
             Some(calls) => self.extract_from_array(calls),
@@ -181,13 +170,13 @@ impl OpenAIToolsOutputParser {
 
     /// Extract and parse tool calls from a JSON array value.
     pub fn extract_from_array(&self, calls: &Value) -> Result<Value> {
-        let arr = calls.as_array().ok_or_else(|| {
-            RustChainError::OutputParserError {
+        let arr = calls
+            .as_array()
+            .ok_or_else(|| RustChainError::OutputParserError {
                 message: "tool_calls is not an array".into(),
                 observation: Some(calls.to_string()),
                 llm_output: None,
-            }
-        })?;
+            })?;
 
         let parsed = parse_tool_calls(arr, self.return_id)?;
 
@@ -232,21 +221,20 @@ impl JsonOutputKeyToolsParser {
 
 impl OutputParser for JsonOutputKeyToolsParser {
     fn parse(&self, text: &str) -> Result<Value> {
-        let parsed: Value = serde_json::from_str(text).map_err(|e| {
-            RustChainError::OutputParserError {
+        let parsed: Value =
+            serde_json::from_str(text).map_err(|e| RustChainError::OutputParserError {
                 message: format!("Failed to parse: {}", e),
                 observation: Some(text.to_string()),
                 llm_output: None,
-            }
-        })?;
+            })?;
 
-        let calls = parsed.as_array().ok_or_else(|| {
-            RustChainError::OutputParserError {
+        let calls = parsed
+            .as_array()
+            .ok_or_else(|| RustChainError::OutputParserError {
                 message: "Expected array of tool calls".into(),
                 observation: None,
                 llm_output: None,
-            }
-        })?;
+            })?;
 
         let extracted: Vec<Value> = calls
             .iter()

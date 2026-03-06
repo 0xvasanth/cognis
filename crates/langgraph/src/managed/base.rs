@@ -101,8 +101,7 @@ impl ManagedValueSpec {
                 Value::Bool(super::is_last_step::IsLastStepManager::get(scratchpad))
             }
             ManagedValueSpec::RemainingSteps => {
-                let remaining =
-                    super::is_last_step::RemainingStepsManager::get(scratchpad) as i64;
+                let remaining = super::is_last_step::RemainingStepsManager::get(scratchpad) as i64;
                 Value::Number(remaining.into())
             }
         }

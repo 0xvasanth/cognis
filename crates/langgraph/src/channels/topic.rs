@@ -139,10 +139,7 @@ mod tests {
     fn test_update_single_value() {
         let mut ch = Topic::new("events");
         ch.update(vec![Value::from("event1")]).unwrap();
-        assert_eq!(
-            ch.get().unwrap(),
-            Value::Array(vec![Value::from("event1")])
-        );
+        assert_eq!(ch.get().unwrap(), Value::Array(vec![Value::from("event1")]));
     }
 
     #[test]
@@ -158,11 +155,8 @@ mod tests {
     #[test]
     fn test_flatten_arrays_in_input() {
         let mut ch = Topic::new("events");
-        ch.update(vec![Value::Array(vec![
-            Value::from(1),
-            Value::from(2),
-        ])])
-        .unwrap();
+        ch.update(vec![Value::Array(vec![Value::from(1), Value::from(2)])])
+            .unwrap();
         assert_eq!(
             ch.get().unwrap(),
             Value::Array(vec![Value::from(1), Value::from(2)])
@@ -175,10 +169,7 @@ mod tests {
         ch.update(vec![Value::from("first")]).unwrap();
         ch.update(vec![Value::from("second")]).unwrap();
         // Non-accumulate clears before adding new values.
-        assert_eq!(
-            ch.get().unwrap(),
-            Value::Array(vec![Value::from("second")])
-        );
+        assert_eq!(ch.get().unwrap(), Value::Array(vec![Value::from("second")]));
     }
 
     #[test]
@@ -211,10 +202,7 @@ mod tests {
 
         let changed = ch.consume();
         assert!(!changed);
-        assert_eq!(
-            ch.get().unwrap(),
-            Value::Array(vec![Value::from("data")])
-        );
+        assert_eq!(ch.get().unwrap(), Value::Array(vec![Value::from("data")]));
     }
 
     #[test]

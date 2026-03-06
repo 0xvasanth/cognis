@@ -179,7 +179,10 @@ mod tests {
         assert_eq!(docs[0].page_content, "hello");
         assert_eq!(docs[1].page_content, "world");
         // id should be in metadata
-        assert_eq!(docs[0].metadata.get("id").unwrap(), &Value::Number(1.into()));
+        assert_eq!(
+            docs[0].metadata.get("id").unwrap(),
+            &Value::Number(1.into())
+        );
     }
 
     #[tokio::test]

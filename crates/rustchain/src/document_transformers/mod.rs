@@ -87,18 +87,15 @@ impl DocumentTransformer for EmbeddingsRedundantFilter {
             return Ok(Vec::new());
         }
 
-        let texts: Vec<String> = documents
-            .iter()
-            .map(|d| d.page_content.clone())
-            .collect();
+        let texts: Vec<String> = documents.iter().map(|d| d.page_content.clone()).collect();
         let embeddings = self.embeddings.embed_documents(texts).await?;
 
         let mut keep_indices: Vec<usize> = Vec::new();
 
         for (i, emb_i) in embeddings.iter().enumerate() {
-            let is_duplicate = keep_indices.iter().any(|&j| {
-                cosine_similarity(emb_i, &embeddings[j]) >= self.similarity_threshold
-            });
+            let is_duplicate = keep_indices
+                .iter()
+                .any(|&j| cosine_similarity(emb_i, &embeddings[j]) >= self.similarity_threshold);
             if !is_duplicate {
                 keep_indices.push(i);
             }
@@ -143,8 +140,7 @@ impl LLMDocumentTransformer {
         Self {
             model,
             prompt_template:
-                "Extract the key information from the following document:\n\n{document}"
-                    .to_string(),
+                "Extract the key information from the following document:\n\n{document}".to_string(),
         }
     }
 
@@ -371,9 +367,7 @@ impl DocumentTransformer for MetadataEnricher {
 
             if self.hash {
                 let h = content_hash(&doc.page_content);
-                new_doc
-                    .metadata
-                    .insert("hash".to_string(), Value::from(h));
+                new_doc.metadata.insert("hash".to_string(), Value::from(h));
             }
 
             results.push(new_doc);
@@ -443,13 +437,9 @@ mod tests {
     async fn test_redundant_filter_configurable_threshold() {
         // With threshold 1.0, only exact vector duplicates are removed.
         let embeddings = Arc::new(FakeConstantEmbedding::new(8));
-        let filter = EmbeddingsRedundantFilter::new(embeddings)
-            .with_similarity_threshold(1.0);
+        let filter = EmbeddingsRedundantFilter::new(embeddings).with_similarity_threshold(1.0);
 
-        let docs = vec![
-            make_doc("hello"),
-            make_doc("world"),
-        ];
+        let docs = vec![make_doc("hello"), make_doc("world")];
         // Constant embeddings yield cosine similarity of exactly 1.0 (all zeros
         // produces 0.0 via our guard, so only truly identical non-zero vectors
         // hit 1.0). With FakeConstantEmbedding (all zeros), cosine_similarity
@@ -474,8 +464,7 @@ mod tests {
             "Summary of doc 1".into(),
             "Summary of doc 2".into(),
         ]));
-        let transformer = LLMDocumentTransformer::new(model)
-            .with_prompt("Summarize: {document}");
+        let transformer = LLMDocumentTransformer::new(model).with_prompt("Summarize: {document}");
 
         let docs = vec![
             make_doc("Long document content about various topics..."),
@@ -510,10 +499,7 @@ mod tests {
         // Use a second enricher that adds a hash
         let hasher = MetadataEnricher::new().with_hash();
 
-        let pipeline = DocumentTransformerPipeline::new(vec![
-            Box::new(enricher),
-            Box::new(hasher),
-        ]);
+        let pipeline = DocumentTransformerPipeline::new(vec![Box::new(enricher), Box::new(hasher)]);
 
         let docs = vec![make_doc("hello world")];
         let result = pipeline.transform_documents(&docs).await.unwrap();
@@ -533,7 +519,10 @@ mod tests {
         let result = pipeline.transform_documents(&docs).await.unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(
-            result[0].metadata.get("word_count").and_then(|v| v.as_u64()),
+            result[0]
+                .metadata
+                .get("word_count")
+                .and_then(|v| v.as_u64()),
             Some(3)
         );
     }
@@ -555,7 +544,10 @@ mod tests {
         let docs = vec![make_doc("the quick brown fox")];
         let result = enricher.transform_documents(&docs).await.unwrap();
         assert_eq!(
-            result[0].metadata.get("word_count").and_then(|v| v.as_u64()),
+            result[0]
+                .metadata
+                .get("word_count")
+                .and_then(|v| v.as_u64()),
             Some(4)
         );
     }
@@ -566,11 +558,18 @@ mod tests {
         let docs = vec![make_doc("hello")];
         let result = enricher.transform_documents(&docs).await.unwrap();
         assert_eq!(
-            result[0].metadata.get("char_count").and_then(|v| v.as_u64()),
+            result[0]
+                .metadata
+                .get("char_count")
+                .and_then(|v| v.as_u64()),
             Some(5)
         );
         assert!(result[0].metadata.contains_key("hash"));
-        let hash_val = result[0].metadata.get("hash").and_then(|v| v.as_str()).unwrap();
+        let hash_val = result[0]
+            .metadata
+            .get("hash")
+            .and_then(|v| v.as_str())
+            .unwrap();
         assert_eq!(hash_val.len(), 16); // 16 hex chars from u64
     }
 
@@ -584,7 +583,10 @@ mod tests {
             Some("file.txt")
         );
         assert_eq!(
-            result[0].metadata.get("word_count").and_then(|v| v.as_u64()),
+            result[0]
+                .metadata
+                .get("word_count")
+                .and_then(|v| v.as_u64()),
             Some(2)
         );
     }

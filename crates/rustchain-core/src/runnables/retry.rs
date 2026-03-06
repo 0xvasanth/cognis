@@ -111,8 +111,8 @@ impl Runnable for RunnableRetry {
                     last_err = Some(e);
                     if attempt < self.max_retries {
                         tokio::time::sleep(Duration::from_millis(delay)).await;
-                        delay =
-                            (delay as f64 * self.backoff_factor).min(self.max_delay_ms as f64) as u64;
+                        delay = (delay as f64 * self.backoff_factor).min(self.max_delay_ms as f64)
+                            as u64;
                     }
                 }
             }
@@ -155,8 +155,8 @@ impl Runnable for RunnableRetry {
                     last_err = Some(e);
                     if attempt < self.max_retries {
                         tokio::time::sleep(Duration::from_millis(delay)).await;
-                        delay =
-                            (delay as f64 * self.backoff_factor).min(self.max_delay_ms as f64) as u64;
+                        delay = (delay as f64 * self.backoff_factor).min(self.max_delay_ms as f64)
+                            as u64;
                     }
                 }
             }

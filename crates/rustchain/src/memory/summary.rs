@@ -50,7 +50,11 @@ impl ConversationSummaryMemory {
     }
 
     /// Summarize the given messages and merge with the existing summary.
-    async fn summarize_messages(&self, messages: &[Message], existing_summary: &str) -> Result<String> {
+    async fn summarize_messages(
+        &self,
+        messages: &[Message],
+        existing_summary: &str,
+    ) -> Result<String> {
         let buffer = get_buffer_string(messages, "Human", "AI");
         let prompt = if existing_summary.is_empty() {
             format!(
@@ -159,7 +163,7 @@ mod tests {
     #[tokio::test]
     async fn test_summary_under_limit() {
         let model = Arc::new(FakeListChatModel::new(vec![
-            "This should not be called".to_string(),
+            "This should not be called".to_string()
         ]));
         // max_messages = 10, so 2 messages won't trigger summarization
         let mem = ConversationSummaryMemory::new(model, 10);

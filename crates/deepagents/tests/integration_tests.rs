@@ -237,10 +237,7 @@ mod integration {
         assert!(messages.len() >= 2);
 
         // Verify memory is still accessible after graph execution.
-        assert_eq!(
-            memory.recall("user_name").await,
-            Some("Alice".to_string())
-        );
+        assert_eq!(memory.recall("user_name").await, Some("Alice".to_string()));
     }
 
     // -------------------------------------------------------------------
@@ -292,10 +289,7 @@ mod integration {
 
         // Recall existing keys.
         assert_eq!(mw.recall("user_name").await, Some("Alice".to_string()));
-        assert_eq!(
-            mw.recall("preference").await,
-            Some("dark mode".to_string())
-        );
+        assert_eq!(mw.recall("preference").await, Some("dark mode".to_string()));
         assert_eq!(mw.recall("language").await, Some("Rust".to_string()));
 
         // Recall non-existent key.
@@ -646,10 +640,7 @@ mod integration {
         // 1 summary + 2 recent = 3
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0]["type"].as_str().unwrap(), "system");
-        assert!(messages[0]["content"]
-            .as_str()
-            .unwrap()
-            .contains("Summary"));
+        assert!(messages[0]["content"].as_str().unwrap().contains("Summary"));
     }
 
     /// Verify SkillsMiddleware injects skill listing and triggers.

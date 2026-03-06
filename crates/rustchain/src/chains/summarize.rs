@@ -33,8 +33,7 @@ const DEFAULT_INITIAL_SUMMARIZE_PROMPT: &str =
     "Write a concise summary of the following:\n\n\"{text}\"\n\nCONCISE SUMMARY:";
 
 /// Default refine prompt for the refine summarization chain.
-const DEFAULT_REFINE_SUMMARIZE_PROMPT: &str =
-    "Your job is to produce a final summary.\n\
+const DEFAULT_REFINE_SUMMARIZE_PROMPT: &str = "Your job is to produce a final summary.\n\
      We have provided an existing summary up to a certain point:\n\n\
      {existing_summary}\n\n\
      We have the opportunity to refine the existing summary (only if needed) \
@@ -387,8 +386,7 @@ impl RefineSummarizationChain {
 
         // Refine with subsequent documents
         for doc in &documents[1..] {
-            let refine_prompt =
-                self.format_refine_prompt(&doc.page_content, &current_summary);
+            let refine_prompt = self.format_refine_prompt(&doc.page_content, &current_summary);
             let messages = vec![Message::Human(HumanMessage::new(&refine_prompt))];
             let ai_msg = self.llm.invoke_messages(&messages, None).await?;
             current_summary = ai_msg.base.content.text();
@@ -529,8 +527,7 @@ mod tests {
     #[tokio::test]
     async fn test_stuff_custom_prompt() {
         let llm: Arc<dyn BaseChatModel> = Arc::new(ParrotFakeChatModel::new());
-        let chain = StuffSummarizationChain::new(llm)
-            .with_prompt("CUSTOM SUMMARIZE: {text} END");
+        let chain = StuffSummarizationChain::new(llm).with_prompt("CUSTOM SUMMARIZE: {text} END");
 
         let docs = vec![make_doc("hello world")];
         let result = chain.call(&docs).await.unwrap();
@@ -698,11 +695,7 @@ mod tests {
         let llm = fake_model(vec!["initial-summary", "refined-once", "refined-twice"]);
         let chain = RefineSummarizationChain::new(llm);
 
-        let docs = vec![
-            make_doc("Doc 1"),
-            make_doc("Doc 2"),
-            make_doc("Doc 3"),
-        ];
+        let docs = vec![make_doc("Doc 1"), make_doc("Doc 2"), make_doc("Doc 3")];
         let result = chain.call(&docs).await.unwrap();
 
         assert_eq!(result, "refined-twice");

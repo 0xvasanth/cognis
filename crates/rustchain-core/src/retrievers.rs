@@ -41,12 +41,10 @@ impl<R: BaseRetriever + 'static> Runnable for RetrieverRunnable<R> {
     }
 
     async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let query = input
-            .as_str()
-            .ok_or_else(|| RustChainError::TypeMismatch {
-                expected: "String".into(),
-                got: format!("{}", input),
-            })?;
+        let query = input.as_str().ok_or_else(|| RustChainError::TypeMismatch {
+            expected: "String".into(),
+            got: format!("{}", input),
+        })?;
         let docs = self.retriever.get_relevant_documents(query).await?;
         serde_json::to_value(&docs).map_err(Into::into)
     }

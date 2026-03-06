@@ -73,10 +73,7 @@ pub trait BaseDocumentCompressor: Send + Sync {
 /// Trait for transforming documents (e.g., splitting, translating).
 #[async_trait]
 pub trait BaseDocumentTransformer: Send + Sync {
-    async fn transform_documents(
-        &self,
-        documents: Vec<Document>,
-    ) -> Result<Vec<Document>>;
+    async fn transform_documents(&self, documents: Vec<Document>) -> Result<Vec<Document>>;
 }
 
 /// The data payload for a Blob.

@@ -292,11 +292,7 @@ impl CallbackManager {
         Ok(())
     }
 
-    pub async fn on_agent_finish(
-        &self,
-        finish: &AgentFinish,
-        run_id: Uuid,
-    ) -> Result<()> {
+    pub async fn on_agent_finish(&self, finish: &AgentFinish, run_id: Uuid) -> Result<()> {
         for handler in &self.handlers {
             if !handler.ignore_agent() {
                 handler
@@ -309,9 +305,7 @@ impl CallbackManager {
 
     pub async fn on_text(&self, text: &str, run_id: Uuid) -> Result<()> {
         for handler in &self.handlers {
-            handler
-                .on_text(text, run_id, self.parent_run_id)
-                .await?;
+            handler.on_text(text, run_id, self.parent_run_id).await?;
         }
         Ok(())
     }
@@ -327,12 +321,7 @@ impl CallbackManager {
         Ok(())
     }
 
-    pub async fn on_custom_event(
-        &self,
-        name: &str,
-        data: &Value,
-        run_id: Uuid,
-    ) -> Result<()> {
+    pub async fn on_custom_event(&self, name: &str, data: &Value, run_id: Uuid) -> Result<()> {
         for handler in &self.handlers {
             if !handler.ignore_custom_event() {
                 handler
@@ -353,9 +342,7 @@ impl Default for CallbackManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::callbacks::handlers::{
-        LogLevel, LoggingCallbackHandler, MetricsCallbackHandler,
-    };
+    use crate::callbacks::handlers::{LogLevel, LoggingCallbackHandler, MetricsCallbackHandler};
     use crate::outputs::{Generation, LLMResult};
     use serde_json::json;
 
@@ -372,10 +359,7 @@ mod tests {
         let logging = Arc::new(LoggingCallbackHandler::new(LogLevel::Info));
         let metrics = Arc::new(MetricsCallbackHandler::new());
 
-        let manager = CallbackManager::new(
-            vec![logging.clone(), metrics.clone()],
-            None,
-        );
+        let manager = CallbackManager::new(vec![logging.clone(), metrics.clone()], None);
 
         let run_id = Uuid::new_v4();
         manager
@@ -533,10 +517,7 @@ mod tests {
             .on_chain_start(&json!({}), &json!({}), run_id)
             .await
             .unwrap();
-        manager
-            .on_chain_end(&json!({}), run_id)
-            .await
-            .unwrap();
+        manager.on_chain_end(&json!({}), run_id).await.unwrap();
         manager.on_chain_error("err", run_id).await.unwrap();
         manager
             .on_tool_start(&json!({}), "in", run_id)

@@ -136,10 +136,7 @@ impl ConversationalRetrievalChain {
 
     /// Run the chain and return the answer along with source documents and the
     /// condensed question.
-    pub async fn call_with_sources(
-        &self,
-        question: &str,
-    ) -> Result<ConversationalRetrievalResult> {
+    pub async fn call_with_sources(&self, question: &str) -> Result<ConversationalRetrievalResult> {
         // Step 1: Condense the question
         let condensed = self.condense_question(question).await?;
 
@@ -272,15 +269,12 @@ mod tests {
         // The condense LLM produces a standalone question from history.
         // First call uses response index 0, condensation uses index 1, QA uses index 2.
         let llm = fake_model(vec![
-            "Rust is great",           // first call QA answer
+            "Rust is great",                // first call QA answer
             "What year was Rust released?", // condensation output
             "Rust was released in 2015",    // second call QA answer
         ]);
 
-        let chain = ConversationalRetrievalChain::new(
-            make_retriever(make_docs()),
-            llm,
-        );
+        let chain = ConversationalRetrievalChain::new(make_retriever(make_docs()), llm);
 
         // First call -- no condensation
         let r1 = chain.call_with_sources("Tell me about Rust").await.unwrap();
@@ -288,7 +282,10 @@ mod tests {
         assert_eq!(r1.answer, "Rust is great");
 
         // Second call -- should condense
-        let r2 = chain.call_with_sources("When was it released?").await.unwrap();
+        let r2 = chain
+            .call_with_sources("When was it released?")
+            .await
+            .unwrap();
         // The condensed question comes from the LLM
         assert_eq!(r2.condensed_question, "What year was Rust released?");
         assert_eq!(r2.answer, "Rust was released in 2015");
@@ -361,18 +358,18 @@ mod tests {
         let main_llm = fake_model(vec!["main answer 1", "main answer 2"]);
         let condense_llm = fake_model(vec!["standalone question from condense llm"]);
 
-        let chain = ConversationalRetrievalChain::new(
-            make_retriever(make_docs()),
-            main_llm,
-        )
-        .with_condense_llm(condense_llm);
+        let chain = ConversationalRetrievalChain::new(make_retriever(make_docs()), main_llm)
+            .with_condense_llm(condense_llm);
 
         // First call -- no condensation needed
         chain.call("first q").await.unwrap();
 
         // Second call -- uses the condense LLM
         let r = chain.call_with_sources("follow up").await.unwrap();
-        assert_eq!(r.condensed_question, "standalone question from condense llm");
+        assert_eq!(
+            r.condensed_question,
+            "standalone question from condense llm"
+        );
         assert_eq!(r.answer, "main answer 2");
     }
 
@@ -385,11 +382,9 @@ mod tests {
             Document::new("doc4"),
             Document::new("doc5"),
         ];
-        let chain = ConversationalRetrievalChain::new(
-            make_retriever(docs),
-            fake_model(vec!["answer"]),
-        )
-        .with_k(2);
+        let chain =
+            ConversationalRetrievalChain::new(make_retriever(docs), fake_model(vec!["answer"]))
+                .with_k(2);
 
         let result = chain.call_with_sources("q").await.unwrap();
         assert_eq!(result.source_documents.len(), 2);

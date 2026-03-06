@@ -104,7 +104,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for query in &chain_queries {
         let result = chain.call(query).await?;
         println!("  Query: \"{query}\"");
-        println!("  Route: {} (confidence: {:.4})", result.route_name, result.confidence);
+        println!(
+            "  Route: {} (confidence: {:.4})",
+            result.route_name, result.confidence
+        );
         println!("  Answer: {}\n", result.answer);
     }
 

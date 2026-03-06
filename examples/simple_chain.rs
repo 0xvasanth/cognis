@@ -23,19 +23,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // The template uses {topic} as a variable that will be filled at invoke time.
     let prompt = ChatPromptTemplate::from_messages(vec![
-        ("system", "You are a helpful assistant that explains topics concisely."),
+        (
+            "system",
+            "You are a helpful assistant that explains topics concisely.",
+        ),
         ("human", "Explain {topic} in one sentence."),
     ])?;
 
-    println!("Created ChatPromptTemplate with input variables: {:?}", prompt.input_variables);
+    println!(
+        "Created ChatPromptTemplate with input variables: {:?}",
+        prompt.input_variables
+    );
 
     // Step 2: Create a FakeListChatModel that returns predefined responses.
     //
     // In a real application, this would be an OpenAI, Anthropic, or other provider model.
     let model = FakeListChatModel::new(vec![
         "Rust is a systems programming language focused on safety, speed, and concurrency.".into(),
-        "Python is a high-level, interpreted language known for readability and versatility.".into(),
-        "TypeScript adds static typing to JavaScript for better tooling and error detection.".into(),
+        "Python is a high-level, interpreted language known for readability and versatility."
+            .into(),
+        "TypeScript adds static typing to JavaScript for better tooling and error detection."
+            .into(),
     ]);
 
     // Step 3: Create a StrOutputParser to extract text from the model's response.
@@ -69,10 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 6: Demonstrate batch invocation.
     println!("--- Batch Invocation ---\n");
 
-    let batch_inputs = vec![
-        json!({ "topic": "Rust" }),
-        json!({ "topic": "Python" }),
-    ];
+    let batch_inputs = vec![json!({ "topic": "Rust" }), json!({ "topic": "Python" })];
     let batch_results = chain.batch(batch_inputs, None).await?;
 
     for (i, result) in batch_results.iter().enumerate() {

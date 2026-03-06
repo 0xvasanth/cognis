@@ -15,7 +15,9 @@ use crate::prompts::string_formatter::format_template;
 
 /// Compute length of text by splitting on whitespace and newlines.
 fn get_length_based(text: &str) -> usize {
-    text.split(|c: char| c.is_whitespace()).filter(|s| !s.is_empty()).count()
+    text.split(|c: char| c.is_whitespace())
+        .filter(|s| !s.is_empty())
+        .count()
 }
 
 /// Select examples based on the total prompt length constraint.
@@ -38,12 +40,9 @@ impl LengthBasedExampleSelector {
         let lengths: Vec<usize> = examples
             .iter()
             .map(|ex| {
-                let formatted = format_template(
-                    &example_prompt.template,
-                    example_prompt.template_format,
-                    ex,
-                )
-                .unwrap_or_default();
+                let formatted =
+                    format_template(&example_prompt.template, example_prompt.template_format, ex)
+                        .unwrap_or_default();
                 get_length_based(&formatted)
             })
             .collect();
@@ -96,7 +95,9 @@ impl BaseExampleSelector for LengthBasedExampleSelector {
             .collect::<Vec<_>>()
             .join(" ");
 
-        let mut remaining = self.max_length.saturating_sub((self.get_text_length)(&input_text));
+        let mut remaining = self
+            .max_length
+            .saturating_sub((self.get_text_length)(&input_text));
         let examples = self.examples.lock().unwrap();
         let lengths = self.example_text_lengths.lock().unwrap();
 

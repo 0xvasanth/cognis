@@ -97,9 +97,8 @@ impl GenerationChunk {
     pub fn add(&self, other: &GenerationChunk) -> GenerationChunk {
         let mut info = self.generation_info.clone();
         if let Some(other_info) = &other.generation_info {
-            info.get_or_insert_with(HashMap::new).extend(
-                other_info.iter().map(|(k, v)| (k.clone(), v.clone())),
-            );
+            info.get_or_insert_with(HashMap::new)
+                .extend(other_info.iter().map(|(k, v)| (k.clone(), v.clone())));
         }
         GenerationChunk {
             text: format!("{}{}", self.text, other.text),
@@ -131,9 +130,8 @@ impl ChatGenerationChunk {
     pub fn add(&self, other: &ChatGenerationChunk) -> ChatGenerationChunk {
         let mut info = self.generation_info.clone();
         if let Some(other_info) = &other.generation_info {
-            info.get_or_insert_with(HashMap::new).extend(
-                other_info.iter().map(|(k, v)| (k.clone(), v.clone())),
-            );
+            info.get_or_insert_with(HashMap::new)
+                .extend(other_info.iter().map(|(k, v)| (k.clone(), v.clone())));
         }
         ChatGenerationChunk {
             text: format!("{}{}", self.text, other.text),
@@ -147,9 +145,7 @@ impl ChatGenerationChunk {
 pub fn merge_chat_generation_chunks(
     chunks: Vec<ChatGenerationChunk>,
 ) -> Option<ChatGenerationChunk> {
-    chunks
-        .into_iter()
-        .reduce(|acc, chunk| acc.add(&chunk))
+    chunks.into_iter().reduce(|acc, chunk| acc.add(&chunk))
 }
 
 impl LLMResult {

@@ -84,14 +84,10 @@ impl PromptHub {
     }
 
     /// Render the latest version of a template with the given variables.
-    pub fn format(
-        &self,
-        name: &str,
-        variables: &HashMap<String, String>,
-    ) -> Result<String> {
-        let entry = self.get(name).ok_or_else(|| {
-            RustChainError::Other(format!("Template '{}' not found", name))
-        })?;
+    pub fn format(&self, name: &str, variables: &HashMap<String, String>) -> Result<String> {
+        let entry = self
+            .get(name)
+            .ok_or_else(|| RustChainError::Other(format!("Template '{}' not found", name)))?;
         format_template_str(&entry.template, variables)
     }
 
@@ -127,10 +123,7 @@ impl PromptHub {
 
         while let Some(entry) = entries.next_entry().await? {
             let file_path = entry.path();
-            let ext = file_path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
+            let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
             if ext != "txt" && ext != "prompt" {
                 continue;
@@ -215,10 +208,7 @@ fn extract_variables(template: &str) -> Vec<String> {
 }
 
 /// Render a template string by replacing `{var}` placeholders.
-fn format_template_str(
-    template: &str,
-    variables: &HashMap<String, String>,
-) -> Result<String> {
+fn format_template_str(template: &str, variables: &HashMap<String, String>) -> Result<String> {
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
 
@@ -391,13 +381,11 @@ mod tests {
         let dir = TempDir::new().unwrap();
         hub.save_to_directory(dir.path()).await.unwrap();
 
-        let greet_content =
-            std::fs::read_to_string(dir.path().join("greet.prompt")).unwrap();
+        let greet_content = std::fs::read_to_string(dir.path().join("greet.prompt")).unwrap();
         assert!(greet_content.starts_with("# A greeting\n"));
         assert!(greet_content.contains("Hello {name}!"));
 
-        let bye_content =
-            std::fs::read_to_string(dir.path().join("bye.prompt")).unwrap();
+        let bye_content = std::fs::read_to_string(dir.path().join("bye.prompt")).unwrap();
         assert_eq!(bye_content, "Goodbye!");
     }
 }

@@ -321,7 +321,7 @@ mod tests {
     #[tokio::test]
     async fn test_hybrid_within_window_no_summary() {
         let model = Arc::new(FakeListChatModel::new(vec![
-            "should not be called".to_string(),
+            "should not be called".to_string()
         ]));
         // window_size = 10, so 2 messages will not trigger summarization
         let mem = HybridMemory::builder(model).window_size(10).build();
@@ -408,9 +408,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_hybrid_clear_resets_everything() {
-        let model = Arc::new(FakeListChatModel::new(vec![
-            "Some summary".to_string(),
-        ]));
+        let model = Arc::new(FakeListChatModel::new(vec!["Some summary".to_string()]));
         let mem = HybridMemory::builder(model).window_size(2).build();
 
         mem.save_context(&Message::human("A"), &Message::ai("B"))
@@ -436,7 +434,7 @@ mod tests {
     #[tokio::test]
     async fn test_hybrid_custom_summary_prompt() {
         let model = Arc::new(FakeListChatModel::new(vec![
-            "custom summary result".to_string(),
+            "custom summary result".to_string()
         ]));
         let mem = HybridMemory::builder(model)
             .window_size(2)
@@ -506,9 +504,7 @@ mod tests {
     #[tokio::test]
     async fn test_hybrid_memory_key() {
         let model = Arc::new(FakeListChatModel::new(vec!["unused".to_string()]));
-        let mem = HybridMemory::builder(model)
-            .memory_key("my_key")
-            .build();
+        let mem = HybridMemory::builder(model).memory_key("my_key").build();
 
         mem.save_context(&Message::human("Hi"), &Message::ai("Hey"))
             .await

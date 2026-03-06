@@ -7,9 +7,9 @@
 //! - `CodexSandboxExecutionPolicy` — run through the Codex CLI sandbox.
 //! - `DockerExecutionPolicy` — run inside a Docker container.
 
-use std::collections::HashMap;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Prefix used for temporary shell workspace directories.
 pub const SHELL_TEMP_PREFIX: &str = "langchain-shell-";
@@ -261,11 +261,7 @@ impl ExecutionPolicy for CodexSandboxExecutionPolicy {
         _env: &HashMap<String, String>,
     ) -> Result<Vec<String>, String> {
         let platform_arg = self.determine_platform()?;
-        let mut full_command = vec![
-            self.binary.clone(),
-            "sandbox".into(),
-            platform_arg,
-        ];
+        let mut full_command = vec![self.binary.clone(), "sandbox".into(), platform_arg];
         // Add config overrides in sorted order
         let mut sorted_overrides: Vec<_> = self.config_overrides.iter().collect();
         sorted_overrides.sort_by_key(|(k, _)| (*k).clone());
@@ -764,9 +760,7 @@ mod tests {
         let policy = HostExecutionPolicy::default();
         let cmd: Vec<String> = vec![];
         let workspace = std::path::Path::new("/tmp");
-        let result = policy
-            .spawn_command(&cmd, workspace, &HashMap::new())
-            .await;
+        let result = policy.spawn_command(&cmd, workspace, &HashMap::new()).await;
         assert!(result.is_err());
     }
 }

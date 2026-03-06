@@ -6,15 +6,13 @@ use rustchain_core::language_models::chat_model::BaseChatModel;
 use rustchain_core::messages::{HumanMessage, Message};
 
 /// Default prompt template for the first document.
-const DEFAULT_INITIAL_PROMPT: &str =
-    "Answer the question based on the text.\n\n\
+const DEFAULT_INITIAL_PROMPT: &str = "Answer the question based on the text.\n\n\
      Text: {text}\n\
      Question: {question}\n\
      Answer:";
 
 /// Default prompt template for refining the answer with subsequent documents.
-const DEFAULT_REFINE_PROMPT: &str =
-    "Refine the answer using additional context.\n\n\
+const DEFAULT_REFINE_PROMPT: &str = "Refine the answer using additional context.\n\n\
      Existing answer: {existing_answer}\n\
      New context: {text}\n\
      Question: {question}\n\
@@ -165,11 +163,7 @@ mod tests {
         let llm = fake_model(vec!["initial-answer", "refined-once", "refined-twice"]);
         let chain = RefineChain::new(llm);
 
-        let docs = vec![
-            make_doc("Doc 1"),
-            make_doc("Doc 2"),
-            make_doc("Doc 3"),
-        ];
+        let docs = vec![make_doc("Doc 1"), make_doc("Doc 2"), make_doc("Doc 3")];
         let result = chain.call("question?", &docs).await.unwrap();
 
         // The final answer should be the last refinement

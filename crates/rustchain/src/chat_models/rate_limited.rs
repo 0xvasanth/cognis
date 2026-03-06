@@ -165,11 +165,7 @@ impl RateLimitedChatModel {
 
 #[async_trait]
 impl BaseChatModel for RateLimitedChatModel {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         self.request_limiter.acquire().await;
         self.inner._generate(messages, stop).await
     }
@@ -188,11 +184,7 @@ impl BaseChatModel for RateLimitedChatModel {
         self.inner.llm_type()
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         self.request_limiter.acquire().await;
         self.inner._stream(messages, stop).await
     }
@@ -353,9 +345,9 @@ mod tests {
         let count = mock.call_count.clone();
         let limited = RateLimitedChatModel::new(Box::new(mock), 600.0); // 10/sec
 
-        let messages = vec![Message::Human(
-            rustchain_core::messages::HumanMessage::new("Hi"),
-        )];
+        let messages = vec![Message::Human(rustchain_core::messages::HumanMessage::new(
+            "Hi",
+        ))];
         let result = limited._generate(&messages, None).await;
         assert!(result.is_ok());
         assert_eq!(count.load(Ordering::SeqCst), 1);
@@ -413,9 +405,9 @@ mod tests {
 
         // The returned model should still be rate-limited and functional
         let bound = result.unwrap();
-        let messages = vec![Message::Human(
-            rustchain_core::messages::HumanMessage::new("Hi"),
-        )];
+        let messages = vec![Message::Human(rustchain_core::messages::HumanMessage::new(
+            "Hi",
+        ))];
         let gen_result = bound._generate(&messages, None).await;
         assert!(gen_result.is_ok());
     }
@@ -426,9 +418,9 @@ mod tests {
         let limited = with_rate_limit(Box::new(mock), 120.0);
         assert_eq!(limited.llm_type(), "mock");
 
-        let messages = vec![Message::Human(
-            rustchain_core::messages::HumanMessage::new("test"),
-        )];
+        let messages = vec![Message::Human(rustchain_core::messages::HumanMessage::new(
+            "test",
+        ))];
         let result = limited._generate(&messages, None).await;
         assert!(result.is_ok());
     }
@@ -440,9 +432,9 @@ mod tests {
         // 10 requests/sec, burst of 5
         let limited = RateLimitedChatModel::with_rate(Box::new(mock), 10.0, 5);
 
-        let messages = vec![Message::Human(
-            rustchain_core::messages::HumanMessage::new("Hi"),
-        )];
+        let messages = vec![Message::Human(rustchain_core::messages::HumanMessage::new(
+            "Hi",
+        ))];
         let result = limited._generate(&messages, None).await;
         assert!(result.is_ok());
         assert_eq!(count.load(Ordering::SeqCst), 1);
@@ -451,13 +443,12 @@ mod tests {
     #[tokio::test]
     async fn test_with_token_limit_builder() {
         let mock = MockChatModel::new();
-        let limited = RateLimitedChatModel::new(Box::new(mock), 60.0)
-            .with_token_limit(100_000.0);
+        let limited = RateLimitedChatModel::new(Box::new(mock), 60.0).with_token_limit(100_000.0);
         assert!(limited.token_limiter.is_some());
 
-        let messages = vec![Message::Human(
-            rustchain_core::messages::HumanMessage::new("test"),
-        )];
+        let messages = vec![Message::Human(rustchain_core::messages::HumanMessage::new(
+            "test",
+        ))];
         let result = limited._generate(&messages, None).await;
         assert!(result.is_ok());
     }

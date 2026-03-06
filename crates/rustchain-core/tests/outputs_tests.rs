@@ -1,7 +1,7 @@
 use rustchain_core::messages::{AIMessage, AIMessageChunk};
 use rustchain_core::outputs::{
-    ChatGeneration, ChatGenerationChunk, ChatResult, Generation, GenerationChunk, LLMResult,
-    RunInfo, merge_chat_generation_chunks,
+    merge_chat_generation_chunks, ChatGeneration, ChatGenerationChunk, ChatResult, Generation,
+    GenerationChunk, LLMResult, RunInfo,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -22,10 +22,7 @@ fn generation_with_info() {
         text: "Hello".into(),
         generation_info: Some(info),
     };
-    assert_eq!(
-        gen.generation_info.unwrap()["finish_reason"],
-        json!("stop")
-    );
+    assert_eq!(gen.generation_info.unwrap()["finish_reason"], json!("stop"));
 }
 
 #[test]
@@ -73,10 +70,7 @@ fn llm_result_flatten_single() {
 #[test]
 fn llm_result_flatten_multiple() {
     let result = LLMResult {
-        generations: vec![
-            vec![Generation::new("a")],
-            vec![Generation::new("b")],
-        ],
+        generations: vec![vec![Generation::new("a")], vec![Generation::new("b")]],
         llm_output: Some({
             let mut m = HashMap::new();
             m.insert("token_usage".into(), json!({"total": 10}));

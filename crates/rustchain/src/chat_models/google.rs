@@ -118,9 +118,7 @@ impl ChatGoogleGenAIBuilder {
     /// Returns an error if the API key cannot be resolved from the builder
     /// or environment.
     pub fn build(self) -> Result<ChatGoogleGenAI> {
-        let model = self
-            .model
-            .unwrap_or_else(|| "gemini-2.0-flash".to_string());
+        let model = self.model.unwrap_or_else(|| "gemini-2.0-flash".to_string());
 
         let api_key = match self.api_key {
             Some(key) => key,
@@ -270,10 +268,8 @@ impl ChatGoogleGenAI {
                 }
                 Message::Tool(tool) => {
                     // Parse the tool result content as JSON if possible, otherwise wrap as string
-                    let response_value: Value =
-                        serde_json::from_str(&tool.base.content.text()).unwrap_or_else(|_| {
-                            json!({"result": tool.base.content.text()})
-                        });
+                    let response_value: Value = serde_json::from_str(&tool.base.content.text())
+                        .unwrap_or_else(|_| json!({"result": tool.base.content.text()}));
                     contents.push(json!({
                         "role": "function",
                         "parts": [{
@@ -399,9 +395,7 @@ impl ChatGoogleGenAI {
             .and_then(|c| c.get("parts"))
             .and_then(|p| p.as_array())
             .ok_or_else(|| {
-                RustChainError::Other(
-                    "Missing 'content.parts' in Gemini response candidate".into(),
-                )
+                RustChainError::Other("Missing 'content.parts' in Gemini response candidate".into())
             })?;
 
         let mut text_parts: Vec<String> = Vec::new();
@@ -498,9 +492,7 @@ impl ChatGoogleGenAI {
         chunk.tool_call_chunks = tool_call_chunks;
 
         // Check finish reason
-        let finish_reason = candidate
-            .get("finishReason")
-            .and_then(|v| v.as_str());
+        let finish_reason = candidate.get("finishReason").and_then(|v| v.as_str());
         if let Some(reason) = finish_reason {
             if reason == "STOP" || reason == "MAX_TOKENS" {
                 chunk.chunk_position = Some("last".to_string());
@@ -561,9 +553,11 @@ impl ChatGoogleGenAI {
                 .post(&url)
                 .header("Content-Type", "application/json");
 
-            let response = req.json(payload).send().await.map_err(|e| {
-                RustChainError::Other(format!("HTTP request failed: {}", e))
-            })?;
+            let response = req
+                .json(payload)
+                .send()
+                .await
+                .map_err(|e| RustChainError::Other(format!("HTTP request failed: {}", e)))?;
 
             let status = response.status().as_u16();
 
@@ -607,9 +601,11 @@ impl ChatGoogleGenAI {
             .post(&url)
             .header("Content-Type", "application/json");
 
-        let response = req.json(payload).send().await.map_err(|e| {
-            RustChainError::Other(format!("HTTP request failed: {}", e))
-        })?;
+        let response = req
+            .json(payload)
+            .send()
+            .await
+            .map_err(|e| RustChainError::Other(format!("HTTP request failed: {}", e)))?;
 
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
@@ -643,12 +639,10 @@ impl ChatGoogleGenAI {
                                     }
                                     match serde_json::from_str::<Value>(trimmed) {
                                         Ok(val) => events.push(Ok(val)),
-                                        Err(e) => events.push(Err(
-                                            RustChainError::Other(format!(
-                                                "Failed to parse SSE event: {}",
-                                                e
-                                            )),
-                                        )),
+                                        Err(e) => events.push(Err(RustChainError::Other(format!(
+                                            "Failed to parse SSE event: {}",
+                                            e
+                                        )))),
                                     }
                                 }
                             }
@@ -684,11 +678,7 @@ impl ChatGoogleGenAI {
 
 #[async_trait]
 impl BaseChatModel for ChatGoogleGenAI {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         let payload = self.build_payload(messages, stop, &self.bound_tools);
         let response = self.call_api(&payload).await?;
         Self::parse_response(&response)
@@ -698,11 +688,7 @@ impl BaseChatModel for ChatGoogleGenAI {
         "google_gemini"
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         let payload = self.build_payload(messages, stop, &self.bound_tools);
         let event_stream = self.call_api_stream(&payload).await?;
 
@@ -898,16 +884,25 @@ mod tests {
 
         // System extracted
         assert!(system.is_some());
-        assert_eq!(system.unwrap()["parts"][0]["text"], "You are a helpful assistant");
+        assert_eq!(
+            system.unwrap()["parts"][0]["text"],
+            "You are a helpful assistant"
+        );
 
         // Three turns in contents
         assert_eq!(contents.len(), 3);
         assert_eq!(contents[0]["role"], "user");
         assert_eq!(contents[0]["parts"][0]["text"], "What is Rust?");
         assert_eq!(contents[1]["role"], "model");
-        assert_eq!(contents[1]["parts"][0]["text"], "Rust is a systems programming language.");
+        assert_eq!(
+            contents[1]["parts"][0]["text"],
+            "Rust is a systems programming language."
+        );
         assert_eq!(contents[2]["role"], "user");
-        assert_eq!(contents[2]["parts"][0]["text"], "What about its memory model?");
+        assert_eq!(
+            contents[2]["parts"][0]["text"],
+            "What about its memory model?"
+        );
     }
 
     #[test]
@@ -1176,7 +1171,10 @@ mod tests {
         });
 
         let chunk = ChatGoogleGenAI::parse_stream_event(&event);
-        assert!(chunk.is_none(), "Empty chunks with no meaningful content should be skipped");
+        assert!(
+            chunk.is_none(),
+            "Empty chunks with no meaningful content should be skipped"
+        );
     }
 
     #[test]
@@ -1256,7 +1254,10 @@ mod tests {
         let payload = model.build_payload(&messages, None, &[]);
 
         assert!(payload.get("systemInstruction").is_some());
-        assert_eq!(payload["systemInstruction"]["parts"][0]["text"], "Be helpful");
+        assert_eq!(
+            payload["systemInstruction"]["parts"][0]["text"],
+            "Be helpful"
+        );
         let contents = payload["contents"].as_array().unwrap();
         assert_eq!(contents.len(), 1);
         assert_eq!(contents[0]["role"], "user");
@@ -1284,7 +1285,9 @@ mod tests {
         let payload = model.build_payload(&messages, None, &tools);
 
         assert!(payload.get("tools").is_some());
-        let tool_decls = payload["tools"][0]["functionDeclarations"].as_array().unwrap();
+        let tool_decls = payload["tools"][0]["functionDeclarations"]
+            .as_array()
+            .unwrap();
         assert_eq!(tool_decls.len(), 1);
         assert_eq!(tool_decls[0]["name"], "search");
     }

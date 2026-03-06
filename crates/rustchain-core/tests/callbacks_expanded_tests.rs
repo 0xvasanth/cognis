@@ -175,7 +175,10 @@ async fn test_run_manager_for_chain_dispatches() {
         Default::default(),
     );
     // These should all succeed with the no-op handler
-    run_mgr.on_chain_end(&json!({"result": "ok"})).await.unwrap();
+    run_mgr
+        .on_chain_end(&json!({"result": "ok"}))
+        .await
+        .unwrap();
     run_mgr.on_chain_error("some error").await.unwrap();
     run_mgr.on_text("hello").await.unwrap();
 }

@@ -142,9 +142,9 @@ impl ChatOllamaBuilder {
     ///
     /// Returns an error if `model` is not set.
     pub fn build(self) -> Result<ChatOllama> {
-        let model = self.model.ok_or_else(|| {
-            RustChainError::Other("model is required for ChatOllama".into())
-        })?;
+        let model = self
+            .model
+            .ok_or_else(|| RustChainError::Other("model is required for ChatOllama".into()))?;
 
         Ok(ChatOllama {
             model,
@@ -397,9 +397,9 @@ impl ChatOllama {
 
     /// Parse an Ollama chat API response into a [`ChatResult`].
     pub fn parse_response(response: &Value) -> Result<ChatResult> {
-        let message = response.get("message").ok_or_else(|| {
-            RustChainError::Other("Missing 'message' in Ollama response".into())
-        })?;
+        let message = response
+            .get("message")
+            .ok_or_else(|| RustChainError::Other("Missing 'message' in Ollama response".into()))?;
 
         let content = message
             .get("content")
@@ -469,10 +469,7 @@ impl ChatOllama {
 
         if done {
             // Final line with usage stats
-            let eval_count = line
-                .get("eval_count")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
+            let eval_count = line.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0);
             let prompt_eval_count = line
                 .get("prompt_eval_count")
                 .and_then(|v| v.as_u64())
@@ -552,10 +549,7 @@ impl ChatOllama {
                     let status = response.status().as_u16();
                     if (200..300).contains(&status) {
                         let body: Value = response.json().await.map_err(|e| {
-                            RustChainError::Other(format!(
-                                "Failed to parse response JSON: {}",
-                                e
-                            ))
+                            RustChainError::Other(format!("Failed to parse response JSON: {}", e))
                         })?;
                         return Ok(body);
                     }
@@ -568,14 +562,10 @@ impl ChatOllama {
                     if attempt < max_retries {
                         let delay_ms = 500 * 2u64.pow(attempt);
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        last_error =
-                            RustChainError::Other(format!("HTTP request failed: {}", e));
+                        last_error = RustChainError::Other(format!("HTTP request failed: {}", e));
                         continue;
                     }
-                    return Err(RustChainError::Other(format!(
-                        "HTTP request failed: {}",
-                        e
-                    )));
+                    return Err(RustChainError::Other(format!("HTTP request failed: {}", e)));
                 }
             }
         }
@@ -601,9 +591,7 @@ impl ChatOllama {
             .json(payload)
             .send()
             .await
-            .map_err(|e| {
-                RustChainError::Other(format!("HTTP request failed: {}", e))
-            })?;
+            .map_err(|e| RustChainError::Other(format!("HTTP request failed: {}", e)))?;
 
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
@@ -636,9 +624,10 @@ impl ChatOllama {
 
                             match serde_json::from_str::<Value>(&line) {
                                 Ok(val) => events.push(Ok(val)),
-                                Err(e) => events.push(Err(RustChainError::Other(
-                                    format!("Failed to parse NDJSON line: {}", e),
-                                ))),
+                                Err(e) => events.push(Err(RustChainError::Other(format!(
+                                    "Failed to parse NDJSON line: {}",
+                                    e
+                                )))),
                             }
                         }
                         events
@@ -675,11 +664,7 @@ impl ChatOllama {
 
 #[async_trait]
 impl BaseChatModel for ChatOllama {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         let payload = self.build_payload(messages, stop, &self.bound_tools, false);
         let response = self.call_api(&payload).await?;
         Self::parse_response(&response)
@@ -689,11 +674,7 @@ impl BaseChatModel for ChatOllama {
         "ollama"
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         let payload = self.build_payload(messages, stop, &self.bound_tools, true);
         let event_stream = self.call_api_stream(&payload).await?;
 

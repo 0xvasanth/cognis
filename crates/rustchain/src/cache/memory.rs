@@ -247,7 +247,10 @@ mod tests {
         // Insert "c" — should evict "b" (least recently used).
         cache.put("c", &make_result("third")).await;
 
-        assert!(cache.get("a").await.is_some(), "a should survive (recently accessed)");
+        assert!(
+            cache.get("a").await.is_some(),
+            "a should survive (recently accessed)"
+        );
         assert!(cache.get("b").await.is_none(), "b should be evicted (LRU)");
         assert!(cache.get("c").await.is_some(), "c should be present");
     }
@@ -282,7 +285,9 @@ mod tests {
     async fn test_unbounded_cache() {
         let cache = InMemoryCache::new();
         for i in 0..100 {
-            cache.put(&format!("k{i}"), &make_result(&format!("v{i}"))).await;
+            cache
+                .put(&format!("k{i}"), &make_result(&format!("v{i}")))
+                .await;
         }
         assert_eq!(cache.len().await, 100);
         assert!(cache.get("k0").await.is_some());

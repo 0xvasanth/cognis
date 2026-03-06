@@ -179,12 +179,9 @@ impl OpenAIEmbeddings {
             .await
             .map_err(|e| RustChainError::Other(format!("Failed to parse response JSON: {}", e)))?;
 
-        let data = body
-            .get("data")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| {
-                RustChainError::Other("Missing 'data' array in OpenAI embeddings response".into())
-            })?;
+        let data = body.get("data").and_then(|v| v.as_array()).ok_or_else(|| {
+            RustChainError::Other("Missing 'data' array in OpenAI embeddings response".into())
+        })?;
 
         let mut embeddings: Vec<Vec<f32>> = Vec::with_capacity(data.len());
         for item in data {
@@ -192,21 +189,15 @@ impl OpenAIEmbeddings {
                 .get("embedding")
                 .and_then(|v| v.as_array())
                 .ok_or_else(|| {
-                    RustChainError::Other(
-                        "Missing 'embedding' array in response data item".into(),
-                    )
+                    RustChainError::Other("Missing 'embedding' array in response data item".into())
                 })?;
 
             let vec: Vec<f32> = embedding
                 .iter()
                 .map(|v| {
-                    v.as_f64()
-                        .map(|f| f as f32)
-                        .ok_or_else(|| {
-                            RustChainError::Other(
-                                "Non-numeric value in embedding array".into(),
-                            )
-                        })
+                    v.as_f64().map(|f| f as f32).ok_or_else(|| {
+                        RustChainError::Other("Non-numeric value in embedding array".into())
+                    })
                 })
                 .collect::<Result<Vec<f32>>>()?;
 
@@ -232,9 +223,10 @@ impl Embeddings for OpenAIEmbeddings {
     /// Delegates to `embed_documents` with a single-element list.
     async fn embed_query(&self, text: &str) -> Result<Vec<f32>> {
         let results = self.embed_documents(vec![text.to_string()]).await?;
-        results.into_iter().next().ok_or_else(|| {
-            RustChainError::Other("Empty embedding response for query".into())
-        })
+        results
+            .into_iter()
+            .next()
+            .ok_or_else(|| RustChainError::Other("Empty embedding response for query".into()))
     }
 }
 

@@ -85,32 +85,67 @@ impl ConfigPatch {
         }
     }
 
-    pub fn tags(mut self, tags: Vec<String>) -> Self { self.tags = Some(tags); self }
-    pub fn metadata(mut self, metadata: HashMap<String, Value>) -> Self { self.metadata = Some(metadata); self }
-    pub fn callbacks(mut self, callbacks: Vec<Arc<dyn CallbackHandler>>) -> Self { self.callbacks = Some(callbacks); self }
-    pub fn run_name(mut self, name: impl Into<String>) -> Self { self.run_name = Some(name.into()); self }
-    pub fn max_concurrency(mut self, n: usize) -> Self { self.max_concurrency = Some(n); self }
-    pub fn recursion_limit(mut self, n: usize) -> Self { self.recursion_limit = Some(n); self }
-    pub fn configurable(mut self, configurable: HashMap<String, Value>) -> Self { self.configurable = Some(configurable); self }
-    pub fn run_id(mut self, id: Uuid) -> Self { self.run_id = Some(id); self }
+    pub fn tags(mut self, tags: Vec<String>) -> Self {
+        self.tags = Some(tags);
+        self
+    }
+    pub fn metadata(mut self, metadata: HashMap<String, Value>) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
+    pub fn callbacks(mut self, callbacks: Vec<Arc<dyn CallbackHandler>>) -> Self {
+        self.callbacks = Some(callbacks);
+        self
+    }
+    pub fn run_name(mut self, name: impl Into<String>) -> Self {
+        self.run_name = Some(name.into());
+        self
+    }
+    pub fn max_concurrency(mut self, n: usize) -> Self {
+        self.max_concurrency = Some(n);
+        self
+    }
+    pub fn recursion_limit(mut self, n: usize) -> Self {
+        self.recursion_limit = Some(n);
+        self
+    }
+    pub fn configurable(mut self, configurable: HashMap<String, Value>) -> Self {
+        self.configurable = Some(configurable);
+        self
+    }
+    pub fn run_id(mut self, id: Uuid) -> Self {
+        self.run_id = Some(id);
+        self
+    }
 
     /// Apply this patch to a config, returning a new config.
     pub fn apply(&self, config: &RunnableConfig) -> RunnableConfig {
         RunnableConfig {
             tags: self.tags.clone().unwrap_or_else(|| config.tags.clone()),
-            metadata: self.metadata.clone().unwrap_or_else(|| config.metadata.clone()),
-            callbacks: self.callbacks.clone().unwrap_or_else(|| config.callbacks.clone()),
+            metadata: self
+                .metadata
+                .clone()
+                .unwrap_or_else(|| config.metadata.clone()),
+            callbacks: self
+                .callbacks
+                .clone()
+                .unwrap_or_else(|| config.callbacks.clone()),
             run_name: self.run_name.clone().or_else(|| config.run_name.clone()),
             max_concurrency: self.max_concurrency.or(config.max_concurrency),
             recursion_limit: self.recursion_limit.unwrap_or(config.recursion_limit),
-            configurable: self.configurable.clone().unwrap_or_else(|| config.configurable.clone()),
+            configurable: self
+                .configurable
+                .clone()
+                .unwrap_or_else(|| config.configurable.clone()),
             run_id: self.run_id.or(config.run_id),
         }
     }
 }
 
 impl Default for ConfigPatch {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Patch a config with selective overrides using the builder pattern.

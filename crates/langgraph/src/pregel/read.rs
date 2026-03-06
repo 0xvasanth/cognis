@@ -62,10 +62,7 @@ impl PregelChannelReader {
     ///
     /// Returns [`LangGraphError::EmptyChannelError`] if a required channel is empty
     /// and `skip_empty` is false.
-    pub fn read(
-        &self,
-        channels: &HashMap<String, Box<dyn BaseChannel>>,
-    ) -> Result<Value> {
+    pub fn read(&self, channels: &HashMap<String, Box<dyn BaseChannel>>) -> Result<Value> {
         if self.channel_names.len() == 1 {
             return self.read_single(channels, &self.channel_names[0]);
         }
@@ -105,10 +102,7 @@ impl PregelChannelReader {
     /// Read a "fresh" view of the channels — identical to [`read`](Self::read)
     /// but conceptually signals that the caller wants the latest values rather
     /// than a cached view.
-    pub fn read_fresh(
-        &self,
-        channels: &HashMap<String, Box<dyn BaseChannel>>,
-    ) -> Result<Value> {
+    pub fn read_fresh(&self, channels: &HashMap<String, Box<dyn BaseChannel>>) -> Result<Value> {
         // In the Rust implementation, channels are always read directly, so
         // "fresh" is the same as a normal read. In Python, this distinction
         // matters because of caching in the config.
@@ -185,9 +179,7 @@ mod tests {
         }
 
         fn get(&self) -> std::result::Result<Value, LangGraphError> {
-            self.value
-                .clone()
-                .ok_or(LangGraphError::EmptyChannelError)
+            self.value.clone().ok_or(LangGraphError::EmptyChannelError)
         }
 
         fn is_available(&self) -> bool {
@@ -204,9 +196,7 @@ mod tests {
         }
     }
 
-    fn make_channels(
-        entries: Vec<(&str, Option<Value>)>,
-    ) -> HashMap<String, Box<dyn BaseChannel>> {
+    fn make_channels(entries: Vec<(&str, Option<Value>)>) -> HashMap<String, Box<dyn BaseChannel>> {
         entries
             .into_iter()
             .map(|(name, value)| {
@@ -250,8 +240,7 @@ mod tests {
             ("b", Some(json!("two"))),
             ("c", Some(json!(true))),
         ]);
-        let reader =
-            PregelChannelReader::new(vec!["a".into(), "b".into(), "c".into()]);
+        let reader = PregelChannelReader::new(vec!["a".into(), "b".into(), "c".into()]);
         let result = reader.read(&channels).unwrap();
         assert_eq!(result["a"], json!(1));
         assert_eq!(result["b"], json!("two"));
@@ -260,10 +249,7 @@ mod tests {
 
     #[test]
     fn test_read_multiple_channels_some_empty() {
-        let channels = make_channels(vec![
-            ("a", Some(json!(1))),
-            ("b", None),
-        ]);
+        let channels = make_channels(vec![("a", Some(json!(1))), ("b", None)]);
         let reader = PregelChannelReader::new(vec!["a".into(), "b".into()]);
         let result = reader.read(&channels).unwrap();
         assert_eq!(result["a"], json!(1));
@@ -326,10 +312,7 @@ mod tests {
 
     #[test]
     fn test_convenience_read_channel_values() {
-        let channels = make_channels(vec![
-            ("a", Some(json!(1))),
-            ("b", Some(json!(2))),
-        ]);
+        let channels = make_channels(vec![("a", Some(json!(1))), ("b", Some(json!(2)))]);
         let names = vec!["a".to_string(), "b".to_string()];
         let result = read_channel_values(&channels, &names).unwrap();
         assert_eq!(result["a"], json!(1));

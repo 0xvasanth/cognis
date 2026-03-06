@@ -18,8 +18,8 @@ pub mod tokens;
 pub mod usage;
 pub mod uuid;
 
-use serde_json::Value;
 use ::uuid::Uuid;
+use serde_json::Value;
 
 pub use merge::{merge_dicts, merge_lists, merge_obj, MergeError};
 
@@ -66,15 +66,17 @@ pub fn get_from_dict_or_env(
 
 /// Get a value from an environment variable.
 pub fn get_from_env(key: &str, default: Option<&str>) -> Option<String> {
-    std::env::var(key).ok().or_else(|| default.map(|s| s.to_string()))
+    std::env::var(key)
+        .ok()
+        .or_else(|| default.map(|s| s.to_string()))
 }
 
 /// Rust/Python type name to JSON Schema type mapping.
 pub fn rust_to_json_type(rust_type: &str) -> &str {
     match rust_type {
         "str" | "String" | "&str" => "string",
-        "int" | "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32"
-        | "u64" | "u128" | "usize" => "integer",
+        "int" | "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
+        | "u128" | "usize" => "integer",
         "float" | "f32" | "f64" => "number",
         "bool" => "boolean",
         "Vec" | "list" => "array",

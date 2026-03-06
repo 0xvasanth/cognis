@@ -33,17 +33,20 @@ pub fn convert_json_schema_to_openai_function(
 ) -> FunctionDescription {
     let func_name = name
         .map(|s| s.to_string())
-        .or_else(|| schema.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()))
-        .unwrap_or_else(|| "unnamed_function".to_string());
-
-    let func_desc = description
-        .map(|s| s.to_string())
         .or_else(|| {
             schema
-                .get("description")
+                .get("title")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
-        });
+        })
+        .unwrap_or_else(|| "unnamed_function".to_string());
+
+    let func_desc = description.map(|s| s.to_string()).or_else(|| {
+        schema
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    });
 
     let mut params = schema.clone();
     if rm_titles {
@@ -168,8 +171,14 @@ pub fn tool_example_to_messages(
         .enumerate()
         .map(|(i, tc)| {
             let mut call = serde_json::Map::new();
-            call.insert("name".to_string(), tc.get("name").cloned().unwrap_or(json!("tool")));
-            call.insert("args".to_string(), tc.get("args").cloned().unwrap_or(json!({})));
+            call.insert(
+                "name".to_string(),
+                tc.get("name").cloned().unwrap_or(json!("tool")),
+            );
+            call.insert(
+                "args".to_string(),
+                tc.get("args").cloned().unwrap_or(json!({})),
+            );
             call.insert("id".to_string(), json!(format!("call_{}", i)));
             Value::Object(call)
         })
@@ -251,11 +260,14 @@ mod tests {
     #[test]
     fn test_build_parameters_schema() {
         let mut params = HashMap::new();
-        params.insert("name".into(), ParameterInfo {
-            json_type: "string".into(),
-            description: Some("The name".into()),
-            enum_values: None,
-        });
+        params.insert(
+            "name".into(),
+            ParameterInfo {
+                json_type: "string".into(),
+                description: Some("The name".into()),
+                enum_values: None,
+            },
+        );
         let schema = build_parameters_schema(&params, &["name".into()]);
         assert_eq!(schema["type"], "object");
         assert_eq!(schema["properties"]["name"]["type"], "string");

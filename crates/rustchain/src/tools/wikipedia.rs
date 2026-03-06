@@ -109,9 +109,7 @@ fn urlencoded(s: &str) -> String {
             '&' => "%26".to_string(),
             '%' => "%25".to_string(),
             '+' => "%2B".to_string(),
-            _ if c.is_ascii_alphanumeric() || "-._~/:@!$'()*,;=".contains(c) => {
-                c.to_string()
-            }
+            _ if c.is_ascii_alphanumeric() || "-._~/:@!$'()*,;=".contains(c) => c.to_string(),
             _ => {
                 let mut buf = [0u8; 4];
                 let encoded = c.encode_utf8(&mut buf);
@@ -216,9 +214,7 @@ impl BaseTool for WikipediaTool {
             .header("Accept", "application/json")
             .send()
             .await
-            .map_err(|e| {
-                RustChainError::ToolException(format!("Wikipedia request failed: {e}"))
-            })?;
+            .map_err(|e| RustChainError::ToolException(format!("Wikipedia request failed: {e}")))?;
 
         if resp.status().as_u16() == 404 {
             return Ok(ToolOutput::Content(Value::String(format!(
@@ -285,10 +281,7 @@ mod tests {
 
     #[test]
     fn test_wikipedia_builder_custom() {
-        let tool = WikipediaTool::builder()
-            .lang("de")
-            .num_sentences(5)
-            .build();
+        let tool = WikipediaTool::builder().lang("de").num_sentences(5).build();
         assert_eq!(tool.lang, "de");
         assert_eq!(tool.num_sentences, 5);
     }
@@ -359,7 +352,10 @@ mod tests {
     #[test]
     fn test_truncate_sentences() {
         let text = "First sentence. Second sentence. Third sentence. Fourth sentence.";
-        assert_eq!(truncate_sentences(text, 2), "First sentence. Second sentence.");
+        assert_eq!(
+            truncate_sentences(text, 2),
+            "First sentence. Second sentence."
+        );
         assert_eq!(truncate_sentences(text, 4), text);
         assert_eq!(truncate_sentences(text, 10), text);
         assert_eq!(truncate_sentences(text, 0), "");

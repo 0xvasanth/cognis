@@ -250,10 +250,7 @@ impl PregelExecutor {
     ///
     /// For each (channel_name, value) pair, the corresponding channel is updated.
     /// Returns the set of channel names that changed.
-    pub fn apply_writes(
-        &mut self,
-        writes: &[ChannelWrite],
-    ) -> Result<Vec<String>, LangGraphError> {
+    pub fn apply_writes(&mut self, writes: &[ChannelWrite]) -> Result<Vec<String>, LangGraphError> {
         let mut changed = Vec::new();
 
         for (channel_name, value) in writes {
@@ -371,8 +368,7 @@ impl PregelExecutor {
                 let result = self.execute_task(task).await?;
 
                 if let Some(ref error) = result.error {
-                    step_updates
-                        .insert(task.name.clone(), serde_json::json!({"error": error}));
+                    step_updates.insert(task.name.clone(), serde_json::json!({"error": error}));
                 } else {
                     // Collect updates for streaming.
                     let task_writes: serde_json::Map<String, Value> =
@@ -384,11 +380,7 @@ impl PregelExecutor {
             }
 
             // Emit updates stream chunk.
-            self.emit_stream(
-                StreamMode::Updates,
-                "updates",
-                Value::Object(step_updates),
-            );
+            self.emit_stream(StreamMode::Updates, "updates", Value::Object(step_updates));
 
             // Consume ephemeral channels from this step's reads.
             self.consume_channels();
@@ -621,10 +613,7 @@ mod tests {
             vec!["counter"],
             vec!["counter"],
             make_transform_action(|input| {
-                let count = input
-                    .get("counter")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                let count = input.get("counter").and_then(|v| v.as_i64()).unwrap_or(0);
                 Ok(vec![("counter".to_string(), json!(count + 1))])
             }),
         ));
@@ -893,10 +882,7 @@ mod tests {
             vec!["middle"],
             make_transform_action(|input| {
                 let val = input.get("middle").cloned().unwrap_or(json!(null));
-                Ok(vec![(
-                    "final_out".to_string(),
-                    json!({"result": val}),
-                )])
+                Ok(vec![("final_out".to_string(), json!({"result": val}))])
             }),
         ));
 
@@ -925,13 +911,7 @@ mod tests {
 
         let result = executor.run(json!({"trigger": true})).await.unwrap();
         assert_eq!(result["output"], json!("done"));
-        assert!(
-            !executor
-                .channels()
-                .get("trigger")
-                .unwrap()
-                .is_available()
-        );
+        assert!(!executor.channels().get("trigger").unwrap().is_available());
     }
 
     #[tokio::test]
@@ -1031,10 +1011,7 @@ mod tests {
             make_transform_action(|input| {
                 let a = input.get("a_out").cloned().unwrap_or(json!(null));
                 let b = input.get("b_out").cloned().unwrap_or(json!(null));
-                Ok(vec![(
-                    "merged".to_string(),
-                    json!({"a": a, "b": b}),
-                )])
+                Ok(vec![("merged".to_string(), json!({"a": a, "b": b}))])
             }),
         ));
 

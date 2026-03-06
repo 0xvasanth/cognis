@@ -1,15 +1,15 @@
 use async_trait::async_trait;
 use rustchain_core::agents::{AgentAction, AgentFinish, AgentStep};
 use rustchain_core::caches::{BaseCache, InMemoryCache};
+use rustchain_core::callbacks::{CallbackHandler, CallbackManager};
 use rustchain_core::chat_history::{BaseChatMessageHistory, InMemoryChatMessageHistory};
+use rustchain_core::documents::BaseDocumentCompressor;
 use rustchain_core::documents::Document;
 use rustchain_core::error::{ErrorCode, RustChainError};
 use rustchain_core::messages::*;
-use rustchain_core::callbacks::{CallbackHandler, CallbackManager};
-use rustchain_core::documents::BaseDocumentCompressor;
 use rustchain_core::outputs::{
-    ChatGeneration, ChatGenerationChunk, ChatResult, Generation, LLMResult, RunInfo,
-    merge_chat_generation_chunks,
+    merge_chat_generation_chunks, ChatGeneration, ChatGenerationChunk, ChatResult, Generation,
+    LLMResult, RunInfo,
 };
 use rustchain_core::prompt_values::{PromptValue, StringPromptValue};
 use rustchain_core::stores::{BaseStore, InMemoryStore};
@@ -78,7 +78,10 @@ async fn end_to_end_llm_with_tools() {
         .unwrap();
     let cached = cache.lookup(&prompt_text, "gpt-4").await.unwrap();
     assert!(cached.is_some());
-    assert_eq!(cached.unwrap()[0].text, "It's sunny and 22C in Paris today!");
+    assert_eq!(
+        cached.unwrap()[0].text,
+        "It's sunny and 22C in Paris today!"
+    );
 }
 
 /// Test document storage and retrieval workflow.
@@ -109,7 +112,10 @@ async fn document_store_workflow() {
     assert!(vals[1].is_some());
 
     let restored: Document = serde_json::from_value(vals[0].clone().unwrap()).unwrap();
-    assert_eq!(restored.page_content, "Rust is a systems programming language.");
+    assert_eq!(
+        restored.page_content,
+        "Rust is a systems programming language."
+    );
     assert_eq!(restored.id, Some("doc1".into()));
 }
 
@@ -122,7 +128,10 @@ fn agent_workflow() {
     assert_eq!(step.observation, "Rust is a systems language.");
 
     let mut rv = HashMap::new();
-    rv.insert("output".into(), json!("Rust is a systems programming language."));
+    rv.insert(
+        "output".into(),
+        json!("Rust is a systems programming language."),
+    );
     let finish = AgentFinish::new(rv, "Final Answer: Rust is a systems programming language.");
     assert!(finish.return_values.contains_key("output"));
 }
@@ -142,19 +151,28 @@ fn llm_result_multi_prompt_flatten() {
             m.insert("model_name".into(), json!("gpt-4"));
             m
         }),
-        run: Some(vec![
-            RunInfo { run_id: Uuid::new_v4() },
-        ]),
+        run: Some(vec![RunInfo {
+            run_id: Uuid::new_v4(),
+        }]),
     };
 
     let flat = result.flatten();
     assert_eq!(flat.len(), 3);
     // First keeps full token usage
     assert_eq!(flat[0].generations[0].len(), 2);
-    assert_eq!(flat[0].llm_output.as_ref().unwrap()["token_usage"], json!({"total": 100}));
+    assert_eq!(
+        flat[0].llm_output.as_ref().unwrap()["token_usage"],
+        json!({"total": 100})
+    );
     // Others have empty token usage
-    assert_eq!(flat[1].llm_output.as_ref().unwrap()["token_usage"], json!({}));
-    assert_eq!(flat[2].llm_output.as_ref().unwrap()["token_usage"], json!({}));
+    assert_eq!(
+        flat[1].llm_output.as_ref().unwrap()["token_usage"],
+        json!({})
+    );
+    assert_eq!(
+        flat[2].llm_output.as_ref().unwrap()["token_usage"],
+        json!({})
+    );
 }
 
 /// Test ChatGeneration and ChatResult.
@@ -263,7 +281,10 @@ fn streaming_chunk_concatenation_workflow() {
     chunk3.usage_metadata = Some(UsageMetadata::new(10, 15, 25));
 
     let combined = chunk1.add(chunk2).add(chunk3);
-    assert_eq!(combined.base.content.text(), "The capital of France is Paris.");
+    assert_eq!(
+        combined.base.content.text(),
+        "The capital of France is Paris."
+    );
     assert!(combined.usage_metadata.is_some());
 
     // Convert to regular message
@@ -292,9 +313,15 @@ fn conversation_management_workflow() {
     let messages = convert_to_messages(vec![
         ("system".into(), "You are a helpful assistant.".into()),
         ("human".into(), "What is Rust?".into()),
-        ("assistant".into(), "Rust is a systems programming language.".into()),
+        (
+            "assistant".into(),
+            "Rust is a systems programming language.".into(),
+        ),
         ("human".into(), "Tell me more.".into()),
-        ("assistant".into(), "Rust focuses on safety and performance.".into()),
+        (
+            "assistant".into(),
+            "Rust focuses on safety and performance.".into(),
+        ),
     ]);
     assert_eq!(messages.len(), 5);
 
@@ -308,12 +335,24 @@ fn conversation_management_workflow() {
     let trimmed = trim_messages(&messages, 15, &counter, TrimStrategy::Last);
     assert!(!trimmed.is_empty());
     // Should include the more recent messages
-    assert_eq!(trimmed.last().unwrap().content().text(), "Rust focuses on safety and performance.");
+    assert_eq!(
+        trimmed.last().unwrap().content().text(),
+        "Rust focuses on safety and performance."
+    );
 
     // Filter out system messages
-    let filtered = filter_messages(&messages, None, None, None, Some(&[MessageType::System]), None);
+    let filtered = filter_messages(
+        &messages,
+        None,
+        None,
+        None,
+        Some(&[MessageType::System]),
+        None,
+    );
     assert_eq!(filtered.len(), 4);
-    assert!(filtered.iter().all(|m| m.message_type() != MessageType::System));
+    assert!(filtered
+        .iter()
+        .all(|m| m.message_type() != MessageType::System));
 }
 
 /// Test CallbackManager in an end-to-end LLM simulation.
@@ -363,9 +402,12 @@ async fn callback_manager_llm_simulation() {
     }
 
     let mut manager = CallbackManager::new(vec![], None);
-    manager.add_handler(Arc::new(RecordingHandler {
-        events: events_clone,
-    }), true);
+    manager.add_handler(
+        Arc::new(RecordingHandler {
+            events: events_clone,
+        }),
+        true,
+    );
 
     let run_id = Uuid::new_v4();
 

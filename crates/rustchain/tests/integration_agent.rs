@@ -132,14 +132,8 @@ impl BaseTool for AddTool {
                 ))
             }
         };
-        let a = map
-            .get("a")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let b = map
-            .get("b")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
+        let a = map.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let b = map.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let sum = a + b;
         Ok(ToolOutput::Content(Value::String(sum.to_string())))
     }
@@ -154,10 +148,7 @@ async fn test_agent_tool_calling_loop() {
     let model: Arc<dyn BaseChatModel> = Arc::new(MockToolModel::new());
     let tool: Arc<dyn BaseTool> = Arc::new(AddTool);
 
-    let executor = AgentExecutor::builder()
-        .model(model)
-        .tool(tool)
-        .build();
+    let executor = AgentExecutor::builder().model(model).tool(tool).build();
 
     let result = executor
         .run(&[Message::human("What is 2 + 3?")])

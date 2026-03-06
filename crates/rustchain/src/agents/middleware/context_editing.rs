@@ -10,9 +10,7 @@ use serde::{Deserialize, Serialize};
 use rustchain_core::error::Result;
 use rustchain_core::messages::{Message, MessageType};
 
-use super::types::{
-    AgentMiddleware, AsyncModelHandler, ModelCallResult, ModelRequest,
-};
+use super::types::{AgentMiddleware, AsyncModelHandler, ModelCallResult, ModelRequest};
 
 /// Trait for context editing operations.
 ///
@@ -94,10 +92,7 @@ impl ClearToolUsesEdit {
             ClearToolUsesTrigger::Always => true,
             ClearToolUsesTrigger::MessageCountExceeds(threshold) => messages.len() > *threshold,
             ClearToolUsesTrigger::TokenCountExceeds(threshold) => {
-                let est_tokens: usize = messages
-                    .iter()
-                    .map(|m| m.content().text().len() / 4)
-                    .sum();
+                let est_tokens: usize = messages.iter().map(|m| m.content().text().len() / 4).sum();
                 est_tokens > *threshold
             }
         }
@@ -114,8 +109,7 @@ impl ClearToolUsesEdit {
                 MessageType::Ai => {
                     // Check if the AI message appears to have tool calls
                     // by looking at subsequent Tool messages
-                    if i + 1 < messages.len()
-                        && messages[i + 1].message_type() == MessageType::Tool
+                    if i + 1 < messages.len() && messages[i + 1].message_type() == MessageType::Tool
                     {
                         indices.push(i);
                     }
@@ -255,17 +249,16 @@ mod tests {
     #[test]
     fn test_clear_tool_uses_no_tools() {
         let edit = ClearToolUsesEdit::default();
-        let messages = vec![
-            Message::human("hello"),
-            Message::ai("hi there"),
-        ];
+        let messages = vec![Message::human("hello"), Message::ai("hi there")];
         let result = edit.apply(&messages);
         assert_eq!(result.len(), 2);
     }
 
     #[test]
     fn test_clear_tool_uses_with_tool_messages() {
-        let edit = ClearToolUsesEdit::new().with_keep(0).with_placeholder("removed".to_string());
+        let edit = ClearToolUsesEdit::new()
+            .with_keep(0)
+            .with_placeholder("removed".to_string());
         let messages = vec![
             Message::human("hello"),
             Message::ai("calling tool"),
@@ -281,8 +274,8 @@ mod tests {
 
     #[test]
     fn test_clear_tool_uses_trigger_message_count() {
-        let edit = ClearToolUsesEdit::new()
-            .with_trigger(ClearToolUsesTrigger::MessageCountExceeds(100));
+        let edit =
+            ClearToolUsesEdit::new().with_trigger(ClearToolUsesTrigger::MessageCountExceeds(100));
         let messages = vec![Message::human("hello")];
         // Should not trigger since message count is below threshold
         let result = edit.apply(&messages);

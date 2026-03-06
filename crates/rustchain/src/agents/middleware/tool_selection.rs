@@ -12,9 +12,7 @@ use rustchain_core::language_models::chat_model::BaseChatModel;
 use rustchain_core::messages::Message;
 use rustchain_core::tools::base::BaseTool;
 
-use super::types::{
-    AgentMiddleware, AsyncModelHandler, ModelCallResult, ModelRequest,
-};
+use super::types::{AgentMiddleware, AsyncModelHandler, ModelCallResult, ModelRequest};
 
 /// Middleware that uses an LLM to select relevant tools before the main model call.
 ///
@@ -138,7 +136,10 @@ mod tests {
             _messages: &[Message],
             _stop: Option<&[String]>,
         ) -> Result<ChatResult> {
-            Ok(ChatResult { generations: vec![], llm_output: None })
+            Ok(ChatResult {
+                generations: vec![],
+                llm_output: None,
+            })
         }
     }
 
@@ -186,8 +187,8 @@ mod tests {
 
     #[test]
     fn test_tool_selector_always_include() {
-        let selector = LLMToolSelectorMiddleware::new(mock_model(), 2)
-            .with_always_include("search");
+        let selector =
+            LLMToolSelectorMiddleware::new(mock_model(), 2).with_always_include("search");
 
         let tools = mock_tools(&["calculator", "search", "filesystem"]);
         let messages = vec![Message::human("test")];
@@ -218,8 +219,8 @@ mod tests {
 
     #[test]
     fn test_tool_selector_custom_system_prompt() {
-        let selector = LLMToolSelectorMiddleware::new(mock_model(), 5)
-            .with_system_prompt("Custom prompt");
+        let selector =
+            LLMToolSelectorMiddleware::new(mock_model(), 5).with_system_prompt("Custom prompt");
         assert_eq!(selector.system_prompt, "Custom prompt");
     }
 }

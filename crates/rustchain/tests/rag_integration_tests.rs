@@ -12,7 +12,9 @@ use std::sync::Arc;
 use rustchain::chains::conversation_retrieval::ConversationalRetrievalChain;
 use rustchain::chains::retrieval::RetrievalQAChain;
 use rustchain::document_loaders::text::TextLoader;
-use rustchain::text_splitter::{CharacterTextSplitter, RecursiveCharacterTextSplitter, TextSplitter};
+use rustchain::text_splitter::{
+    CharacterTextSplitter, RecursiveCharacterTextSplitter, TextSplitter,
+};
 use rustchain::vectorstores::in_memory::InMemoryVectorStore;
 use rustchain_core::document_loaders::BaseLoader;
 use rustchain_core::documents::Document;
@@ -47,11 +49,7 @@ fn make_retriever(store: Arc<dyn VectorStore>) -> Arc<VectorStoreRetriever> {
 }
 
 fn make_retriever_with_k(store: Arc<dyn VectorStore>, k: usize) -> Arc<VectorStoreRetriever> {
-    Arc::new(VectorStoreRetriever::new(
-        store,
-        SearchType::Similarity,
-        k,
-    ))
+    Arc::new(VectorStoreRetriever::new(store, SearchType::Similarity, k))
 }
 
 // ---------------------------------------------------------------------------
@@ -81,12 +79,18 @@ async fn test_full_rag_pipeline_with_text_loader() {
         .with_chunk_size(80)
         .with_chunk_overlap(10);
     let chunks = splitter.split_documents(&docs);
-    assert!(chunks.len() > 1, "Expected multiple chunks, got {}", chunks.len());
+    assert!(
+        chunks.len() > 1,
+        "Expected multiple chunks, got {}",
+        chunks.len()
+    );
 
     // Step 3: Embed and store in InMemoryVectorStore
     let embeddings = fake_embeddings();
     let store = Arc::new(
-        InMemoryVectorStore::from_documents(chunks.clone(), embeddings).await.unwrap(),
+        InMemoryVectorStore::from_documents(chunks.clone(), embeddings)
+            .await
+            .unwrap(),
     );
 
     // Step 4: Verify similarity search works
@@ -95,11 +99,12 @@ async fn test_full_rag_pipeline_with_text_loader() {
 
     // Step 5: Create RetrievalQAChain and query
     let retriever = make_retriever(store.clone() as Arc<dyn VectorStore>);
-    let llm = fake_llm(vec![
-        "Rust uses a borrow checker for memory safety.",
-    ]);
+    let llm = fake_llm(vec!["Rust uses a borrow checker for memory safety."]);
     let chain = RetrievalQAChain::new(retriever, llm).with_k(2);
-    let answer = chain.call("How does Rust ensure memory safety?").await.unwrap();
+    let answer = chain
+        .call("How does Rust ensure memory safety?")
+        .await
+        .unwrap();
     assert_eq!(answer, "Rust uses a borrow checker for memory safety.");
 }
 
@@ -118,12 +123,20 @@ async fn test_rag_with_multiple_documents() {
 
     let embeddings = fake_embeddings();
     let store = Arc::new(
-        InMemoryVectorStore::from_documents(docs, embeddings).await.unwrap(),
+        InMemoryVectorStore::from_documents(docs, embeddings)
+            .await
+            .unwrap(),
     );
 
     // The deterministic fake embeddings are hash-based, so searching for a text
     // that exactly matches a stored document should return that document first.
-    let results = store.similarity_search("Rust is a systems programming language focused on safety.", 1).await.unwrap();
+    let results = store
+        .similarity_search(
+            "Rust is a systems programming language focused on safety.",
+            1,
+        )
+        .await
+        .unwrap();
     assert_eq!(results.len(), 1);
     assert!(results[0].page_content.contains("Rust"));
 
@@ -164,7 +177,9 @@ async fn test_rag_with_text_splitter() {
 
     let embeddings = fake_embeddings();
     let store = Arc::new(
-        InMemoryVectorStore::from_documents(docs, embeddings).await.unwrap(),
+        InMemoryVectorStore::from_documents(docs, embeddings)
+            .await
+            .unwrap(),
     );
 
     let retriever = make_retriever_with_k(store.clone() as Arc<dyn VectorStore>, 2);
@@ -190,15 +205,17 @@ async fn test_conversational_rag_multi_turn() {
 
     let embeddings = fake_embeddings();
     let store = Arc::new(
-        InMemoryVectorStore::from_documents(docs, embeddings).await.unwrap(),
+        InMemoryVectorStore::from_documents(docs, embeddings)
+            .await
+            .unwrap(),
     );
     let retriever = make_retriever_with_k(store.clone() as Arc<dyn VectorStore>, 2);
 
     // Responses: first QA answer, then condensation output, then second QA answer
     let llm = fake_llm(vec![
-        "Rust was created by Graydon Hoare.",       // 1st call: QA answer
-        "When was Rust 1.0 released?",              // 2nd call: condensation
-        "Rust 1.0 was released on May 15, 2015.",   // 3rd call: QA answer
+        "Rust was created by Graydon Hoare.",     // 1st call: QA answer
+        "When was Rust 1.0 released?",            // 2nd call: condensation
+        "Rust 1.0 was released on May 15, 2015.", // 3rd call: QA answer
     ]);
 
     let chain = ConversationalRetrievalChain::new(retriever, llm).with_k(2);
@@ -240,7 +257,9 @@ async fn test_rag_with_metadata_filtering() {
 
     let embeddings = fake_embeddings();
     let store = Arc::new(
-        InMemoryVectorStore::from_documents(docs, embeddings).await.unwrap(),
+        InMemoryVectorStore::from_documents(docs, embeddings)
+            .await
+            .unwrap(),
     );
 
     // Search for Rust-related content
@@ -268,11 +287,17 @@ async fn test_rag_with_metadata_filtering() {
     let retriever = make_retriever_with_k(store.clone() as Arc<dyn VectorStore>, 3);
     let llm = fake_llm(vec!["Rust has zero-cost abstractions and memory safety."]);
     let chain = RetrievalQAChain::new(retriever, llm).with_k(3);
-    let result = chain.call_with_sources("What are Rust's features?").await.unwrap();
+    let result = chain
+        .call_with_sources("What are Rust's features?")
+        .await
+        .unwrap();
 
     // All source documents should have metadata
     for doc in &result.source_documents {
-        assert!(!doc.metadata.is_empty(), "Source document metadata should not be empty");
+        assert!(
+            !doc.metadata.is_empty(),
+            "Source document metadata should not be empty"
+        );
     }
 }
 
@@ -312,7 +337,10 @@ async fn test_vectorstore_add_and_delete() {
 
     // Verify get_by_ids no longer returns the deleted doc
     let fetched = store.get_by_ids(&["beta".to_string()]).await.unwrap();
-    assert!(fetched.is_empty(), "Deleted document should not be retrievable by ID");
+    assert!(
+        fetched.is_empty(),
+        "Deleted document should not be retrievable by ID"
+    );
 
     // The remaining docs should still be retrievable
     let fetched_alpha = store.get_by_ids(&["alpha".to_string()]).await.unwrap();
@@ -338,7 +366,10 @@ async fn test_rag_empty_vectorstore() {
     let llm = fake_llm(vec!["I don't have enough context to answer."]);
     let chain = RetrievalQAChain::new(retriever, llm);
 
-    let result = chain.call_with_sources("What is the meaning of life?").await.unwrap();
+    let result = chain
+        .call_with_sources("What is the meaning of life?")
+        .await
+        .unwrap();
     assert_eq!(result.answer, "I don't have enough context to answer.");
     assert!(result.source_documents.is_empty());
 
@@ -366,7 +397,9 @@ async fn test_rag_with_custom_prompt() {
 
     let embeddings = fake_embeddings();
     let store = Arc::new(
-        InMemoryVectorStore::from_documents(docs, embeddings).await.unwrap(),
+        InMemoryVectorStore::from_documents(docs, embeddings)
+            .await
+            .unwrap(),
     );
 
     let retriever = make_retriever_with_k(store.clone() as Arc<dyn VectorStore>, 2);

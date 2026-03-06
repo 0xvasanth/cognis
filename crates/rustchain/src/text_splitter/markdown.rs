@@ -1,7 +1,7 @@
-use super::{TextSplitter};
-use std::collections::HashMap;
+use super::TextSplitter;
 use rustchain_core::documents::Document;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Splits markdown by header hierarchy, preserving header context in metadata.
 pub struct MarkdownHeaderTextSplitter {
@@ -40,7 +40,11 @@ impl MarkdownHeaderTextSplitter {
                     && trimmed.len() > marker.len()
                     && trimmed.as_bytes()[marker.len()] == b' '
                 {
-                    matched_header = Some((marker.clone(), name.clone(), trimmed[marker.len()..].trim().to_string()));
+                    matched_header = Some((
+                        marker.clone(),
+                        name.clone(),
+                        trimmed[marker.len()..].trim().to_string(),
+                    ));
                     break;
                 }
             }
@@ -51,14 +55,18 @@ impl MarkdownHeaderTextSplitter {
                 if !content.is_empty() {
                     result.push(
                         Document::new(content).with_metadata(
-                            current_headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                            current_headers
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect(),
                         ),
                     );
                 }
                 current_content.clear();
 
                 // Update headers (reset lower-level headers)
-                let current_level = self.headers_to_split_on
+                let current_level = self
+                    .headers_to_split_on
                     .iter()
                     .position(|(_, n)| n == &name)
                     .unwrap_or(0);
@@ -84,7 +92,10 @@ impl MarkdownHeaderTextSplitter {
         if !content.is_empty() {
             result.push(
                 Document::new(content).with_metadata(
-                    current_headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                    current_headers
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
                 ),
             );
         }
@@ -127,8 +138,7 @@ impl MarkdownTextSplitter {
 impl TextSplitter for MarkdownTextSplitter {
     fn split_text(&self, text: &str) -> Vec<String> {
         let separators = vec![
-            "\n## ", "\n### ", "\n#### ", "\n##### ",
-            "\n\n", "\n", " ", "",
+            "\n## ", "\n### ", "\n#### ", "\n##### ", "\n\n", "\n", " ", "",
         ];
         let splitter = super::RecursiveCharacterTextSplitter::new()
             .with_chunk_size(self.chunk_size)

@@ -170,9 +170,10 @@ impl BaseLoader for CsvLoader {
                 "row_count".to_string(),
                 Value::Number((docs.len() as u64).into()),
             );
-            return Ok(Box::pin(stream::iter(vec![Ok(
-                Document::new(combined_content).with_metadata(metadata),
-            )])));
+            return Ok(Box::pin(stream::iter(vec![Ok(Document::new(
+                combined_content,
+            )
+            .with_metadata(metadata))])));
         }
 
         Ok(Box::pin(stream::iter(docs)))

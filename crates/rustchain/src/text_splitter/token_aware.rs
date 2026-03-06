@@ -23,12 +23,7 @@ impl Default for TokenAwareTextSplitter {
             max_tokens: 500,
             overlap_tokens: 50,
             model_name: None,
-            separators: vec![
-                "\n\n".into(),
-                "\n".into(),
-                ". ".into(),
-                " ".into(),
-            ],
+            separators: vec!["\n\n".into(), "\n".into(), ". ".into(), " ".into()],
         }
     }
 }
@@ -79,12 +74,7 @@ impl TokenAwareTextSplitter {
             max_tokens,
             overlap_tokens: 50,
             model_name: Some(model_name.to_string()),
-            separators: vec![
-                "\n\n".into(),
-                "\n".into(),
-                ". ".into(),
-                " ".into(),
-            ],
+            separators: vec!["\n\n".into(), "\n".into(), ". ".into(), " ".into()],
         }
     }
 
@@ -197,8 +187,7 @@ impl TokenAwareTextSplitter {
                     let mut current_tokens: usize = 0;
 
                     for piece in &pieces {
-                        let piece_tokens =
-                            Self::estimate_tokens(piece, self.model_name.as_deref());
+                        let piece_tokens = Self::estimate_tokens(piece, self.model_name.as_deref());
                         let would_be = if current.is_empty() {
                             piece_tokens
                         } else {
@@ -354,7 +343,10 @@ mod tests {
                      Iota kappa lambda mu. Nu xi omicron pi.";
 
         let chunks = splitter.split_text(text);
-        assert!(chunks.len() > 1, "Expected multiple chunks for overlap test");
+        assert!(
+            chunks.len() > 1,
+            "Expected multiple chunks for overlap test"
+        );
 
         // With overlap, later chunks should share some text with the previous chunk.
         let mut found_overlap = false;

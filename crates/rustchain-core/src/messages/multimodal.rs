@@ -209,7 +209,9 @@ impl MessageContent {
     pub fn is_multimodal(&self) -> bool {
         match self {
             Self::Text(_) => false,
-            Self::Blocks(blocks) => blocks.iter().any(|b| !matches!(b, ContentBlock::Text { .. })),
+            Self::Blocks(blocks) => blocks
+                .iter()
+                .any(|b| !matches!(b, ContentBlock::Text { .. })),
         }
     }
 
@@ -242,10 +244,8 @@ mod tests {
 
     #[test]
     fn test_multipart_text_and_image_url() {
-        let content = MessageContent::with_image_url(
-            "Describe this image",
-            "https://example.com/cat.png",
-        );
+        let content =
+            MessageContent::with_image_url("Describe this image", "https://example.com/cat.png");
         match &content {
             MessageContent::Blocks(blocks) => {
                 assert_eq!(blocks.len(), 2);
@@ -269,11 +269,8 @@ mod tests {
 
     #[test]
     fn test_multipart_text_and_base64_image() {
-        let content = MessageContent::with_image_base64(
-            "What is in this photo?",
-            "aGVsbG8=",
-            "image/png",
-        );
+        let content =
+            MessageContent::with_image_base64("What is in this photo?", "aGVsbG8=", "image/png");
         match &content {
             MessageContent::Blocks(blocks) => {
                 assert_eq!(blocks.len(), 2);
@@ -312,10 +309,8 @@ mod tests {
 
     #[test]
     fn test_content_part_image_url_serialization_format() {
-        let part = ContentPart::image_url_with_detail(
-            "https://example.com/img.png",
-            ImageDetail::Auto,
-        );
+        let part =
+            ContentPart::image_url_with_detail("https://example.com/img.png", ImageDetail::Auto);
         let json = serde_json::to_value(&part).unwrap();
         assert_eq!(json["type"], "image_url");
         assert_eq!(json["image_url"]["url"], "https://example.com/img.png");
@@ -334,10 +329,8 @@ mod tests {
 
     #[test]
     fn test_content_as_text_multipart() {
-        let content = MessageContent::with_image_url(
-            "Describe this",
-            "https://example.com/img.png",
-        );
+        let content =
+            MessageContent::with_image_url("Describe this", "https://example.com/img.png");
         // Should return only the text parts concatenated
         assert_eq!(content.content_as_text(), "Describe this");
     }
@@ -352,10 +345,7 @@ mod tests {
 
     #[test]
     fn test_is_multimodal_with_image() {
-        let content = MessageContent::with_image_url(
-            "Check this",
-            "https://example.com/img.png",
-        );
+        let content = MessageContent::with_image_url("Check this", "https://example.com/img.png");
         assert!(content.is_multimodal());
     }
 
@@ -393,9 +383,15 @@ mod tests {
 
     #[test]
     fn test_image_detail_serialization() {
-        assert_eq!(serde_json::to_string(&ImageDetail::Auto).unwrap(), "\"auto\"");
+        assert_eq!(
+            serde_json::to_string(&ImageDetail::Auto).unwrap(),
+            "\"auto\""
+        );
         assert_eq!(serde_json::to_string(&ImageDetail::Low).unwrap(), "\"low\"");
-        assert_eq!(serde_json::to_string(&ImageDetail::High).unwrap(), "\"high\"");
+        assert_eq!(
+            serde_json::to_string(&ImageDetail::High).unwrap(),
+            "\"high\""
+        );
 
         let auto: ImageDetail = serde_json::from_str("\"auto\"").unwrap();
         assert_eq!(auto, ImageDetail::Auto);
@@ -458,7 +454,8 @@ mod tests {
 
     #[test]
     fn test_content_part_image_base64_with_detail() {
-        let part = ContentPart::image_base64_with_detail("aGVsbG8=", "image/png", ImageDetail::High);
+        let part =
+            ContentPart::image_base64_with_detail("aGVsbG8=", "image/png", ImageDetail::High);
         match &part {
             ContentPart::ImageUrl { image_url } => {
                 assert_eq!(image_url.url, "data:image/png;base64,aGVsbG8=");

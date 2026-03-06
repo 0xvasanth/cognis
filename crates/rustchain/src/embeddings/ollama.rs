@@ -43,9 +43,7 @@ impl OllamaEmbeddingsBuilder {
     /// Build the [`OllamaEmbeddings`] instance.
     pub fn build(self) -> OllamaEmbeddings {
         OllamaEmbeddings {
-            model: self
-                .model
-                .unwrap_or_else(|| "nomic-embed-text".into()),
+            model: self.model.unwrap_or_else(|| "nomic-embed-text".into()),
             base_url: self
                 .base_url
                 .unwrap_or_else(|| "http://localhost:11434".into()),
@@ -129,9 +127,7 @@ impl OllamaEmbeddings {
             .get("embeddings")
             .and_then(|v| v.as_array())
             .ok_or_else(|| {
-                RustChainError::Other(
-                    "Missing 'embeddings' array in Ollama embed response".into(),
-                )
+                RustChainError::Other("Missing 'embeddings' array in Ollama embed response".into())
             })?;
 
         let mut embeddings: Vec<Vec<f32>> = Vec::with_capacity(embeddings_arr.len());
@@ -143,13 +139,9 @@ impl OllamaEmbeddings {
             let vec: Vec<f32> = vec_arr
                 .iter()
                 .map(|v| {
-                    v.as_f64()
-                        .map(|f| f as f32)
-                        .ok_or_else(|| {
-                            RustChainError::Other(
-                                "Non-numeric value in embedding array".into(),
-                            )
-                        })
+                    v.as_f64().map(|f| f as f32).ok_or_else(|| {
+                        RustChainError::Other("Non-numeric value in embedding array".into())
+                    })
                 })
                 .collect::<Result<Vec<f32>>>()?;
 
@@ -175,9 +167,10 @@ impl Embeddings for OllamaEmbeddings {
     /// Delegates to `embed_documents` with a single-element list.
     async fn embed_query(&self, text: &str) -> Result<Vec<f32>> {
         let results = self.embed_documents(vec![text.to_string()]).await?;
-        results.into_iter().next().ok_or_else(|| {
-            RustChainError::Other("Empty embedding response for query".into())
-        })
+        results
+            .into_iter()
+            .next()
+            .ok_or_else(|| RustChainError::Other("Empty embedding response for query".into()))
     }
 }
 

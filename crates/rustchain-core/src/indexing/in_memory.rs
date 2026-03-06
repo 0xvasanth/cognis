@@ -127,9 +127,6 @@ impl DocumentIndex for InMemoryDocumentIndex {
     /// Get documents by IDs.
     async fn get(&self, ids: &[String]) -> Result<Vec<Document>> {
         let store = self.store.lock().unwrap();
-        Ok(ids
-            .iter()
-            .filter_map(|id| store.get(id).cloned())
-            .collect())
+        Ok(ids.iter().filter_map(|id| store.get(id).cloned()).collect())
     }
 }

@@ -114,7 +114,9 @@ fn tokenize(input: &str) -> std::result::Result<Vec<Token>, String> {
                 let is_unary = tokens.is_empty()
                     || matches!(
                         tokens.last(),
-                        Some(Token::Plus | Token::Minus | Token::Star | Token::Slash | Token::LParen)
+                        Some(
+                            Token::Plus | Token::Minus | Token::Star | Token::Slash | Token::LParen
+                        )
                     );
 
                 if is_unary {

@@ -525,7 +525,10 @@ fn content_block_reasoning() {
     };
     let json = serde_json::to_value(&block).unwrap();
     assert_eq!(json["type"], "reasoning");
-    assert_eq!(json["reasoning"], "I need to think about this step by step...");
+    assert_eq!(
+        json["reasoning"],
+        "I need to think about this step by step..."
+    );
     let back: ContentBlock = serde_json::from_value(json).unwrap();
     assert_eq!(block, back);
 }

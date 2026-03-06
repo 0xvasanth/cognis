@@ -280,8 +280,7 @@ pub fn quick_tool_schema(
     let properties: Vec<PropertySchema> = params
         .iter()
         .map(|(name, desc, schema_type, required)| {
-            PropertySchema::new(*name, schema_type.clone(), *required)
-                .with_description(*desc)
+            PropertySchema::new(*name, schema_type.clone(), *required).with_description(*desc)
         })
         .collect();
 

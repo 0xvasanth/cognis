@@ -11,11 +11,15 @@ use serde_json::{Map, Value};
 #[derive(Debug, thiserror::Error)]
 pub enum MergeError {
     /// The same key exists in both dicts but with incompatible types.
-    #[error("additional_kwargs[\"{key}\"] already exists in this message, but with a different type")]
+    #[error(
+        "additional_kwargs[\"{key}\"] already exists in this message, but with a different type"
+    )]
     TypeMismatch { key: String },
 
     /// A value has an unsupported type for merging.
-    #[error("Additional kwargs key {key} already exists in left dict and value has unsupported type")]
+    #[error(
+        "Additional kwargs key {key} already exists in left dict and value has unsupported type"
+    )]
     UnsupportedType { key: String },
 
     /// Two values cannot be merged.
@@ -290,11 +294,7 @@ fn ids_compatible(left: &Map<String, Value>, right: &Map<String, Value>) -> bool
 
 /// Prepare the element to merge into an existing target, handling the special
 /// `"type": "non_standard"` protocol for tool call chunks.
-fn prepare_merge_element(
-    merged: &[Value],
-    target_idx: usize,
-    e_obj: &Map<String, Value>,
-) -> Value {
+fn prepare_merge_element(merged: &[Value], target_idx: usize, e_obj: &Map<String, Value>) -> Value {
     let left_type = merged[target_idx]
         .as_object()
         .and_then(|o| o.get("type"))
@@ -417,7 +417,10 @@ mod tests {
         let right = json!({"a": 42});
         let result = merge_dicts(&left, &[&right]);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), MergeError::TypeMismatch { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            MergeError::TypeMismatch { .. }
+        ));
     }
 
     #[test]

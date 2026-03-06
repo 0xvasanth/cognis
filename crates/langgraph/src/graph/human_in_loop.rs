@@ -152,12 +152,7 @@ impl HumanInTheLoop {
             InvokeResult::Interrupted(interrupted) => {
                 // Save the interrupted state as a checkpoint.
                 let cp_id = self
-                    .save_checkpoint(
-                        &thread_id,
-                        &interrupted.state,
-                        "interrupt",
-                        1,
-                    )
+                    .save_checkpoint(&thread_id, &interrupted.state, "interrupt", 1)
                     .await?;
 
                 Ok(HumanInTheLoopResult::PendingApproval(ApprovalRequest {
@@ -184,9 +179,7 @@ impl HumanInTheLoop {
         action: HumanAction,
     ) -> Result<HumanInTheLoopResult, LangGraphError> {
         let interrupted = request.interrupted_state.ok_or_else(|| {
-            LangGraphError::Other(
-                "ApprovalRequest missing interrupted state metadata".to_string(),
-            )
+            LangGraphError::Other("ApprovalRequest missing interrupted state metadata".to_string())
         })?;
 
         let graph = self.graph_with_interrupts(&request.interrupt_before_nodes);
@@ -194,25 +187,35 @@ impl HumanInTheLoop {
         match action {
             HumanAction::Approve => {
                 let result = graph.resume(interrupted, None).await?;
-                self.handle_invoke_result(result, &request.thread_id, &request.interrupt_before_nodes).await
+                self.handle_invoke_result(
+                    result,
+                    &request.thread_id,
+                    &request.interrupt_before_nodes,
+                )
+                .await
             }
             HumanAction::Reject { reason } => Ok(HumanInTheLoopResult::Rejected {
                 reason,
                 state: request.current_state,
             }),
             HumanAction::Edit { modifications } => {
-                let result = graph
-                    .resume(interrupted, Some(modifications))
-                    .await?;
-                self.handle_invoke_result(result, &request.thread_id, &request.interrupt_before_nodes).await
+                let result = graph.resume(interrupted, Some(modifications)).await?;
+                self.handle_invoke_result(
+                    result,
+                    &request.thread_id,
+                    &request.interrupt_before_nodes,
+                )
+                .await
             }
             HumanAction::Feedback { message } => {
-                let feedback_update =
-                    serde_json::json!({ "feedback": message });
-                let result = graph
-                    .resume(interrupted, Some(feedback_update))
-                    .await?;
-                self.handle_invoke_result(result, &request.thread_id, &request.interrupt_before_nodes).await
+                let feedback_update = serde_json::json!({ "feedback": message });
+                let result = graph.resume(interrupted, Some(feedback_update)).await?;
+                self.handle_invoke_result(
+                    result,
+                    &request.thread_id,
+                    &request.interrupt_before_nodes,
+                )
+                .await
             }
         }
     }
@@ -261,11 +264,7 @@ impl HumanInTheLoop {
     }
 
     /// Build a config map for the checkpoint saver.
-    fn make_config(
-        &self,
-        thread_id: &str,
-        checkpoint_id: Option<&str>,
-    ) -> HashMap<String, Value> {
+    fn make_config(&self, thread_id: &str, checkpoint_id: Option<&str>) -> HashMap<String, Value> {
         let mut config = HashMap::new();
         config.insert(
             "thread_id".to_string(),
@@ -327,12 +326,7 @@ impl HumanInTheLoop {
             }
             InvokeResult::Interrupted(interrupted) => {
                 let cp_id = self
-                    .save_checkpoint(
-                        thread_id,
-                        &interrupted.state,
-                        "interrupt",
-                        2,
-                    )
+                    .save_checkpoint(thread_id, &interrupted.state, "interrupt", 2)
                     .await?;
 
                 Ok(HumanInTheLoopResult::PendingApproval(ApprovalRequest {
@@ -440,10 +434,7 @@ mod tests {
         assert_eq!(request.node_name, "step2");
 
         // Approve and continue.
-        let final_result = hitl
-            .respond(request, HumanAction::Approve)
-            .await
-            .unwrap();
+        let final_result = hitl.respond(request, HumanAction::Approve).await.unwrap();
 
         match final_result {
             HumanInTheLoopResult::Complete(state) => {
@@ -580,10 +571,7 @@ mod tests {
 
         // Interrupt before both b and c.
         let result = hitl
-            .execute_with_approval(
-                json!({"count": 0}),
-                vec!["b".to_string(), "c".to_string()],
-            )
+            .execute_with_approval(json!({"count": 0}), vec!["b".to_string(), "c".to_string()])
             .await
             .unwrap();
 
@@ -597,10 +585,7 @@ mod tests {
         assert_eq!(request1.current_state.get("a_ran").unwrap(), true);
 
         // Approve b.
-        let result2 = hitl
-            .respond(request1, HumanAction::Approve)
-            .await
-            .unwrap();
+        let result2 = hitl.respond(request1, HumanAction::Approve).await.unwrap();
 
         // Second interrupt should be at c (after b ran).
         let request2 = match result2 {
@@ -612,10 +597,7 @@ mod tests {
         assert_eq!(request2.current_state.get("b_ran").unwrap(), true);
 
         // Approve c.
-        let final_result = hitl
-            .respond(request2, HumanAction::Approve)
-            .await
-            .unwrap();
+        let final_result = hitl.respond(request2, HumanAction::Approve).await.unwrap();
 
         match final_result {
             HumanInTheLoopResult::Complete(state) => {

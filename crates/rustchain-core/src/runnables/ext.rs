@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use crate::error::Result;
 
+use super::assign::{RunnableAssign, RunnablePick};
 use super::base::Runnable;
 use super::binding::RunnableBinding;
 use super::config::RunnableConfig;
 use super::each::RunnableEach;
 use super::fallbacks::RunnableWithFallbacks;
-use super::assign::{RunnableAssign, RunnablePick};
 use super::retry::RunnableRetry;
 use super::sequence::RunnableSequence;
 use serde_json::Value;
@@ -77,9 +77,7 @@ pub trait RunnableExt: Runnable + Sized + 'static {
     /// is processed independently; an error in one does not stop the others.
     ///
     /// Equivalent to Python's `Runnable.batch`.
-    fn batch_sync(
-        self,
-    ) -> Arc<dyn Runnable> {
+    fn batch_sync(self) -> Arc<dyn Runnable> {
         Arc::new(self)
     }
 

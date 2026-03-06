@@ -100,14 +100,11 @@ impl FewShotPromptTemplate {
 
     /// Format the few-shot prompt into a string.
     pub fn format(&self, kwargs: &HashMap<String, Value>) -> Result<String> {
-        let examples = self
-            .examples
-            .as_ref()
-            .ok_or_else(|| {
-                RustChainError::Other(
-                    "Use format_async for FewShotPromptTemplate with example_selector".into(),
-                )
-            })?;
+        let examples = self.examples.as_ref().ok_or_else(|| {
+            RustChainError::Other(
+                "Use format_async for FewShotPromptTemplate with example_selector".into(),
+            )
+        })?;
         self.format_with_examples(examples, kwargs)
     }
 
@@ -209,21 +206,15 @@ impl FewShotChatMessagePromptTemplate {
             selector.select_examples(kwargs).await
         } else {
             Err(RustChainError::Other(
-                "FewShotChatMessagePromptTemplate has neither examples nor example_selector"
-                    .into(),
+                "FewShotChatMessagePromptTemplate has neither examples nor example_selector".into(),
             ))
         }
     }
 
     /// Format examples as a flat list of messages.
-    pub fn format_messages(
-        &self,
-        kwargs: &HashMap<String, Value>,
-    ) -> Result<Vec<Message>> {
+    pub fn format_messages(&self, kwargs: &HashMap<String, Value>) -> Result<Vec<Message>> {
         let examples = self.examples.as_ref().ok_or_else(|| {
-            RustChainError::Other(
-                "Use format_messages_async for dynamic example selection".into(),
-            )
+            RustChainError::Other("Use format_messages_async for dynamic example selection".into())
         })?;
         self.format_messages_with_examples(examples, kwargs)
     }

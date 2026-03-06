@@ -50,8 +50,7 @@ impl BaseLoader for PdfLoader {
 
         // pdf-extract is synchronous, so run in a blocking task
         let content = tokio::task::spawn_blocking(move || -> Result<String> {
-            let bytes =
-                std::fs::read(&path).map_err(|e| RustChainError::Other(e.to_string()))?;
+            let bytes = std::fs::read(&path).map_err(|e| RustChainError::Other(e.to_string()))?;
             pdf_extract::extract_text_from_mem(&bytes)
                 .map_err(|e| RustChainError::Other(format!("PDF extraction failed: {e}")))
         })

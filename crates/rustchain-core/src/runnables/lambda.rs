@@ -28,7 +28,9 @@ impl RunnableLambda {
         F: Fn(Value) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Value>> + Send + 'static,
     {
-        let f = move |input: Value, _config: Option<RunnableConfig>| -> Pin<Box<dyn Future<Output = Result<Value>> + Send>> {
+        let f = move |input: Value,
+                      _config: Option<RunnableConfig>|
+              -> Pin<Box<dyn Future<Output = Result<Value>> + Send>> {
             Box::pin(f(input))
         };
         Self {
@@ -43,7 +45,9 @@ impl RunnableLambda {
         F: Fn(Value, Option<RunnableConfig>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Value>> + Send + 'static,
     {
-        let f = move |input: Value, config: Option<RunnableConfig>| -> Pin<Box<dyn Future<Output = Result<Value>> + Send>> {
+        let f = move |input: Value,
+                      config: Option<RunnableConfig>|
+              -> Pin<Box<dyn Future<Output = Result<Value>> + Send>> {
             Box::pin(f(input, config))
         };
         Self {

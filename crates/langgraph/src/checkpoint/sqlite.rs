@@ -269,10 +269,7 @@ impl CheckpointSaver for SqliteCheckpointSaver {
         }
     }
 
-    async fn get_tuple(
-        &self,
-        config: &HashMap<String, Value>,
-    ) -> Result<Option<CheckpointTuple>> {
+    async fn get_tuple(&self, config: &HashMap<String, Value>) -> Result<Option<CheckpointTuple>> {
         // get_tuple is the same as get but always requires a specific checkpoint_id
         self.get(config).await
     }
@@ -312,10 +309,7 @@ impl CheckpointSaver for SqliteCheckpointSaver {
         .map_err(|e| LangGraphError::Other(format!("SQLite insert error: {}", e)))?;
 
         let mut new_config = config.clone();
-        new_config.insert(
-            "checkpoint_id".to_string(),
-            Value::String(checkpoint.id),
-        );
+        new_config.insert("checkpoint_id".to_string(), Value::String(checkpoint.id));
 
         Ok(new_config)
     }
@@ -327,9 +321,8 @@ impl CheckpointSaver for SqliteCheckpointSaver {
         task_id: &str,
     ) -> Result<()> {
         let (thread_id, checkpoint_ns, checkpoint_id) = Self::extract_config(config);
-        let checkpoint_id = checkpoint_id.ok_or_else(|| {
-            LangGraphError::Other("checkpoint_id required for put_writes".into())
-        })?;
+        let checkpoint_id = checkpoint_id
+            .ok_or_else(|| LangGraphError::Other("checkpoint_id required for put_writes".into()))?;
 
         for (channel, value) in &writes {
             let value_bytes = serde_json::to_vec(value).map_err(|e| {
@@ -490,7 +483,10 @@ mod tests {
         assert!(loaded.is_some());
         let tuple = loaded.unwrap();
         assert_eq!(tuple.checkpoint.id, cp_id);
-        assert_eq!(tuple.checkpoint.channel_values["state"], json!({"count": 42}));
+        assert_eq!(
+            tuple.checkpoint.channel_values["state"],
+            json!({"count": 42})
+        );
 
         // Load by explicit checkpoint_id
         let loaded2 = saver.get(&new_config).await.unwrap();
@@ -505,10 +501,7 @@ mod tests {
 
         for i in 0..5 {
             let cp = empty_checkpoint();
-            saver
-                .put(&config, cp, test_metadata(i))
-                .await
-                .unwrap();
+            saver.put(&config, cp, test_metadata(i)).await.unwrap();
         }
 
         let all = saver.list(&config, None).await.unwrap();
@@ -528,16 +521,10 @@ mod tests {
         let config2 = test_config("thread-2");
 
         let cp1 = empty_checkpoint();
-        saver
-            .put(&config1, cp1, test_metadata(0))
-            .await
-            .unwrap();
+        saver.put(&config1, cp1, test_metadata(0)).await.unwrap();
 
         let cp2 = empty_checkpoint();
-        saver
-            .put(&config2, cp2, test_metadata(0))
-            .await
-            .unwrap();
+        saver.put(&config2, cp2, test_metadata(0)).await.unwrap();
 
         let list1 = saver.list(&config1, None).await.unwrap();
         assert_eq!(list1.len(), 1);
@@ -561,10 +548,7 @@ mod tests {
         let config = test_config("thread-1");
 
         let cp = empty_checkpoint();
-        let new_config = saver
-            .put(&config, cp, test_metadata(0))
-            .await
-            .unwrap();
+        let new_config = saver.put(&config, cp, test_metadata(0)).await.unwrap();
 
         let writes = vec![("state".to_string(), json!({"updated": true}))];
         saver

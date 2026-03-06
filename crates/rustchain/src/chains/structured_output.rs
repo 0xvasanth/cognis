@@ -123,7 +123,9 @@ impl StructuredOutputChainBuilder {
     ///
     /// Panics if `model`, `schema`, or `prompt` have not been set.
     pub fn build(self) -> StructuredOutputChain {
-        let schema = self.schema.expect("schema is required for StructuredOutputChain");
+        let schema = self
+            .schema
+            .expect("schema is required for StructuredOutputChain");
         StructuredOutputChain {
             model: self
                 .model
@@ -312,9 +314,7 @@ mod tests {
             .prompt("Extract: {text}")
             .build();
 
-        let result = chain
-            .invoke(json!({"text": "something"}), None)
-            .await;
+        let result = chain.invoke(json!({"text": "something"}), None).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
@@ -332,9 +332,7 @@ mod tests {
             .prompt("Extract from {text} in {language}")
             .build();
 
-        let result = chain
-            .invoke(json!({"text": "something"}), None)
-            .await;
+        let result = chain.invoke(json!({"text": "something"}), None).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
@@ -385,9 +383,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_structured_output_with_generic_fake_model() {
-        let model = Arc::new(GenericFakeChatModel::from_messages(vec![
-            AIMessage::new(r#"{"name": "Dave", "age": 35}"#),
-        ]));
+        let model = Arc::new(GenericFakeChatModel::from_messages(vec![AIMessage::new(
+            r#"{"name": "Dave", "age": 35}"#,
+        )]));
 
         let chain = StructuredOutputChain::builder()
             .model(model)

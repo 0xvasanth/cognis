@@ -80,8 +80,7 @@ fn is_retryable(error: &RustChainError) -> bool {
 /// Uses full jitter: the actual sleep is uniformly distributed between
 /// 0 and the computed exponential backoff.
 fn compute_backoff(config: &RetryConfig, attempt: u32) -> Duration {
-    let base_ms = config.initial_backoff_ms as f64
-        * config.backoff_multiplier.powi(attempt as i32);
+    let base_ms = config.initial_backoff_ms as f64 * config.backoff_multiplier.powi(attempt as i32);
     let capped_ms = base_ms.min(config.max_backoff_ms as f64);
     // Simple jitter: use a deterministic-ish fraction to avoid external deps.
     // We use half the backoff plus a small per-attempt variation.
@@ -95,7 +94,9 @@ fn compute_backoff(config: &RetryConfig, attempt: u32) -> Duration {
 fn jitter_fraction(attempt: u32) -> f64 {
     // Simple hash-like mixing
     let mut x = attempt as u64;
-    x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    x = x
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     x ^= x >> 33;
     x = x.wrapping_mul(0xff51afd7ed558ccd);
     x ^= x >> 33;
@@ -174,19 +175,14 @@ impl RetryingChatModel {
                 }
             }
         }
-        Err(last_error.unwrap_or_else(|| {
-            RustChainError::Other("Retry loop ended without result".into())
-        }))
+        Err(last_error
+            .unwrap_or_else(|| RustChainError::Other("Retry loop ended without result".into())))
     }
 }
 
 #[async_trait]
 impl BaseChatModel for RetryingChatModel {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         self.generate_with_retry(messages, stop).await
     }
 
@@ -194,11 +190,7 @@ impl BaseChatModel for RetryingChatModel {
         self.inner.llm_type()
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         let mut last_error = None;
         for attempt in 0..=self.config.max_retries {
             match self.inner._stream(messages, stop).await {
@@ -214,9 +206,8 @@ impl BaseChatModel for RetryingChatModel {
                 }
             }
         }
-        Err(last_error.unwrap_or_else(|| {
-            RustChainError::Other("Retry loop ended without result".into())
-        }))
+        Err(last_error
+            .unwrap_or_else(|| RustChainError::Other("Retry loop ended without result".into())))
     }
 
     fn bind_tools(

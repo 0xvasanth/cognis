@@ -8,12 +8,12 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use rustchain_core::error::Result;
-use rustchain_core::messages::{Message, MessageType};
 use rustchain_core::messages::base::MessageContent;
+use rustchain_core::messages::{Message, MessageType};
 
 use super::redaction::{
-    Detector, PIIMatch, RedactionStrategy, ResolvedRedactionRule,
-    apply_rules, builtin_detectors, get_builtin_detector,
+    apply_rules, builtin_detectors, get_builtin_detector, Detector, PIIMatch, RedactionStrategy,
+    ResolvedRedactionRule,
 };
 use super::types::{AgentMiddleware, AgentState};
 
@@ -151,7 +151,10 @@ impl PIIMiddleware {
         let mut changed = false;
 
         // Find the last HumanMessage and redact it
-        if let Some(last_human_idx) = new_messages.iter().rposition(|m| m.message_type() == MessageType::Human) {
+        if let Some(last_human_idx) = new_messages
+            .iter()
+            .rposition(|m| m.message_type() == MessageType::Human)
+        {
             let (redacted, did_change) = self.redact_message(&new_messages[last_human_idx]);
             if did_change {
                 new_messages[last_human_idx] = redacted;
@@ -161,7 +164,9 @@ impl PIIMiddleware {
 
         // If apply_to_tool_results, redact ToolMessages after the last AIMessage
         if self.apply_to_tool_results {
-            let last_ai_idx = new_messages.iter().rposition(|m| m.message_type() == MessageType::Ai);
+            let last_ai_idx = new_messages
+                .iter()
+                .rposition(|m| m.message_type() == MessageType::Ai);
             let start_idx = last_ai_idx.map(|i| i + 1).unwrap_or(0);
             for msg in new_messages.iter_mut().skip(start_idx) {
                 if msg.message_type() == MessageType::Tool {
@@ -174,7 +179,11 @@ impl PIIMiddleware {
             }
         }
 
-        if changed { Some(new_messages) } else { None }
+        if changed {
+            Some(new_messages)
+        } else {
+            None
+        }
     }
 
     /// Redact PII from the last AIMessage in the list (for output redaction).
@@ -186,7 +195,10 @@ impl PIIMiddleware {
         let mut new_messages = messages.to_vec();
 
         // Find the last AIMessage and redact it
-        if let Some(last_ai_idx) = new_messages.iter().rposition(|m| m.message_type() == MessageType::Ai) {
+        if let Some(last_ai_idx) = new_messages
+            .iter()
+            .rposition(|m| m.message_type() == MessageType::Ai)
+        {
             let (redacted, did_change) = self.redact_message(&new_messages[last_ai_idx]);
             if did_change {
                 new_messages[last_ai_idx] = redacted;
@@ -356,8 +368,7 @@ mod tests {
             }
             matches
         });
-        let mw = PIIMiddleware::new(RedactionStrategy::Redact)
-            .with_detector(custom_detector);
+        let mw = PIIMiddleware::new(RedactionStrategy::Redact).with_detector(custom_detector);
         let result = mw.redact_text("My SECRET code");
         assert_eq!(result, "My [REDACTED_SECRET] code");
     }

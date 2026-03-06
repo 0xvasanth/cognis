@@ -148,9 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         reference: Some("Rome".to_string()),
     });
 
-    let contains_report = batch_contains
-        .evaluate_dataset(&contains_dataset)
-        .await?;
+    let contains_report = batch_contains.evaluate_dataset(&contains_dataset).await?;
 
     println!("  Evaluator: {}", contains_report.evaluator_name);
     for result in &contains_report.results {
@@ -174,11 +172,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The fake model returns numeric scores that the LLMJudge parses.
     let judge_model = Arc::new(FakeListChatModel::new(vec![
-        "8".to_string(),   // 8/10 = 0.8
-        "9".to_string(),   // 9/10 = 0.9
-        "3".to_string(),   // 3/10 = 0.3
-        "7".to_string(),   // 7/10 = 0.7
-        "2".to_string(),   // 2/10 = 0.2
+        "8".to_string(), // 8/10 = 0.8
+        "9".to_string(), // 9/10 = 0.9
+        "3".to_string(), // 3/10 = 0.3
+        "7".to_string(), // 7/10 = 0.7
+        "2".to_string(), // 2/10 = 0.2
     ]));
 
     let judge = Arc::new(

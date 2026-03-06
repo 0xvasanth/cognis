@@ -578,10 +578,10 @@ mod tests {
     #[test]
     fn test_length_based_selector_respects_budget() {
         let examples = vec![
-            make_example("a", "1"),           // "Input: a\nOutput: 1" = 20 chars
-            make_example("bb", "22"),          // "Input: bb\nOutput: 22" = 22 chars
-            make_example("ccc", "333"),        // "Input: ccc\nOutput: 333" = 24 chars
-            make_example("dddd", "4444"),      // won't fit
+            make_example("a", "1"),       // "Input: a\nOutput: 1" = 20 chars
+            make_example("bb", "22"),     // "Input: bb\nOutput: 22" = 22 chars
+            make_example("ccc", "333"),   // "Input: ccc\nOutput: 333" = 24 chars
+            make_example("dddd", "4444"), // won't fit
         ];
 
         let selector = LengthBasedSelector::builder()
@@ -643,10 +643,7 @@ mod tests {
             .suffix("End")
             .example_template("{input} -> {output}")
             .example_separator("\n---\n")
-            .examples(vec![
-                make_example("a", "1"),
-                make_example("b", "2"),
-            ])
+            .examples(vec![make_example("a", "1"), make_example("b", "2")])
             .build();
 
         let vars = HashMap::new();
@@ -738,7 +735,9 @@ mod tests {
             .example_template("{input}")
             .build();
 
-        let result = template.invoke(serde_json::json!("not an object"), None).await;
+        let result = template
+            .invoke(serde_json::json!("not an object"), None)
+            .await;
         assert!(result.is_err());
     }
 

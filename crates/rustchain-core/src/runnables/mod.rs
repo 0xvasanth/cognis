@@ -31,25 +31,27 @@ use crate::error::Result;
 pub type RunnableStream = Pin<Box<dyn Stream<Item = Result<Value>> + Send>>;
 
 // Re-exports
+pub use assign::{RunnableAssign, RunnablePick};
 pub use base::Runnable;
+pub use batch::{batch_invoke, RunnableBatch};
 pub use binding::RunnableBinding;
 pub use branch::RunnableBranch;
-pub use config::{ensure_config, get_config_list, merge_configs, patch_config, ConfigPatch, RunnableConfig};
-pub use each::RunnableEach;
-pub use fallbacks::{RunnableWithFallbacks, with_fallbacks};
-pub use lambda::RunnableLambda;
-pub use parallel::RunnableParallel;
-pub use assign::{RunnableAssign, RunnablePick};
-pub use passthrough::RunnablePassthrough;
-pub use router::{RouterRunnable, RunnableRouter, RunnableFnBranch};
+pub use config::{
+    ensure_config, get_config_list, merge_configs, patch_config, ConfigPatch, RunnableConfig,
+};
 pub use configurable::{ConfigurableField, RunnableConfigurableFields};
-pub use retry::RunnableRetry;
-pub use sequence::RunnableSequence;
-pub use pipe::{PipeBuilder, RunnablePipe, pipe as pipe_fn};
+pub use each::RunnableEach;
 pub use ext::RunnableExt;
+pub use fallbacks::{with_fallbacks, RunnableWithFallbacks};
 pub use graph::{Branch, Edge, Graph, Node, NodeData};
 pub use history::{ConfigurableFieldSpec, RunnableWithMessageHistory};
-pub use batch::{batch_invoke, RunnableBatch};
+pub use lambda::RunnableLambda;
+pub use parallel::RunnableParallel;
+pub use passthrough::RunnablePassthrough;
+pub use pipe::{pipe as pipe_fn, PipeBuilder, RunnablePipe};
+pub use retry::RunnableRetry;
+pub use router::{RouterRunnable, RunnableFnBranch, RunnableRouter};
+pub use sequence::RunnableSequence;
 
 /// Creates a `RunnableSequence` from a list of runnables.
 ///

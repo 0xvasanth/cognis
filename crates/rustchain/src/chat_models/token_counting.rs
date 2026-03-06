@@ -31,7 +31,11 @@ pub struct ModelPricing {
 
 impl ModelPricing {
     /// Create a new pricing entry.
-    pub fn new(model_name: impl Into<String>, input_cost_per_1k: f64, output_cost_per_1k: f64) -> Self {
+    pub fn new(
+        model_name: impl Into<String>,
+        input_cost_per_1k: f64,
+        output_cost_per_1k: f64,
+    ) -> Self {
         Self {
             model_name: model_name.into(),
             input_cost_per_1k,
@@ -219,8 +223,10 @@ impl TokenCountingModel {
         let _guard = self._lock.lock().unwrap_or_else(|e| e.into_inner());
         self.last_input.store(input_tokens, Ordering::SeqCst);
         self.last_output.store(output_tokens, Ordering::SeqCst);
-        self.cumulative_input.fetch_add(input_tokens, Ordering::SeqCst);
-        self.cumulative_output.fetch_add(output_tokens, Ordering::SeqCst);
+        self.cumulative_input
+            .fetch_add(input_tokens, Ordering::SeqCst);
+        self.cumulative_output
+            .fetch_add(output_tokens, Ordering::SeqCst);
     }
 
     /// Estimate input tokens from messages.
@@ -262,11 +268,7 @@ impl TokenCountingModelBuilder {
 
 #[async_trait]
 impl BaseChatModel for TokenCountingModel {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         let input_tokens = self.estimate_input_tokens(messages);
         let result = self.inner._generate(messages, stop).await?;
         let output_tokens = self.estimate_output_tokens(&result);
@@ -278,11 +280,7 @@ impl BaseChatModel for TokenCountingModel {
         self.inner.llm_type()
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         self.inner._stream(messages, stop).await
     }
 
@@ -368,10 +366,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_reset_usage() {
-        let model = TokenCountingModel::new(
-            Box::new(make_fake(vec!["Response"])),
-            None,
-        );
+        let model = TokenCountingModel::new(Box::new(make_fake(vec!["Response"])), None);
 
         let msgs = vec![human("Hello")];
         model._generate(&msgs, None).await.unwrap();
@@ -387,7 +382,10 @@ mod tests {
     #[tokio::test]
     async fn test_last_usage_tracking() {
         let model = TokenCountingModel::new(
-            Box::new(make_fake(vec!["Short", "A much longer response than the first one"])),
+            Box::new(make_fake(vec![
+                "Short",
+                "A much longer response than the first one",
+            ])),
             None,
         );
 
@@ -407,10 +405,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_pricing_returns_none_cost() {
-        let model = TokenCountingModel::new(
-            Box::new(make_fake(vec!["Response"])),
-            None,
-        );
+        let model = TokenCountingModel::new(Box::new(make_fake(vec!["Response"])), None);
 
         let msgs = vec![human("Hello")];
         model._generate(&msgs, None).await.unwrap();
@@ -483,10 +478,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delegates_llm_type() {
-        let model = TokenCountingModel::new(
-            Box::new(make_fake(vec!["Response"])),
-            None,
-        );
+        let model = TokenCountingModel::new(Box::new(make_fake(vec!["Response"])), None);
         assert_eq!(model.llm_type(), "fake_list_chat_model");
     }
 

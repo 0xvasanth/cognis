@@ -182,7 +182,11 @@ impl APISpec {
             if !endpoint.parameters.is_empty() {
                 desc.push_str("    Parameters:\n");
                 for param in &endpoint.parameters {
-                    let req = if param.required { "required" } else { "optional" };
+                    let req = if param.required {
+                        "required"
+                    } else {
+                        "optional"
+                    };
                     desc.push_str(&format!(
                         "      - {} ({}, {}): {}\n",
                         param.name, param.param_type, req, param.description
@@ -217,12 +221,12 @@ impl APISpec {
     /// }
     /// ```
     pub fn from_json(value: &Value) -> Result<Self> {
-        let obj = value.as_object().ok_or_else(|| {
-            RustChainError::TypeMismatch {
+        let obj = value
+            .as_object()
+            .ok_or_else(|| RustChainError::TypeMismatch {
                 expected: "JSON object".into(),
                 got: format!("{}", value),
-            }
-        })?;
+            })?;
 
         let base_url = obj
             .get("base_url")
@@ -237,11 +241,9 @@ impl APISpec {
 
         let mut endpoints = Vec::new();
         for ep in endpoints_val {
-            let ep_obj = ep.as_object().ok_or_else(|| {
-                RustChainError::TypeMismatch {
-                    expected: "JSON object for endpoint".into(),
-                    got: format!("{}", ep),
-                }
+            let ep_obj = ep.as_object().ok_or_else(|| RustChainError::TypeMismatch {
+                expected: "JSON object for endpoint".into(),
+                got: format!("{}", ep),
             })?;
 
             let method = ep_obj
@@ -263,11 +265,9 @@ impl APISpec {
             let mut parameters = Vec::new();
             if let Some(params) = ep_obj.get("parameters").and_then(|v| v.as_array()) {
                 for p in params {
-                    let p_obj = p.as_object().ok_or_else(|| {
-                        RustChainError::TypeMismatch {
-                            expected: "JSON object for parameter".into(),
-                            got: format!("{}", p),
-                        }
+                    let p_obj = p.as_object().ok_or_else(|| RustChainError::TypeMismatch {
+                        expected: "JSON object for parameter".into(),
+                        got: format!("{}", p),
                     })?;
 
                     parameters.push(ParameterSpec {
@@ -338,12 +338,12 @@ impl RequestValidator {
     /// - The `url` starts with the expected `base_url`.
     /// - The `url` does not contain injection patterns (newlines, backticks, etc.).
     pub fn validate(&self, request: &Value) -> Result<()> {
-        let obj = request.as_object().ok_or_else(|| {
-            RustChainError::TypeMismatch {
+        let obj = request
+            .as_object()
+            .ok_or_else(|| RustChainError::TypeMismatch {
                 expected: "JSON object".into(),
                 got: format!("{}", request),
-            }
-        })?;
+            })?;
 
         // Validate method
         let method = obj
@@ -699,13 +699,10 @@ impl APIChain {
     async fn execute_http_request(&self, request: &Value) -> Result<Value> {
         let client = reqwest::Client::new();
 
-        let method_str = request["method"]
+        let method_str = request["method"].as_str().unwrap_or("GET").to_uppercase();
+        let url = request["url"]
             .as_str()
-            .unwrap_or("GET")
-            .to_uppercase();
-        let url = request["url"].as_str().ok_or_else(|| {
-            RustChainError::InvalidKey("Missing 'url' in request".into())
-        })?;
+            .ok_or_else(|| RustChainError::InvalidKey("Missing 'url' in request".into()))?;
 
         let method = match method_str.as_str() {
             "GET" => reqwest::Method::GET,
@@ -741,18 +738,20 @@ impl APIChain {
             }
         }
 
-        let response = req_builder.send().await.map_err(|e| {
-            RustChainError::Other(format!("HTTP request failed: {}", e))
-        })?;
+        let response = req_builder
+            .send()
+            .await
+            .map_err(|e| RustChainError::Other(format!("HTTP request failed: {}", e)))?;
 
         let status = response.status().as_u16();
-        let body_text = response.text().await.map_err(|e| {
-            RustChainError::Other(format!("Failed to read response body: {}", e))
-        })?;
+        let body_text = response
+            .text()
+            .await
+            .map_err(|e| RustChainError::Other(format!("Failed to read response body: {}", e)))?;
 
         // Try to parse as JSON, fall back to string
-        let body_value = serde_json::from_str::<Value>(&body_text)
-            .unwrap_or_else(|_| Value::String(body_text));
+        let body_value =
+            serde_json::from_str::<Value>(&body_text).unwrap_or_else(|_| Value::String(body_text));
 
         Ok(json!({
             "status": status,

@@ -78,12 +78,7 @@ impl CallbackHandler for MockHandler {
         Ok(())
     }
 
-    async fn on_text(
-        &self,
-        text: &str,
-        _run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_text(&self, text: &str, _run_id: Uuid, _parent_run_id: Option<Uuid>) -> Result<()> {
         self.events
             .lock()
             .unwrap()

@@ -23,7 +23,11 @@ pub struct UIMessage {
 impl UIMessage {
     /// Create a new UIMessage with the given id, name, and props.
     /// Sets type to "ui" and metadata to empty.
-    pub fn new(id: impl Into<String>, name: impl Into<String>, props: HashMap<String, Value>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        props: HashMap<String, Value>,
+    ) -> Self {
         Self {
             msg_type: "ui".to_string(),
             id: id.into(),
@@ -174,8 +178,16 @@ mod tests {
 
     #[test]
     fn test_reducer_append() {
-        let left = vec![AnyUIMessage::UI(UIMessage::new("id1", "button", HashMap::new()))];
-        let right = vec![AnyUIMessage::UI(UIMessage::new("id2", "input", HashMap::new()))];
+        let left = vec![AnyUIMessage::UI(UIMessage::new(
+            "id1",
+            "button",
+            HashMap::new(),
+        ))];
+        let right = vec![AnyUIMessage::UI(UIMessage::new(
+            "id2",
+            "input",
+            HashMap::new(),
+        ))];
         let result = ui_message_reducer(&left, &right).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].id(), "id1");
@@ -217,7 +229,11 @@ mod tests {
 
     #[test]
     fn test_reducer_remove_nonexistent_errors() {
-        let left = vec![AnyUIMessage::UI(UIMessage::new("id1", "button", HashMap::new()))];
+        let left = vec![AnyUIMessage::UI(UIMessage::new(
+            "id1",
+            "button",
+            HashMap::new(),
+        ))];
         let right = vec![AnyUIMessage::Remove(RemoveUIMessage::new("id999"))];
         let result = ui_message_reducer(&left, &right);
         assert!(result.is_err());

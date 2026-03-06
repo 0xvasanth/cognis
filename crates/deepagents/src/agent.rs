@@ -176,15 +176,11 @@ pub fn create_deep_agent(
                 // before_tool middleware
                 for m in mw.iter() {
                     m.before_tool(&mut state, &tc.name).await.map_err(|e| {
-                        LangGraphError::Other(format!(
-                            "Middleware '{}' before_tool: {e}",
-                            m.name()
-                        ))
+                        LangGraphError::Other(format!("Middleware '{}' before_tool: {e}", m.name()))
                     })?;
                 }
 
-                let input =
-                    rustchain_core::tools::types::ToolInput::Structured(tc.args.clone());
+                let input = rustchain_core::tools::types::ToolInput::Structured(tc.args.clone());
                 let tool_call_id = tc.id.clone().unwrap_or_default();
 
                 let result = match tool.run(input, Some(&tool_call_id)).await {
@@ -276,8 +272,8 @@ fn get_last_ai_tool_calls(messages: &[Message]) -> Result<Vec<ToolCall>, LangGra
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backends::state::StateBackend;
     use crate::backends::filesystem::FilesystemBackend;
+    use crate::backends::state::StateBackend;
     use crate::backends::Backend;
     use crate::middleware::Middleware;
 
@@ -428,7 +424,10 @@ mod tests {
         assert!(mw.before_model(&mut state).await.is_ok());
         assert!(mw.after_model(&mut state).await.is_ok());
         assert!(mw.before_tool(&mut state, "some_tool").await.is_ok());
-        assert!(mw.after_tool(&mut state, "some_tool", "result").await.is_ok());
+        assert!(mw
+            .after_tool(&mut state, "some_tool", "result")
+            .await
+            .is_ok());
     }
 
     // -----------------------------------------------------------------------

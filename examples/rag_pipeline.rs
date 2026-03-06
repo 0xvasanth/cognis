@@ -9,8 +9,8 @@
 use std::io::Write;
 use std::sync::Arc;
 
-use rustchain::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
 use rustchain::document_loaders::text::TextLoader;
+use rustchain::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
 use rustchain_core::document_loaders::BaseLoader;
 use rustchain_core::embeddings_fake::DeterministicFakeEmbedding;
 use rustchain_core::retrievers::BaseRetriever;
@@ -46,7 +46,10 @@ Futures are lazy and only make progress when polled by a runtime."#;
     write!(tmp, "{}", sample_text)?;
     let file_path = tmp.path().to_path_buf();
 
-    println!("Step 1: Created temp file with {} bytes of content\n", sample_text.len());
+    println!(
+        "Step 1: Created temp file with {} bytes of content\n",
+        sample_text.len()
+    );
 
     // Step 2: Load the text file using TextLoader.
     let loader = TextLoader::new(&file_path);
@@ -65,9 +68,13 @@ Futures are lazy and only make progress when polled by a runtime."#;
 
     let chunks = splitter.split_documents(&docs);
 
-    println!("Step 3: Split into {} chunks (chunk_size=200, overlap=30)", chunks.len());
+    println!(
+        "Step 3: Split into {} chunks (chunk_size=200, overlap=30)",
+        chunks.len()
+    );
     for (i, chunk) in chunks.iter().enumerate() {
-        println!("  Chunk {}: {} chars - {:?}...",
+        println!(
+            "  Chunk {}: {} chars - {:?}...",
             i + 1,
             chunk.page_content.len(),
             &chunk.page_content[..chunk.page_content.len().min(60)]
@@ -87,7 +94,10 @@ Futures are lazy and only make progress when polled by a runtime."#;
     // Add the document chunks to the vector store.
     let ids = store.add_documents(chunks, None).await?;
 
-    println!("Step 4: Stored {} document chunks in InMemoryVectorStore\n", ids.len());
+    println!(
+        "Step 4: Stored {} document chunks in InMemoryVectorStore\n",
+        ids.len()
+    );
 
     // Step 5: Perform similarity search queries.
     println!("Step 5: Similarity Search Results\n");

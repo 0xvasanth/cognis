@@ -3,7 +3,9 @@ use rustchain_core::caches::{BaseCache, InMemoryCache};
 use rustchain_core::chat_history::{BaseChatMessageHistory, InMemoryChatMessageHistory};
 use rustchain_core::messages::{HumanMessage, Message};
 use rustchain_core::outputs::Generation;
-use rustchain_core::prompt_values::{ChatPromptValue, ImagePromptValue, PromptValue, StringPromptValue};
+use rustchain_core::prompt_values::{
+    ChatPromptValue, ImagePromptValue, PromptValue, StringPromptValue,
+};
 use rustchain_core::stores::{BaseStore, ByteStore, InMemoryByteStore, InMemoryStore};
 use serde_json::json;
 use std::collections::HashMap;
@@ -14,13 +16,13 @@ use std::collections::HashMap;
 async fn in_memory_store_mget_mset() {
     let store = InMemoryStore::new();
     store
-        .mset(vec![
-            ("k1".into(), json!("v1")),
-            ("k2".into(), json!("v2")),
-        ])
+        .mset(vec![("k1".into(), json!("v1")), ("k2".into(), json!("v2"))])
         .await
         .unwrap();
-    let vals = store.mget(&["k1".into(), "k2".into(), "k3".into()]).await.unwrap();
+    let vals = store
+        .mget(&["k1".into(), "k2".into(), "k3".into()])
+        .await
+        .unwrap();
     assert_eq!(vals[0], Some(json!("v1")));
     assert_eq!(vals[1], Some(json!("v2")));
     assert_eq!(vals[2], None);
@@ -83,9 +85,18 @@ async fn in_memory_cache_clear() {
 #[tokio::test]
 async fn in_memory_cache_maxsize() {
     let cache = InMemoryCache::with_maxsize(2);
-    cache.update("p1", "m", vec![Generation::new("a")]).await.unwrap();
-    cache.update("p2", "m", vec![Generation::new("b")]).await.unwrap();
-    cache.update("p3", "m", vec![Generation::new("c")]).await.unwrap();
+    cache
+        .update("p1", "m", vec![Generation::new("a")])
+        .await
+        .unwrap();
+    cache
+        .update("p2", "m", vec![Generation::new("b")])
+        .await
+        .unwrap();
+    cache
+        .update("p3", "m", vec![Generation::new("c")])
+        .await
+        .unwrap();
     // One of p1 or p2 should have been evicted; only 2 remain
     let r1 = cache.lookup("p1", "m").await.unwrap();
     let r2 = cache.lookup("p2", "m").await.unwrap();
@@ -139,9 +150,7 @@ fn string_prompt_value() {
 
 #[test]
 fn chat_prompt_value() {
-    let msgs = vec![
-        Message::Human(HumanMessage::new("Hi")),
-    ];
+    let msgs = vec![Message::Human(HumanMessage::new("Hi"))];
     let pv = ChatPromptValue::new(msgs);
     let s = PromptValue::to_string(&pv);
     assert!(s.contains("human: Hi"));
@@ -230,7 +239,10 @@ async fn in_memory_byte_store_mget_mset() {
         ])
         .await
         .unwrap();
-    let vals = store.mget(&["k1".into(), "k2".into(), "k3".into()]).await.unwrap();
+    let vals = store
+        .mget(&["k1".into(), "k2".into(), "k3".into()])
+        .await
+        .unwrap();
     assert_eq!(vals[0], Some(b"hello".to_vec()));
     assert_eq!(vals[1], Some(b"world".to_vec()));
     assert_eq!(vals[2], None);
@@ -239,7 +251,10 @@ async fn in_memory_byte_store_mget_mset() {
 #[tokio::test]
 async fn in_memory_byte_store_mdelete() {
     let store = InMemoryByteStore::new();
-    store.mset(vec![("k1".into(), vec![1, 2, 3])]).await.unwrap();
+    store
+        .mset(vec![("k1".into(), vec![1, 2, 3])])
+        .await
+        .unwrap();
     store.mdelete(&["k1".into()]).await.unwrap();
     let vals = store.mget(&["k1".into()]).await.unwrap();
     assert_eq!(vals[0], None);

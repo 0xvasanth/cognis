@@ -7,8 +7,7 @@ use rustchain_core::messages::{HumanMessage, Message};
 use rustchain_core::retrievers::BaseRetriever;
 
 /// Default prompt template for the RetrievalQA chain.
-const DEFAULT_PROMPT_TEMPLATE: &str =
-    "Use the following context to answer the question.\n\n\
+const DEFAULT_PROMPT_TEMPLATE: &str = "Use the following context to answer the question.\n\n\
      Context:\n{context}\n\n\
      Question: {query}\n\n\
      Answer:";
@@ -214,11 +213,16 @@ mod tests {
             make_doc("Rust focuses on safety and performance."),
         ];
         let retriever = mock_retriever(docs);
-        let llm = fake_llm(vec!["Rust is a systems programming language focused on safety."]);
+        let llm = fake_llm(vec![
+            "Rust is a systems programming language focused on safety.",
+        ]);
 
         let chain = RetrievalQAChain::new(retriever, llm);
         let answer = chain.call("What is Rust?").await.unwrap();
-        assert_eq!(answer, "Rust is a systems programming language focused on safety.");
+        assert_eq!(
+            answer,
+            "Rust is a systems programming language focused on safety."
+        );
     }
 
     #[tokio::test]
@@ -235,8 +239,14 @@ mod tests {
 
         assert_eq!(result.answer, "Answer based on docs.");
         assert_eq!(result.source_documents.len(), 2);
-        assert_eq!(result.source_documents[0].page_content, "Document A content.");
-        assert_eq!(result.source_documents[1].page_content, "Document B content.");
+        assert_eq!(
+            result.source_documents[0].page_content,
+            "Document A content."
+        );
+        assert_eq!(
+            result.source_documents[1].page_content,
+            "Document B content."
+        );
         assert_eq!(
             result.source_documents[0].metadata.get("source").unwrap(),
             &json!("source_a.txt")
@@ -296,10 +306,7 @@ mod tests {
 
     #[test]
     fn test_default_prompt_template_has_placeholders() {
-        let chain = RetrievalQAChain::new(
-            mock_retriever(vec![]),
-            fake_llm(vec!["x"]),
-        );
+        let chain = RetrievalQAChain::new(mock_retriever(vec![]), fake_llm(vec!["x"]));
         let template = chain.effective_template();
         assert!(template.contains("{context}"));
         assert!(template.contains("{query}"));

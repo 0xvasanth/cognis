@@ -222,11 +222,7 @@ pub struct StateSchemaBuilder {
 
 impl StateSchemaBuilder {
     /// Add a field with a custom reducer.
-    pub fn field(
-        mut self,
-        name: impl Into<String>,
-        reducer: impl Reducer + 'static,
-    ) -> Self {
+    pub fn field(mut self, name: impl Into<String>, reducer: impl Reducer + 'static) -> Self {
         let name = name.into();
         self.fields.insert(
             name.clone(),
@@ -260,11 +256,7 @@ impl StateSchemaBuilder {
 
     /// Add a field that uses the default [`LastValueReducer`] (overwrite) with
     /// an optional default value.
-    pub fn last_value_field(
-        mut self,
-        name: impl Into<String>,
-        default: Option<Value>,
-    ) -> Self {
+    pub fn last_value_field(mut self, name: impl Into<String>, default: Option<Value>) -> Self {
         let name = name.into();
         self.fields.insert(
             name.clone(),
@@ -329,12 +321,7 @@ pub fn reduce_state(schema: &StateSchema, current: &Value, update: &Value) -> Va
         let cur_val = result
             .get(key)
             .cloned()
-            .or_else(|| {
-                schema
-                    .fields
-                    .get(key)
-                    .and_then(|s| s.default_value.clone())
-            })
+            .or_else(|| schema.fields.get(key).and_then(|s| s.default_value.clone()))
             .unwrap_or(Value::Null);
 
         result.insert(key.clone(), reducer.reduce(&cur_val, upd_val));
@@ -576,11 +563,15 @@ mod tests {
             .field("log", AppendReducer)
             .field("metadata", MergeReducer)
             .last_value_field("version", Some(json!("1.0")))
-            .field_with_default("count", BinaryOpReducer::new(|a, b| {
-                let a_num = a.as_i64().unwrap_or(0);
-                let b_num = b.as_i64().unwrap_or(0);
-                json!(a_num + b_num)
-            }), json!(0))
+            .field_with_default(
+                "count",
+                BinaryOpReducer::new(|a, b| {
+                    let a_num = a.as_i64().unwrap_or(0);
+                    let b_num = b.as_i64().unwrap_or(0);
+                    json!(a_num + b_num)
+                }),
+                json!(0),
+            )
             .build();
 
         assert_eq!(schema.fields.len(), 4);
@@ -590,14 +581,8 @@ mod tests {
         assert!(schema.fields.contains_key("count"));
 
         // Verify defaults.
-        assert_eq!(
-            schema.fields["version"].default_value,
-            Some(json!("1.0"))
-        );
-        assert_eq!(
-            schema.fields["count"].default_value,
-            Some(json!(0))
-        );
+        assert_eq!(schema.fields["version"].default_value, Some(json!("1.0")));
+        assert_eq!(schema.fields["count"].default_value, Some(json!(0)));
     }
 
     // -----------------------------------------------------------------------

@@ -43,11 +43,7 @@ impl BaseLanguageModel for MockLLM {
 
 #[async_trait]
 impl BaseLLM for MockLLM {
-    async fn _generate(
-        &self,
-        prompts: &[String],
-        _stop: Option<&[String]>,
-    ) -> Result<LLMResult> {
+    async fn _generate(&self, prompts: &[String], _stop: Option<&[String]>) -> Result<LLMResult> {
         self.generate(prompts).await
     }
 
@@ -87,7 +83,10 @@ async fn test_base_llm_generate() {
     let llm = MockLLM {
         response: "42".into(),
     };
-    let result = llm._generate(&["What is the answer?".into()], None).await.unwrap();
+    let result = llm
+        ._generate(&["What is the answer?".into()], None)
+        .await
+        .unwrap();
     assert_eq!(result.generations.len(), 1);
     assert_eq!(result.generations[0][0].text, "42");
 }
@@ -189,8 +188,12 @@ async fn test_chat_model_generate_batch() {
         response: "Reply".into(),
     };
     let batches = vec![
-        vec![Message::Human(rustchain_core::messages::HumanMessage::new("A"))],
-        vec![Message::Human(rustchain_core::messages::HumanMessage::new("B"))],
+        vec![Message::Human(rustchain_core::messages::HumanMessage::new(
+            "A",
+        ))],
+        vec![Message::Human(rustchain_core::messages::HumanMessage::new(
+            "B",
+        ))],
     ];
     let results = model.generate(&batches, None).await.unwrap();
     assert_eq!(results.len(), 2);
@@ -249,9 +252,9 @@ fn test_chat_model_num_tokens_from_messages() {
     let model = MockChatModel {
         response: "".into(),
     };
-    let messages = vec![
-        Message::Human(rustchain_core::messages::HumanMessage::new("Hello world")),
-    ];
+    let messages = vec![Message::Human(rustchain_core::messages::HumanMessage::new(
+        "Hello world",
+    ))];
     let tokens = model.get_num_tokens_from_messages(&messages);
     assert_eq!(tokens, 2);
 }

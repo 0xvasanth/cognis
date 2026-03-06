@@ -2,13 +2,28 @@ use rustchain_core::error::{ErrorCode, RustChainError};
 
 #[test]
 fn error_code_as_str() {
-    assert_eq!(ErrorCode::InvalidPromptInput.as_str(), "INVALID_PROMPT_INPUT");
-    assert_eq!(ErrorCode::InvalidToolResults.as_str(), "INVALID_TOOL_RESULTS");
-    assert_eq!(ErrorCode::MessageCoercionFailure.as_str(), "MESSAGE_COERCION_FAILURE");
-    assert_eq!(ErrorCode::ModelAuthentication.as_str(), "MODEL_AUTHENTICATION");
+    assert_eq!(
+        ErrorCode::InvalidPromptInput.as_str(),
+        "INVALID_PROMPT_INPUT"
+    );
+    assert_eq!(
+        ErrorCode::InvalidToolResults.as_str(),
+        "INVALID_TOOL_RESULTS"
+    );
+    assert_eq!(
+        ErrorCode::MessageCoercionFailure.as_str(),
+        "MESSAGE_COERCION_FAILURE"
+    );
+    assert_eq!(
+        ErrorCode::ModelAuthentication.as_str(),
+        "MODEL_AUTHENTICATION"
+    );
     assert_eq!(ErrorCode::ModelNotFound.as_str(), "MODEL_NOT_FOUND");
     assert_eq!(ErrorCode::ModelRateLimit.as_str(), "MODEL_RATE_LIMIT");
-    assert_eq!(ErrorCode::OutputParsingFailure.as_str(), "OUTPUT_PARSING_FAILURE");
+    assert_eq!(
+        ErrorCode::OutputParsingFailure.as_str(),
+        "OUTPUT_PARSING_FAILURE"
+    );
 }
 
 #[test]

@@ -96,9 +96,7 @@ pub fn create_tool_agent(
 
             // Optionally prepend system prompt if not already present.
             if let Some(ref prompt) = system_prompt {
-                let has_system = messages
-                    .iter()
-                    .any(|m| matches!(m, Message::System(_)));
+                let has_system = messages.iter().any(|m| matches!(m, Message::System(_)));
                 if !has_system {
                     messages.insert(0, Message::System(SystemMessage::new(prompt)));
                 }
@@ -311,7 +309,7 @@ mod tests {
         let result = graph.invoke(input).await.unwrap();
         let messages = result["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 2); // human + ai
-        // Last message should be the AI response.
+                                       // Last message should be the AI response.
         let last: Message = serde_json::from_value(messages.last().unwrap().clone()).unwrap();
         assert_eq!(last.content().text(), "The answer is 42");
     }

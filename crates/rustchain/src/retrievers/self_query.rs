@@ -45,11 +45,9 @@ impl FilterValue {
         match self {
             FilterValue::String(s) => Value::String(s.clone()),
             FilterValue::Integer(i) => Value::Number((*i).into()),
-            FilterValue::Float(f) => {
-                serde_json::Number::from_f64(*f)
-                    .map(Value::Number)
-                    .unwrap_or(Value::Null)
-            }
+            FilterValue::Float(f) => serde_json::Number::from_f64(*f)
+                .map(Value::Number)
+                .unwrap_or(Value::Null),
             FilterValue::Bool(b) => Value::Bool(*b),
         }
     }
@@ -107,12 +105,12 @@ impl AttributeFilter {
     /// Returns `true` if the document matches the filter criteria.
     pub fn matches(&self, metadata: &HashMap<String, Value>) -> bool {
         match self {
-            AttributeFilter::Eq { field, value } => {
-                metadata.get(field).map_or(false, |v| *v == value.to_json_value())
-            }
-            AttributeFilter::Ne { field, value } => {
-                metadata.get(field).map_or(true, |v| *v != value.to_json_value())
-            }
+            AttributeFilter::Eq { field, value } => metadata
+                .get(field)
+                .map_or(false, |v| *v == value.to_json_value()),
+            AttributeFilter::Ne { field, value } => metadata
+                .get(field)
+                .map_or(true, |v| *v != value.to_json_value()),
             AttributeFilter::Gt { field, value } => {
                 compare_metadata_numeric(metadata, field, value, |a, b| a > b)
             }
@@ -125,22 +123,14 @@ impl AttributeFilter {
             AttributeFilter::Lte { field, value } => {
                 compare_metadata_numeric(metadata, field, value, |a, b| a <= b)
             }
-            AttributeFilter::In { field, values } => {
-                metadata.get(field).map_or(false, |v| {
-                    values.iter().any(|fv| *v == fv.to_json_value())
-                })
-            }
-            AttributeFilter::Nin { field, values } => {
-                metadata.get(field).map_or(true, |v| {
-                    !values.iter().any(|fv| *v == fv.to_json_value())
-                })
-            }
-            AttributeFilter::And(filters) => {
-                filters.iter().all(|f| f.matches(metadata))
-            }
-            AttributeFilter::Or(filters) => {
-                filters.iter().any(|f| f.matches(metadata))
-            }
+            AttributeFilter::In { field, values } => metadata
+                .get(field)
+                .map_or(false, |v| values.iter().any(|fv| *v == fv.to_json_value())),
+            AttributeFilter::Nin { field, values } => metadata
+                .get(field)
+                .map_or(true, |v| !values.iter().any(|fv| *v == fv.to_json_value())),
+            AttributeFilter::And(filters) => filters.iter().all(|f| f.matches(metadata)),
+            AttributeFilter::Or(filters) => filters.iter().any(|f| f.matches(metadata)),
             AttributeFilter::Not(filter) => !filter.matches(metadata),
         }
     }
@@ -248,7 +238,7 @@ impl QueryConstructor {
         }
 
         format!(
-r#"You are a query parser. Given a natural language query about a collection of documents, extract:
+            r#"You are a query parser. Given a natural language query about a collection of documents, extract:
 1. A semantic search query (the part about the content/meaning)
 2. An optional metadata filter (conditions on document attributes)
 
@@ -305,13 +295,12 @@ fn parse_structured_query(response: &str) -> Result<StructuredQuery> {
         trimmed
     };
 
-    let raw: Value = serde_json::from_str(json_str).map_err(|e| {
-        RustChainError::OutputParserError {
+    let raw: Value =
+        serde_json::from_str(json_str).map_err(|e| RustChainError::OutputParserError {
             message: format!("Failed to parse LLM response as JSON: {e}"),
             observation: Some(response.to_string()),
             llm_output: Some(response.to_string()),
-        }
-    })?;
+        })?;
 
     let query = raw
         .get("query")
@@ -334,11 +323,13 @@ fn parse_structured_query(response: &str) -> Result<StructuredQuery> {
 
 /// Recursively parse a JSON value into an [`AttributeFilter`].
 fn parse_filter(val: &Value) -> Result<AttributeFilter> {
-    let obj = val.as_object().ok_or_else(|| RustChainError::OutputParserError {
-        message: "Filter must be a JSON object".into(),
-        observation: Some(val.to_string()),
-        llm_output: None,
-    })?;
+    let obj = val
+        .as_object()
+        .ok_or_else(|| RustChainError::OutputParserError {
+            message: "Filter must be a JSON object".into(),
+            observation: Some(val.to_string()),
+            llm_output: None,
+        })?;
 
     let operator = obj
         .get("operator")
@@ -360,11 +351,13 @@ fn parse_filter(val: &Value) -> Result<AttributeFilter> {
                     llm_output: None,
                 })?
                 .to_string();
-            let value = obj.get("value").ok_or_else(|| RustChainError::OutputParserError {
-                message: format!("Filter '{operator}' must have a 'value' field"),
-                observation: Some(val.to_string()),
-                llm_output: None,
-            })?;
+            let value = obj
+                .get("value")
+                .ok_or_else(|| RustChainError::OutputParserError {
+                    message: format!("Filter '{operator}' must have a 'value' field"),
+                    observation: Some(val.to_string()),
+                    llm_output: None,
+                })?;
             let fv = json_to_filter_value(value)?;
             Ok(match operator {
                 "eq" => AttributeFilter::Eq { field, value: fv },
@@ -422,11 +415,13 @@ fn parse_filter(val: &Value) -> Result<AttributeFilter> {
             })
         }
         "not" => {
-            let inner = obj.get("filter").ok_or_else(|| RustChainError::OutputParserError {
-                message: "Filter 'not' must have a 'filter' field".into(),
-                observation: Some(val.to_string()),
-                llm_output: None,
-            })?;
+            let inner = obj
+                .get("filter")
+                .ok_or_else(|| RustChainError::OutputParserError {
+                    message: "Filter 'not' must have a 'filter' field".into(),
+                    observation: Some(val.to_string()),
+                    llm_output: None,
+                })?;
             let inner_filter = parse_filter(inner)?;
             Ok(AttributeFilter::Not(Box::new(inner_filter)))
         }
@@ -572,15 +567,12 @@ impl SelfQueryRetrieverBuilder {
         let vectorstore = self
             .vectorstore
             .expect("vectorstore is required for SelfQueryRetriever");
-        let llm = self
-            .llm
-            .expect("llm is required for SelfQueryRetriever");
+        let llm = self.llm.expect("llm is required for SelfQueryRetriever");
         let document_contents = self
             .document_contents
             .expect("document_contents is required for SelfQueryRetriever");
 
-        let query_constructor =
-            QueryConstructor::new(llm, self.attribute_info, document_contents);
+        let query_constructor = QueryConstructor::new(llm, self.attribute_info, document_contents);
 
         SelfQueryRetriever {
             vectorstore,
@@ -690,10 +682,7 @@ mod tests {
     async fn test_self_query_with_eq_filter() {
         let embeddings = make_embeddings();
         let store = Arc::new(InMemoryVectorStore::new(embeddings));
-        store
-            .add_documents(movie_docs(), None)
-            .await
-            .unwrap();
+        store.add_documents(movie_docs(), None).await.unwrap();
 
         let llm_response = r#"{"query": "movie", "filter": {"operator": "eq", "field": "genre", "value": "sci-fi"}}"#;
         let llm = fake_llm(vec![llm_response]);
@@ -719,12 +708,10 @@ mod tests {
     async fn test_self_query_with_gt_filter() {
         let embeddings = make_embeddings();
         let store = Arc::new(InMemoryVectorStore::new(embeddings));
-        store
-            .add_documents(movie_docs(), None)
-            .await
-            .unwrap();
+        store.add_documents(movie_docs(), None).await.unwrap();
 
-        let llm_response = r#"{"query": "movie", "filter": {"operator": "gt", "field": "year", "value": 2020}}"#;
+        let llm_response =
+            r#"{"query": "movie", "filter": {"operator": "gt", "field": "year", "value": 2020}}"#;
         let llm = fake_llm(vec![llm_response]);
 
         let retriever = SelfQueryRetriever::builder()
@@ -752,10 +739,7 @@ mod tests {
     async fn test_self_query_with_and_filter() {
         let embeddings = make_embeddings();
         let store = Arc::new(InMemoryVectorStore::new(embeddings));
-        store
-            .add_documents(movie_docs(), None)
-            .await
-            .unwrap();
+        store.add_documents(movie_docs(), None).await.unwrap();
 
         let llm_response = r#"{"query": "movie", "filter": {"operator": "and", "filters": [{"operator": "gt", "field": "year", "value": 2020}, {"operator": "gte", "field": "rating", "value": 7.0}]}}"#;
         let llm = fake_llm(vec![llm_response]);
@@ -787,10 +771,7 @@ mod tests {
     async fn test_self_query_no_filter() {
         let embeddings = make_embeddings();
         let store = Arc::new(InMemoryVectorStore::new(embeddings));
-        store
-            .add_documents(movie_docs(), None)
-            .await
-            .unwrap();
+        store.add_documents(movie_docs(), None).await.unwrap();
 
         let llm_response = r#"{"query": "thriller movie", "filter": null}"#;
         let llm = fake_llm(vec![llm_response]);
@@ -816,10 +797,7 @@ mod tests {
     async fn test_self_query_with_in_filter() {
         let embeddings = make_embeddings();
         let store = Arc::new(InMemoryVectorStore::new(embeddings));
-        store
-            .add_documents(movie_docs(), None)
-            .await
-            .unwrap();
+        store.add_documents(movie_docs(), None).await.unwrap();
 
         let llm_response = r#"{"query": "movie", "filter": {"operator": "in", "field": "genre", "values": ["sci-fi", "action"]}}"#;
         let llm = fake_llm(vec![llm_response]);
@@ -848,10 +826,7 @@ mod tests {
     async fn test_self_query_with_not_filter() {
         let embeddings = make_embeddings();
         let store = Arc::new(InMemoryVectorStore::new(embeddings));
-        store
-            .add_documents(movie_docs(), None)
-            .await
-            .unwrap();
+        store.add_documents(movie_docs(), None).await.unwrap();
 
         let llm_response = r#"{"query": "movie", "filter": {"operator": "not", "filter": {"operator": "eq", "field": "genre", "value": "horror"}}}"#;
         let llm = fake_llm(vec![llm_response]);
@@ -880,10 +855,7 @@ mod tests {
     async fn test_self_query_with_or_filter() {
         let embeddings = make_embeddings();
         let store = Arc::new(InMemoryVectorStore::new(embeddings));
-        store
-            .add_documents(movie_docs(), None)
-            .await
-            .unwrap();
+        store.add_documents(movie_docs(), None).await.unwrap();
 
         let llm_response = r#"{"query": "movie", "filter": {"operator": "or", "filters": [{"operator": "eq", "field": "genre", "value": "comedy"}, {"operator": "eq", "field": "genre", "value": "horror"}]}}"#;
         let llm = fake_llm(vec![llm_response]);
@@ -912,10 +884,7 @@ mod tests {
     async fn test_self_query_filter_disabled() {
         let embeddings = make_embeddings();
         let store = Arc::new(InMemoryVectorStore::new(embeddings));
-        store
-            .add_documents(movie_docs(), None)
-            .await
-            .unwrap();
+        store.add_documents(movie_docs(), None).await.unwrap();
 
         // Even though filter is provided, it should be ignored when disabled
         let llm_response = r#"{"query": "movie", "filter": {"operator": "eq", "field": "genre", "value": "sci-fi"}}"#;

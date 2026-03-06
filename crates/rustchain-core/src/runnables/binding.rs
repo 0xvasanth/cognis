@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::error::Result;
 
 use super::base::Runnable;
-use super::config::{merge_configs, ensure_config, RunnableConfig};
+use super::config::{ensure_config, merge_configs, RunnableConfig};
 
 /// Binds additional kwargs and/or config to an inner runnable.
 ///
@@ -57,6 +57,8 @@ impl Runnable for RunnableBinding {
             None => ensure_config(config),
         };
 
-        self.bound.invoke(merged_input, Some(&effective_config)).await
+        self.bound
+            .invoke(merged_input, Some(&effective_config))
+            .await
     }
 }

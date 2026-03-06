@@ -15,16 +15,10 @@ pub enum SearchType {
     #[default]
     Similarity,
     /// Similarity search with a minimum score threshold.
-    SimilarityScoreThreshold {
-        score_threshold: f32,
-    },
+    SimilarityScoreThreshold { score_threshold: f32 },
     /// Maximal Marginal Relevance search for diverse results.
-    Mmr {
-        fetch_k: usize,
-        lambda_mult: f32,
-    },
+    Mmr { fetch_k: usize, lambda_mult: f32 },
 }
-
 
 /// Trait defining the interface for vector store implementations.
 ///
@@ -139,9 +133,7 @@ impl VectorStoreRetriever {
 impl BaseRetriever for VectorStoreRetriever {
     async fn get_relevant_documents(&self, query: &str) -> Result<Vec<Document>> {
         match &self.search_type {
-            SearchType::Similarity => {
-                self.vectorstore.similarity_search(query, self.k).await
-            }
+            SearchType::Similarity => self.vectorstore.similarity_search(query, self.k).await,
             SearchType::SimilarityScoreThreshold { score_threshold } => {
                 let threshold = *score_threshold;
                 let results = self
@@ -159,12 +151,7 @@ impl BaseRetriever for VectorStoreRetriever {
                 lambda_mult,
             } => {
                 self.vectorstore
-                    .max_marginal_relevance_search(
-                        query,
-                        self.k,
-                        *fetch_k,
-                        *lambda_mult,
-                    )
+                    .max_marginal_relevance_search(query, self.k, *fetch_k, *lambda_mult)
                     .await
             }
         }

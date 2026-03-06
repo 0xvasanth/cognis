@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use serde_json::json;
-use serde_json::Value;
 use rustchain_core::error::RustChainError;
 use rustchain_core::tools::*;
+use serde_json::json;
+use serde_json::Value;
+use std::collections::HashMap;
 
 // --- Task 1: Error variants ---
 #[test]
@@ -133,7 +133,10 @@ async fn test_function_tool_basic() {
                 ToolInput::Text(s) => s.clone(),
                 _ => "world".into(),
             };
-            Ok(ToolOutput::Content(Value::String(format!("Hello, {}!", name))))
+            Ok(ToolOutput::Content(Value::String(format!(
+                "Hello, {}!",
+                name
+            ))))
         },
     );
     assert_eq!(tool.name(), "greet");
@@ -178,10 +181,8 @@ async fn test_function_tool_propagate_error() {
 
 #[tokio::test]
 async fn test_function_tool_return_direct() {
-    let tool = FunctionTool::new("t", "d", None, |_| {
-        Ok(ToolOutput::Content(json!("ok")))
-    })
-    .with_return_direct(true);
+    let tool = FunctionTool::new("t", "d", None, |_| Ok(ToolOutput::Content(json!("ok"))))
+        .with_return_direct(true);
     assert!(tool.return_direct());
 }
 

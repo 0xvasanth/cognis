@@ -72,7 +72,8 @@ fn render_with_scopes(template: &str, scopes: &[Value]) -> Result<String> {
                                 for item in arr {
                                     let mut new_scopes = scopes.to_vec();
                                     new_scopes.push(item.clone());
-                                    output.push_str(&render_with_scopes(section_body, &new_scopes)?);
+                                    output
+                                        .push_str(&render_with_scopes(section_body, &new_scopes)?);
                                 }
                             }
                             Value::Object(_) => {
@@ -239,16 +240,13 @@ pub fn template_vars(template: &str) -> Vec<String> {
             if !tag.is_empty() {
                 let first = tag.chars().next().unwrap();
                 let var_name = match first {
-                    '#' | '^' | '/' | '!' | '>' | '&' => {
-                        tag[1..].trim().to_string()
-                    }
-                    '{' => {
-                        tag[1..].trim().to_string()
-                    }
+                    '#' | '^' | '/' | '!' | '>' | '&' => tag[1..].trim().to_string(),
+                    '{' => tag[1..].trim().to_string(),
                     _ => tag.to_string(),
                 };
                 // Only add top-level (no dots), skip section ends and comments
-                if first != '/' && first != '!' && !var_name.is_empty() && !vars.contains(&var_name) {
+                if first != '/' && first != '!' && !var_name.is_empty() && !vars.contains(&var_name)
+                {
                     vars.push(var_name);
                 }
             }

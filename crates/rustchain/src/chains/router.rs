@@ -54,10 +54,7 @@ impl SemanticRouter {
     /// # Errors
     ///
     /// Returns an error if the embedding model fails to embed the route descriptions.
-    pub async fn new(
-        embeddings: Arc<dyn Embeddings>,
-        routes: Vec<Route>,
-    ) -> Result<Self> {
+    pub async fn new(embeddings: Arc<dyn Embeddings>, routes: Vec<Route>) -> Result<Self> {
         let descriptions: Vec<String> = routes.iter().map(|r| r.description.clone()).collect();
         let route_embeddings = embeddings.embed_documents(descriptions).await?;
         Ok(Self {
@@ -114,9 +111,9 @@ impl SemanticRouter {
 
     /// Find the default route, if one is configured and exists.
     pub fn find_default_route(&self) -> Option<&Route> {
-        self.default_route.as_ref().and_then(|name| {
-            self.routes.iter().find(|r| r.name == *name)
-        })
+        self.default_route
+            .as_ref()
+            .and_then(|name| self.routes.iter().find(|r| r.name == *name))
     }
 }
 
@@ -163,7 +160,8 @@ impl RouterChain {
         route_name: impl Into<String>,
         template: impl Into<String>,
     ) -> Self {
-        self.route_prompts.insert(route_name.into(), template.into());
+        self.route_prompts
+            .insert(route_name.into(), template.into());
         self
     }
 
@@ -223,18 +221,29 @@ mod tests {
             Route::new("science", "physics chemistry biology experiments"),
         ];
 
-        let router = SemanticRouter::new(fake_embeddings(), routes).await.unwrap();
+        let router = SemanticRouter::new(fake_embeddings(), routes)
+            .await
+            .unwrap();
 
         // The deterministic embeddings are hash-based, so the same text always
         // produces the same embedding. A query matching a route's description
         // text should route to that route.
-        let route = router.route("mathematics calculations arithmetic numbers").await.unwrap();
+        let route = router
+            .route("mathematics calculations arithmetic numbers")
+            .await
+            .unwrap();
         assert_eq!(route.name, "math");
 
-        let route = router.route("historical events dates civilizations wars").await.unwrap();
+        let route = router
+            .route("historical events dates civilizations wars")
+            .await
+            .unwrap();
         assert_eq!(route.name, "history");
 
-        let route = router.route("physics chemistry biology experiments").await.unwrap();
+        let route = router
+            .route("physics chemistry biology experiments")
+            .await
+            .unwrap();
         assert_eq!(route.name, "science");
     }
 
@@ -245,7 +254,9 @@ mod tests {
             Route::new("farewell", "goodbye bye see you later"),
         ];
 
-        let router = SemanticRouter::new(fake_embeddings(), routes).await.unwrap();
+        let router = SemanticRouter::new(fake_embeddings(), routes)
+            .await
+            .unwrap();
 
         // Exact match should give highest possible similarity (1.0)
         let (route, score) = router
@@ -253,14 +264,17 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(route.name, "greeting");
-        assert!((score - 1.0).abs() < 1e-5, "Exact match should have score ~1.0, got {score}");
+        assert!(
+            (score - 1.0).abs() < 1e-5,
+            "Exact match should have score ~1.0, got {score}"
+        );
 
         // Any query should produce a score in [-1, 1]
-        let (_route, score) = router
-            .route_with_score("some random query")
-            .await
-            .unwrap();
-        assert!(score >= -1.0 && score <= 1.0, "Score should be in [-1,1], got {score}");
+        let (_route, score) = router.route_with_score("some random query").await.unwrap();
+        assert!(
+            score >= -1.0 && score <= 1.0,
+            "Score should be in [-1,1], got {score}"
+        );
     }
 
     #[tokio::test]
@@ -270,7 +284,9 @@ mod tests {
             Route::new("history", "historical events dates civilizations wars"),
         ];
 
-        let router = SemanticRouter::new(fake_embeddings(), routes).await.unwrap();
+        let router = SemanticRouter::new(fake_embeddings(), routes)
+            .await
+            .unwrap();
 
         // The fake model echoes won't actually show the prompt, but we can verify
         // the chain picks the right route and returns its name.
@@ -320,32 +336,52 @@ mod tests {
             Route::new("tech", "programming software computers code algorithms"),
         ];
 
-        let router = SemanticRouter::new(fake_embeddings(), routes).await.unwrap();
+        let router = SemanticRouter::new(fake_embeddings(), routes)
+            .await
+            .unwrap();
 
         // Each exact description should route to its own route
-        let route = router.route("weather forecast temperature rain sunny cloudy").await.unwrap();
+        let route = router
+            .route("weather forecast temperature rain sunny cloudy")
+            .await
+            .unwrap();
         assert_eq!(route.name, "weather");
 
-        let route = router.route("football basketball soccer tennis athletes game").await.unwrap();
+        let route = router
+            .route("football basketball soccer tennis athletes game")
+            .await
+            .unwrap();
         assert_eq!(route.name, "sports");
 
-        let route = router.route("songs albums artists concerts genres rhythm").await.unwrap();
+        let route = router
+            .route("songs albums artists concerts genres rhythm")
+            .await
+            .unwrap();
         assert_eq!(route.name, "music");
 
-        let route = router.route("flights hotels destinations tourism vacation").await.unwrap();
+        let route = router
+            .route("flights hotels destinations tourism vacation")
+            .await
+            .unwrap();
         assert_eq!(route.name, "travel");
 
-        let route = router.route("programming software computers code algorithms").await.unwrap();
+        let route = router
+            .route("programming software computers code algorithms")
+            .await
+            .unwrap();
         assert_eq!(route.name, "tech");
     }
 
     #[tokio::test]
     async fn test_router_result_contains_correct_metadata() {
-        let routes = vec![
-            Route::new("support", "customer support help troubleshooting issues"),
-        ];
+        let routes = vec![Route::new(
+            "support",
+            "customer support help troubleshooting issues",
+        )];
 
-        let router = SemanticRouter::new(fake_embeddings(), routes).await.unwrap();
+        let router = SemanticRouter::new(fake_embeddings(), routes)
+            .await
+            .unwrap();
 
         let chain = RouterChain::new(router, fake_model(vec!["Let me help you"]))
             .with_route_prompt("support", "Help the customer: {query}");
@@ -373,7 +409,9 @@ mod tests {
                 .with_prompt_template("Translate the following: {query}"),
         ];
 
-        let router = SemanticRouter::new(fake_embeddings(), routes).await.unwrap();
+        let router = SemanticRouter::new(fake_embeddings(), routes)
+            .await
+            .unwrap();
 
         // The route's own prompt_template should be used when no chain-level override exists
         let chain = RouterChain::new(router, fake_model(vec!["Translated text"]));

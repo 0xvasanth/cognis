@@ -1,24 +1,24 @@
 mod character;
-mod recursive;
 pub mod code;
-mod token;
-mod markdown;
 mod html;
 mod json;
+mod markdown;
+mod recursive;
+mod token;
 pub mod token_aware;
 
 pub use character::CharacterTextSplitter;
-pub use recursive::RecursiveCharacterTextSplitter;
 pub use code::Language;
-pub use token::TokenTextSplitter;
-pub use markdown::{MarkdownTextSplitter, MarkdownHeaderTextSplitter};
 pub use html::HTMLHeaderTextSplitter;
 pub use json::RecursiveJsonSplitter;
+pub use markdown::{MarkdownHeaderTextSplitter, MarkdownTextSplitter};
+pub use recursive::RecursiveCharacterTextSplitter;
+pub use token::TokenTextSplitter;
 pub use token_aware::TokenAwareTextSplitter;
 
 use rustchain_core::documents::Document;
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Base trait for all text splitters.
 pub trait TextSplitter: Send + Sync {
@@ -60,7 +60,12 @@ pub trait TextSplitter: Send + Sync {
 }
 
 /// Merge small splits into chunks up to chunk_size, with overlap.
-pub fn merge_splits(splits: &[&str], separator: &str, chunk_size: usize, chunk_overlap: usize) -> Vec<String> {
+pub fn merge_splits(
+    splits: &[&str],
+    separator: &str,
+    chunk_size: usize,
+    chunk_overlap: usize,
+) -> Vec<String> {
     let sep_len = separator.len();
     let mut docs: Vec<String> = Vec::new();
     let mut current_doc: Vec<&str> = Vec::new();
@@ -68,7 +73,11 @@ pub fn merge_splits(splits: &[&str], separator: &str, chunk_size: usize, chunk_o
 
     for piece in splits {
         let len = piece.len();
-        let added = if current_doc.is_empty() { len } else { len + sep_len };
+        let added = if current_doc.is_empty() {
+            len
+        } else {
+            len + sep_len
+        };
 
         if total + added > chunk_size && !current_doc.is_empty() {
             let doc = current_doc.join(separator);

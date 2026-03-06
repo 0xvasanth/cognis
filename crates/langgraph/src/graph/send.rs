@@ -99,9 +99,9 @@ pub async fn fan_out(
 
     let mut results = Vec::with_capacity(handles.len());
     for handle in handles {
-        let result = handle.await.map_err(|e| {
-            LangGraphError::Other(format!("fan_out: task join error: {e}"))
-        })??;
+        let result = handle
+            .await
+            .map_err(|e| LangGraphError::Other(format!("fan_out: task join error: {e}")))??;
         results.push(result);
     }
 
@@ -266,9 +266,10 @@ impl MapReduceGraph {
             let sem = semaphore.clone();
 
             handles.push(tokio::spawn(async move {
-                let _permit = sem.acquire().await.map_err(|e| {
-                    LangGraphError::Other(format!("semaphore error: {e}"))
-                })?;
+                let _permit = sem
+                    .acquire()
+                    .await
+                    .map_err(|e| LangGraphError::Other(format!("semaphore error: {e}")))?;
                 (action)(input).await
             }));
         }
@@ -369,11 +370,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[test]
     fn test_fan_in_merges_results() {
-        let values = vec![
-            json!({"a": 1}),
-            json!({"b": 2}),
-            json!({"c": 3}),
-        ];
+        let values = vec![json!({"a": 1}), json!({"b": 2}), json!({"c": 3})];
 
         let merged = fan_in(values, deep_merge_values);
         assert_eq!(merged, json!({"a": 1, "b": 2, "c": 3}));
@@ -387,10 +384,7 @@ mod tests {
         let values = vec![json!(1), json!(2), json!(3)];
 
         let sum = fan_in(values, |vals| {
-            let total: i64 = vals
-                .iter()
-                .filter_map(|v| v.as_i64())
-                .sum();
+            let total: i64 = vals.iter().filter_map(|v| v.as_i64()).sum();
             json!(total)
         });
         assert_eq!(sum, json!(6));
@@ -412,7 +406,11 @@ mod tests {
         // Reduce node: sums the "values" array.
         let reduce_action: AsyncNodeAction = Arc::new(|state: Value| {
             Box::pin(async move {
-                let values = state.get("values").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+                let values = state
+                    .get("values")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
                 let total: i64 = values
                     .iter()
                     .filter_map(|v| v.get("value").and_then(|n| n.as_i64()))
@@ -421,10 +419,7 @@ mod tests {
             })
         });
 
-        let graph = build_graph(vec![
-            ("mapper", map_action),
-            ("reducer", reduce_action),
-        ]);
+        let graph = build_graph(vec![("mapper", map_action), ("reducer", reduce_action)]);
 
         let mr = MapReduceGraph::new(
             graph,
@@ -478,14 +473,10 @@ mod tests {
             })
         });
 
-        let reduce_action: AsyncNodeAction = Arc::new(|state: Value| {
-            Box::pin(async move { Ok(state) })
-        });
+        let reduce_action: AsyncNodeAction =
+            Arc::new(|state: Value| Box::pin(async move { Ok(state) }));
 
-        let graph = build_graph(vec![
-            ("mapper", map_action),
-            ("reducer", reduce_action),
-        ]);
+        let graph = build_graph(vec![("mapper", map_action), ("reducer", reduce_action)]);
 
         let mr = MapReduceGraph::new(
             graph,

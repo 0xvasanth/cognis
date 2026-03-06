@@ -62,9 +62,7 @@ impl BaseChannel for LastValue {
     }
 
     fn get(&self) -> Result<Value, LangGraphError> {
-        self.value
-            .clone()
-            .ok_or(LangGraphError::EmptyChannelError)
+        self.value.clone().ok_or(LangGraphError::EmptyChannelError)
     }
 
     fn is_available(&self) -> bool {

@@ -101,7 +101,10 @@ impl Default for RuntimeConfig {
 pub fn get_store_from_config(config: &RunnableConfig) -> Result<Option<Arc<dyn Store>>> {
     // In a full implementation, the RuntimeConfig would be embedded in the
     // configurable section. For now, we return None if not found.
-    if config.configurable.contains_key(crate::utils::config::CONFIG_KEY_RUNTIME) {
+    if config
+        .configurable
+        .contains_key(crate::utils::config::CONFIG_KEY_RUNTIME)
+    {
         // The runtime config would be deserialized from the configurable section.
         // Since RuntimeConfig contains non-serializable types (Arc<dyn Store>),
         // in practice it would be passed via a separate mechanism.

@@ -128,7 +128,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!("--- Agent Finished ---\n");
 
     // Step 5: Print the full conversation.
-    println!("=== Full Conversation ({} messages) ===\n", result.messages.len());
+    println!(
+        "=== Full Conversation ({} messages) ===\n",
+        result.messages.len()
+    );
     for (i, msg) in result.messages.iter().enumerate() {
         let role = match msg {
             Message::Human(_) => "Human",

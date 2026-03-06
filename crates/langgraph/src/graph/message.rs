@@ -252,15 +252,23 @@ mod tests {
         let graph = message_graph()
             .add_node(
                 "greeter",
-                Arc::new(|state: Value| -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, crate::errors::LangGraphError>> + Send>> {
-                    Box::pin(async move {
-                        let name = state
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("world");
-                        Ok(json!({"greeting": format!("Hello, {name}!")}))
-                    })
-                }) as AsyncNodeAction,
+                Arc::new(
+                    |state: Value| -> std::pin::Pin<
+                        Box<
+                            dyn std::future::Future<
+                                    Output = Result<Value, crate::errors::LangGraphError>,
+                                > + Send,
+                        >,
+                    > {
+                        Box::pin(async move {
+                            let name = state
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("world");
+                            Ok(json!({"greeting": format!("Hello, {name}!")}))
+                        })
+                    },
+                ) as AsyncNodeAction,
             )
             .set_entry_point("greeter")
             .set_finish_point("greeter")

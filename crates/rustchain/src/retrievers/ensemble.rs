@@ -103,7 +103,11 @@ impl BaseRetriever for EnsembleRetriever {
 
         let scored = reciprocal_rank_fusion(&result_sets, &self.weights, self.rrf_k);
 
-        Ok(scored.into_iter().take(self.k).map(|(doc, _)| doc).collect())
+        Ok(scored
+            .into_iter()
+            .take(self.k)
+            .map(|(doc, _)| doc)
+            .collect())
     }
 }
 

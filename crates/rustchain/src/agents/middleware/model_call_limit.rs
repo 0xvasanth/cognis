@@ -158,7 +158,8 @@ impl AgentMiddleware for ModelCallLimitMiddleware {
                 .extra
                 .get(&thread_key)
                 .and_then(|v| v.as_u64())
-                .unwrap_or_else(|| self.thread_count(tid) as u64) as usize;
+                .unwrap_or_else(|| self.thread_count(tid) as u64)
+                as usize;
 
             if let Some(limit) = self.thread_limit {
                 if thread_count >= limit {
@@ -297,8 +298,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_model_call_limit_before_model_exceeds_end() {
-        let mw = ModelCallLimitMiddleware::new(Some(1))
-            .with_exit_behavior(ExitBehavior::End);
+        let mw = ModelCallLimitMiddleware::new(Some(1)).with_exit_behavior(ExitBehavior::End);
         let mut state = AgentState::default();
         state.set_extra("model_call_count", serde_json::json!(1));
         let result = mw.before_model(&state).await.unwrap();

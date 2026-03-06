@@ -219,8 +219,7 @@ impl DatabaseSchema {
     /// This is a basic parser that handles simple `CREATE TABLE` statements.
     /// It does not support all SQL DDL features.
     pub fn from_ddl(ddl: &str) -> Result<Self> {
-        let table_re =
-            Regex::new(r"(?is)CREATE\s+TABLE\s+(\w+)\s*\(\s*(.*?)\s*\)\s*;").unwrap();
+        let table_re = Regex::new(r"(?is)CREATE\s+TABLE\s+(\w+)\s*\(\s*(.*?)\s*\)\s*;").unwrap();
         let mut tables = Vec::new();
 
         for cap in table_re.captures_iter(ddl) {
@@ -235,8 +234,10 @@ impl DatabaseSchema {
                 }
                 // Skip composite PRIMARY KEY constraints
                 let upper = line.to_uppercase();
-                if upper.starts_with("PRIMARY KEY") || upper.starts_with("FOREIGN KEY")
-                    || upper.starts_with("UNIQUE") || upper.starts_with("CHECK")
+                if upper.starts_with("PRIMARY KEY")
+                    || upper.starts_with("FOREIGN KEY")
+                    || upper.starts_with("UNIQUE")
+                    || upper.starts_with("CHECK")
                     || upper.starts_with("CONSTRAINT")
                 {
                     continue;
@@ -300,10 +301,7 @@ impl SQLQueryValidator {
     /// Create a validator with a custom set of disallowed operations.
     pub fn with_disallowed(operations: &[&str]) -> Self {
         Self {
-            disallowed_operations: operations
-                .iter()
-                .map(|s| s.to_uppercase())
-                .collect(),
+            disallowed_operations: operations.iter().map(|s| s.to_uppercase()).collect(),
         }
     }
 
@@ -525,9 +523,11 @@ impl Runnable for TextToSQLChain {
             .as_object()
             .and_then(|o| o.get("question"))
             .and_then(|v| v.as_str())
-            .ok_or_else(|| RustChainError::InvalidKey(
-                "Input must be a JSON object with a 'question' key".into(),
-            ))?
+            .ok_or_else(|| {
+                RustChainError::InvalidKey(
+                    "Input must be a JSON object with a 'question' key".into(),
+                )
+            })?
             .to_string();
 
         let formatted = self.format_prompt(&input)?;
@@ -577,10 +577,7 @@ mod tests {
                             .not_null()
                             .build(),
                     )
-                    .column(
-                        ColumnSchemaBuilder::new("email", "VARCHAR(255)")
-                            .build(),
-                    )
+                    .column(ColumnSchemaBuilder::new("email", "VARCHAR(255)").build())
                     .description("User accounts")
                     .build(),
             )
@@ -702,17 +699,33 @@ mod tests {
         assert_eq!(schema.tables.len(), 1);
         assert_eq!(schema.tables[0].name, "products");
         assert_eq!(schema.tables[0].columns.len(), 2);
-        assert_eq!(schema.tables[0].description.as_deref(), Some("Product catalog"));
+        assert_eq!(
+            schema.tables[0].description.as_deref(),
+            Some("Product catalog")
+        );
     }
 
     #[test]
     fn test_table_schema_all_column_types() {
         let table = TableSchemaBuilder::new("test_table")
-            .column(ColumnSchemaBuilder::new("pk", "INTEGER").primary_key().not_null().build())
+            .column(
+                ColumnSchemaBuilder::new("pk", "INTEGER")
+                    .primary_key()
+                    .not_null()
+                    .build(),
+            )
             .column(ColumnSchemaBuilder::new("text_col", "TEXT").build())
-            .column(ColumnSchemaBuilder::new("bool_col", "BOOLEAN").not_null().build())
+            .column(
+                ColumnSchemaBuilder::new("bool_col", "BOOLEAN")
+                    .not_null()
+                    .build(),
+            )
             .column(ColumnSchemaBuilder::new("ts_col", "TIMESTAMP").build())
-            .column(ColumnSchemaBuilder::new("float_col", "FLOAT").nullable(false).build())
+            .column(
+                ColumnSchemaBuilder::new("float_col", "FLOAT")
+                    .nullable(false)
+                    .build(),
+            )
             .build();
 
         assert_eq!(table.columns.len(), 5);
@@ -782,18 +795,40 @@ CREATE TABLE users (
         let schema = DatabaseSchema::builder()
             .table(
                 TableSchemaBuilder::new("orders")
-                    .column(ColumnSchemaBuilder::new("id", "INTEGER").primary_key().not_null().build())
-                    .column(ColumnSchemaBuilder::new("user_id", "INTEGER").not_null().build())
+                    .column(
+                        ColumnSchemaBuilder::new("id", "INTEGER")
+                            .primary_key()
+                            .not_null()
+                            .build(),
+                    )
+                    .column(
+                        ColumnSchemaBuilder::new("user_id", "INTEGER")
+                            .not_null()
+                            .build(),
+                    )
                     .column(ColumnSchemaBuilder::new("total", "DECIMAL(10,2)").build())
                     .description("Customer orders")
                     .build(),
             )
             .table(
                 TableSchemaBuilder::new("order_items")
-                    .column(ColumnSchemaBuilder::new("id", "INTEGER").primary_key().not_null().build())
-                    .column(ColumnSchemaBuilder::new("order_id", "INTEGER").not_null().build())
+                    .column(
+                        ColumnSchemaBuilder::new("id", "INTEGER")
+                            .primary_key()
+                            .not_null()
+                            .build(),
+                    )
+                    .column(
+                        ColumnSchemaBuilder::new("order_id", "INTEGER")
+                            .not_null()
+                            .build(),
+                    )
                     .column(ColumnSchemaBuilder::new("product", "VARCHAR(255)").build())
-                    .column(ColumnSchemaBuilder::new("quantity", "INTEGER").not_null().build())
+                    .column(
+                        ColumnSchemaBuilder::new("quantity", "INTEGER")
+                            .not_null()
+                            .build(),
+                    )
                     .build(),
             )
             .build();
@@ -822,9 +857,7 @@ CREATE TABLE users (
             .validate_sql(false)
             .build();
 
-        let result = chain
-            .invoke(json!({"question": "drop users"}), None)
-            .await;
+        let result = chain.invoke(json!({"question": "drop users"}), None).await;
 
         // Should succeed when validation is disabled
         assert!(result.is_ok());

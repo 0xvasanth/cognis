@@ -187,9 +187,7 @@ impl BaseChannel for BinaryOperatorAggregate {
     }
 
     fn get(&self) -> Result<Value, LangGraphError> {
-        self.value
-            .clone()
-            .ok_or(LangGraphError::EmptyChannelError)
+        self.value.clone().ok_or(LangGraphError::EmptyChannelError)
     }
 
     fn is_available(&self) -> bool {
@@ -240,17 +238,20 @@ mod tests {
 
     #[test]
     fn test_add_strings() {
-        let mut ch =
-            BinaryOperatorAggregate::with_value("text", BinOp::Add, Value::from("hello"));
+        let mut ch = BinaryOperatorAggregate::with_value("text", BinOp::Add, Value::from("hello"));
         ch.update(vec![Value::from(" world")]).unwrap();
         assert_eq!(ch.get().unwrap(), Value::from("hello world"));
     }
 
     #[test]
     fn test_add_arrays() {
-        let mut ch =
-            BinaryOperatorAggregate::with_value("list", BinOp::Add, Value::Array(vec![Value::from(1)]));
-        ch.update(vec![Value::Array(vec![Value::from(2), Value::from(3)])]).unwrap();
+        let mut ch = BinaryOperatorAggregate::with_value(
+            "list",
+            BinOp::Add,
+            Value::Array(vec![Value::from(1)]),
+        );
+        ch.update(vec![Value::Array(vec![Value::from(2), Value::from(3)])])
+            .unwrap();
         assert_eq!(
             ch.get().unwrap(),
             Value::Array(vec![Value::from(1), Value::from(2), Value::from(3)])
@@ -264,7 +265,8 @@ mod tests {
             BinOp::Extend,
             Value::Array(vec![Value::from("a")]),
         );
-        ch.update(vec![Value::Array(vec![Value::from("b")])]).unwrap();
+        ch.update(vec![Value::Array(vec![Value::from("b")])])
+            .unwrap();
         assert_eq!(
             ch.get().unwrap(),
             Value::Array(vec![Value::from("a"), Value::from("b")])
@@ -287,8 +289,7 @@ mod tests {
 
     #[test]
     fn test_replace() {
-        let mut ch =
-            BinaryOperatorAggregate::with_value("val", BinOp::Replace, Value::from("old"));
+        let mut ch = BinaryOperatorAggregate::with_value("val", BinOp::Replace, Value::from("old"));
         ch.update(vec![Value::from("new")]).unwrap();
         assert_eq!(ch.get().unwrap(), Value::from("new"));
     }
@@ -310,8 +311,7 @@ mod tests {
 
     #[test]
     fn test_overwrite_wrapper() {
-        let mut ch =
-            BinaryOperatorAggregate::with_value("counter", BinOp::Add, Value::from(100));
+        let mut ch = BinaryOperatorAggregate::with_value("counter", BinOp::Add, Value::from(100));
 
         // Send an Overwrite-style value.
         let overwrite = serde_json::json!({"value": 0});

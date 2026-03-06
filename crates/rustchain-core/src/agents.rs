@@ -13,11 +13,7 @@ pub struct AgentAction {
 }
 
 impl AgentAction {
-    pub fn new(
-        tool: impl Into<String>,
-        tool_input: Value,
-        log: impl Into<String>,
-    ) -> Self {
+    pub fn new(tool: impl Into<String>, tool_input: Value, log: impl Into<String>) -> Self {
         Self {
             tool: tool.into(),
             tool_input,

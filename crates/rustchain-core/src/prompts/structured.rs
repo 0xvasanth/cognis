@@ -158,17 +158,17 @@ mod tests {
 
     #[test]
     fn test_get_schema() {
-        let schema = serde_json::json!({"type": "object", "properties": {"name": {"type": "string"}}});
+        let schema =
+            serde_json::json!({"type": "object", "properties": {"name": {"type": "string"}}});
         let prompt = StructuredPrompt::new(vec![], schema.clone());
         assert_eq!(prompt.get_schema(), &schema);
     }
 
     #[test]
     fn test_with_kwargs() {
-        let prompt = StructuredPrompt::new(vec![], serde_json::json!({}))
-            .with_kwargs(HashMap::from([
-                ("method".into(), Value::String("json_mode".into())),
-            ]));
+        let prompt = StructuredPrompt::new(vec![], serde_json::json!({})).with_kwargs(
+            HashMap::from([("method".into(), Value::String("json_mode".into()))]),
+        );
         assert_eq!(
             prompt.structured_output_kwargs.get("method"),
             Some(&Value::String("json_mode".into()))

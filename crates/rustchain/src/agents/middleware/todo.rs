@@ -12,9 +12,7 @@ use serde_json::Value;
 use rustchain_core::error::Result;
 use rustchain_core::messages::Message;
 
-use super::types::{
-    AgentMiddleware, AgentState, AsyncModelHandler, ModelCallResult, ModelRequest,
-};
+use super::types::{AgentMiddleware, AgentState, AsyncModelHandler, ModelCallResult, ModelRequest};
 
 /// Status of a todo item.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,7 +27,6 @@ pub enum TodoStatus {
     /// The task has been completed.
     Completed,
 }
-
 
 /// A single todo item.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,10 +202,7 @@ impl AgentMiddleware for TodoListMiddleware {
 
         // Check for parallel calls that might indicate planning behavior
         if let Some(call_count) = self.check_parallel_calls(state) {
-            updates.insert(
-                "parallel_tool_calls".into(),
-                serde_json::json!(call_count),
-            );
+            updates.insert("parallel_tool_calls".into(), serde_json::json!(call_count));
         }
 
         // Track the current todo completion status

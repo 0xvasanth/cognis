@@ -99,8 +99,7 @@ pub trait CheckpointSaver: Send + Sync + std::fmt::Debug {
     async fn get(&self, config: &HashMap<String, Value>) -> Result<Option<CheckpointTuple>>;
 
     /// Get a specific checkpoint by its config.
-    async fn get_tuple(&self, config: &HashMap<String, Value>)
-        -> Result<Option<CheckpointTuple>>;
+    async fn get_tuple(&self, config: &HashMap<String, Value>) -> Result<Option<CheckpointTuple>>;
 
     /// Save a checkpoint along with its metadata.
     ///
@@ -296,17 +295,13 @@ impl CheckpointSaver for InMemoryCheckpointSaver {
         Ok(None)
     }
 
-    async fn get_tuple(
-        &self,
-        config: &HashMap<String, Value>,
-    ) -> Result<Option<CheckpointTuple>> {
+    async fn get_tuple(&self, config: &HashMap<String, Value>) -> Result<Option<CheckpointTuple>> {
         let storage = self.storage.read().await;
         let thread_id = config.get("thread_id");
         let checkpoint_id = config.get("checkpoint_id");
 
         for (stored_config, tuple) in storage.iter().rev() {
-            let thread_match =
-                thread_id.is_none() || stored_config.get("thread_id") == thread_id;
+            let thread_match = thread_id.is_none() || stored_config.get("thread_id") == thread_id;
             let id_match = checkpoint_id.is_none()
                 || checkpoint_id.and_then(|v| v.as_str()) == Some(&tuple.checkpoint.id);
 
@@ -482,9 +477,7 @@ mod tests {
     #[test]
     fn test_create_checkpoint_with_channels() {
         let mut previous = empty_checkpoint();
-        previous
-            .channel_versions
-            .insert("state".to_string(), 1);
+        previous.channel_versions.insert("state".to_string(), 1);
 
         // Create a test channel.
         #[derive(Debug, Clone)]
@@ -550,13 +543,7 @@ mod tests {
     #[test]
     fn test_create_checkpoint_with_explicit_id() {
         let previous = empty_checkpoint();
-        let cp = create_checkpoint(
-            &previous,
-            None,
-            1,
-            Some("custom-id-123".to_string()),
-            None,
-        );
+        let cp = create_checkpoint(&previous, None, 1, Some("custom-id-123".to_string()), None);
         assert_eq!(cp.id, "custom-id-123");
     }
 
@@ -580,20 +567,13 @@ mod tests {
     #[test]
     fn test_copy_checkpoint() {
         let mut original = empty_checkpoint();
-        original
-            .channel_values
-            .insert("x".to_string(), json!(42));
-        original
-            .channel_versions
-            .insert("x".to_string(), 3);
-        original.versions_seen.insert(
-            "node_a".to_string(),
-            {
-                let mut m = HashMap::new();
-                m.insert("x".to_string(), 2);
-                m
-            },
-        );
+        original.channel_values.insert("x".to_string(), json!(42));
+        original.channel_versions.insert("x".to_string(), 3);
+        original.versions_seen.insert("node_a".to_string(), {
+            let mut m = HashMap::new();
+            m.insert("x".to_string(), 2);
+            m
+        });
 
         let copy = copy_checkpoint(&original);
         assert_eq!(copy.v, original.v);
@@ -670,8 +650,7 @@ mod tests {
         let mut cp = empty_checkpoint();
         cp.channel_values
             .insert("state".to_string(), json!({"key": "value"}));
-        cp.channel_versions
-            .insert("state".to_string(), 5);
+        cp.channel_versions.insert("state".to_string(), 5);
 
         let serialized = serde_json::to_string(&cp).unwrap();
         let deserialized: Checkpoint = serde_json::from_str(&serialized).unwrap();
@@ -804,9 +783,7 @@ mod tests {
         config.insert("thread_id".to_string(), json!("thread-1"));
         config.insert("checkpoint_id".to_string(), json!("nonexistent"));
 
-        let result = saver
-            .put_writes(&config, vec![], "task-1")
-            .await;
+        let result = saver.put_writes(&config, vec![], "task-1").await;
         assert!(result.is_err());
     }
 

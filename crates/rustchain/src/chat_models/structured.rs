@@ -82,34 +82,36 @@ impl StructuredOutputChatModel {
         // Find the tool call matching our schema tool name
         for tc in &ai_msg.tool_calls {
             if tc.name == self.tool_name {
-                return serde_json::to_value(&tc.args)
-                    .map_err(|e| RustChainError::Other(format!("Failed to serialize tool call args: {}", e)));
+                return serde_json::to_value(&tc.args).map_err(|e| {
+                    RustChainError::Other(format!("Failed to serialize tool call args: {}", e))
+                });
             }
         }
 
         Err(RustChainError::Other(format!(
             "No tool call found with name '{}'. Tool calls present: {:?}",
             self.tool_name,
-            ai_msg.tool_calls.iter().map(|tc| &tc.name).collect::<Vec<_>>()
+            ai_msg
+                .tool_calls
+                .iter()
+                .map(|tc| &tc.name)
+                .collect::<Vec<_>>()
         )))
     }
 }
 
 #[async_trait]
 impl BaseChatModel for StructuredOutputChatModel {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         match self.method {
             StructuredOutputMethod::ToolCalling => {
                 let result = self.inner._generate(messages, stop).await?;
                 let structured_output = self.extract_tool_call_output(&result)?;
 
                 // Build a new AIMessage with the structured JSON as content
-                let json_string = serde_json::to_string(&structured_output)
-                    .map_err(|e| RustChainError::Other(format!("JSON serialization error: {}", e)))?;
+                let json_string = serde_json::to_string(&structured_output).map_err(|e| {
+                    RustChainError::Other(format!("JSON serialization error: {}", e))
+                })?;
 
                 let mut ai_message = AIMessage::new(&json_string);
 
@@ -139,9 +141,9 @@ impl BaseChatModel for StructuredOutputChatModel {
                     schema_str
                 );
 
-                let mut augmented_messages = vec![
-                    Message::System(rustchain_core::messages::SystemMessage::new(&system_instruction)),
-                ];
+                let mut augmented_messages = vec![Message::System(
+                    rustchain_core::messages::SystemMessage::new(&system_instruction),
+                )];
                 augmented_messages.extend_from_slice(messages);
 
                 let result = self.inner._generate(&augmented_messages, stop).await?;
@@ -171,11 +173,7 @@ impl BaseChatModel for StructuredOutputChatModel {
         "structured_output"
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         // Streaming with structured output is complex; delegate to inner model
         // for now. Full structured streaming would require accumulating chunks.
         self.inner._stream(messages, stop).await
@@ -386,13 +384,8 @@ mod tests {
             "required": ["name", "age"]
         });
 
-        let structured = with_structured_output(
-            Box::new(mock),
-            schema,
-            Some("tool_calling"),
-            false,
-        )
-        .unwrap();
+        let structured =
+            with_structured_output(Box::new(mock), schema, Some("tool_calling"), false).unwrap();
 
         let messages = vec![Message::Human(HumanMessage::new("Who is Alice?"))];
         let result = structured._generate(&messages, None).await.unwrap();
@@ -464,13 +457,8 @@ mod tests {
             }
         });
 
-        let structured = with_structured_output(
-            Box::new(mock),
-            schema,
-            Some("json_mode"),
-            false,
-        )
-        .unwrap();
+        let structured =
+            with_structured_output(Box::new(mock), schema, Some("json_mode"), false).unwrap();
 
         let messages = vec![Message::Human(HumanMessage::new("Tell me about Bob"))];
         let result = structured._generate(&messages, None).await.unwrap();
@@ -501,13 +489,8 @@ mod tests {
             "properties": {"x": {"type": "integer"}}
         });
 
-        let structured = with_structured_output(
-            Box::new(mock),
-            schema,
-            Some("tool_calling"),
-            false,
-        )
-        .unwrap();
+        let structured =
+            with_structured_output(Box::new(mock), schema, Some("tool_calling"), false).unwrap();
 
         let messages = vec![Message::Human(HumanMessage::new("test"))];
         let result = structured._generate(&messages, None).await;
@@ -523,13 +506,8 @@ mod tests {
 
         let schema = json!({"title": "Test", "type": "object"});
 
-        let structured = with_structured_output(
-            Box::new(mock),
-            schema,
-            Some("json_mode"),
-            false,
-        )
-        .unwrap();
+        let structured =
+            with_structured_output(Box::new(mock), schema, Some("json_mode"), false).unwrap();
 
         let messages = vec![Message::Human(HumanMessage::new("test"))];
         let result = structured._generate(&messages, None).await;
@@ -560,12 +538,7 @@ mod tests {
         let mock = MockToolCallModel::new(vec![]);
         let schema = json!({"type": "object"}); // no "title" field
 
-        let result = with_structured_output(
-            Box::new(mock),
-            schema,
-            Some("tool_calling"),
-            false,
-        );
+        let result = with_structured_output(Box::new(mock), schema, Some("tool_calling"), false);
 
         // Should succeed, using default name "structured_output"
         assert!(result.is_ok());
@@ -576,13 +549,8 @@ mod tests {
         let mock = MockTextModel::new("");
         let schema = json!({"title": "Test", "type": "object"});
 
-        let structured = with_structured_output(
-            Box::new(mock),
-            schema,
-            Some("json_mode"),
-            false,
-        )
-        .unwrap();
+        let structured =
+            with_structured_output(Box::new(mock), schema, Some("json_mode"), false).unwrap();
 
         assert_eq!(structured.llm_type(), "structured_output");
     }

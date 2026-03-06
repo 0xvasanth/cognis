@@ -10,8 +10,8 @@ pub use chat_model::{
     StreamingMode, StructuredOutputModel, ToolChoice,
 };
 pub use fake::{
-    FakeChatModel, FakeListChatModel, FakeListLLM, FakeMessagesListChatModel,
-    FakeStreamingListLLM, GenericFakeChatModel, ParrotFakeChatModel,
+    FakeChatModel, FakeListChatModel, FakeListLLM, FakeMessagesListChatModel, FakeStreamingListLLM,
+    GenericFakeChatModel, ParrotFakeChatModel,
 };
 pub use llm::{BaseLLM, LLMRunnable};
 pub use utils::{

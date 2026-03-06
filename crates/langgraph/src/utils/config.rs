@@ -143,10 +143,7 @@ mod tests {
         assert_eq!(config.recursion_limit, Some(25));
         assert_eq!(config.tags, vec!["test".to_string()]);
         assert_eq!(config.metadata.get("key"), Some(&json!("value")));
-        assert_eq!(
-            config.configurable.get("thread_id"),
-            Some(&json!("abc123"))
-        );
+        assert_eq!(config.configurable.get("thread_id"), Some(&json!("abc123")));
     }
 
     #[test]
@@ -190,10 +187,7 @@ mod tests {
         let base = RunnableConfig::new().with_configurable("thread_id", json!("old"));
         let over = RunnableConfig::new().with_configurable("thread_id", json!("new"));
         let result = merge_configs(&base, &over);
-        assert_eq!(
-            result.configurable.get("thread_id"),
-            Some(&json!("new"))
-        );
+        assert_eq!(result.configurable.get("thread_id"), Some(&json!("new")));
     }
 
     #[test]

@@ -5,8 +5,8 @@
 //! [`IndexingPipeline`] that orchestrates splitting, deduplication, and
 //! vector store insertion with configurable cleanup modes.
 
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -265,9 +265,7 @@ impl IndexingPipeline {
         // Step 4: add new docs to vector store.
         let num_added = docs_to_add.len();
         if !docs_to_add.is_empty() {
-            self.vectorstore
-                .add_documents(docs_to_add, None)
-                .await?;
+            self.vectorstore.add_documents(docs_to_add, None).await?;
         }
 
         // Step 5: update record manager with all current hashes.
@@ -422,13 +420,16 @@ mod tests {
             .with_chunk_size(10)
             .with_chunk_overlap(0)
             .with_separator("\n");
-        let pipeline = IndexingPipeline::new(store.clone())
-            .with_text_splitter(Box::new(splitter));
+        let pipeline = IndexingPipeline::new(store.clone()).with_text_splitter(Box::new(splitter));
 
         let docs = vec![Document::new("line one\nline two\nline three")];
         let result = pipeline.index(docs).await.unwrap();
         // The splitter should produce multiple chunks.
-        assert!(result.num_added >= 2, "Expected at least 2 chunks, got {}", result.num_added);
+        assert!(
+            result.num_added >= 2,
+            "Expected at least 2 chunks, got {}",
+            result.num_added
+        );
     }
 
     // ---- Test 6: IndexingResult counts correct ----
@@ -481,10 +482,7 @@ mod tests {
         assert_eq!(keys.len(), 2);
 
         // Check existence.
-        let exists = rm
-            .exists(&["k1".into(), "k3".into()])
-            .await
-            .unwrap();
+        let exists = rm.exists(&["k1".into(), "k3".into()]).await.unwrap();
         assert_eq!(exists, vec![true, false]);
 
         // Delete a key.
@@ -513,10 +511,7 @@ mod tests {
         assert_eq!(r2.num_skipped, 2);
 
         // Pass 3 -- add a new doc
-        let r3 = pipeline
-            .index(make_docs(&["a", "b", "c"]))
-            .await
-            .unwrap();
+        let r3 = pipeline.index(make_docs(&["a", "b", "c"])).await.unwrap();
         assert_eq!(r3.num_added, 1);
         assert_eq!(r3.num_skipped, 2);
     }

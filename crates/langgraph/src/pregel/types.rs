@@ -134,10 +134,7 @@ pub type PregelNodeAction = Arc<
     dyn Fn(
             Value,
         ) -> Pin<
-            Box<
-                dyn std::future::Future<Output = Result<Vec<ChannelWrite>, LangGraphError>>
-                    + Send,
-            >,
+            Box<dyn std::future::Future<Output = Result<Vec<ChannelWrite>, LangGraphError>> + Send>,
         > + Send
         + Sync,
 >;

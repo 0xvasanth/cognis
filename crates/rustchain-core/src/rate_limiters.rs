@@ -49,11 +49,7 @@ impl InMemoryRateLimiter {
     /// * `requests_per_second` - Rate at which tokens are replenished.
     /// * `check_every_n_seconds` - How often to poll when blocking.
     /// * `max_bucket_size` - Maximum number of tokens that can accumulate.
-    pub fn new(
-        requests_per_second: f64,
-        check_every_n_seconds: f64,
-        max_bucket_size: f64,
-    ) -> Self {
+    pub fn new(requests_per_second: f64, check_every_n_seconds: f64, max_bucket_size: f64) -> Self {
         Self {
             requests_per_second,
             check_every_n_seconds,
@@ -73,9 +69,8 @@ impl InMemoryRateLimiter {
         state.last_time = now;
 
         // Replenish tokens based on elapsed time, capped at max_bucket_size.
-        state.available_tokens = (state.available_tokens
-            + elapsed * self.requests_per_second)
-            .min(self.max_bucket_size);
+        state.available_tokens =
+            (state.available_tokens + elapsed * self.requests_per_second).min(self.max_bucket_size);
 
         if state.available_tokens >= 1.0 {
             state.available_tokens -= 1.0;

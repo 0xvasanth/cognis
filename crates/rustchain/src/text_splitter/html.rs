@@ -49,7 +49,10 @@ impl HTMLHeaderTextSplitter {
                 if !content.is_empty() {
                     result.push(
                         Document::new(content).with_metadata(
-                            current_headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                            current_headers
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect(),
                         ),
                     );
                 }
@@ -67,7 +70,10 @@ impl HTMLHeaderTextSplitter {
         if !content.is_empty() {
             result.push(
                 Document::new(content).with_metadata(
-                    current_headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                    current_headers
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
                 ),
             );
         }

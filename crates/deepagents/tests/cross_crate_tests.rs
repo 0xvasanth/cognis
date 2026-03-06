@@ -108,10 +108,7 @@ impl Middleware for NoopMiddleware {
 async fn test_core_runnable_trait_implemented_by_lambda_and_chain() {
     // RunnableLambda (core) implements Runnable
     let lambda = RunnableLambda::new("uppercase", |input: Value| async move {
-        let s = input
-            .as_str()
-            .unwrap_or("fallback")
-            .to_uppercase();
+        let s = input.as_str().unwrap_or("fallback").to_uppercase();
         Ok(Value::String(s))
     });
 
@@ -119,16 +116,11 @@ async fn test_core_runnable_trait_implemented_by_lambda_and_chain() {
     let runnable: &dyn Runnable = &lambda;
     assert_eq!(runnable.name(), "uppercase");
 
-    let result = runnable
-        .invoke(json!("hello world"), None)
-        .await
-        .unwrap();
+    let result = runnable.invoke(json!("hello world"), None).await.unwrap();
     assert_eq!(result, json!("HELLO WORLD"));
 
     // LLMChain (rustchain) also implements Runnable via core trait
-    let model: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
-        "Paris".to_string(),
-    ]));
+    let model: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec!["Paris".to_string()]));
     let chain = LLMChain::builder()
         .model(model)
         .prompt("What is the capital of {country}?")
@@ -165,9 +157,7 @@ async fn test_runnable_sequence_with_lambda_steps() {
     });
 
     // Step 3: wrap in a result object
-    let step3 = RunnableLambda::new("wrap", |v: Value| async move {
-        Ok(json!({"result": v}))
-    });
+    let step3 = RunnableLambda::new("wrap", |v: Value| async move { Ok(json!({"result": v})) });
 
     let sequence = RunnableSequence::new(vec![
         Arc::new(step1) as Arc<dyn Runnable>,
@@ -263,10 +253,7 @@ async fn test_llmchain_with_fake_chat_model() {
         .output_key("answer")
         .build();
 
-    let result = chain
-        .invoke(json!({"topic": "Rust"}), None)
-        .await
-        .unwrap();
+    let result = chain.invoke(json!({"topic": "Rust"}), None).await.unwrap();
 
     assert_eq!(
         result["answer"],
@@ -275,9 +262,7 @@ async fn test_llmchain_with_fake_chat_model() {
 
     // Verify it also works through the Runnable trait
     let runnable: &dyn Runnable = &chain;
-    let result2 = runnable
-        .invoke(json!({"topic": "Python"}), None)
-        .await;
+    let result2 = runnable.invoke(json!({"topic": "Python"}), None).await;
     // FakeListChatModel cycles, so second call may reuse the response
     assert!(result2.is_ok());
 }
@@ -377,8 +362,7 @@ async fn test_langgraph_checkpoint_save_restore_with_core_types() {
         "messages".to_string(),
         Value::Array(serialized_messages.clone()),
     );
-    cp.channel_values
-        .insert("turn_count".to_string(), json!(1));
+    cp.channel_values.insert("turn_count".to_string(), json!(1));
     cp.channel_versions.insert("messages".to_string(), 1);
     cp.channel_versions.insert("turn_count".to_string(), 1);
 
@@ -413,7 +397,10 @@ async fn test_langgraph_checkpoint_save_restore_with_core_types() {
     let msg0: Message = serde_json::from_value(restored_msgs[0].clone()).unwrap();
     let msg1: Message = serde_json::from_value(restored_msgs[1].clone()).unwrap();
     assert_eq!(msg0.content().text(), "What is Rust?");
-    assert_eq!(msg1.content().text(), "Rust is a systems programming language.");
+    assert_eq!(
+        msg1.content().text(),
+        "Rust is a systems programming language."
+    );
 
     // Verify turn_count survived the round-trip
     assert_eq!(restored.checkpoint.channel_values["turn_count"], json!(1));
@@ -482,9 +469,10 @@ async fn test_rustchain_memory_with_deepagents_agent_state() {
 
     // Now feed the buffer memory history into a deepagents graph
     // by constructing the messages state from memory
-    let model: Arc<dyn BaseChatModel> = Arc::new(FakeMessagesListChatModel::new(vec![
-        Message::Ai(AIMessage::new("Weather summary provided.")),
-    ]));
+    let model: Arc<dyn BaseChatModel> =
+        Arc::new(FakeMessagesListChatModel::new(vec![Message::Ai(
+            AIMessage::new("Weather summary provided."),
+        )]));
     let tool: Arc<dyn BaseTool> = Arc::new(MockTool::new("dummy", "unused"));
 
     let config = DeepAgentConfig {
@@ -568,9 +556,8 @@ async fn test_output_parsers_with_chain_outputs() {
     assert_eq!(items[3], "date");
 
     // Use it as a Runnable step after an LLMChain
-    let model: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
-        "red, green, blue".to_string(),
-    ]));
+    let model: Arc<dyn BaseChatModel> =
+        Arc::new(FakeListChatModel::new(vec!["red, green, blue".to_string()]));
 
     let chain = LLMChain::builder()
         .model(model)
@@ -618,10 +605,9 @@ async fn test_full_rag_pipeline_across_crates() {
 
     // Rustchain: build vector store from chunks
     let texts: Vec<String> = chunks;
-    let store =
-        InMemoryVectorStore::from_texts(&texts, None, embeddings.clone())
-            .await
-            .unwrap();
+    let store = InMemoryVectorStore::from_texts(&texts, None, embeddings.clone())
+        .await
+        .unwrap();
 
     // Core: wrap vector store as a retriever
     let retriever: Arc<dyn BaseRetriever> = Arc::new(VectorStoreRetriever::new(
@@ -639,7 +625,10 @@ async fn test_full_rag_pipeline_across_crates() {
     let chain = RetrievalQAChain::new(retriever, llm).with_k(2);
     let result = chain.call_with_sources("What is Rust?").await.unwrap();
 
-    assert_eq!(result.answer, "Rust is a systems language focused on safety.");
+    assert_eq!(
+        result.answer,
+        "Rust is a systems language focused on safety."
+    );
     assert!(!result.source_documents.is_empty());
 }
 

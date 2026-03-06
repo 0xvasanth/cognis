@@ -270,9 +270,7 @@ pub fn stream_graph_events(
 
         // Emit GraphEnd.
         let _ = tx
-            .send(Ok(GraphStreamEvent::GraphEnd {
-                output: state,
-            }))
+            .send(Ok(GraphStreamEvent::GraphEnd { output: state }))
             .await;
     });
 
@@ -401,9 +399,9 @@ mod tests {
             .add_node(
                 "fail_node",
                 Arc::new(|_state: Value| {
-                    Box::pin(async move {
-                        Err(LangGraphError::Other("intentional failure".into()))
-                    })
+                    Box::pin(
+                        async move { Err(LangGraphError::Other("intentional failure".into())) },
+                    )
                 }),
             )
             .add_edge("__start__", "fail_node")
@@ -422,7 +420,11 @@ mod tests {
         let events = GraphEventCollector::collect_all(stream).await.unwrap();
 
         // Expected: GraphStart, NodeStart(A), NodeEnd(A), StateUpdate, NodeStart(B), NodeEnd(B), StateUpdate, GraphEnd
-        assert!(events.len() >= 8, "expected at least 8 events, got {}", events.len());
+        assert!(
+            events.len() >= 8,
+            "expected at least 8 events, got {}",
+            events.len()
+        );
 
         assert!(matches!(&events[0], GraphStreamEvent::GraphStart { .. }));
 
@@ -436,7 +438,10 @@ mod tests {
             .collect();
         assert_eq!(node_names, vec!["A", "B"]);
 
-        assert!(matches!(events.last().unwrap(), GraphStreamEvent::GraphEnd { .. }));
+        assert!(matches!(
+            events.last().unwrap(),
+            GraphStreamEvent::GraphEnd { .. }
+        ));
     }
 
     // ------------------------------------------------------------------
@@ -489,11 +494,20 @@ mod tests {
         }
 
         // All NodeStart/NodeEnd events must be between GraphStart and GraphEnd.
-        let first_node_idx = events.iter().position(|e| matches!(e, GraphStreamEvent::NodeStart { .. })).unwrap();
-        let last_node_idx = events.iter().rposition(|e| matches!(e, GraphStreamEvent::NodeEnd { .. })).unwrap();
+        let first_node_idx = events
+            .iter()
+            .position(|e| matches!(e, GraphStreamEvent::NodeStart { .. }))
+            .unwrap();
+        let last_node_idx = events
+            .iter()
+            .rposition(|e| matches!(e, GraphStreamEvent::NodeEnd { .. }))
+            .unwrap();
 
         assert!(first_node_idx > 0, "NodeStart should come after GraphStart");
-        assert!(last_node_idx < events.len() - 1, "NodeEnd should come before GraphEnd");
+        assert!(
+            last_node_idx < events.len() - 1,
+            "NodeEnd should come before GraphEnd"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -566,7 +580,9 @@ mod tests {
         assert!(has_node_error, "expected a NodeError event for fail_node");
 
         // Should NOT have a GraphEnd event (error terminates early).
-        let has_graph_end = events.iter().any(|e| matches!(e, GraphStreamEvent::GraphEnd { .. }));
+        let has_graph_end = events
+            .iter()
+            .any(|e| matches!(e, GraphStreamEvent::GraphEnd { .. }));
         assert!(!has_graph_end, "should not have GraphEnd after error");
     }
 
@@ -582,7 +598,10 @@ mod tests {
         // Should have collected all events.
         assert!(!events.is_empty());
         assert!(matches!(&events[0], GraphStreamEvent::GraphStart { .. }));
-        assert!(matches!(events.last().unwrap(), GraphStreamEvent::GraphEnd { .. }));
+        assert!(matches!(
+            events.last().unwrap(),
+            GraphStreamEvent::GraphEnd { .. }
+        ));
     }
 
     #[tokio::test]
@@ -655,9 +674,15 @@ mod tests {
         // Verify the repeating pattern.
         let expected_types = vec![
             "graph_start",
-            "node_start", "node_end", "state_update",
-            "node_start", "node_end", "state_update",
-            "node_start", "node_end", "state_update",
+            "node_start",
+            "node_end",
+            "state_update",
+            "node_start",
+            "node_end",
+            "state_update",
+            "node_start",
+            "node_end",
+            "state_update",
             "graph_end",
         ];
 
@@ -696,10 +721,19 @@ mod tests {
 
         // After node A: state should have "a" key.
         assert_eq!(state_updates.len(), 2);
-        assert!(state_updates[0].get("a").is_some(), "state after A should contain 'a'");
+        assert!(
+            state_updates[0].get("a").is_some(),
+            "state after A should contain 'a'"
+        );
 
         // After node B: state should have both "a" and "b" keys.
-        assert!(state_updates[1].get("a").is_some(), "state after B should still contain 'a'");
-        assert!(state_updates[1].get("b").is_some(), "state after B should contain 'b'");
+        assert!(
+            state_updates[1].get("a").is_some(),
+            "state after B should still contain 'a'"
+        );
+        assert!(
+            state_updates[1].get("b").is_some(),
+            "state after B should contain 'b'"
+        );
     }
 }

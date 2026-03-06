@@ -2,13 +2,12 @@
 //!
 //! Mirrors Python `langchain.agents.middleware.model_retry`.
 
-
 use async_trait::async_trait;
 
 use rustchain_core::error::{Result, RustChainError};
 use rustchain_core::messages::Message;
 
-use super::retry::{OnFailure, RetryCondition, RetryConfig, should_retry};
+use super::retry::{should_retry, OnFailure, RetryCondition, RetryConfig};
 use super::types::{
     AgentMiddleware, AsyncModelHandler, ModelCallResult, ModelRequest, ModelResponse,
 };
@@ -44,7 +43,6 @@ impl ModelRetryMiddleware {
     }
 }
 
-
 #[async_trait]
 impl AgentMiddleware for ModelRetryMiddleware {
     fn name(&self) -> &str {
@@ -62,7 +60,9 @@ impl AgentMiddleware for ModelRetryMiddleware {
             match handler(request).await {
                 Ok(response) => return Ok(ModelCallResult::Response(response)),
                 Err(e) => {
-                    if !should_retry(&e, &self.config.retry_on) || attempt == self.config.max_retries {
+                    if !should_retry(&e, &self.config.retry_on)
+                        || attempt == self.config.max_retries
+                    {
                         last_error = Some(e);
                         break;
                     }
@@ -82,7 +82,9 @@ impl AgentMiddleware for ModelRetryMiddleware {
                     "Model call failed after {} retries: {}",
                     self.config.max_retries, error
                 ));
-                Ok(ModelCallResult::Response(ModelResponse::new(vec![error_msg])))
+                Ok(ModelCallResult::Response(ModelResponse::new(vec![
+                    error_msg,
+                ])))
             }
         }
     }
@@ -111,13 +113,15 @@ mod tests {
     fn test_model_retry_with_retry_on() {
         let mw = ModelRetryMiddleware::default()
             .with_retry_on(RetryCondition::ErrorContains(vec!["timeout".into()]));
-        assert!(matches!(mw.config.retry_on, RetryCondition::ErrorContains(_)));
+        assert!(matches!(
+            mw.config.retry_on,
+            RetryCondition::ErrorContains(_)
+        ));
     }
 
     #[test]
     fn test_model_retry_with_on_failure() {
-        let mw = ModelRetryMiddleware::default()
-            .with_on_failure(OnFailure::Error);
+        let mw = ModelRetryMiddleware::default().with_on_failure(OnFailure::Error);
         assert!(matches!(mw.config.on_failure, OnFailure::Error));
     }
 }

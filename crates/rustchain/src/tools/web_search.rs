@@ -282,7 +282,11 @@ impl BaseTool for DuckDuckGoSearchTool {
         let resp = self
             .client
             .get("https://api.duckduckgo.com/")
-            .query(&[("q", &query), ("format", &"json".to_string()), ("no_html", &"1".to_string())])
+            .query(&[
+                ("q", &query),
+                ("format", &"json".to_string()),
+                ("no_html", &"1".to_string()),
+            ])
             .send()
             .await
             .map_err(|e| {
@@ -376,7 +380,10 @@ mod tests {
     #[tokio::test]
     async fn test_web_search_no_api_url_returns_placeholder() {
         let tool = WebSearchTool::builder().build();
-        let result = tool._run(ToolInput::Text("test query".to_string())).await.unwrap();
+        let result = tool
+            ._run(ToolInput::Text("test query".to_string()))
+            .await
+            .unwrap();
         match result {
             ToolOutput::Content(Value::String(s)) => {
                 assert!(s.contains("No api_url configured"));
@@ -401,7 +408,10 @@ mod tests {
 
         let resp: DdgResponse = serde_json::from_str(json_str).unwrap();
         assert_eq!(resp.heading, "Rust (programming language)");
-        assert_eq!(resp.abstract_text, "Rust is a systems programming language.");
+        assert_eq!(
+            resp.abstract_text,
+            "Rust is a systems programming language."
+        );
         assert_eq!(resp.related_topics.len(), 2);
 
         let formatted = format_ddg_response(&resp);
@@ -433,7 +443,10 @@ mod tests {
     #[test]
     fn test_extract_query_from_structured() {
         let mut map = std::collections::HashMap::new();
-        map.insert("query".to_string(), Value::String("structured query".to_string()));
+        map.insert(
+            "query".to_string(),
+            Value::String("structured query".to_string()),
+        );
         let input = ToolInput::Structured(map);
         assert_eq!(extract_query(&input).unwrap(), "structured query");
     }

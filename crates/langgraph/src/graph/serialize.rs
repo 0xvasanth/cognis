@@ -49,27 +49,31 @@ pub struct GraphDefinition {
 impl GraphDefinition {
     /// Serialize to a JSON string.
     pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string_pretty(self)
-            .map_err(|e| LangGraphError::Other(format!("Failed to serialize graph definition: {e}")))
+        serde_json::to_string_pretty(self).map_err(|e| {
+            LangGraphError::Other(format!("Failed to serialize graph definition: {e}"))
+        })
     }
 
     /// Deserialize from a JSON string.
     pub fn from_json(json: &str) -> Result<Self> {
-        serde_json::from_str(json)
-            .map_err(|e| LangGraphError::Other(format!("Failed to deserialize graph definition: {e}")))
+        serde_json::from_str(json).map_err(|e| {
+            LangGraphError::Other(format!("Failed to deserialize graph definition: {e}"))
+        })
     }
 
     /// Save the definition to a JSON file.
     pub fn save_to_file(&self, path: &Path) -> Result<()> {
         let json = self.to_json()?;
-        std::fs::write(path, json)
-            .map_err(|e| LangGraphError::Other(format!("Failed to write graph definition to file: {e}")))
+        std::fs::write(path, json).map_err(|e| {
+            LangGraphError::Other(format!("Failed to write graph definition to file: {e}"))
+        })
     }
 
     /// Load a definition from a JSON file.
     pub fn load_from_file(path: &Path) -> Result<Self> {
-        let json = std::fs::read_to_string(path)
-            .map_err(|e| LangGraphError::Other(format!("Failed to read graph definition from file: {e}")))?;
+        let json = std::fs::read_to_string(path).map_err(|e| {
+            LangGraphError::Other(format!("Failed to read graph definition from file: {e}"))
+        })?;
         Self::from_json(&json)
     }
 
@@ -282,8 +286,9 @@ impl GraphRegistry {
         let entries = std::fs::read_dir(dir)
             .map_err(|e| LangGraphError::Other(format!("Failed to read directory: {e}")))?;
         for entry in entries {
-            let entry = entry
-                .map_err(|e| LangGraphError::Other(format!("Failed to read directory entry: {e}")))?;
+            let entry = entry.map_err(|e| {
+                LangGraphError::Other(format!("Failed to read directory entry: {e}"))
+            })?;
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("json") {
                 let name = path
@@ -305,10 +310,7 @@ mod tests {
 
     fn sample_definition() -> GraphDefinition {
         GraphDefinition {
-            nodes: vec![
-                "agent".to_string(),
-                "tools".to_string(),
-            ],
+            nodes: vec!["agent".to_string(), "tools".to_string()],
             edges: vec![
                 (START.to_string(), "agent".to_string()),
                 ("tools".to_string(), "agent".to_string()),
@@ -347,7 +349,10 @@ mod tests {
         assert_eq!(def.nodes, restored.nodes);
         assert_eq!(def.edges, restored.edges);
         assert_eq!(def.entry_point, restored.entry_point);
-        assert_eq!(def.conditional_edges.len(), restored.conditional_edges.len());
+        assert_eq!(
+            def.conditional_edges.len(),
+            restored.conditional_edges.len()
+        );
         assert_eq!(
             def.conditional_edges[0].from,
             restored.conditional_edges[0].from

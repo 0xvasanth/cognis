@@ -98,13 +98,12 @@ impl Default for OutputFunctionsParser {
 
 impl OutputParser for OutputFunctionsParser {
     fn parse(&self, text: &str) -> Result<Value> {
-        let parsed: Value = serde_json::from_str(text).map_err(|e| {
-            RustChainError::OutputParserError {
+        let parsed: Value =
+            serde_json::from_str(text).map_err(|e| RustChainError::OutputParserError {
                 message: format!("Failed to parse function call JSON: {}", e),
                 observation: Some(text.to_string()),
                 llm_output: None,
-            }
-        })?;
+            })?;
 
         if self.args_only {
             parsed
@@ -298,13 +297,12 @@ impl Default for JsonOutputFunctionsParser {
 
 impl OutputParser for JsonOutputFunctionsParser {
     fn parse(&self, text: &str) -> Result<Value> {
-        let parsed: Value = serde_json::from_str(text).map_err(|e| {
-            RustChainError::OutputParserError {
+        let parsed: Value =
+            serde_json::from_str(text).map_err(|e| RustChainError::OutputParserError {
                 message: format!("Failed to parse function call JSON: {}", e),
                 observation: Some(text.to_string()),
                 llm_output: None,
-            }
-        })?;
+            })?;
 
         self.process_function_call(&parsed, false)
     }
@@ -406,13 +404,14 @@ impl JsonKeyOutputFunctionsParser {
 impl OutputParser for JsonKeyOutputFunctionsParser {
     fn parse(&self, text: &str) -> Result<Value> {
         let parsed = self.json_parser().parse(text)?;
-        parsed.get(&self.key_name).cloned().ok_or_else(|| {
-            RustChainError::OutputParserError {
+        parsed
+            .get(&self.key_name)
+            .cloned()
+            .ok_or_else(|| RustChainError::OutputParserError {
                 message: format!("Key '{}' not found in parsed output", self.key_name),
                 observation: Some(parsed.to_string()),
                 llm_output: None,
-            }
-        })
+            })
     }
 
     fn parse_result(&self, result: &[Generation], partial: bool) -> Result<Value> {
@@ -422,18 +421,16 @@ impl OutputParser for JsonKeyOutputFunctionsParser {
         }
         if partial {
             // For partial, use .get() which returns None gracefully
-            Ok(parsed
+            Ok(parsed.get(&self.key_name).cloned().unwrap_or(Value::Null))
+        } else {
+            parsed
                 .get(&self.key_name)
                 .cloned()
-                .unwrap_or(Value::Null))
-        } else {
-            parsed.get(&self.key_name).cloned().ok_or_else(|| {
-                RustChainError::OutputParserError {
+                .ok_or_else(|| RustChainError::OutputParserError {
                     message: format!("Key '{}' not found in parsed output", self.key_name),
                     observation: Some(parsed.to_string()),
                     llm_output: None,
-                }
-            })
+                })
         }
     }
 
@@ -592,14 +589,13 @@ impl OutputParser for SchemaOutputFunctionsParser {
             args_only: self.args_only,
         };
         let raw = if self.args_only {
-            func_call
-                .get("arguments")
-                .cloned()
-                .ok_or_else(|| RustChainError::OutputParserError {
+            func_call.get("arguments").cloned().ok_or_else(|| {
+                RustChainError::OutputParserError {
                     message: "Function call missing 'arguments' key".into(),
                     observation: Some(func_call.to_string()),
                     llm_output: None,
-                })?
+                }
+            })?
         } else {
             // Keep the base_parser reference alive to suppress the warning
             let _ = &base_parser;
@@ -702,24 +698,26 @@ impl SchemaAttrOutputFunctionsParser {
 impl OutputParser for SchemaAttrOutputFunctionsParser {
     fn parse(&self, text: &str) -> Result<Value> {
         let parsed = self.inner.parse(text)?;
-        parsed.get(&self.attr_name).cloned().ok_or_else(|| {
-            RustChainError::OutputParserError {
+        parsed
+            .get(&self.attr_name)
+            .cloned()
+            .ok_or_else(|| RustChainError::OutputParserError {
                 message: format!("Attribute '{}' not found in parsed output", self.attr_name),
                 observation: Some(parsed.to_string()),
                 llm_output: None,
-            }
-        })
+            })
     }
 
     fn parse_result(&self, result: &[Generation], partial: bool) -> Result<Value> {
         let parsed = self.inner.parse_result(result, partial)?;
-        parsed.get(&self.attr_name).cloned().ok_or_else(|| {
-            RustChainError::OutputParserError {
+        parsed
+            .get(&self.attr_name)
+            .cloned()
+            .ok_or_else(|| RustChainError::OutputParserError {
                 message: format!("Attribute '{}' not found in parsed output", self.attr_name),
                 observation: Some(parsed.to_string()),
                 llm_output: None,
-            }
-        })
+            })
     }
 
     fn get_format_instructions(&self) -> Option<String> {
@@ -1111,10 +1109,7 @@ mod tests {
         let input = json!({"name": "test_fn", "arguments": "{\"key\": \"value\"}"});
         // parse as string
         let result = parser
-            .invoke(
-                Value::String(serde_json::to_string(&input).unwrap()),
-                None,
-            )
+            .invoke(Value::String(serde_json::to_string(&input).unwrap()), None)
             .await
             .unwrap();
         assert_eq!(result.as_str().unwrap(), r#"{"key": "value"}"#);
@@ -1138,10 +1133,7 @@ mod tests {
         let parser = JsonOutputFunctionsParser::new();
         let input = json!({"name": "fn", "arguments": "{\"city\": \"London\"}"});
         let result = parser
-            .invoke(
-                Value::String(serde_json::to_string(&input).unwrap()),
-                None,
-            )
+            .invoke(Value::String(serde_json::to_string(&input).unwrap()), None)
             .await
             .unwrap();
         assert_eq!(result, json!({"city": "London"}));
@@ -1166,10 +1158,7 @@ mod tests {
         let input =
             json!({"name": "hello", "arguments": "{\"greeting\": \"hi\", \"lang\": \"en\"}"});
         let result = parser
-            .invoke(
-                Value::String(serde_json::to_string(&input).unwrap()),
-                None,
-            )
+            .invoke(Value::String(serde_json::to_string(&input).unwrap()), None)
             .await
             .unwrap();
         assert_eq!(result, json!("hi"));
@@ -1181,10 +1170,7 @@ mod tests {
         let parser = SchemaOutputFunctionsParser::from_single_schema(schema);
         let input = json!({"name": "fn", "arguments": "{\"x\": 42}"});
         let result = parser
-            .invoke(
-                Value::String(serde_json::to_string(&input).unwrap()),
-                None,
-            )
+            .invoke(Value::String(serde_json::to_string(&input).unwrap()), None)
             .await
             .unwrap();
         assert_eq!(result, json!({"x": 42}));
@@ -1196,10 +1182,7 @@ mod tests {
         let parser = SchemaAttrOutputFunctionsParser::new(inner, "value");
         let input = json!({"name": "fn", "arguments": "{\"value\": 99}"});
         let result = parser
-            .invoke(
-                Value::String(serde_json::to_string(&input).unwrap()),
-                None,
-            )
+            .invoke(Value::String(serde_json::to_string(&input).unwrap()), None)
             .await
             .unwrap();
         assert_eq!(result, json!(99));

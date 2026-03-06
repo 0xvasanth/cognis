@@ -229,10 +229,7 @@ impl ChatHistoryStore for FileChatHistory {
         let path = self.session_path(session_id);
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| {
-                RustChainError::Other(format!(
-                    "Failed to delete session file {:?}: {}",
-                    path, e
-                ))
+                RustChainError::Other(format!("Failed to delete session file {:?}: {}", path, e))
             })?;
         }
         Ok(())
@@ -291,8 +288,7 @@ impl BaseMemory for ChatHistoryMemory {
                 .collect();
             vars.insert(self.memory_key.clone(), Value::Array(serialized));
         } else {
-            let buffer =
-                rustchain_core::messages::get_buffer_string(&messages, "Human", "AI");
+            let buffer = rustchain_core::messages::get_buffer_string(&messages, "Human", "AI");
             vars.insert(self.memory_key.clone(), Value::String(buffer));
         }
 
@@ -398,14 +394,8 @@ mod tests {
     #[tokio::test]
     async fn test_inmemory_multiple_sessions() {
         let store = InMemoryChatHistory::new();
-        store
-            .add_message("s1", Message::human("A"))
-            .await
-            .unwrap();
-        store
-            .add_message("s2", Message::human("B"))
-            .await
-            .unwrap();
+        store.add_message("s1", Message::human("A")).await.unwrap();
+        store.add_message("s2", Message::human("B")).await.unwrap();
 
         assert_eq!(store.get_messages("s1").await.unwrap().len(), 1);
         assert_eq!(store.get_messages("s2").await.unwrap().len(), 1);
@@ -467,10 +457,7 @@ mod tests {
             .add_message("s1", Message::human("Hello"))
             .await
             .unwrap();
-        store
-            .add_message("s1", Message::ai("Hi"))
-            .await
-            .unwrap();
+        store.add_message("s1", Message::ai("Hi")).await.unwrap();
 
         let msgs = store.get_messages("s1").await.unwrap();
         assert_eq!(msgs.len(), 2);

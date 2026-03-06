@@ -79,9 +79,7 @@ pub struct PregelChannelWriter {
 impl PregelChannelWriter {
     /// Create a new empty channel writer.
     pub fn new() -> Self {
-        Self {
-            writes: Vec::new(),
-        }
+        Self { writes: Vec::new() }
     }
 
     /// Add a single write entry, resolving its value against the node output.
@@ -191,10 +189,7 @@ impl Default for PregelChannelWriter {
 ///
 /// This is a utility function that resolves passthrough values and filters
 /// skipped writes.
-pub fn assemble_writes(
-    entries: &[ChannelWriteEntry],
-    node_output: &Value,
-) -> Vec<(String, Value)> {
+pub fn assemble_writes(entries: &[ChannelWriteEntry], node_output: &Value) -> Vec<(String, Value)> {
     entries
         .iter()
         .filter_map(|entry| {
@@ -241,19 +236,14 @@ mod tests {
         }
 
         fn get(&self) -> std::result::Result<Value, LangGraphError> {
-            self.value
-                .clone()
-                .ok_or(LangGraphError::EmptyChannelError)
+            self.value.clone().ok_or(LangGraphError::EmptyChannelError)
         }
 
         fn is_available(&self) -> bool {
             self.value.is_some()
         }
 
-        fn update(
-            &mut self,
-            values: Vec<Value>,
-        ) -> std::result::Result<bool, LangGraphError> {
+        fn update(&mut self, values: Vec<Value>) -> std::result::Result<bool, LangGraphError> {
             if let Some(v) = values.into_iter().last() {
                 self.value = Some(v);
                 Ok(true)
@@ -269,11 +259,10 @@ mod tests {
         entries
             .into_iter()
             .map(|(name, value)| {
-                let ch: Box<dyn crate::channels::base::BaseChannel> =
-                    Box::new(TestChannel {
-                        key: name.to_string(),
-                        value,
-                    });
+                let ch: Box<dyn crate::channels::base::BaseChannel> = Box::new(TestChannel {
+                    key: name.to_string(),
+                    value,
+                });
                 (name.to_string(), ch)
             })
             .collect()
@@ -379,10 +368,7 @@ mod tests {
 
     #[test]
     fn test_writer_apply_success() {
-        let mut channels = make_channels(vec![
-            ("a", None),
-            ("b", None),
-        ]);
+        let mut channels = make_channels(vec![("a", None), ("b", None)]);
 
         let mut writer = PregelChannelWriter::new();
         writer.add_raw_write("a", json!(10));
@@ -457,9 +443,7 @@ mod tests {
 
     #[test]
     fn test_assemble_writes_with_output() {
-        let entries = vec![
-            ChannelWriteEntry::passthrough("result"),
-        ];
+        let entries = vec![ChannelWriteEntry::passthrough("result")];
         let node_output = json!({"key": "value"});
 
         let writes = assemble_writes(&entries, &node_output);

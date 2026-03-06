@@ -5,9 +5,9 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::error::{Result, RustChainError};
 use super::base::BaseTool;
 use super::types::{ErrorHandler, ResponseFormat, ToolInput, ToolOutput};
+use crate::error::{Result, RustChainError};
 
 /// An async function that takes structured arguments and returns a JSON value.
 type StructuredFn = Box<
@@ -118,13 +118,10 @@ impl StructuredTool {
                     ))
                 })?;
                 match parsed {
-                    Value::Object(map) => {
-                        Ok(map.into_iter().collect())
-                    }
+                    Value::Object(map) => Ok(map.into_iter().collect()),
                     _ => Err(RustChainError::ToolValidationError(format!(
                         "Expected JSON object input for structured tool '{}', got {}",
-                        self.name,
-                        parsed
+                        self.name, parsed
                     ))),
                 }
             }

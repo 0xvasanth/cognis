@@ -140,9 +140,7 @@ pub async fn run_with_retry_policies(
                 attempts += 1;
 
                 // Find the first policy that still has attempts remaining.
-                let matching_policy = policies
-                    .iter()
-                    .find(|p| attempts < p.max_attempts);
+                let matching_policy = policies.iter().find(|p| attempts < p.max_attempts);
 
                 let Some(policy) = matching_policy else {
                     return Err(err);

@@ -11,7 +11,9 @@ pub mod xml;
 
 pub use base::{default_transform_stream, OutputParser, TransformOutputParser};
 pub use json::JsonOutputParser;
-pub use list::{CommaSeparatedListOutputParser, MarkdownListOutputParser, NumberedListOutputParser};
+pub use list::{
+    CommaSeparatedListOutputParser, MarkdownListOutputParser, NumberedListOutputParser,
+};
 pub use openai_functions::{
     JsonKeyOutputFunctionsParser, JsonOutputFunctionsParser, OutputFunctionsParser,
     SchemaAttrOutputFunctionsParser, SchemaOutputFunctionsParser,

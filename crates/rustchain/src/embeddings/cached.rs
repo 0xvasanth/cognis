@@ -403,21 +403,13 @@ mod tests {
 
         // 3 misses
         cached
-            .embed_documents(vec![
-                "a".to_string(),
-                "b".to_string(),
-                "c".to_string(),
-            ])
+            .embed_documents(vec!["a".to_string(), "b".to_string(), "c".to_string()])
             .await
             .unwrap();
 
         // 3 hits
         cached
-            .embed_documents(vec![
-                "a".to_string(),
-                "b".to_string(),
-                "c".to_string(),
-            ])
+            .embed_documents(vec!["a".to_string(), "b".to_string(), "c".to_string()])
             .await
             .unwrap();
 
@@ -432,18 +424,9 @@ mod tests {
         let cached = make_cached_bounded(4, 2);
 
         // Insert 3 items into a cache that holds 2
-        cached
-            .embed_documents(vec!["a".to_string()])
-            .await
-            .unwrap();
-        cached
-            .embed_documents(vec!["b".to_string()])
-            .await
-            .unwrap();
-        cached
-            .embed_documents(vec!["c".to_string()])
-            .await
-            .unwrap();
+        cached.embed_documents(vec!["a".to_string()]).await.unwrap();
+        cached.embed_documents(vec!["b".to_string()]).await.unwrap();
+        cached.embed_documents(vec!["c".to_string()]).await.unwrap();
 
         // Cache should have only 2 entries
         assert_eq!(cached.cache().len(), 2);

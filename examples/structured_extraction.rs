@@ -53,7 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // In production, a real LLM would generate these from the input text.
 
     let model = Arc::new(GenericFakeChatModel::from_messages(vec![
-        AIMessage::new(r#"{"name": "Alice Johnson", "age": 32, "occupation": "Software Engineer"}"#),
+        AIMessage::new(
+            r#"{"name": "Alice Johnson", "age": 32, "occupation": "Software Engineer"}"#,
+        ),
         AIMessage::new(r#"{"name": "Dr. Robert Chen", "age": 45, "occupation": "Neurosurgeon"}"#),
         AIMessage::new(r#"{"name": "Maria Garcia", "age": 28, "occupation": "Data Scientist"}"#),
     ]));
@@ -72,7 +74,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Step 3: Built StructuredOutputChain");
     println!("  Chain name: {}", chain.name());
     if let Some(instructions) = chain.format_instructions() {
-        println!("  Format instructions preview: {}...", &instructions[..instructions.len().min(80)]);
+        println!(
+            "  Format instructions preview: {}...",
+            &instructions[..instructions.len().min(80)]
+        );
     }
     println!();
 
@@ -111,9 +116,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     println!("--- Step 5: Extraction with output key ---\n");
 
-    let wrapped_model = Arc::new(GenericFakeChatModel::from_messages(vec![
-        AIMessage::new(r#"{"name": "Eve Park", "age": 38, "occupation": "Architect"}"#),
-    ]));
+    let wrapped_model = Arc::new(GenericFakeChatModel::from_messages(vec![AIMessage::new(
+        r#"{"name": "Eve Park", "age": 38, "occupation": "Architect"}"#,
+    )]));
 
     let wrapped_chain = StructuredOutputChain::builder()
         .model(wrapped_model)
@@ -127,9 +132,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     println!("  With output_key=\"person\":");
-    println!("    result[\"person\"][\"name\"] = {}", result["person"]["name"]);
-    println!("    result[\"person\"][\"age\"] = {}", result["person"]["age"]);
-    println!("    result[\"person\"][\"occupation\"] = {}", result["person"]["occupation"]);
+    println!(
+        "    result[\"person\"][\"name\"] = {}",
+        result["person"]["name"]
+    );
+    println!(
+        "    result[\"person\"][\"age\"] = {}",
+        result["person"]["age"]
+    );
+    println!(
+        "    result[\"person\"][\"occupation\"] = {}",
+        result["person"]["occupation"]
+    );
     println!();
 
     // -------------------------------------------------------------------------
@@ -157,11 +171,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "required": ["event_name", "date"]
     });
 
-    let event_model = Arc::new(GenericFakeChatModel::from_messages(vec![
-        AIMessage::new(
-            r#"{"event_name": "RustConf 2025", "date": "2025-09-15", "location": {"city": "Portland", "country": "USA"}, "attendees": ["Alice", "Bob", "Carol"]}"#,
-        ),
-    ]));
+    let event_model = Arc::new(GenericFakeChatModel::from_messages(vec![AIMessage::new(
+        r#"{"event_name": "RustConf 2025", "date": "2025-09-15", "location": {"city": "Portland", "country": "USA"}, "attendees": ["Alice", "Bob", "Carol"]}"#,
+    )]));
 
     let event_chain = StructuredOutputChain::builder()
         .model(event_model)
@@ -178,7 +190,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("  Event: {}", event_result["event_name"]);
     println!("  Date: {}", event_result["date"]);
-    println!("  Location: {}, {}", event_result["location"]["city"], event_result["location"]["country"]);
+    println!(
+        "  Location: {}, {}",
+        event_result["location"]["city"], event_result["location"]["country"]
+    );
     println!(
         "  Attendees: {:?}",
         event_result["attendees"]

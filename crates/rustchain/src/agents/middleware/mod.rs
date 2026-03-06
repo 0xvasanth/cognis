@@ -27,8 +27,8 @@ pub use types::*;
 // Re-export key types from sub-modules for convenience.
 pub use context_editing::{ClearToolUsesEdit, ContextEdit, ContextEditingMiddleware};
 pub use execution::{
-    CodexSandboxExecutionPolicy, DockerExecutionPolicy, ExecutionPolicy,
-    ExecutionPolicyConfig, ExecutionPolicyKind, HostExecutionPolicy,
+    CodexSandboxExecutionPolicy, DockerExecutionPolicy, ExecutionPolicy, ExecutionPolicyConfig,
+    ExecutionPolicyKind, HostExecutionPolicy,
 };
 pub use file_search::FilesystemFileSearchMiddleware;
 pub use human_in_the_loop::{Decision, HITLRequest, HITLResponse, HumanInTheLoopMiddleware};

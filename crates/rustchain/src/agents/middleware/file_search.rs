@@ -116,7 +116,11 @@ impl FilesystemFileSearchMiddleware {
         results: &mut Vec<String>,
     ) -> Result<()> {
         let entries = std::fs::read_dir(dir).map_err(|e| {
-            RustChainError::Other(format!("Failed to read directory '{}': {}", dir.display(), e))
+            RustChainError::Other(format!(
+                "Failed to read directory '{}': {}",
+                dir.display(),
+                e
+            ))
         })?;
 
         for entry in entries.flatten() {
@@ -151,11 +155,7 @@ impl FilesystemFileSearchMiddleware {
     /// Search for a regex pattern within files in the root directory.
     ///
     /// Returns matches as (file_path, line_number, line_content) tuples.
-    pub fn grep_search(
-        &self,
-        pattern: &str,
-        file_pattern: Option<&str>,
-    ) -> Result<Vec<GrepMatch>> {
+    pub fn grep_search(&self, pattern: &str, file_pattern: Option<&str>) -> Result<Vec<GrepMatch>> {
         self.grep_search_in(pattern, file_pattern, None, GrepOutputMode::Content)
     }
 
@@ -196,7 +196,11 @@ impl FilesystemFileSearchMiddleware {
         results: &mut Vec<GrepMatch>,
     ) -> Result<()> {
         let entries = std::fs::read_dir(dir).map_err(|e| {
-            RustChainError::Other(format!("Failed to read directory '{}': {}", dir.display(), e))
+            RustChainError::Other(format!(
+                "Failed to read directory '{}': {}",
+                dir.display(),
+                e
+            ))
         })?;
 
         for entry in entries.flatten() {

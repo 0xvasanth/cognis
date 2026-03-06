@@ -18,18 +18,10 @@ use super::base::BaseLanguageModel;
 #[async_trait]
 pub trait BaseLLM: BaseLanguageModel {
     /// Core generation method. Implementors must override this.
-    async fn _generate(
-        &self,
-        prompts: &[String],
-        stop: Option<&[String]>,
-    ) -> Result<LLMResult>;
+    async fn _generate(&self, prompts: &[String], stop: Option<&[String]>) -> Result<LLMResult>;
 
     /// Optional streaming support. Default returns `NotImplemented`.
-    async fn _stream(
-        &self,
-        _prompt: &str,
-        _stop: Option<&[String]>,
-    ) -> Result<RunnableStream> {
+    async fn _stream(&self, _prompt: &str, _stop: Option<&[String]>) -> Result<RunnableStream> {
         Err(crate::error::RustChainError::NotImplemented(
             "Streaming not supported for this LLM".into(),
         ))

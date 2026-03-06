@@ -313,9 +313,7 @@ pub fn detect_mac_address(text: &str) -> Vec<PIIMatch> {
 }
 
 fn is_hex_pair(bytes: &[u8]) -> bool {
-    bytes.len() == 2
-        && bytes[0].is_ascii_hexdigit()
-        && bytes[1].is_ascii_hexdigit()
+    bytes.len() == 2 && bytes[0].is_ascii_hexdigit() && bytes[1].is_ascii_hexdigit()
 }
 
 /// Detect URLs in text.
@@ -332,8 +330,14 @@ pub fn detect_url(text: &str) -> Vec<PIIMatch> {
             // URL continues until whitespace or certain delimiters
             while end < bytes.len() {
                 let c = bytes[end];
-                if c == b' ' || c == b'\n' || c == b'\r' || c == b'\t'
-                    || c == b'"' || c == b'\'' || c == b'>' || c == b'<'
+                if c == b' '
+                    || c == b'\n'
+                    || c == b'\r'
+                    || c == b'\t'
+                    || c == b'"'
+                    || c == b'\''
+                    || c == b'>'
+                    || c == b'<'
                 {
                     break;
                 }
@@ -404,12 +408,10 @@ pub fn apply_strategy(
     strategy: &RedactionStrategy,
 ) -> std::result::Result<String, PIIDetectionError> {
     match strategy {
-        RedactionStrategy::Block => {
-            Err(PIIDetectionError::InvalidInput(format!(
-                "PII of type '{}' detected and blocked",
-                pii_match.pii_type
-            )))
-        }
+        RedactionStrategy::Block => Err(PIIDetectionError::InvalidInput(format!(
+            "PII of type '{}' detected and blocked",
+            pii_match.pii_type
+        ))),
         RedactionStrategy::Redact => {
             let mut result = String::with_capacity(text.len());
             result.push_str(&text[..pii_match.start]);
@@ -462,7 +464,15 @@ fn mask_email(value: &str) -> String {
         let masked_local: String = local
             .chars()
             .enumerate()
-            .map(|(i, c)| if i == 0 { c } else if c.is_alphanumeric() { '*' } else { c })
+            .map(|(i, c)| {
+                if i == 0 {
+                    c
+                } else if c.is_alphanumeric() {
+                    '*'
+                } else {
+                    c
+                }
+            })
             .collect();
 
         // Domain: mask everything except the TLD (last segment after last dot)
@@ -751,7 +761,8 @@ mod tests {
             start: 6,
             end: 22,
         };
-        let result = apply_strategy("Card: 4111111111111111 end", &m, &RedactionStrategy::Mask).unwrap();
+        let result =
+            apply_strategy("Card: 4111111111111111 end", &m, &RedactionStrategy::Mask).unwrap();
         assert_eq!(result, "Card: ****-****-****-1111 end");
     }
 

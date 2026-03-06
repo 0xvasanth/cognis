@@ -138,18 +138,20 @@ fn parse_yaml_value(s: &str) -> Value {
     }
 
     // Strip surrounding quotes if present
-    let unquoted = if (s.starts_with('"') && s.ends_with('"'))
-        || (s.starts_with('\'') && s.ends_with('\''))
-    {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    };
+    let unquoted =
+        if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
+            &s[1..s.len() - 1]
+        } else {
+            s
+        };
 
     // YAML list shorthand [a, b, c]
     if unquoted.starts_with('[') && unquoted.ends_with(']') {
         let inner = &unquoted[1..unquoted.len() - 1];
-        let items: Vec<Value> = inner.split(',').map(|v| parse_yaml_value(v.trim())).collect();
+        let items: Vec<Value> = inner
+            .split(',')
+            .map(|v| parse_yaml_value(v.trim()))
+            .collect();
         return Value::Array(items);
     }
 
@@ -252,10 +254,7 @@ mod tests {
             docs[0].metadata.get("title").unwrap(),
             &Value::String("Complex Post".to_string())
         );
-        assert_eq!(
-            docs[0].metadata.get("draft").unwrap(),
-            &Value::Bool(true)
-        );
+        assert_eq!(docs[0].metadata.get("draft").unwrap(), &Value::Bool(true));
         assert_eq!(
             docs[0].metadata.get("count").unwrap(),
             &Value::Number(42.into())
@@ -269,11 +268,7 @@ mod tests {
     #[tokio::test]
     async fn test_page_content_excludes_frontmatter() {
         let mut tmp = NamedTempFile::with_suffix(".md").unwrap();
-        write!(
-            tmp,
-            "---\ntitle: Test\n---\nActual content here."
-        )
-        .unwrap();
+        write!(tmp, "---\ntitle: Test\n---\nActual content here.").unwrap();
 
         let loader = MarkdownLoader::new(tmp.path());
         let docs = loader.load().await.unwrap();

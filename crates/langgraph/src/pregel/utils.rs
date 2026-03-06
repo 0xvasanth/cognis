@@ -40,8 +40,9 @@ mod tests {
     #[test]
     fn test_new_versions_empty_previous() {
         let previous = ChannelVersions::new();
-        let current: ChannelVersions =
-            [("a".to_string(), 1), ("b".to_string(), 2)].into_iter().collect();
+        let current: ChannelVersions = [("a".to_string(), 1), ("b".to_string(), 2)]
+            .into_iter()
+            .collect();
 
         let result = get_new_channel_versions(&previous, &current);
         assert_eq!(result, current);
@@ -49,10 +50,12 @@ mod tests {
 
     #[test]
     fn test_new_versions_filters_old() {
-        let previous: ChannelVersions =
-            [("a".to_string(), 3), ("b".to_string(), 2)].into_iter().collect();
-        let current: ChannelVersions =
-            [("a".to_string(), 3), ("b".to_string(), 5)].into_iter().collect();
+        let previous: ChannelVersions = [("a".to_string(), 3), ("b".to_string(), 2)]
+            .into_iter()
+            .collect();
+        let current: ChannelVersions = [("a".to_string(), 3), ("b".to_string(), 5)]
+            .into_iter()
+            .collect();
 
         let result = get_new_channel_versions(&previous, &current);
         assert_eq!(result.len(), 1);
@@ -61,10 +64,10 @@ mod tests {
 
     #[test]
     fn test_new_versions_includes_new_channels() {
-        let previous: ChannelVersions =
-            [("a".to_string(), 1)].into_iter().collect();
-        let current: ChannelVersions =
-            [("a".to_string(), 1), ("b".to_string(), 2)].into_iter().collect();
+        let previous: ChannelVersions = [("a".to_string(), 1)].into_iter().collect();
+        let current: ChannelVersions = [("a".to_string(), 1), ("b".to_string(), 2)]
+            .into_iter()
+            .collect();
 
         let result = get_new_channel_versions(&previous, &current);
         assert_eq!(result.len(), 1);
@@ -73,8 +76,9 @@ mod tests {
 
     #[test]
     fn test_new_versions_all_same() {
-        let versions: ChannelVersions =
-            [("a".to_string(), 1), ("b".to_string(), 2)].into_iter().collect();
+        let versions: ChannelVersions = [("a".to_string(), 1), ("b".to_string(), 2)]
+            .into_iter()
+            .collect();
 
         let result = get_new_channel_versions(&versions, &versions);
         assert!(result.is_empty());

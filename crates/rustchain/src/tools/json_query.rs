@@ -42,13 +42,11 @@ impl BaseTool for JsonQueryTool {
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
         let (json_data, path) = extract_args(&input)?;
 
-        let value: Value = serde_json::from_str(&json_data).map_err(|e| {
-            RustChainError::ToolException(format!("Invalid JSON: {e}"))
-        })?;
+        let value: Value = serde_json::from_str(&json_data)
+            .map_err(|e| RustChainError::ToolException(format!("Invalid JSON: {e}")))?;
 
-        let result = query_path(&value, &path).map_err(|e| {
-            RustChainError::ToolException(format!("Path query failed: {e}"))
-        })?;
+        let result = query_path(&value, &path)
+            .map_err(|e| RustChainError::ToolException(format!("Path query failed: {e}")))?;
 
         Ok(ToolOutput::Content(result.clone()))
     }

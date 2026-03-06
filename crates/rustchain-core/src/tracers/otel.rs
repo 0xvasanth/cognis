@@ -182,12 +182,7 @@ impl OtelTraceCallbackHandler {
 
     /// Finalize an active span (set end_time, status) and move it to
     /// completed spans.
-    fn end_span(
-        &self,
-        run_id: Uuid,
-        status: SpanStatus,
-        extra_attrs: HashMap<String, Value>,
-    ) {
+    fn end_span(&self, run_id: Uuid, status: SpanStatus, extra_attrs: HashMap<String, Value>) {
         let key = run_id.to_string();
         let mut active = self.active_spans.write().unwrap();
         if let Some(mut span) = active.remove(&key) {
@@ -233,7 +228,10 @@ impl CallbackHandler for OtelTraceCallbackHandler {
     ) -> Result<()> {
         let mut attrs = HashMap::new();
         let generation_count: usize = response.generations.iter().map(|g| g.len()).sum();
-        attrs.insert("generation_count".into(), serde_json::json!(generation_count));
+        attrs.insert(
+            "generation_count".into(),
+            serde_json::json!(generation_count),
+        );
         if let Some(ref llm_output) = response.llm_output {
             if let Some(token_usage) = llm_output.get("token_usage") {
                 attrs.insert("token_usage".into(), token_usage.clone());
@@ -424,10 +422,7 @@ mod tests {
             .on_tool_start(&serialized, "2+2", run_id, None)
             .await
             .unwrap();
-        handler
-            .on_tool_end("4", run_id, None)
-            .await
-            .unwrap();
+        handler.on_tool_end("4", run_id, None).await.unwrap();
 
         let spans = handler.get_spans();
         assert_eq!(spans.len(), 1);
@@ -481,7 +476,12 @@ mod tests {
         // LLM span
         let llm_id = Uuid::new_v4();
         handler
-            .on_llm_start(&serde_json::json!({"name": "gpt-4"}), &["p".into()], llm_id, None)
+            .on_llm_start(
+                &serde_json::json!({"name": "gpt-4"}),
+                &["p".into()],
+                llm_id,
+                None,
+            )
             .await
             .unwrap();
         handler
@@ -492,13 +492,15 @@ mod tests {
         // Tool span
         let tool_id = Uuid::new_v4();
         handler
-            .on_tool_start(&serde_json::json!({"name": "search"}), "query", tool_id, None)
+            .on_tool_start(
+                &serde_json::json!({"name": "search"}),
+                "query",
+                tool_id,
+                None,
+            )
             .await
             .unwrap();
-        handler
-            .on_tool_end("result", tool_id, None)
-            .await
-            .unwrap();
+        handler.on_tool_end("result", tool_id, None).await.unwrap();
 
         // Chain span
         let chain_id = Uuid::new_v4();
@@ -529,7 +531,12 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         handler
-            .on_llm_start(&serde_json::json!({"name": "claude"}), &["hi".into()], run_id, None)
+            .on_llm_start(
+                &serde_json::json!({"name": "claude"}),
+                &["hi".into()],
+                run_id,
+                None,
+            )
             .await
             .unwrap();
         handler
@@ -585,7 +592,12 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         handler
-            .on_llm_start(&serde_json::json!({"name": "m"}), &["p".into()], run_id, None)
+            .on_llm_start(
+                &serde_json::json!({"name": "m"}),
+                &["p".into()],
+                run_id,
+                None,
+            )
             .await
             .unwrap();
         handler

@@ -265,7 +265,7 @@ mod tests {
         let result = graph.invoke(input).await.unwrap();
         let messages = result["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 2); // human + ai
-        // Last message should be the AI response.
+                                       // Last message should be the AI response.
         let last: Message = serde_json::from_value(messages.last().unwrap().clone()).unwrap();
         assert_eq!(last.content().text(), "The answer is 42");
     }

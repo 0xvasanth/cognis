@@ -37,9 +37,7 @@ pub fn read_channel(
             if catch {
                 Ok(None)
             } else {
-                Err(LangGraphError::Other(format!(
-                    "Channel '{chan}' not found"
-                )))
+                Err(LangGraphError::Other(format!("Channel '{chan}' not found")))
             }
         }
     }
@@ -85,8 +83,7 @@ pub fn read_channels_as_value(
     skip_empty: bool,
 ) -> Result<Value, LangGraphError> {
     if select.len() == 1 {
-        read_channel(channels, &select[0], skip_empty)
-            .map(|opt| opt.unwrap_or(Value::Null))
+        read_channel(channels, &select[0], skip_empty).map(|opt| opt.unwrap_or(Value::Null))
     } else {
         let map = read_channels(channels, select, skip_empty)?;
         Ok(serde_json::to_value(map).unwrap_or(Value::Null))
@@ -313,9 +310,7 @@ mod tests {
         }
 
         fn get(&self) -> Result<Value, LangGraphError> {
-            self.value
-                .clone()
-                .ok_or(LangGraphError::EmptyChannelError)
+            self.value.clone().ok_or(LangGraphError::EmptyChannelError)
         }
 
         fn is_available(&self) -> bool {
@@ -404,10 +399,7 @@ mod tests {
 
     #[test]
     fn test_read_channels_as_value_multiple() {
-        let channels = make_channels(vec![
-            ("a", Some(json!(1))),
-            ("b", Some(json!(2))),
-        ]);
+        let channels = make_channels(vec![("a", Some(json!(1))), ("b", Some(json!(2)))]);
         let select = vec!["a".to_string(), "b".to_string()];
         let result = read_channels_as_value(&channels, &select, true).unwrap();
         assert_eq!(result["a"], json!(1));
@@ -548,10 +540,7 @@ mod tests {
     #[test]
     fn test_map_output_updates_single_channel() {
         let output_channels = vec!["out".to_string()];
-        let task_writes = vec![(
-            "node_a".to_string(),
-            vec![("out".to_string(), json!(42))],
-        )];
+        let task_writes = vec![("node_a".to_string(), vec![("out".to_string(), json!(42))])];
         let result = map_output_updates(&output_channels, &task_writes);
         assert!(result.is_some());
         let map = result.unwrap();
@@ -563,10 +552,7 @@ mod tests {
         let output_channels = vec!["a".to_string(), "b".to_string()];
         let task_writes = vec![(
             "node_x".to_string(),
-            vec![
-                ("a".to_string(), json!(1)),
-                ("b".to_string(), json!(2)),
-            ],
+            vec![("a".to_string(), json!(1)), ("b".to_string(), json!(2))],
         )];
         let result = map_output_updates(&output_channels, &task_writes);
         assert!(result.is_some());
@@ -579,10 +565,7 @@ mod tests {
     #[test]
     fn test_map_output_updates_all_null() {
         let output_channels = vec!["out".to_string()];
-        let task_writes = vec![(
-            "node_a".to_string(),
-            vec![("other".to_string(), json!(1))],
-        )];
+        let task_writes = vec![("node_a".to_string(), vec![("other".to_string(), json!(1))])];
         let result = map_output_updates(&output_channels, &task_writes);
         assert!(result.is_none());
     }

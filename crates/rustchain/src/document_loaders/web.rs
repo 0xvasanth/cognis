@@ -131,11 +131,7 @@ fn extract_domain(url: &str) -> Option<String> {
 }
 
 /// Build a `Document` from raw HTML and a source URL.
-fn build_document_from_html(
-    html: &str,
-    source_url: &str,
-    css_selector: Option<&str>,
-) -> Document {
+fn build_document_from_html(html: &str, source_url: &str, css_selector: Option<&str>) -> Document {
     let fragment = match css_selector {
         Some(sel) => extract_by_selector(html, sel).unwrap_or_else(|| html.to_string()),
         None => html.to_string(),
@@ -330,10 +326,12 @@ impl WebLoader {
 
         let mut header_map = reqwest::header::HeaderMap::new();
         for (k, v) in &self.headers {
-            let name = reqwest::header::HeaderName::from_bytes(k.as_bytes())
-                .map_err(|e| RustChainError::Other(format!("Invalid header name '{}': {}", k, e)))?;
-            let val = reqwest::header::HeaderValue::from_str(v)
-                .map_err(|e| RustChainError::Other(format!("Invalid header value '{}': {}", v, e)))?;
+            let name = reqwest::header::HeaderName::from_bytes(k.as_bytes()).map_err(|e| {
+                RustChainError::Other(format!("Invalid header name '{}': {}", k, e))
+            })?;
+            let val = reqwest::header::HeaderValue::from_str(v).map_err(|e| {
+                RustChainError::Other(format!("Invalid header value '{}': {}", v, e))
+            })?;
             header_map.insert(name, val);
         }
         builder = builder.default_headers(header_map);
@@ -375,11 +373,9 @@ impl WebLoader {
 
     /// Fetch a single URL and build a document.
     async fn fetch_url(&self, client: &Client, url: &str) -> Result<Document> {
-        let response = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| RustChainError::Other(format!("HTTP request to '{}' failed: {}", url, e)))?;
+        let response = client.get(url).send().await.map_err(|e| {
+            RustChainError::Other(format!("HTTP request to '{}' failed: {}", url, e))
+        })?;
 
         let status = response.status();
         if !status.is_success() {
@@ -389,10 +385,9 @@ impl WebLoader {
             )));
         }
 
-        let raw_html = response
-            .text()
-            .await
-            .map_err(|e| RustChainError::Other(format!("Failed to read body from '{}': {}", url, e)))?;
+        let raw_html = response.text().await.map_err(|e| {
+            RustChainError::Other(format!("Failed to read body from '{}': {}", url, e))
+        })?;
 
         Ok(build_document_from_html(
             &raw_html,
@@ -546,11 +541,7 @@ impl WebCrawler {
             };
 
             if !response.status().is_success() {
-                eprintln!(
-                    "Warning: HTTP {} for '{}'",
-                    response.status(),
-                    url
-                );
+                eprintln!("Warning: HTTP {} for '{}'", response.status(), url);
                 continue;
             }
 
@@ -700,10 +691,7 @@ mod tests {
         assert_eq!(loader.timeout_secs, 10);
         assert_eq!(loader.user_agent, "test/1.0");
         assert_eq!(loader.css_selector.as_deref(), Some("main"));
-        assert_eq!(
-            loader.headers.get("Authorization").unwrap(),
-            "Bearer token"
-        );
+        assert_eq!(loader.headers.get("Authorization").unwrap(), "Bearer token");
     }
 
     // -- Custom headers --
@@ -714,8 +702,7 @@ mod tests {
         headers.insert("X-Custom".to_string(), "value1".to_string());
         headers.insert("Accept-Language".to_string(), "en-US".to_string());
 
-        let loader = WebLoader::new(vec!["https://example.com".to_string()])
-            .with_headers(headers);
+        let loader = WebLoader::new(vec!["https://example.com".to_string()]).with_headers(headers);
 
         assert_eq!(loader.headers.len(), 2);
         assert_eq!(loader.headers.get("X-Custom").unwrap(), "value1");
@@ -844,10 +831,7 @@ mod tests {
 
     #[test]
     fn test_web_base_loader_with_custom_client() {
-        let client = Client::builder()
-            .user_agent("test-agent")
-            .build()
-            .unwrap();
+        let client = Client::builder().user_agent("test-agent").build().unwrap();
         let loader = WebBaseLoader::new("https://example.com").with_client(client);
         assert_eq!(loader.url, "https://example.com");
     }

@@ -67,8 +67,15 @@ impl SkillsMiddleware {
             let mut lines = content.lines();
 
             let first_line = lines.next().unwrap_or("");
-            let description = first_line.strip_prefix("# ").unwrap_or(first_line).to_string();
-            let instructions = lines.collect::<Vec<_>>().join("\n").trim_start().to_string();
+            let description = first_line
+                .strip_prefix("# ")
+                .unwrap_or(first_line)
+                .to_string();
+            let instructions = lines
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim_start()
+                .to_string();
 
             middleware.add_skill(Skill {
                 name,

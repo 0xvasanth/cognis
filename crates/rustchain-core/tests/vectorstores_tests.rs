@@ -39,10 +39,7 @@ struct DirectionalEmbeddings;
 #[async_trait]
 impl Embeddings for DirectionalEmbeddings {
     async fn embed_documents(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
-        Ok(texts
-            .iter()
-            .map(|t| text_to_directional_vec(t))
-            .collect())
+        Ok(texts.iter().map(|t| text_to_directional_vec(t)).collect())
     }
 
     async fn embed_query(&self, text: &str) -> Result<Vec<f32>> {
@@ -232,10 +229,7 @@ async fn test_get_by_ids_found() {
 #[tokio::test]
 async fn test_get_by_ids_missing() {
     let store = InMemoryVectorStore::new(Arc::new(MockEmbeddings));
-    let found = store
-        .get_by_ids(&["no-such-id".to_string()])
-        .await
-        .unwrap();
+    let found = store.get_by_ids(&["no-such-id".to_string()]).await.unwrap();
     assert!(found.is_empty());
 }
 
@@ -289,7 +283,7 @@ async fn test_similarity_search_returns_exact_match_first() {
     // "hello" (5 chars) should be most similar to a query of same length
     let docs = vec![
         Document::new("a very long document with many characters"),
-        Document::new("short"),  // 5 chars - same as "query" len
+        Document::new("short"), // 5 chars - same as "query" len
         Document::new("medium length text"),
     ];
     store.add_documents(docs, None).await.unwrap();
@@ -399,10 +393,10 @@ async fn test_similarity_search_by_vector_returns_k_results() {
 async fn test_mmr_search_basic() {
     let store = InMemoryVectorStore::new(Arc::new(DirectionalEmbeddings));
     let docs = vec![
-        Document::new("alpha one"),     // [1.0, 0.0, 0.0]
-        Document::new("alpha two"),     // [1.0, 0.0, 0.0]
-        Document::new("beta one"),      // [0.0, 1.0, 0.0]
-        Document::new("charlie one"),   // [0.0, 0.0, 1.0]
+        Document::new("alpha one"),   // [1.0, 0.0, 0.0]
+        Document::new("alpha two"),   // [1.0, 0.0, 0.0]
+        Document::new("beta one"),    // [0.0, 1.0, 0.0]
+        Document::new("charlie one"), // [0.0, 0.0, 1.0]
     ];
     store.add_documents(docs, None).await.unwrap();
     let results = store
@@ -417,9 +411,9 @@ async fn test_mmr_search_diversity() {
     let store = InMemoryVectorStore::new(Arc::new(DirectionalEmbeddings));
     // Two docs with identical embeddings to query, one orthogonal
     let docs = vec![
-        Document::new("alpha one"),     // [1.0, 0.0, 0.0]
-        Document::new("alpha two"),     // [1.0, 0.0, 0.0] - same direction
-        Document::new("beta one"),      // [0.0, 1.0, 0.0] - orthogonal
+        Document::new("alpha one"), // [1.0, 0.0, 0.0]
+        Document::new("alpha two"), // [1.0, 0.0, 0.0] - same direction
+        Document::new("beta one"),  // [0.0, 1.0, 0.0] - orthogonal
     ];
     store.add_documents(docs, None).await.unwrap();
     // With low lambda (diversity-focused), second result should differ from first
@@ -438,9 +432,9 @@ async fn test_mmr_search_diversity() {
 async fn test_mmr_search_pure_relevance() {
     let store = InMemoryVectorStore::new(Arc::new(DirectionalEmbeddings));
     let docs = vec![
-        Document::new("alpha one"),     // [1.0, 0.0, 0.0]
-        Document::new("alpha two"),     // [1.0, 0.0, 0.0]
-        Document::new("beta one"),      // [0.0, 1.0, 0.0]
+        Document::new("alpha one"), // [1.0, 0.0, 0.0]
+        Document::new("alpha two"), // [1.0, 0.0, 0.0]
+        Document::new("beta one"),  // [0.0, 1.0, 0.0]
     ];
     store.add_documents(docs, None).await.unwrap();
     // With lambda=1.0 (pure relevance), both "alpha" docs should come first
@@ -537,10 +531,7 @@ async fn test_from_texts_with_metadata() {
 #[tokio::test]
 async fn test_retriever_similarity_search() {
     let store = Arc::new(InMemoryVectorStore::new(Arc::new(MockEmbeddings)));
-    let docs = vec![
-        Document::new("hello world"),
-        Document::new("goodbye world"),
-    ];
+    let docs = vec![Document::new("hello world"), Document::new("goodbye world")];
     store.add_documents(docs, None).await.unwrap();
     let retriever = store.as_retriever();
     let results = retriever.get_relevant_documents("hello").await.unwrap();
@@ -586,10 +577,7 @@ async fn test_retriever_mmr_mode() {
 async fn test_retriever_score_threshold_mode() {
     let store = Arc::new(InMemoryVectorStore::new(Arc::new(DirectionalEmbeddings)));
     // "alpha" => [1,0,0], "beta" => [0,1,0] - orthogonal, cosine sim = 0
-    let docs = vec![
-        Document::new("alpha match"),
-        Document::new("beta nomatch"),
-    ];
+    let docs = vec![Document::new("alpha match"), Document::new("beta nomatch")];
     store.add_documents(docs, None).await.unwrap();
     let retriever = store.as_retriever_with(
         SearchType::SimilarityScoreThreshold {
@@ -666,14 +654,23 @@ async fn test_metadata_preserved_through_search() {
     let store = InMemoryVectorStore::new(Arc::new(MockEmbeddings));
     let mut meta = HashMap::new();
     meta.insert("author".to_string(), Value::String("alice".to_string()));
-    meta.insert("page".to_string(), Value::Number(serde_json::Number::from(42)));
+    meta.insert(
+        "page".to_string(),
+        Value::Number(serde_json::Number::from(42)),
+    );
     let doc = Document::new("test content").with_metadata(meta.clone());
     store.add_documents(vec![doc], None).await.unwrap();
 
     // similarity_search
     let results = store.similarity_search("test content", 1).await.unwrap();
-    assert_eq!(results[0].metadata.get("author"), Some(&Value::String("alice".to_string())));
-    assert_eq!(results[0].metadata.get("page"), Some(&Value::Number(serde_json::Number::from(42))));
+    assert_eq!(
+        results[0].metadata.get("author"),
+        Some(&Value::String("alice".to_string()))
+    );
+    assert_eq!(
+        results[0].metadata.get("page"),
+        Some(&Value::Number(serde_json::Number::from(42)))
+    );
 
     // similarity_search_with_score
     let results = store
@@ -716,10 +713,7 @@ async fn test_add_documents_overwrites_existing_id() {
         .await
         .unwrap();
 
-    let found = store
-        .get_by_ids(&["same-id".to_string()])
-        .await
-        .unwrap();
+    let found = store.get_by_ids(&["same-id".to_string()]).await.unwrap();
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].page_content, "updated");
 }

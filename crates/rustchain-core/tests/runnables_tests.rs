@@ -6,8 +6,8 @@ use serde_json::{json, Value};
 
 use rustchain_core::chain;
 use rustchain_core::error::RustChainError;
+use rustchain_core::runnables::schema::{EventData, StreamEvent};
 use rustchain_core::runnables::*;
-use rustchain_core::runnables::schema::{StreamEvent, EventData};
 
 // ─── Config Tests ───
 
@@ -41,14 +41,12 @@ fn test_ensure_config_some() {
 fn test_merge_configs() {
     let mut base = RunnableConfig::default();
     base.tags = vec!["a".into()];
-    base.metadata
-        .insert("key1".into(), json!("val1"));
+    base.metadata.insert("key1".into(), json!("val1"));
     base.run_name = Some("base_run".into());
 
     let mut overlay = RunnableConfig::default();
     overlay.tags = vec!["b".into()];
-    overlay.metadata
-        .insert("key2".into(), json!("val2"));
+    overlay.metadata.insert("key2".into(), json!("val2"));
     overlay.run_name = Some("overlay_run".into());
     overlay.recursion_limit = 10;
 
@@ -74,13 +72,16 @@ async fn test_lambda_invoke() {
 
 #[tokio::test]
 async fn test_lambda_with_config() {
-    let lambda = RunnableLambda::with_config("tag_check", |input, config: Option<RunnableConfig>| async move {
-        let cfg = config.unwrap();
-        Ok(json!({
-            "input": input,
-            "tags": cfg.tags,
-        }))
-    });
+    let lambda = RunnableLambda::with_config(
+        "tag_check",
+        |input, config: Option<RunnableConfig>| async move {
+            let cfg = config.unwrap();
+            Ok(json!({
+                "input": input,
+                "tags": cfg.tags,
+            }))
+        },
+    );
     let mut cfg = RunnableConfig::default();
     cfg.tags = vec!["test_tag".into()];
     let result = lambda.invoke(json!("hello"), Some(&cfg)).await.unwrap();
@@ -251,7 +252,8 @@ async fn test_assign_merges_keys() {
 
 #[tokio::test]
 async fn test_assign_non_object_errors() {
-    let noop = Arc::new(RunnableLambda::new("noop", |v: Value| async move { Ok(v) })) as Arc<dyn Runnable>;
+    let noop =
+        Arc::new(RunnableLambda::new("noop", |v: Value| async move { Ok(v) })) as Arc<dyn Runnable>;
 
     let assign = RunnableAssign::new().assign("x", noop);
     let result = assign.invoke(json!(42), None).await;
@@ -340,7 +342,11 @@ async fn test_fallbacks_all_fail() {
     let result = with_fallbacks.invoke(json!(5), None).await;
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("fallback also failed"), "Expected last error, got: {}", err_msg);
+    assert!(
+        err_msg.contains("fallback also failed"),
+        "Expected last error, got: {}",
+        err_msg
+    );
 }
 
 // ─── Router Tests ───
@@ -368,7 +374,8 @@ async fn test_router_correct_dispatch() {
 
 #[tokio::test]
 async fn test_router_missing_key() {
-    let noop = Arc::new(RunnableLambda::new("noop", |v: Value| async move { Ok(v) })) as Arc<dyn Runnable>;
+    let noop =
+        Arc::new(RunnableLambda::new("noop", |v: Value| async move { Ok(v) })) as Arc<dyn Runnable>;
     let mut runnables = HashMap::new();
     runnables.insert("exists".into(), noop);
 
@@ -376,17 +383,15 @@ async fn test_router_missing_key() {
     let result = router
         .invoke(json!({"key": "missing", "input": 1}), None)
         .await;
-    assert!(matches!(
-        result.unwrap_err(),
-        RustChainError::InvalidKey(_)
-    ));
+    assert!(matches!(result.unwrap_err(), RustChainError::InvalidKey(_)));
 }
 
 // ─── Binding Tests ───
 
 #[tokio::test]
 async fn test_binding_kwargs_merged() {
-    let echo = Arc::new(RunnableLambda::new("echo", |v: Value| async move { Ok(v) })) as Arc<dyn Runnable>;
+    let echo =
+        Arc::new(RunnableLambda::new("echo", |v: Value| async move { Ok(v) })) as Arc<dyn Runnable>;
 
     let mut kwargs = HashMap::new();
     kwargs.insert("extra".into(), json!("bound_value"));
@@ -415,7 +420,8 @@ async fn test_each_maps_over_array() {
 
 #[tokio::test]
 async fn test_each_non_array_errors() {
-    let noop = Arc::new(RunnableLambda::new("noop", |v: Value| async move { Ok(v) })) as Arc<dyn Runnable>;
+    let noop =
+        Arc::new(RunnableLambda::new("noop", |v: Value| async move { Ok(v) })) as Arc<dyn Runnable>;
     let each = RunnableEach::new(noop);
     let result = each.invoke(json!("not_array"), None).await;
     assert!(matches!(
@@ -490,7 +496,9 @@ async fn test_runnable_retry_succeeds_on_second_try() {
         async move {
             let count = c.fetch_add(1, Ordering::SeqCst);
             if count == 0 {
-                Err(rustchain_core::error::RustChainError::Other("transient".into()))
+                Err(rustchain_core::error::RustChainError::Other(
+                    "transient".into(),
+                ))
             } else {
                 Ok(input)
             }
@@ -505,7 +513,9 @@ async fn test_runnable_retry_succeeds_on_second_try() {
 #[tokio::test]
 async fn test_runnable_retry_exhausts_attempts() {
     let lambda = RunnableLambda::new("always_fail", |_input| async {
-        Err::<serde_json::Value, _>(rustchain_core::error::RustChainError::Other("permanent".into()))
+        Err::<serde_json::Value, _>(rustchain_core::error::RustChainError::Other(
+            "permanent".into(),
+        ))
     });
     let retry = RunnableRetry::new(Arc::new(lambda), 2).with_wait(1, 10);
     let result = retry.invoke(json!("hello"), None).await;
@@ -521,7 +531,11 @@ async fn test_configurable_default() {
     }));
     let configurable = RunnableConfigurableFields::new(
         default_lambda as Arc<dyn Runnable>,
-        vec![ConfigurableField { id: "model".into(), name: Some("Model".into()), description: None }],
+        vec![ConfigurableField {
+            id: "model".into(),
+            name: Some("Model".into()),
+            description: None,
+        }],
     );
     let result = configurable.invoke(json!("test"), None).await.unwrap();
     assert_eq!(result, json!("default: \"test\""));
@@ -529,14 +543,23 @@ async fn test_configurable_default() {
 
 #[tokio::test]
 async fn test_configurable_with_alternative() {
-    let default_lambda = Arc::new(RunnableLambda::new("default", |_input| async { Ok(json!("default")) }));
-    let alt_lambda = Arc::new(RunnableLambda::new("alt", |_input| async { Ok(json!("alternative")) }));
+    let default_lambda = Arc::new(RunnableLambda::new("default", |_input| async {
+        Ok(json!("default"))
+    }));
+    let alt_lambda = Arc::new(RunnableLambda::new("alt", |_input| async {
+        Ok(json!("alternative"))
+    }));
     let mut alts = std::collections::HashMap::new();
     alts.insert("gpt4".into(), alt_lambda as Arc<dyn Runnable>);
     let configurable = RunnableConfigurableFields::new(
         default_lambda as Arc<dyn Runnable>,
-        vec![ConfigurableField { id: "model".into(), name: None, description: None }],
-    ).with_alternatives("model", alts);
+        vec![ConfigurableField {
+            id: "model".into(),
+            name: None,
+            description: None,
+        }],
+    )
+    .with_alternatives("model", alts);
 
     // Without config: default
     let result = configurable.invoke(json!("x"), None).await.unwrap();
@@ -545,7 +568,10 @@ async fn test_configurable_with_alternative() {
     // With config selecting alternative
     let mut config = rustchain_core::runnables::RunnableConfig::default();
     config.configurable.insert("model".into(), json!("gpt4"));
-    let result = configurable.invoke(json!("x"), Some(&config)).await.unwrap();
+    let result = configurable
+        .invoke(json!("x"), Some(&config))
+        .await
+        .unwrap();
     assert_eq!(result, json!("alternative"));
 }
 
@@ -560,7 +586,12 @@ fn test_stream_event_serialize() {
         tags: vec!["tag1".into()],
         metadata: Default::default(),
         parent_ids: vec![],
-        data: EventData { input: Some(json!({"query": "hello"})), output: None, chunk: None, error: None },
+        data: EventData {
+            input: Some(json!({"query": "hello"})),
+            output: None,
+            chunk: None,
+            error: None,
+        },
     };
     let v = serde_json::to_value(&event).unwrap();
     assert_eq!(v["event"], "on_chain_start");
@@ -612,18 +643,21 @@ async fn test_ext_pipe_two_lambdas() {
 
 #[tokio::test]
 async fn test_ext_pipe_chained_three() {
-    let a = RunnableLambda::new("a", |v: Value| async move {
-        Ok(json!(v.as_i64().unwrap() + 1))
-    });
-    let b = RunnableLambda::new("b", |v: Value| async move {
-        Ok(json!(v.as_i64().unwrap() * 3))
-    });
+    let a = RunnableLambda::new(
+        "a",
+        |v: Value| async move { Ok(json!(v.as_i64().unwrap() + 1)) },
+    );
+    let b = RunnableLambda::new(
+        "b",
+        |v: Value| async move { Ok(json!(v.as_i64().unwrap() * 3)) },
+    );
 
     // Pipe a into b, then pipe the result into another lambda
     let ab = a.pipe(b).unwrap();
-    let c = RunnableLambda::new("c", |v: Value| async move {
-        Ok(json!(v.as_i64().unwrap() - 2))
-    });
+    let c = RunnableLambda::new(
+        "c",
+        |v: Value| async move { Ok(json!(v.as_i64().unwrap() - 2)) },
+    );
     let abc = RunnableSequence::new(vec![
         Arc::new(ab) as Arc<dyn Runnable>,
         Arc::new(c) as Arc<dyn Runnable>,
@@ -787,7 +821,10 @@ async fn test_stream_single_runnable_returns_result() {
     let mut stream = double.stream(json!(5), None).await.unwrap();
     let first = stream.next().await.unwrap().unwrap();
     assert_eq!(first, json!(10));
-    assert!(stream.next().await.is_none(), "default stream should yield exactly one item");
+    assert!(
+        stream.next().await.is_none(),
+        "default stream should yield exactly one item"
+    );
 }
 
 #[tokio::test]
@@ -825,11 +862,13 @@ impl Runnable for MultiChunkRunnable {
         "MultiChunkRunnable"
     }
 
-    async fn invoke(&self, _input: Value, _config: Option<&RunnableConfig>) -> rustchain_core::error::Result<Value> {
+    async fn invoke(
+        &self,
+        _input: Value,
+        _config: Option<&RunnableConfig>,
+    ) -> rustchain_core::error::Result<Value> {
         // For invoke, concatenate all chunks into a single string
-        let combined: String = self.chunks.iter()
-            .filter_map(|v| v.as_str())
-            .collect();
+        let combined: String = self.chunks.iter().filter_map(|v| v.as_str()).collect();
         Ok(json!(combined))
     }
 
@@ -858,7 +897,10 @@ async fn test_stream_multi_chunk_runnable() {
     while let Some(item) = stream.next().await {
         collected.push(item.unwrap());
     }
-    assert_eq!(collected, vec![json!("Hello"), json!(", "), json!("world"), json!("!")]);
+    assert_eq!(
+        collected,
+        vec![json!("Hello"), json!(", "), json!("world"), json!("!")]
+    );
 }
 
 #[tokio::test]
@@ -878,7 +920,8 @@ async fn test_stream_sequence_with_multi_chunk_last_step() {
     let seq = RunnableSequence::new(vec![
         add_prefix as Arc<dyn Runnable>,
         chunker as Arc<dyn Runnable>,
-    ]).unwrap();
+    ])
+    .unwrap();
 
     let mut stream = seq.stream(json!("input"), None).await.unwrap();
     let mut collected = Vec::new();
@@ -887,7 +930,10 @@ async fn test_stream_sequence_with_multi_chunk_last_step() {
     }
     // The multi-chunk runnable ignores input for streaming, returns its fixed chunks
     assert_eq!(collected.len(), 3);
-    assert_eq!(collected, vec![json!("chunk1"), json!("chunk2"), json!("chunk3")]);
+    assert_eq!(
+        collected,
+        vec![json!("chunk1"), json!("chunk2"), json!("chunk3")]
+    );
 }
 
 // ─── RunnableExt: batch (via trait) Tests ───
@@ -948,9 +994,7 @@ async fn test_ext_pipe_with_fallbacks() {
     let fail_step = RunnableLambda::new("fail", |_v: Value| async move {
         Err(RustChainError::Other("step failed".into()))
     });
-    let safe_step = RunnableLambda::new("safe", |v: Value| async move {
-        Ok(json!({"safe": v}))
-    });
+    let safe_step = RunnableLambda::new("safe", |v: Value| async move { Ok(json!({"safe": v})) });
 
     let fallback = Arc::new(RunnableLambda::new("fallback", |v: Value| async move {
         Ok(json!({"fallback_used": v}))

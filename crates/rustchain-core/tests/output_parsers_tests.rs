@@ -301,10 +301,7 @@ fn test_xml_parser_nested() {
     let result = parser
         .parse("<root><name>Alice</name><age>30</age></root>")
         .unwrap();
-    assert_eq!(
-        result,
-        json!({"root": {"name": "Alice", "age": "30"}})
-    );
+    assert_eq!(result, json!({"root": {"name": "Alice", "age": "30"}}));
 }
 
 #[test]

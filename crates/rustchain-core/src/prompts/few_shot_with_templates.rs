@@ -209,12 +209,10 @@ mod tests {
         let suffix = PromptTemplate::from_template("Q: {input}\nA:");
         let example_prompt = make_example_prompt();
 
-        let prompt = FewShotPromptWithTemplates::new(example_prompt, suffix)
-            .with_examples(make_examples());
+        let prompt =
+            FewShotPromptWithTemplates::new(example_prompt, suffix).with_examples(make_examples());
 
-        let kwargs = HashMap::from([
-            ("input".into(), Value::String("What is 5+5?".into())),
-        ]);
+        let kwargs = HashMap::from([("input".into(), Value::String("What is 5+5?".into()))]);
 
         let result = prompt.format(&kwargs).unwrap();
         assert!(result.starts_with("Q: What is 2+2?"));
@@ -230,9 +228,7 @@ mod tests {
             .with_examples(make_examples())
             .with_separator("\n---\n");
 
-        let kwargs = HashMap::from([
-            ("input".into(), Value::String("test".into())),
-        ]);
+        let kwargs = HashMap::from([("input".into(), Value::String("test".into()))]);
 
         let result = prompt.format(&kwargs).unwrap();
         assert!(result.contains("\n---\n"));
@@ -244,8 +240,7 @@ mod tests {
         let suffix = PromptTemplate::from_template("{input}");
         let example_prompt = make_example_prompt();
 
-        let prompt = FewShotPromptWithTemplates::new(example_prompt, suffix)
-            .with_prefix(prefix);
+        let prompt = FewShotPromptWithTemplates::new(example_prompt, suffix).with_prefix(prefix);
 
         assert!(prompt.input_variables.contains(&"input".to_string()));
         assert!(prompt.input_variables.contains(&"context".to_string()));
@@ -266,8 +261,8 @@ mod tests {
         let suffix = PromptTemplate::from_template("Q: {input}\nA:");
         let example_prompt = make_example_prompt();
 
-        let prompt = FewShotPromptWithTemplates::new(example_prompt, suffix)
-            .with_examples(make_examples());
+        let prompt =
+            FewShotPromptWithTemplates::new(example_prompt, suffix).with_examples(make_examples());
 
         let input = serde_json::json!({"input": "What is 7+7?"});
         let result = prompt.invoke(input, None).await.unwrap();
@@ -282,8 +277,7 @@ mod tests {
         let suffix = PromptTemplate::from_template("{input}");
         let example_prompt = make_example_prompt();
 
-        let prompt = FewShotPromptWithTemplates::new(example_prompt, suffix)
-            .with_examples(vec![]);
+        let prompt = FewShotPromptWithTemplates::new(example_prompt, suffix).with_examples(vec![]);
 
         let result = prompt.invoke(Value::String("bad".into()), None).await;
         assert!(result.is_err());

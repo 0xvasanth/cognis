@@ -9,9 +9,8 @@ use crate::error::Result;
 use super::base::Runnable;
 use super::config::RunnableConfig;
 
-type SideEffectFn = Box<
-    dyn Fn(Value) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync,
->;
+type SideEffectFn =
+    Box<dyn Fn(Value) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync>;
 
 /// Returns the input unchanged. Optionally runs a side-effect function.
 pub struct RunnablePassthrough {

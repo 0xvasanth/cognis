@@ -1,5 +1,5 @@
-use super::{merge_splits, TextSplitter};
 use super::code::Language;
+use super::{merge_splits, TextSplitter};
 
 /// Recursively splits text trying each separator in order.
 /// The most important text splitter -- used for most real-world cases.
@@ -13,9 +13,7 @@ pub struct RecursiveCharacterTextSplitter {
 impl Default for RecursiveCharacterTextSplitter {
     fn default() -> Self {
         Self {
-            separators: vec![
-                "\n\n".into(), "\n".into(), " ".into(), "".into(),
-            ],
+            separators: vec!["\n\n".into(), "\n".into(), " ".into(), "".into()],
             chunk_size: 4000,
             chunk_overlap: 200,
             keep_separator: false,
@@ -86,7 +84,8 @@ impl RecursiveCharacterTextSplitter {
                 good_splits.push(trimmed);
             } else {
                 if !good_splits.is_empty() {
-                    let merged = merge_splits(&good_splits, separator, self.chunk_size, self.chunk_overlap);
+                    let merged =
+                        merge_splits(&good_splits, separator, self.chunk_size, self.chunk_overlap);
                     final_chunks.extend(merged);
                     good_splits.clear();
                 }

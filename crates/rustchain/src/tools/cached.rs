@@ -479,16 +479,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_key_consistency() {
-        let tool_a = CachedTool::new(Arc::new(SimpleTool::new(
-            "tool_a",
-            "A",
-            |_: &str| Ok("a".into()),
-        )));
-        let tool_b = CachedTool::new(Arc::new(SimpleTool::new(
-            "tool_b",
-            "B",
-            |_: &str| Ok("b".into()),
-        )));
+        let tool_a = CachedTool::new(Arc::new(SimpleTool::new("tool_a", "A", |_: &str| {
+            Ok("a".into())
+        })));
+        let tool_b = CachedTool::new(Arc::new(SimpleTool::new("tool_b", "B", |_: &str| {
+            Ok("b".into())
+        })));
 
         // Same input string but different tool names should produce different keys
         let key_a = tool_a.make_cache_key("same_input");

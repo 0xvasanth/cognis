@@ -1,8 +1,8 @@
 //! String formatting utilities.
 
-use std::collections::HashMap;
-use serde_json::Value;
 use crate::error::Result;
+use serde_json::Value;
+use std::collections::HashMap;
 
 /// A strict formatter that only accepts keyword arguments (no positional).
 /// Mirrors Python `langchain_core.utils.formatting.StrictFormatter`.

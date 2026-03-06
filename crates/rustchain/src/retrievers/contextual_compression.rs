@@ -399,7 +399,10 @@ mod tests {
         let mut metadata = HashMap::new();
         metadata.insert("source".to_string(), serde_json::json!("test.pdf"));
         let doc = Document::new("original content").with_metadata(metadata.clone());
-        let result = compressor.compress_documents(&[doc], "query").await.unwrap();
+        let result = compressor
+            .compress_documents(&[doc], "query")
+            .await
+            .unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].page_content, "compressed");
         assert_eq!(result[0].metadata, metadata);
@@ -435,10 +438,10 @@ mod tests {
         let embeddings = Arc::new(FakeEmbeddings {
             query_embedding: vec![1.0, 0.0],
             doc_embeddings: vec![
-                vec![1.0, 0.0],   // sim=1.0
-                vec![0.5, 0.5],   // sim~0.707
-                vec![0.9, 0.1],   // sim~0.994
-                vec![0.0, 1.0],   // sim=0.0
+                vec![1.0, 0.0], // sim=1.0
+                vec![0.5, 0.5], // sim~0.707
+                vec![0.9, 0.1], // sim~0.994
+                vec![0.0, 1.0], // sim=0.0
             ],
         });
         let filter = EmbeddingsFilter::new(embeddings).with_top_k(2);

@@ -305,9 +305,15 @@ impl OutputToolBinding {
     /// Extracts tool call arguments from the AI message value and validates them
     /// against the schema spec.
     #[allow(clippy::result_large_err)]
-    pub fn parse(&self, ai_message_value: &Value) -> std::result::Result<Value, StructuredOutputValidationError> {
+    pub fn parse(
+        &self,
+        ai_message_value: &Value,
+    ) -> std::result::Result<Value, StructuredOutputValidationError> {
         // Look for tool_calls in the AI message
-        if let Some(tool_calls) = ai_message_value.get("tool_calls").and_then(|v| v.as_array()) {
+        if let Some(tool_calls) = ai_message_value
+            .get("tool_calls")
+            .and_then(|v| v.as_array())
+        {
             for tool_call in tool_calls {
                 let name = tool_call.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 if name == self.tool_name {
@@ -323,11 +329,11 @@ impl OutputToolBinding {
             .with_ai_message(ai_message_value.clone())
             .with_tool_name(&self.tool_name))
         } else {
-            Err(StructuredOutputValidationError::new(
-                "AI message does not contain tool_calls",
+            Err(
+                StructuredOutputValidationError::new("AI message does not contain tool_calls")
+                    .with_ai_message(ai_message_value.clone())
+                    .with_tool_name(&self.tool_name),
             )
-            .with_ai_message(ai_message_value.clone())
-            .with_tool_name(&self.tool_name))
         }
     }
 }
@@ -395,10 +401,7 @@ impl ProviderStrategy {
 
         let mut response_format = serde_json::Map::new();
         response_format.insert("type".to_string(), Value::String("json_schema".to_string()));
-        response_format.insert(
-            "json_schema".to_string(),
-            Value::Object(json_schema_inner),
-        );
+        response_format.insert("json_schema".to_string(), Value::Object(json_schema_inner));
 
         kwargs.insert(
             "response_format".to_string(),
@@ -434,7 +437,10 @@ impl ProviderStrategyBinding {
     /// For provider strategy, the model response content is expected to be
     /// valid JSON matching the schema.
     #[allow(clippy::result_large_err)]
-    pub fn parse(&self, ai_message_value: &Value) -> std::result::Result<Value, StructuredOutputValidationError> {
+    pub fn parse(
+        &self,
+        ai_message_value: &Value,
+    ) -> std::result::Result<Value, StructuredOutputValidationError> {
         // For provider strategy, the content itself should be the structured output
         if let Some(content) = ai_message_value.get("content").and_then(|c| c.as_str()) {
             serde_json::from_str(content).map_err(|e| {
@@ -449,12 +455,10 @@ impl ProviderStrategyBinding {
             // Content is already a structured value
             Ok(content.clone())
         } else {
-            Err(
-                StructuredOutputValidationError::new(
-                    "AI message does not contain content for provider strategy parsing",
-                )
-                .with_ai_message(ai_message_value.clone()),
+            Err(StructuredOutputValidationError::new(
+                "AI message does not contain content for provider strategy parsing",
             )
+            .with_ai_message(ai_message_value.clone()))
         }
     }
 
@@ -735,9 +739,7 @@ mod tests {
 
     #[test]
     fn test_multiple_structured_outputs_error_display() {
-        let err = MultipleStructuredOutputsError::new(
-            "Both tool and provider format specified",
-        );
+        let err = MultipleStructuredOutputsError::new("Both tool and provider format specified");
         assert!(err.to_string().contains("Multiple"));
         assert!(err.to_string().contains("Both tool and provider"));
         assert!(err.ai_message.is_none());
@@ -838,11 +840,7 @@ mod tests {
 
     #[test]
     fn test_output_tool_binding_from_schema_spec() {
-        let spec = SchemaSpec::new(
-            SchemaKind::JsonSchema,
-            "MyTool",
-            json!({"type": "object"}),
-        );
+        let spec = SchemaSpec::new(SchemaKind::JsonSchema, "MyTool", json!({"type": "object"}));
         let binding = OutputToolBinding::from_schema_spec(spec, false);
         assert_eq!(binding.tool_name, "MyTool");
         assert!(!binding.include_raw);
@@ -850,11 +848,7 @@ mod tests {
 
     #[test]
     fn test_output_tool_binding_parse_success() {
-        let spec = SchemaSpec::new(
-            SchemaKind::JsonSchema,
-            "MyTool",
-            json!({"type": "object"}),
-        );
+        let spec = SchemaSpec::new(SchemaKind::JsonSchema, "MyTool", json!({"type": "object"}));
         let binding = OutputToolBinding::from_schema_spec(spec, false);
         let ai_msg = json!({
             "tool_calls": [
@@ -867,11 +861,7 @@ mod tests {
 
     #[test]
     fn test_output_tool_binding_parse_no_matching_tool() {
-        let spec = SchemaSpec::new(
-            SchemaKind::JsonSchema,
-            "MyTool",
-            json!({"type": "object"}),
-        );
+        let spec = SchemaSpec::new(SchemaKind::JsonSchema, "MyTool", json!({"type": "object"}));
         let binding = OutputToolBinding::from_schema_spec(spec, false);
         let ai_msg = json!({
             "tool_calls": [
@@ -885,11 +875,7 @@ mod tests {
 
     #[test]
     fn test_output_tool_binding_parse_no_tool_calls() {
-        let spec = SchemaSpec::new(
-            SchemaKind::JsonSchema,
-            "MyTool",
-            json!({"type": "object"}),
-        );
+        let spec = SchemaSpec::new(SchemaKind::JsonSchema, "MyTool", json!({"type": "object"}));
         let binding = OutputToolBinding::from_schema_spec(spec, false);
         let ai_msg = json!({"content": "hello"});
         let err = binding.parse(&ai_msg).unwrap_err();
@@ -910,11 +896,7 @@ mod tests {
 
     #[test]
     fn test_provider_strategy_binding_parse_string_content() {
-        let spec = SchemaSpec::new(
-            SchemaKind::JsonSchema,
-            "Output",
-            json!({"type": "object"}),
-        );
+        let spec = SchemaSpec::new(SchemaKind::JsonSchema, "Output", json!({"type": "object"}));
         let binding = ProviderStrategyBinding::from_schema_spec(spec, false);
         let ai_msg = json!({"content": "{\"x\": 42}"});
         let result = binding.parse(&ai_msg).unwrap();
@@ -923,11 +905,7 @@ mod tests {
 
     #[test]
     fn test_provider_strategy_binding_parse_object_content() {
-        let spec = SchemaSpec::new(
-            SchemaKind::JsonSchema,
-            "Output",
-            json!({"type": "object"}),
-        );
+        let spec = SchemaSpec::new(SchemaKind::JsonSchema, "Output", json!({"type": "object"}));
         let binding = ProviderStrategyBinding::from_schema_spec(spec, false);
         let ai_msg = json!({"content": {"x": 42}});
         let result = binding.parse(&ai_msg).unwrap();
@@ -936,11 +914,7 @@ mod tests {
 
     #[test]
     fn test_provider_strategy_binding_parse_no_content() {
-        let spec = SchemaSpec::new(
-            SchemaKind::JsonSchema,
-            "Output",
-            json!({"type": "object"}),
-        );
+        let spec = SchemaSpec::new(SchemaKind::JsonSchema, "Output", json!({"type": "object"}));
         let binding = ProviderStrategyBinding::from_schema_spec(spec, false);
         let ai_msg = json!({"role": "assistant"});
         let err = binding.parse(&ai_msg).unwrap_err();

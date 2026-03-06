@@ -197,9 +197,7 @@ pub fn with_fallbacks(
     primary: Arc<dyn Runnable>,
     fallbacks: Vec<Arc<dyn Runnable>>,
 ) -> Arc<dyn Runnable> {
-    Arc::new(
-        RunnableWithFallbacks::new(primary).with_fallbacks(fallbacks),
-    )
+    Arc::new(RunnableWithFallbacks::new(primary).with_fallbacks(fallbacks))
 }
 
 #[cfg(test)]
@@ -332,9 +330,10 @@ mod tests {
     #[tokio::test]
     async fn test_exception_filter_matching_error_triggers_fallback() {
         // Primary fails with ToolException which IS in the filter → fallback runs
-        let chain = RunnableWithFallbacks::new(Arc::new(Fails::tool_exception("primary", "tool broke")))
-            .with_fallback(Arc::new(Succeeds::new("fb1")))
-            .with_exceptions_to_handle(vec!["ToolException".to_string()]);
+        let chain =
+            RunnableWithFallbacks::new(Arc::new(Fails::tool_exception("primary", "tool broke")))
+                .with_fallback(Arc::new(Succeeds::new("fb1")))
+                .with_exceptions_to_handle(vec!["ToolException".to_string()]);
 
         let result = chain.invoke(json!("data"), None).await.unwrap();
         assert_eq!(result["from"], "fb1");

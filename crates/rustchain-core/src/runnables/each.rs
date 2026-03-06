@@ -28,18 +28,20 @@ impl Runnable for RunnableEach {
     }
 
     async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
-        let arr = input.as_array().ok_or_else(|| RustChainError::TypeMismatch {
-            expected: "Array".into(),
-            got: match &input {
-                Value::Null => "Null",
-                Value::Bool(_) => "Bool",
-                Value::Number(_) => "Number",
-                Value::String(_) => "String",
-                Value::Object(_) => "Object",
-                Value::Array(_) => unreachable!(),
-            }
-            .into(),
-        })?;
+        let arr = input
+            .as_array()
+            .ok_or_else(|| RustChainError::TypeMismatch {
+                expected: "Array".into(),
+                got: match &input {
+                    Value::Null => "Null",
+                    Value::Bool(_) => "Bool",
+                    Value::Number(_) => "Number",
+                    Value::String(_) => "String",
+                    Value::Object(_) => "Object",
+                    Value::Array(_) => unreachable!(),
+                }
+                .into(),
+            })?;
 
         let mut results = Vec::with_capacity(arr.len());
         for item in arr {

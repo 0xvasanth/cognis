@@ -58,7 +58,9 @@ impl HumanMessage {
         mime_type: impl Into<String>,
     ) -> Self {
         Self {
-            base: BaseMessageFields::new(MessageContent::with_image_base64(text, base64, mime_type)),
+            base: BaseMessageFields::new(MessageContent::with_image_base64(
+                text, base64, mime_type,
+            )),
         }
     }
 }
