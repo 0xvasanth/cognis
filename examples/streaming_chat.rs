@@ -92,6 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let llm_result = LLMResult {
         generations: vec![],
         llm_output: None,
+        run: None,
     };
     logging_handler
         .on_llm_end(&llm_result, run_id, None)
