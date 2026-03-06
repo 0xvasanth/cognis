@@ -5,6 +5,8 @@
 
 pub mod base;
 pub mod cached;
+pub mod circuit_breaker;
+pub mod graceful;
 pub mod rate_limited;
 pub mod structured;
 #[cfg(feature = "anthropic")]

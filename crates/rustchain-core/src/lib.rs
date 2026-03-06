@@ -54,6 +54,7 @@ pub mod prompts;
 pub mod output_parsers;
 pub mod vectorstores;
 pub mod rate_limiters;
+pub mod retry;
 pub mod structured_query;
 pub mod indexing;
 pub mod tracers;
