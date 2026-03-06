@@ -17,6 +17,7 @@ tokio.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 tempfile = "3"
+uuid.workspace = true
 
 [[example]]
 name = "simple_chain"
@@ -53,3 +54,27 @@ path = "../../examples/graph_with_checkpoints.rs"
 [[example]]
 name = "semantic_router"
 path = "../../examples/semantic_router.rs"
+
+[[example]]
+name = "multi_agent_collaboration"
+path = "../../examples/multi_agent_collaboration.rs"
+
+[[example]]
+name = "structured_extraction"
+path = "../../examples/structured_extraction.rs"
+
+[[example]]
+name = "evaluation_pipeline"
+path = "../../examples/evaluation_pipeline.rs"
+
+[[example]]
+name = "streaming_chat"
+path = "../../examples/streaming_chat.rs"
+
+[[example]]
+name = "tool_calling_agent"
+path = "../../examples/tool_calling_agent.rs"
+
+[[example]]
+name = "indexing_rag"
+path = "../../examples/indexing_rag.rs"
