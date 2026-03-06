@@ -4,9 +4,11 @@
 //! conversations can be resumed or inspected later.
 
 pub mod filesystem;
+pub mod sandbox;
 pub mod state;
 
 pub use self::filesystem::FilesystemBackend;
+pub use self::sandbox::SandboxBackend;
 pub use self::state::StateBackend;
 
 use async_trait::async_trait;
