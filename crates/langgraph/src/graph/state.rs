@@ -1253,7 +1253,7 @@ impl CompiledStateGraph {
                 Edge::Conditional { from, branch } => {
                     if let Some(ref ends) = branch.ends {
                         let mut sorted_ends: Vec<(&String, &String)> = ends.iter().collect();
-                        sorted_ends.sort_by_key(|(k, _)| k.clone());
+                        sorted_ends.sort_by_key(|(k, _)| (*k).clone());
                         for (label, target) in sorted_ends {
                             lines.push(format!("    {} -. {} .-> {}", from, label, target));
                         }
