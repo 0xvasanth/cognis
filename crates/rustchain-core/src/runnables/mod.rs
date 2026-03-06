@@ -39,7 +39,7 @@ pub use fallbacks::{RunnableWithFallbacks, with_fallbacks};
 pub use lambda::RunnableLambda;
 pub use parallel::RunnableParallel;
 pub use passthrough::{RunnableAssign, RunnablePassthrough, RunnablePick};
-pub use router::RouterRunnable;
+pub use router::{RouterRunnable, RunnableRouter, RunnableFnBranch};
 pub use configurable::{ConfigurableField, RunnableConfigurableFields};
 pub use retry::RunnableRetry;
 pub use sequence::RunnableSequence;
