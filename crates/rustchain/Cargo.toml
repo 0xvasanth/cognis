@@ -19,6 +19,10 @@ csv = "1"
 glob = "0.3"
 pdf-extract = { version = "0.7", optional = true }
 
+[dependencies.sqlx]
+workspace = true
+optional = true
+
 [dependencies.reqwest]
 workspace = true
 optional = true
@@ -30,6 +34,7 @@ optional = true
 [features]
 default = []
 pdf = ["dep:pdf-extract"]
+sqlite = ["dep:sqlx"]
 openai = ["dep:reqwest", "dep:secrecy"]
 anthropic = ["dep:reqwest", "dep:secrecy"]
 google = ["dep:reqwest", "dep:secrecy"]

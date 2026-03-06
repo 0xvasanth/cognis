@@ -40,6 +40,7 @@
 //! - [`tools`] -- Calculator, shell, and JSON query tools.
 
 pub mod agents;
+pub mod cache;
 pub mod chains;
 pub mod chat_models;
 pub mod document_loaders;

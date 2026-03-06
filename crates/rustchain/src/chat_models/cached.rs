@@ -1,191 +1,53 @@
 //! LLM response caching layer for chat models.
 //!
-//! Provides a [`CachedChatModel`] wrapper that caches responses from any
-//! [`BaseChatModel`] implementation using a pluggable [`CacheStore`] backend.
+//! Provides [`CachedChatModel`], a chat model wrapper that caches responses
+//! from any [`BaseChatModel`] implementation using a pluggable [`LlmCache`]
+//! backend.
 //!
-//! Two built-in backends are provided:
-//! - [`InMemoryCache`] — bounded in-memory cache with FIFO eviction
-//! - [`FileCache`] — JSON-file-based persistent cache
+//! See the [`crate::cache`] module for available cache backends.
 
-use std::collections::{HashMap, VecDeque};
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::Mutex;
 
 use rustchain_core::error::Result;
-use rustchain_core::language_models::chat_model::{BaseChatModel, ChatStream, ToolChoice};
+use rustchain_core::language_models::chat_model::{BaseChatModel, ChatStream, ModelProfile, ToolChoice};
 use rustchain_core::messages::Message;
 use rustchain_core::outputs::ChatResult;
 use rustchain_core::tools::ToolSchema;
 
-// ---------------------------------------------------------------------------
-// CacheStore trait
-// ---------------------------------------------------------------------------
-
-/// Pluggable cache backend for LLM responses.
-#[async_trait]
-pub trait CacheStore: Send + Sync {
-    /// Look up a cached result by key.
-    async fn get(&self, key: &str) -> Option<ChatResult>;
-
-    /// Store a result under the given key.
-    async fn set(&self, key: &str, value: &ChatResult);
-
-    /// Remove all entries from the cache.
-    async fn clear(&self);
-}
-
-// ---------------------------------------------------------------------------
-// InMemoryCache
-// ---------------------------------------------------------------------------
-
-/// Bounded in-memory LLM response cache with FIFO eviction.
-pub struct InMemoryCache {
-    store: Mutex<HashMap<String, ChatResult>>,
-    order: Mutex<VecDeque<String>>,
-    max_size: Option<usize>,
-}
-
-impl InMemoryCache {
-    /// Create a new in-memory cache.
-    ///
-    /// If `max_size` is `Some(n)`, the cache evicts the oldest entry when it
-    /// exceeds `n` entries.
-    pub fn new(max_size: Option<usize>) -> Self {
-        Self {
-            store: Mutex::new(HashMap::new()),
-            order: Mutex::new(VecDeque::new()),
-            max_size,
-        }
-    }
-}
-
-#[async_trait]
-impl CacheStore for InMemoryCache {
-    async fn get(&self, key: &str) -> Option<ChatResult> {
-        let store = self.store.lock().await;
-        store.get(key).cloned()
-    }
-
-    async fn set(&self, key: &str, value: &ChatResult) {
-        let mut store = self.store.lock().await;
-        let mut order = self.order.lock().await;
-
-        if !store.contains_key(key) {
-            order.push_back(key.to_string());
-        }
-
-        store.insert(key.to_string(), value.clone());
-
-        // Evict oldest entries if over capacity.
-        if let Some(max) = self.max_size {
-            while store.len() > max {
-                if let Some(oldest) = order.pop_front() {
-                    store.remove(&oldest);
-                }
-            }
-        }
-    }
-
-    async fn clear(&self) {
-        let mut store = self.store.lock().await;
-        let mut order = self.order.lock().await;
-        store.clear();
-        order.clear();
-    }
-}
-
-// ---------------------------------------------------------------------------
-// FileCache
-// ---------------------------------------------------------------------------
-
-/// File-system-backed LLM response cache.
-///
-/// Each entry is stored as a JSON file in the configured directory. The cache
-/// key is hashed to produce a safe filename.
-pub struct FileCache {
-    dir: PathBuf,
-}
-
-impl FileCache {
-    /// Create a new file cache that stores entries under `dir`.
-    ///
-    /// The directory is created if it does not exist.
-    pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
-    }
-
-    fn path_for(&self, key: &str) -> PathBuf {
-        self.dir.join(format!("{key}.json"))
-    }
-}
-
-#[async_trait]
-impl CacheStore for FileCache {
-    async fn get(&self, key: &str) -> Option<ChatResult> {
-        let path = self.path_for(key);
-        let data = tokio::fs::read_to_string(&path).await.ok()?;
-        serde_json::from_str(&data).ok()
-    }
-
-    async fn set(&self, key: &str, value: &ChatResult) {
-        let _ = tokio::fs::create_dir_all(&self.dir).await;
-        let path = self.path_for(key);
-        if let Ok(json) = serde_json::to_string_pretty(value) {
-            let _ = tokio::fs::write(&path, json).await;
-        }
-    }
-
-    async fn clear(&self) {
-        if let Ok(mut entries) = tokio::fs::read_dir(&self.dir).await {
-            while let Ok(Some(entry)) = entries.next_entry().await {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("json") {
-                    let _ = tokio::fs::remove_file(path).await;
-                }
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Cache key computation
-// ---------------------------------------------------------------------------
-
-/// Compute a deterministic hex cache key from messages and optional stop sequences.
-fn compute_cache_key(messages: &[Message], stop: Option<&[String]>) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let serialized = serde_json::to_string(messages).unwrap_or_default();
-    let mut hasher = DefaultHasher::new();
-    serialized.hash(&mut hasher);
-    if let Some(stop) = stop {
-        stop.hash(&mut hasher);
-    }
-    format!("{:x}", hasher.finish())
-}
-
-// ---------------------------------------------------------------------------
-// CachedChatModel
-// ---------------------------------------------------------------------------
+use crate::cache::{compute_cache_key, LlmCache};
 
 /// A chat model wrapper that caches responses from an inner model.
 ///
 /// `_generate` checks the cache before calling the inner model. On a miss the
 /// result is stored for future calls with identical inputs. Streaming requests
 /// are passed through to the inner model without caching.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use rustchain::cache::InMemoryCache;
+/// use rustchain::chat_models::cached::CachedChatModel;
+/// use std::sync::Arc;
+///
+/// let cache = Arc::new(InMemoryCache::builder().max_size(100).build());
+/// let cached_model = CachedChatModel::new(Box::new(my_model), cache);
+/// ```
 pub struct CachedChatModel {
     inner: Box<dyn BaseChatModel>,
-    cache: Arc<dyn CacheStore>,
+    cache: Arc<dyn LlmCache>,
 }
 
 impl CachedChatModel {
     /// Wrap an existing chat model with a cache backend.
-    pub fn new(inner: Box<dyn BaseChatModel>, cache: Arc<dyn CacheStore>) -> Self {
+    pub fn new(inner: Box<dyn BaseChatModel>, cache: Arc<dyn LlmCache>) -> Self {
         Self { inner, cache }
+    }
+
+    /// Return a reference to the underlying cache.
+    pub fn cache(&self) -> &Arc<dyn LlmCache> {
+        &self.cache
     }
 }
 
@@ -205,13 +67,13 @@ impl BaseChatModel for CachedChatModel {
 
         // Miss — call through and cache the result.
         let result = self.inner._generate(messages, stop).await?;
-        self.cache.set(&key, &result).await;
+        self.cache.put(&key, &result).await;
         Ok(result)
     }
 
     fn llm_type(&self) -> &str {
-        // We return a static-lifetime str by leaking — acceptable for a type
-        // identifier that lives for the program's duration.
+        // Leak is acceptable for a type identifier that lives for the program's
+        // duration.
         let s = format!("cached({})", self.inner.llm_type());
         Box::leak(s.into_boxed_str())
     }
@@ -236,20 +98,24 @@ impl BaseChatModel for CachedChatModel {
             cache: Arc::clone(&self.cache),
         }))
     }
-}
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+    fn profile(&self) -> ModelProfile {
+        self.inner.profile()
+    }
+
+    fn get_num_tokens_from_messages(&self, messages: &[Message]) -> usize {
+        self.inner.get_num_tokens_from_messages(messages)
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use rustchain_core::messages::{AIMessage, HumanMessage, Message};
-    use rustchain_core::outputs::{ChatGeneration, ChatResult};
-
+    use crate::cache::InMemoryCache;
+    use rustchain_core::messages::{AIMessage, HumanMessage};
+    use rustchain_core::outputs::ChatGeneration;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
     /// A fake chat model that counts how many times `_generate` is called.
     struct FakeModel {
@@ -272,14 +138,13 @@ mod tests {
     impl BaseChatModel for FakeModel {
         async fn _generate(
             &self,
-            messages: &[Message],
+            _messages: &[Message],
             _stop: Option<&[String]>,
         ) -> Result<ChatResult> {
             let n = self.call_count.fetch_add(1, Ordering::SeqCst);
-            let text = format!("response #{} to: {}", n, serde_json::to_string(messages).unwrap_or_default());
-            let ai = AIMessage::new(&text);
+            let text = format!("response #{n}");
             Ok(ChatResult {
-                generations: vec![ChatGeneration::new(ai)],
+                generations: vec![ChatGeneration::new(AIMessage::new(&text))],
                 llm_output: None,
             })
         }
@@ -296,111 +161,97 @@ mod tests {
     #[tokio::test]
     async fn test_cache_hit_returns_cached_result() {
         let (model, call_count) = FakeModel::new();
-        let cache = Arc::new(InMemoryCache::new(None));
+        let cache = Arc::new(InMemoryCache::new());
         let cached = CachedChatModel::new(Box::new(model), cache);
 
         let msgs = vec![human("hello")];
-
         let r1 = cached._generate(&msgs, None).await.unwrap();
         let r2 = cached._generate(&msgs, None).await.unwrap();
 
         assert_eq!(r1, r2);
-        assert_eq!(call_count.load(Ordering::SeqCst), 1, "inner model should be called only once");
+        assert_eq!(call_count.load(Ordering::SeqCst), 1, "inner model called only once");
     }
 
     #[tokio::test]
     async fn test_cache_miss_different_messages() {
         let (model, call_count) = FakeModel::new();
-        let cache = Arc::new(InMemoryCache::new(None));
+        let cache = Arc::new(InMemoryCache::new());
         let cached = CachedChatModel::new(Box::new(model), cache);
 
-        let msgs_a = vec![human("hello")];
-        let msgs_b = vec![human("world")];
-
-        let r1 = cached._generate(&msgs_a, None).await.unwrap();
-        let r2 = cached._generate(&msgs_b, None).await.unwrap();
+        let r1 = cached._generate(&[human("hello")], None).await.unwrap();
+        let r2 = cached._generate(&[human("world")], None).await.unwrap();
 
         assert_ne!(r1, r2);
         assert_eq!(call_count.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
-    async fn test_in_memory_cache_max_size_eviction() {
-        let cache = InMemoryCache::new(Some(2));
-
-        let result = |text: &str| ChatResult {
-            generations: vec![ChatGeneration::new(AIMessage::new(text))],
-            llm_output: None,
-        };
-
-        cache.set("a", &result("first")).await;
-        cache.set("b", &result("second")).await;
-        cache.set("c", &result("third")).await;
-
-        // "a" should have been evicted (FIFO).
-        assert!(cache.get("a").await.is_none(), "oldest entry should be evicted");
-        assert!(cache.get("b").await.is_some());
-        assert!(cache.get("c").await.is_some());
-    }
-
-    #[tokio::test]
-    async fn test_file_cache_save_and_load() {
-        let dir = tempfile::tempdir().unwrap();
-        let cache = FileCache::new(dir.path());
-
-        let result = ChatResult {
-            generations: vec![ChatGeneration::new(AIMessage::new("cached"))],
-            llm_output: None,
-        };
-
-        cache.set("key1", &result).await;
-        let loaded = cache.get("key1").await;
-
-        assert!(loaded.is_some());
-        assert_eq!(loaded.unwrap(), result);
-    }
-
-    #[tokio::test]
-    async fn test_clear_empties_cache() {
-        let cache = InMemoryCache::new(None);
-
-        let result = ChatResult {
-            generations: vec![ChatGeneration::new(AIMessage::new("data"))],
-            llm_output: None,
-        };
-
-        cache.set("x", &result).await;
-        assert!(cache.get("x").await.is_some());
-
-        cache.clear().await;
-        assert!(cache.get("x").await.is_none(), "cache should be empty after clear");
-    }
-
-    #[tokio::test]
-    async fn test_llm_type_includes_inner() {
+    async fn test_cached_model_llm_type() {
         let (model, _) = FakeModel::new();
-        let cache = Arc::new(InMemoryCache::new(None));
+        let cache = Arc::new(InMemoryCache::new());
         let cached = CachedChatModel::new(Box::new(model), cache);
-
         assert_eq!(cached.llm_type(), "cached(fake)");
     }
 
     #[tokio::test]
-    async fn test_file_cache_clear() {
-        let dir = tempfile::tempdir().unwrap();
-        let cache = FileCache::new(dir.path());
+    async fn test_cached_model_with_ttl_expiry() {
+        let (model, call_count) = FakeModel::new();
+        let cache = Arc::new(
+            InMemoryCache::builder()
+                .ttl(Duration::from_millis(50))
+                .build(),
+        );
+        let cached = CachedChatModel::new(Box::new(model), cache);
 
-        let result = ChatResult {
-            generations: vec![ChatGeneration::new(AIMessage::new("temp"))],
-            llm_output: None,
-        };
+        let msgs = vec![human("hi")];
+        let _ = cached._generate(&msgs, None).await.unwrap();
+        assert_eq!(call_count.load(Ordering::SeqCst), 1);
 
-        cache.set("k1", &result).await;
-        cache.set("k2", &result).await;
-        assert!(cache.get("k1").await.is_some());
+        // Wait for expiry.
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
-        cache.clear().await;
-        assert!(cache.get("k1").await.is_none());
-        assert!(cache.get("k2").await.is_none());
+        // Should call the inner model again.
+        let _ = cached._generate(&msgs, None).await.unwrap();
+        assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn test_cached_model_with_lru_eviction() {
+        let (model, call_count) = FakeModel::new();
+        let cache = Arc::new(InMemoryCache::builder().max_size(2).build());
+        let cached = CachedChatModel::new(Box::new(model), cache);
+
+        // Fill cache with 2 entries.
+        let _ = cached._generate(&[human("a")], None).await.unwrap();
+        let _ = cached._generate(&[human("b")], None).await.unwrap();
+        assert_eq!(call_count.load(Ordering::SeqCst), 2);
+
+        // Access "a" to make it recently used.
+        let _ = cached._generate(&[human("a")], None).await.unwrap();
+        assert_eq!(call_count.load(Ordering::SeqCst), 2, "a should be a cache hit");
+
+        // Insert "c" — should evict "b".
+        let _ = cached._generate(&[human("c")], None).await.unwrap();
+        assert_eq!(call_count.load(Ordering::SeqCst), 3);
+
+        // "b" should now be a miss.
+        let _ = cached._generate(&[human("b")], None).await.unwrap();
+        assert_eq!(call_count.load(Ordering::SeqCst), 4, "b should be evicted and re-fetched");
+    }
+
+    #[tokio::test]
+    async fn test_stop_sequences_produce_different_cache_keys() {
+        let (model, call_count) = FakeModel::new();
+        let cache = Arc::new(InMemoryCache::new());
+        let cached = CachedChatModel::new(Box::new(model), cache);
+
+        let msgs = vec![human("hello")];
+        let _ = cached._generate(&msgs, None).await.unwrap();
+        let _ = cached
+            ._generate(&msgs, Some(&["stop".to_string()]))
+            .await
+            .unwrap();
+
+        assert_eq!(call_count.load(Ordering::SeqCst), 2, "different stop seqs = different keys");
     }
 }
