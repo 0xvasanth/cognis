@@ -35,7 +35,7 @@ pub use binding::RunnableBinding;
 pub use branch::RunnableBranch;
 pub use config::{ensure_config, get_config_list, merge_configs, patch_config, ConfigPatch, RunnableConfig};
 pub use each::RunnableEach;
-pub use fallbacks::RunnableWithFallbacks;
+pub use fallbacks::{RunnableWithFallbacks, with_fallbacks};
 pub use lambda::RunnableLambda;
 pub use parallel::RunnableParallel;
 pub use passthrough::{RunnableAssign, RunnablePassthrough, RunnablePick};

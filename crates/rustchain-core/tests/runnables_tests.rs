@@ -313,7 +313,7 @@ async fn test_fallbacks_primary_succeeds() {
         Ok(json!(-1))
     })) as Arc<dyn Runnable>;
 
-    let with_fallbacks = RunnableWithFallbacks::new(primary, vec![fallback]);
+    let with_fallbacks = RunnableWithFallbacks::new(primary).with_fallbacks(vec![fallback]);
     let result = with_fallbacks.invoke(json!(5), None).await.unwrap();
     assert_eq!(result, json!(6));
 }
@@ -327,7 +327,7 @@ async fn test_fallbacks_primary_fails() {
         Ok(json!({"fallback": v}))
     })) as Arc<dyn Runnable>;
 
-    let with_fallbacks = RunnableWithFallbacks::new(primary, vec![fallback]);
+    let with_fallbacks = RunnableWithFallbacks::new(primary).with_fallbacks(vec![fallback]);
     let result = with_fallbacks.invoke(json!(5), None).await.unwrap();
     assert_eq!(result, json!({"fallback": 5}));
 }
@@ -341,11 +341,11 @@ async fn test_fallbacks_all_fail() {
         Err(RustChainError::Other("fallback also failed".into()))
     })) as Arc<dyn Runnable>;
 
-    let with_fallbacks = RunnableWithFallbacks::new(primary, vec![fallback]);
+    let with_fallbacks = RunnableWithFallbacks::new(primary).with_fallbacks(vec![fallback]);
     let result = with_fallbacks.invoke(json!(5), None).await;
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("primary failed"), "Expected primary error, got: {}", err_msg);
+    assert!(err_msg.contains("fallback also failed"), "Expected last error, got: {}", err_msg);
 }
 
 // ─── Router Tests ───

@@ -57,7 +57,7 @@ pub trait RunnableExt: Runnable + Sized + 'static {
     ///
     /// Equivalent to Python's `Runnable.with_fallbacks`.
     fn with_fallbacks(self, fallbacks: Vec<Arc<dyn Runnable>>) -> RunnableWithFallbacks {
-        RunnableWithFallbacks::new(Arc::new(self) as Arc<dyn Runnable>, fallbacks)
+        RunnableWithFallbacks::new(Arc::new(self) as Arc<dyn Runnable>).with_fallbacks(fallbacks)
     }
 
     /// Wrap this runnable with retry logic using exponential backoff.
