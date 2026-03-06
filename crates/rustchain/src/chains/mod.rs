@@ -16,3 +16,5 @@ pub mod conversation_retrieval;
 pub use conversation_retrieval::{ConversationalRetrievalChain, ConversationalRetrievalResult};
 pub mod router;
 pub use router::{Route, RouterChain, RouterResult, SemanticRouter};
+pub mod structured_output;
+pub use structured_output::StructuredOutputChain;
