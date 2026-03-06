@@ -6,6 +6,8 @@
 
 pub mod filesystem;
 pub mod memory;
+pub mod subagent;
+pub mod summarization;
 
 use async_trait::async_trait;
 use serde_json::Value;
