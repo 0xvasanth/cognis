@@ -1394,6 +1394,19 @@ impl CompiledStateGraph {
         format!("```mermaid\n{}\n```", self.draw_mermaid())
     }
 
+    /// Render this graph as ASCII art for terminal display.
+    ///
+    /// Uses Unicode box-drawing characters to produce a visual representation
+    /// of the graph topology, suitable for logging and debugging.
+    pub fn draw_ascii(&self) -> String {
+        super::ascii::AsciiGraphRenderer::render(self)
+    }
+
+    /// Render this graph as ASCII art with custom rendering options.
+    pub fn draw_ascii_with_options(&self, options: &super::ascii::AsciiRenderOptions) -> String {
+        super::ascii::AsciiGraphRenderer::render_with_options(self, options)
+    }
+
     /// Serialize the graph structure (nodes, edges) to a JSON [`Value`] for debugging.
     pub fn to_json(&self) -> Value {
         let node_list: Vec<Value> = {

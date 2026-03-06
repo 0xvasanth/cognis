@@ -4,6 +4,7 @@
 //! for building stateful, multi-actor agent workflows.
 
 pub mod annotations;
+pub mod ascii;
 pub mod branch;
 pub mod human_in_loop;
 pub mod mermaid;
@@ -21,6 +22,7 @@ pub use annotations::{
     apply_annotations, AnnotatedState, AnnotatedStateBuilder, AnnotatedStateGraph,
     CompiledAnnotatedStateGraph, FieldAnnotation, JsonType,
 };
+pub use ascii::{to_ascii, AsciiGraphRenderer, AsciiRenderOptions, NodeStyle};
 pub use branch::{AsyncBranch, AsyncRouterFn, Branch, RouterFn, RouterResult};
 pub use human_in_loop::{ApprovalRequest, HumanAction, HumanInTheLoop, HumanInTheLoopResult};
 pub use mermaid::{to_mermaid, to_mermaid_url};
