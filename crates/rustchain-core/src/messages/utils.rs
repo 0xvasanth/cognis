@@ -563,3 +563,270 @@ pub fn messages_from_dict(values: &[Value]) -> Result<Vec<Message>> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::tokens::estimate_token_count;
+
+    // -----------------------------------------------------------------------
+    // trim_messages tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_trim_messages_last_strategy() {
+        let messages = vec![
+            Message::human("First message"),
+            Message::ai("Second message"),
+            Message::human("Third message"),
+            Message::ai("Fourth message"),
+        ];
+        let counter = |s: &str| estimate_token_count(s);
+        let trimmed = trim_messages(&messages, 10, &counter, TrimStrategy::Last);
+        // Should keep the most recent messages that fit
+        assert!(!trimmed.is_empty());
+        assert_eq!(
+            trimmed.last().unwrap().content().text(),
+            "Fourth message"
+        );
+        assert!(trimmed.len() <= messages.len());
+    }
+
+    #[test]
+    fn test_trim_messages_first_strategy() {
+        let messages = vec![
+            Message::human("First message"),
+            Message::ai("Second message"),
+            Message::human("Third message"),
+            Message::ai("Fourth message"),
+        ];
+        let counter = |s: &str| estimate_token_count(s);
+        let trimmed = trim_messages(&messages, 10, &counter, TrimStrategy::First);
+        // Should keep the oldest messages that fit
+        assert!(!trimmed.is_empty());
+        assert_eq!(
+            trimmed.first().unwrap().content().text(),
+            "First message"
+        );
+        assert!(trimmed.len() <= messages.len());
+    }
+
+    #[test]
+    fn test_trim_messages_preserving_system() {
+        let messages = vec![
+            Message::system("You are a helpful assistant."),
+            Message::human("Oldest question"),
+            Message::ai("Oldest answer with lots of tokens to push it over the budget"),
+            Message::human("Newest question"),
+        ];
+        let counter = |s: &str| estimate_token_count(s);
+        let trimmed = trim_messages_full(
+            &messages,
+            20,
+            &counter,
+            TrimStrategy::Last,
+            true, // include_system
+            None,
+            None,
+        );
+        // System message should always be preserved
+        assert_eq!(trimmed[0].message_type(), MessageType::System);
+        assert_eq!(trimmed[0].content().text(), "You are a helpful assistant.");
+        // Should have dropped some older messages
+        assert!(trimmed.len() < messages.len());
+    }
+
+    #[test]
+    fn test_trim_messages_exact_token_boundary() {
+        // Each message is "abcd" = 4 chars = 1 token
+        let messages = vec![
+            Message::human("abcd"),
+            Message::ai("abcd"),
+            Message::human("abcd"),
+        ];
+        let counter = |s: &str| estimate_token_count(s);
+        // Budget of exactly 3 tokens should fit all 3 messages
+        let trimmed = trim_messages(&messages, 3, &counter, TrimStrategy::Last);
+        assert_eq!(trimmed.len(), 3);
+
+        // Budget of exactly 2 tokens should fit only 2 messages
+        let trimmed = trim_messages(&messages, 2, &counter, TrimStrategy::Last);
+        assert_eq!(trimmed.len(), 2);
+        assert_eq!(trimmed.last().unwrap().content().text(), "abcd");
+    }
+
+    #[test]
+    fn test_trim_messages_all_exceeding_budget() {
+        let messages = vec![
+            Message::human("This is a very long message with many tokens"),
+            Message::ai("Another very long message with many tokens"),
+        ];
+        let counter = |s: &str| estimate_token_count(s);
+        // Very small budget - nothing should fit
+        let trimmed = trim_messages(&messages, 1, &counter, TrimStrategy::Last);
+        assert!(trimmed.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // filter_messages tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_filter_messages_include_types() {
+        let messages = vec![
+            Message::system("System prompt"),
+            Message::human("Hello"),
+            Message::ai("Hi there"),
+            Message::human("How are you?"),
+        ];
+        let filtered = filter_messages(
+            &messages,
+            None,
+            Some(&[MessageType::Human]),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(|m| m.message_type() == MessageType::Human));
+    }
+
+    #[test]
+    fn test_filter_messages_exclude_types() {
+        let messages = vec![
+            Message::system("System prompt"),
+            Message::human("Hello"),
+            Message::ai("Hi there"),
+            Message::human("How are you?"),
+        ];
+        let filtered = filter_messages(
+            &messages,
+            None,
+            None,
+            None,
+            Some(&[MessageType::System]),
+            None,
+        );
+        assert_eq!(filtered.len(), 3);
+        assert!(filtered.iter().all(|m| m.message_type() != MessageType::System));
+    }
+
+    // -----------------------------------------------------------------------
+    // merge_message_runs tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_merge_message_runs_consecutive_same_types() {
+        let messages = vec![
+            Message::human("Hello"),
+            Message::human("How are you?"),
+            Message::ai("I'm fine"),
+            Message::ai("Thanks for asking"),
+        ];
+        let merged = merge_message_runs(&messages);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].message_type(), MessageType::Human);
+        let content = merged[0].content().text();
+        assert!(content.contains("Hello"));
+        assert!(content.contains("How are you?"));
+        assert_eq!(merged[1].message_type(), MessageType::Ai);
+        let ai_content = merged[1].content().text();
+        assert!(ai_content.contains("I'm fine"));
+        assert!(ai_content.contains("Thanks for asking"));
+    }
+
+    #[test]
+    fn test_merge_message_runs_no_merging_needed() {
+        let messages = vec![
+            Message::human("Hello"),
+            Message::ai("Hi there"),
+            Message::human("How are you?"),
+            Message::ai("Fine, thanks"),
+        ];
+        let merged = merge_message_runs(&messages);
+        assert_eq!(merged.len(), 4);
+        assert_eq!(merged[0].content().text(), "Hello");
+        assert_eq!(merged[1].content().text(), "Hi there");
+    }
+
+    // -----------------------------------------------------------------------
+    // messages_to_dict / messages_from_dict tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_messages_to_dict_round_trip() {
+        let messages = vec![
+            Message::human("Hello"),
+            Message::ai("World"),
+            Message::system("Be helpful"),
+        ];
+        let dicts = messages_to_dict(&messages);
+        assert_eq!(dicts.len(), 3);
+
+        let restored = messages_from_dict(&dicts).unwrap();
+        assert_eq!(restored.len(), 3);
+        assert_eq!(restored[0].content().text(), "Hello");
+        assert_eq!(restored[0].message_type(), MessageType::Human);
+        assert_eq!(restored[1].content().text(), "World");
+        assert_eq!(restored[1].message_type(), MessageType::Ai);
+        assert_eq!(restored[2].content().text(), "Be helpful");
+        assert_eq!(restored[2].message_type(), MessageType::System);
+    }
+
+    #[test]
+    fn test_messages_from_dict_various_types() {
+        // Use messages_to_dict to get the correct serialization format, then verify round-trip
+        let original = vec![
+            Message::human("Hi"),
+            Message::ai("Hello"),
+            Message::system("System"),
+            Message::tool("Result", "tc_1"),
+        ];
+        let dicts = messages_to_dict(&original);
+        assert_eq!(dicts.len(), 4);
+
+        let messages = messages_from_dict(&dicts).unwrap();
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[0].message_type(), MessageType::Human);
+        assert_eq!(messages[0].content().text(), "Hi");
+        assert_eq!(messages[1].message_type(), MessageType::Ai);
+        assert_eq!(messages[1].content().text(), "Hello");
+        assert_eq!(messages[2].message_type(), MessageType::System);
+        assert_eq!(messages[2].content().text(), "System");
+        assert_eq!(messages[3].message_type(), MessageType::Tool);
+        assert_eq!(messages[3].content().text(), "Result");
+    }
+
+    // -----------------------------------------------------------------------
+    // Empty input tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_empty_input_trim_messages() {
+        let counter = |s: &str| estimate_token_count(s);
+        let trimmed = trim_messages(&[], 100, &counter, TrimStrategy::Last);
+        assert!(trimmed.is_empty());
+        let trimmed = trim_messages(&[], 100, &counter, TrimStrategy::First);
+        assert!(trimmed.is_empty());
+    }
+
+    #[test]
+    fn test_empty_input_filter_messages() {
+        let filtered = filter_messages(&[], None, Some(&[MessageType::Human]), None, None, None);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn test_empty_input_merge_message_runs() {
+        let merged = merge_message_runs(&[]);
+        assert!(merged.is_empty());
+    }
+
+    #[test]
+    fn test_empty_input_messages_to_dict() {
+        let dicts = messages_to_dict(&[]);
+        assert!(dicts.is_empty());
+        let restored = messages_from_dict(&[]).unwrap();
+        assert!(restored.is_empty());
+    }
+}
