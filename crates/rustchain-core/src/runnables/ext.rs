@@ -126,6 +126,17 @@ pub trait RunnableExt: Runnable + Sized + 'static {
         )
     }
 
+    /// Set a concurrency limit for batch operations on this runnable.
+    ///
+    /// Returns a `RunnableBinding` with `max_concurrency` set in its config patch.
+    /// When `abatch` is called on the resulting runnable, it will limit the number
+    /// of concurrent invocations to `max_concurrency`.
+    fn with_concurrency(self, max_concurrency: usize) -> RunnableBinding {
+        let mut config = RunnableConfig::default();
+        config.max_concurrency = Some(max_concurrency);
+        self.with_config(config)
+    }
+
     /// Pick one or more keys from the output dict.
     ///
     /// Equivalent to Python's `Runnable.pick(keys)`.
