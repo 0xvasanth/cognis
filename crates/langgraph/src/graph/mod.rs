@@ -5,6 +5,7 @@
 
 pub mod branch;
 pub mod message;
+pub mod persistent;
 pub mod serialize;
 pub mod state;
 pub mod subgraph;
@@ -14,5 +15,6 @@ pub use branch::{AsyncBranch, AsyncRouterFn, Branch, RouterFn, RouterResult};
 pub use message::{add_messages, message_graph};
 pub use serialize::{ConditionalEdgeDef, GraphDefinition, GraphRegistry};
 pub use state::{AsyncNodeAction, CompiledStateGraph, NodeAction, NodeSpec, StateGraph};
+pub use persistent::PersistentGraph;
 pub use subgraph::SubgraphNode;
 pub use ui::{AnyUIMessage, RemoveUIMessage, UIMessage, ui_message_reducer};

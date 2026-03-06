@@ -73,6 +73,20 @@ pub struct NodeSpec {
     pub defer: bool,
 }
 
+impl Clone for NodeSpec {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            action: Arc::clone(&self.action),
+            metadata: self.metadata.clone(),
+            retry_policy: self.retry_policy.clone(),
+            cache_policy: self.cache_policy.clone(),
+            ends: self.ends.clone(),
+            defer: self.defer,
+        }
+    }
+}
+
 impl fmt::Debug for NodeSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NodeSpec")
@@ -582,6 +596,21 @@ pub struct CompiledStateGraph {
     interrupt_before: HashSet<String>,
     /// Nodes that trigger an interrupt **after** execution.
     interrupt_after: HashSet<String>,
+}
+
+impl Clone for CompiledStateGraph {
+    fn clone(&self) -> Self {
+        Self {
+            nodes: self.nodes.clone(),
+            edges: self.edges.clone(),
+            outgoing: self.outgoing.clone(),
+            recursion_limit: self.recursion_limit,
+            input_schema: self.input_schema.clone(),
+            output_schema: self.output_schema.clone(),
+            interrupt_before: self.interrupt_before.clone(),
+            interrupt_after: self.interrupt_after.clone(),
+        }
+    }
 }
 
 impl CompiledStateGraph {
