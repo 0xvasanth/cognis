@@ -38,4 +38,4 @@ pub use text::TextLoader;
     feature = "ollama",
     feature = "azure",
 ))]
-pub use web::WebBaseLoader;
+pub use web::{WebBaseLoader, WebCrawler, WebLoader};
