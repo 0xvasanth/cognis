@@ -4,6 +4,7 @@ pub mod calculator;
 pub mod json_query;
 pub mod openapi;
 pub mod shell;
+pub mod validation;
 
 #[cfg(any(
     feature = "openai",
@@ -40,6 +41,10 @@ pub use openapi::{
 ))]
 pub use openapi::ReqwestExecutor;
 pub use shell::ShellTool;
+pub use validation::{
+    StrictnessMode, ToolCallCorrector, ToolCallValidator, ValidatedToolExecutor,
+    ValidationError, ValidationResult, ValidationSchemaBuilder,
+};
 
 #[cfg(any(
     feature = "openai",
