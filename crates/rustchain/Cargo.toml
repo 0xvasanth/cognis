@@ -31,7 +31,7 @@ default = []
 openai = ["dep:reqwest", "dep:secrecy"]
 anthropic = ["dep:reqwest", "dep:secrecy"]
 google = ["dep:reqwest", "dep:secrecy"]
-ollama = ["dep:reqwest"]
+ollama = ["dep:reqwest", "dep:secrecy"]
 azure = ["dep:reqwest", "dep:secrecy"]
 all-providers = ["openai", "anthropic", "google", "ollama", "azure"]
 
