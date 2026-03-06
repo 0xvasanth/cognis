@@ -18,6 +18,7 @@ pub mod pipe;
 pub mod retry;
 pub mod router;
 pub mod schema;
+pub mod scoped_callbacks;
 pub mod sequence;
 
 use std::pin::Pin;
@@ -51,6 +52,10 @@ pub use passthrough::RunnablePassthrough;
 pub use pipe::{pipe as pipe_fn, PipeBuilder, RunnablePipe};
 pub use retry::RunnableRetry;
 pub use router::{RouterRunnable, RunnableFnBranch, RunnableRouter};
+pub use scoped_callbacks::{
+    merge_callback_configs, with_callbacks, CallbackDispatcher, CallbackEvent, CallbackScope,
+    RunnableWithCallbacks, ScopeGuard, ScopedCallbackConfig,
+};
 pub use sequence::RunnableSequence;
 
 /// Creates a `RunnableSequence` from a list of runnables.
