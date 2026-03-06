@@ -85,6 +85,14 @@ pub fn builtin_embedding_providers() -> HashMap<String, EmbeddingProviderConfig>
         "ollama".to_string(),
         EmbeddingProviderConfig::new("rustchain_ollama", "OllamaEmbeddings"),
     );
+    m.insert(
+        "anthropic".to_string(),
+        EmbeddingProviderConfig::new("rustchain_anthropic", "VoyageEmbeddings"),
+    );
+    m.insert(
+        "voyage".to_string(),
+        EmbeddingProviderConfig::new("rustchain_anthropic", "VoyageEmbeddings"),
+    );
     m
 }
 
@@ -165,6 +173,11 @@ fn attempt_infer_embedding_provider(model_name: &str) -> Option<String> {
     // Mistral embeddings
     if lower.starts_with("mistral-embed") {
         return Some("mistralai".to_string());
+    }
+
+    // Voyage AI embeddings (Anthropic ecosystem)
+    if lower.starts_with("voyage-") {
+        return Some("anthropic".to_string());
     }
 
     None
@@ -288,6 +301,22 @@ pub fn create_embeddings(
 
             Ok(Box::new(builder.build()?))
         }
+        #[cfg(feature = "anthropic")]
+        "anthropic" | "voyage" => {
+            let mut builder = super::anthropic::VoyageEmbeddings::builder();
+
+            if let Some(key) = kwargs.get("api_key").and_then(|v| v.as_str()) {
+                builder = builder.api_key(key);
+            }
+            if let Some(model) = kwargs.get("model").and_then(|v| v.as_str()) {
+                builder = builder.model(model);
+            }
+            if let Some(it) = kwargs.get("input_type").and_then(|v| v.as_str()) {
+                builder = builder.input_type(it);
+            }
+
+            Ok(Box::new(builder.build()?))
+        }
         _ => Err(RustChainError::Other(format!(
             "Unknown or disabled embedding provider '{}'. \
              Make sure the corresponding feature flag is enabled.",
@@ -387,7 +416,9 @@ mod tests {
         assert!(providers.contains_key("huggingface"));
         assert!(providers.contains_key("mistralai"));
         assert!(providers.contains_key("ollama"));
-        assert_eq!(providers.len(), 9);
+        assert!(providers.contains_key("anthropic"));
+        assert!(providers.contains_key("voyage"));
+        assert_eq!(providers.len(), 11);
     }
 
     #[test]

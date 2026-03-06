@@ -10,5 +10,7 @@ pub mod openai;
 pub mod ollama;
 #[cfg(feature = "google")]
 pub mod google;
+#[cfg(feature = "anthropic")]
+pub mod anthropic;
 
 pub use base::*;
