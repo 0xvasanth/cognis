@@ -13,6 +13,9 @@
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
+#[cfg(feature = "postgres")]
+pub mod postgres;
+
 // Re-export the core checkpoint types and trait so users can import from
 // `langgraph::checkpoint` directly.
 pub use crate::pregel::checkpoint::{
@@ -22,3 +25,6 @@ pub use crate::pregel::checkpoint::{
 
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteCheckpointSaver;
+
+#[cfg(feature = "postgres")]
+pub use postgres::PostgresCheckpointSaver;
