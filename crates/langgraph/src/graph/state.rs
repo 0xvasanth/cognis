@@ -16,9 +16,9 @@ use futures::Stream;
 
 use crate::constants::{END, START};
 use crate::errors::LangGraphError;
-use crate::types::{CachePolicy, InterruptType, InterruptedState, InvokeResult, RetryPolicy, StreamMode, StreamUpdate};
+use crate::types::{CachePolicy, InterruptType, InterruptedState, InvokeResult, RetryPolicy, Send as GraphSend, StreamMode, StreamUpdate};
 
-use super::branch::{Branch, RouterFn};
+use super::branch::{Branch, RouterFn, RouterResult};
 
 /// Default recursion limit for graph execution.
 const DEFAULT_RECURSION_LIMIT: usize = 25;
@@ -32,6 +32,27 @@ pub type AsyncNodeAction = Arc<
         + Send
         + Sync,
 >;
+
+/// A resolved next-node target. Either a plain node name (which receives
+/// the current graph state) or a [`GraphSend`] instruction that carries a
+/// custom input for the target node.
+#[derive(Debug, Clone)]
+enum NextNode {
+    /// Execute the named node with the current graph state.
+    Node(String),
+    /// Execute the named node with a custom input value (fan-out / Send).
+    Send(GraphSend),
+}
+
+impl NextNode {
+    /// Return the target node name regardless of variant.
+    fn name(&self) -> &str {
+        match self {
+            NextNode::Node(n) => n,
+            NextNode::Send(s) => &s.node,
+        }
+    }
+}
 
 /// Specification for a node in the graph.
 pub struct NodeSpec {
@@ -352,6 +373,21 @@ impl StateGraph {
         self
     }
 
+    /// Add a conditional edge whose router may return [`RouterResult::Sends`]
+    /// to fan out work to multiple node invocations with custom inputs.
+    ///
+    /// This is functionally identical to [`add_conditional_edges`](Self::add_conditional_edges)
+    /// — the router can return any [`RouterResult`] variant — but serves as
+    /// documentation that Send-based fan-out is the intended use case.
+    pub fn add_conditional_edges_with_send(
+        self,
+        from: &str,
+        router: RouterFn,
+        path_map: Option<HashMap<String, String>>,
+    ) -> Self {
+        self.add_conditional_edges(from, router, path_map)
+    }
+
     /// Set the entry point of the graph (equivalent to `add_edge(START, node)`).
     pub fn set_entry_point(mut self, node: &str) -> Self {
         self.entry_point = Some(node.to_string());
@@ -554,6 +590,11 @@ impl CompiledStateGraph {
     /// Execution starts from the START node, follows edges through the graph,
     /// and stops when reaching the END node or when no more nodes are reachable.
     /// Returns the final merged state.
+    ///
+    /// When a conditional edge returns [`RouterResult::Sends`], each
+    /// [`Send`](crate::types::Send) instruction invokes the target node with its
+    /// custom `arg` instead of the current graph state. All results are merged
+    /// back into the state, enabling map-reduce / fan-out patterns.
     pub async fn invoke(&self, input: Value) -> Result<Value, LangGraphError> {
         let mut state = input;
         let mut step_count: usize = 0;
@@ -567,10 +608,9 @@ impl CompiledStateGraph {
             }
 
             // Filter out END markers and collect real nodes to execute.
-            let executable: Vec<String> = current_nodes
-                .iter()
-                .filter(|n| n.as_str() != END)
-                .cloned()
+            let executable: Vec<NextNode> = current_nodes
+                .into_iter()
+                .filter(|n| n.name() != END)
                 .collect();
 
             // If all targets are END, we're done.
@@ -579,9 +619,9 @@ impl CompiledStateGraph {
             }
 
             // Execute each node in order (sequential execution for now).
-            let mut next_nodes: Vec<String> = Vec::new();
+            let mut next_nodes: Vec<NextNode> = Vec::new();
 
-            for node_name in &executable {
+            for next in &executable {
                 step_count += 1;
                 if step_count > self.recursion_limit {
                     return Err(LangGraphError::GraphRecursionError(format!(
@@ -590,7 +630,21 @@ impl CompiledStateGraph {
                     )));
                 }
 
-                let update = self.execute_node(node_name, &state).await?;
+                let node_name = next.name();
+
+                // For Send instructions, invoke the node with the custom arg.
+                // For plain nodes, invoke with the current state.
+                let node_input = match next {
+                    NextNode::Send(send) => send.arg.clone(),
+                    NextNode::Node(_) => state.clone(),
+                };
+
+                let node = self.nodes.get(node_name).ok_or_else(|| {
+                    LangGraphError::Other(format!(
+                        "Node '{node_name}' not found in compiled graph"
+                    ))
+                })?;
+                let update = (node.action)(node_input).await?;
                 Self::merge_state(&mut state, update)?;
 
                 // Determine the next nodes from this node.
@@ -675,8 +729,8 @@ impl CompiledStateGraph {
         let mut step_count: usize = 0;
         let mut skip_node = skip_interrupt_for;
 
-        let mut current_nodes = match resume_from {
-            Some(nodes) => nodes,
+        let mut current_nodes: Vec<NextNode> = match resume_from {
+            Some(nodes) => nodes.into_iter().map(NextNode::Node).collect(),
             None => self.get_next_nodes(START, &state)?,
         };
 
@@ -685,19 +739,18 @@ impl CompiledStateGraph {
                 break;
             }
 
-            let executable: Vec<String> = current_nodes
-                .iter()
-                .filter(|n| n.as_str() != END)
-                .cloned()
+            let executable: Vec<NextNode> = current_nodes
+                .into_iter()
+                .filter(|n| n.name() != END)
                 .collect();
 
             if executable.is_empty() {
                 break;
             }
 
-            let mut next_nodes: Vec<String> = Vec::new();
+            let mut next_nodes: Vec<NextNode> = Vec::new();
 
-            for node_name in &executable {
+            for next in &executable {
                 step_count += 1;
                 if step_count > self.recursion_limit {
                     return Err(LangGraphError::GraphRecursionError(format!(
@@ -706,15 +759,18 @@ impl CompiledStateGraph {
                     )));
                 }
 
+                let node_name = next.name();
+
                 // --- interrupt_before check ---
-                let should_skip = skip_node.as_deref() == Some(node_name.as_str());
+                let should_skip = skip_node.as_deref() == Some(node_name);
                 if !should_skip && self.interrupt_before.contains(node_name) {
                     let successors = self.get_next_nodes(node_name, &state)?;
+                    let successor_names = successors.iter().map(|n| n.name().to_string()).collect();
                     return Ok(InvokeResult::Interrupted(InterruptedState {
                         state,
-                        interrupted_at: node_name.clone(),
+                        interrupted_at: node_name.to_string(),
                         interrupt_type: InterruptType::Before,
-                        next_nodes: successors,
+                        next_nodes: successor_names,
                     }));
                 }
                 // Clear skip after the first node is processed.
@@ -722,17 +778,29 @@ impl CompiledStateGraph {
                     skip_node = None;
                 }
 
-                let update = self.execute_node(node_name, &state).await?;
+                // For Send instructions, invoke the node with the custom arg.
+                let node_input = match next {
+                    NextNode::Send(send) => send.arg.clone(),
+                    NextNode::Node(_) => state.clone(),
+                };
+
+                let node = self.nodes.get(node_name).ok_or_else(|| {
+                    LangGraphError::Other(format!(
+                        "Node '{node_name}' not found in compiled graph"
+                    ))
+                })?;
+                let update = (node.action)(node_input).await?;
                 Self::merge_state(&mut state, update)?;
 
                 // --- interrupt_after check ---
                 if self.interrupt_after.contains(node_name) {
                     let successors = self.get_next_nodes(node_name, &state)?;
+                    let successor_names = successors.iter().map(|n| n.name().to_string()).collect();
                     return Ok(InvokeResult::Interrupted(InterruptedState {
                         state,
-                        interrupted_at: node_name.clone(),
+                        interrupted_at: node_name.to_string(),
                         interrupt_type: InterruptType::After,
-                        next_nodes: successors,
+                        next_nodes: successor_names,
                     }));
                 }
 
@@ -904,7 +972,9 @@ impl CompiledStateGraph {
 
     /// Static version of `get_next_nodes` that does not require `&self`.
     ///
-    /// Used by the spawned streaming task.
+    /// Used by the spawned streaming task. Returns plain node names (Send
+    /// information is lost — the streaming path does not yet support fan-out
+    /// with custom inputs).
     fn get_next_nodes_static(
         outgoing: &HashMap<String, Vec<EdgeRef>>,
         current: &str,
@@ -931,11 +1001,14 @@ impl CompiledStateGraph {
     }
 
     /// Get the next nodes to execute given the current node and state.
+    ///
+    /// Returns [`NextNode`] items that preserve [`GraphSend`] instructions
+    /// so the execution loop can pass custom inputs to fan-out targets.
     fn get_next_nodes(
         &self,
         current: &str,
         state: &Value,
-    ) -> Result<Vec<String>, LangGraphError> {
+    ) -> Result<Vec<NextNode>, LangGraphError> {
         let Some(edges) = self.outgoing.get(current) else {
             return Ok(Vec::new());
         };
@@ -944,11 +1017,25 @@ impl CompiledStateGraph {
         for edge_ref in edges {
             match edge_ref {
                 EdgeRef::Direct(target) => {
-                    targets.push(target.clone());
+                    targets.push(NextNode::Node(target.clone()));
                 }
                 EdgeRef::Conditional(branch) => {
-                    let mut resolved = branch.resolve(state)?;
-                    targets.append(&mut resolved);
+                    let raw = branch.resolve_raw(state)?;
+                    match raw {
+                        RouterResult::Single(node) => {
+                            targets.push(NextNode::Node(node));
+                        }
+                        RouterResult::Multiple(nodes) => {
+                            for n in nodes {
+                                targets.push(NextNode::Node(n));
+                            }
+                        }
+                        RouterResult::Sends(sends) => {
+                            for s in sends {
+                                targets.push(NextNode::Send(s));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1128,6 +1215,139 @@ impl CompiledStateGraph {
         Ok(state)
     }
 }
+
+impl CompiledStateGraph {
+    /// Generate a Mermaid diagram string representing the graph structure.
+    ///
+    /// The output can be pasted into Mermaid-compatible renderers
+    /// (GitHub markdown, mermaid.live, etc.).
+    ///
+    /// - Start/end nodes use rounded shape `([...])`
+    /// - Direct edges use solid arrows `-->`
+    /// - Conditional edges use dotted arrows `-. label .->`
+    /// - Interrupt nodes are highlighted with a special style
+    pub fn draw_mermaid(&self) -> String {
+        let mut lines: Vec<String> = vec!["graph TD".to_string()];
+
+        // Collect all node names. Always include __start__ and __end__.
+        let mut node_names: Vec<String> = Vec::new();
+        node_names.push(START.to_string());
+        let mut sorted_keys: Vec<&String> = self.nodes.keys().collect();
+        sorted_keys.sort();
+        for name in &sorted_keys {
+            node_names.push((*name).clone());
+        }
+        node_names.push(END.to_string());
+
+        // Emit node declarations with rounded shape.
+        for name in &node_names {
+            lines.push(format!("    {}([{}])", name, name));
+        }
+
+        // Emit edges from the stored edge list.
+        for edge in &self.edges {
+            match edge {
+                Edge::Direct { from, to } => {
+                    lines.push(format!("    {} --> {}", from, to));
+                }
+                Edge::Conditional { from, branch } => {
+                    if let Some(ref ends) = branch.ends {
+                        let mut sorted_ends: Vec<(&String, &String)> = ends.iter().collect();
+                        sorted_ends.sort_by_key(|(k, _)| k.clone());
+                        for (label, target) in sorted_ends {
+                            lines.push(format!("    {} -. {} .-> {}", from, label, target));
+                        }
+                    } else {
+                        // No path_map: we cannot know the targets statically,
+                        // so emit a single dotted edge with a generic label.
+                        lines.push(format!("    {} -. condition .-> ???", from));
+                    }
+                }
+            }
+        }
+
+        // Emit styles for interrupt nodes.
+        let mut interrupt_nodes: Vec<&String> = self
+            .interrupt_before
+            .iter()
+            .chain(self.interrupt_after.iter())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        interrupt_nodes.sort();
+        for name in interrupt_nodes {
+            lines.push(format!(
+                "    style {} fill:#f9f,stroke:#333",
+                name
+            ));
+        }
+
+        lines.join("\n")
+    }
+
+    /// Return the Mermaid diagram wrapped in a markdown code block.
+    ///
+    /// This is useful for embedding in documentation or chat messages.
+    pub fn draw_mermaid_png(&self) -> String {
+        format!("```mermaid\n{}\n```", self.draw_mermaid())
+    }
+
+    /// Serialize the graph structure (nodes, edges) to a JSON [`Value`] for debugging.
+    pub fn to_json(&self) -> Value {
+        let node_list: Vec<Value> = {
+            let mut sorted_keys: Vec<&String> = self.nodes.keys().collect();
+            sorted_keys.sort();
+            sorted_keys
+                .iter()
+                .map(|name| {
+                    let node = &self.nodes[*name];
+                    let mut obj = serde_json::Map::new();
+                    obj.insert("name".into(), Value::String(node.name.clone()));
+                    if let Some(ref meta) = node.metadata {
+                        obj.insert(
+                            "metadata".into(),
+                            serde_json::to_value(meta).unwrap_or(Value::Null),
+                        );
+                    }
+                    Value::Object(obj)
+                })
+                .collect()
+        };
+
+        let edge_list: Vec<Value> = self
+            .edges
+            .iter()
+            .map(|edge| match edge {
+                Edge::Direct { from, to } => {
+                    serde_json::json!({
+                        "type": "direct",
+                        "from": from,
+                        "to": to,
+                    })
+                }
+                Edge::Conditional { from, branch } => {
+                    let mut obj = serde_json::json!({
+                        "type": "conditional",
+                        "from": from,
+                    });
+                    if let Some(ref ends) = branch.ends {
+                        obj["path_map"] = serde_json::to_value(ends).unwrap_or(Value::Null);
+                    }
+                    obj
+                }
+            })
+            .collect();
+
+        serde_json::json!({
+            "nodes": node_list,
+            "edges": edge_list,
+            "entry_point": self.outgoing.contains_key(START).then(|| START),
+            "interrupt_before": self.interrupt_before.iter().collect::<Vec<_>>(),
+            "interrupt_after": self.interrupt_after.iter().collect::<Vec<_>>(),
+        })
+    }
+}
+
 
 impl fmt::Debug for CompiledStateGraph {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -2229,5 +2449,332 @@ mod tests {
                 .await;
             assert!(result.is_err());
         }
+    }
+
+    // ── Send / Fan-out / Map-reduce tests ──────────────────────────────
+
+    #[tokio::test]
+    async fn test_send_fan_out_to_worker() {
+        // Dispatcher fans out 3 tasks to "worker" with different inputs.
+        // Worker reads "task" from its Send arg and writes to "results" array.
+        let worker: AsyncNodeAction = Arc::new(|input: Value| {
+            Box::pin(async move {
+                let task_id = input.get("task").and_then(|v| v.as_i64()).unwrap_or(-1);
+                Ok(json!({ "results": [task_id * 10] }))
+            })
+        });
+
+        let graph = StateGraph::new()
+            .add_node(
+                "dispatcher",
+                make_set_action("dispatched", json!(true)),
+            )
+            .add_node("worker", worker)
+            .set_entry_point("dispatcher")
+            .add_conditional_edges_with_send(
+                "dispatcher",
+                Arc::new(|_state: &Value| {
+                    use crate::types::Send as S;
+                    RouterResult::Sends(vec![
+                        S { node: "worker".into(), arg: json!({"task": 1}) },
+                        S { node: "worker".into(), arg: json!({"task": 2}) },
+                        S { node: "worker".into(), arg: json!({"task": 3}) },
+                    ])
+                }),
+                None,
+            )
+            .set_finish_point("worker")
+            .compile()
+            .unwrap();
+
+        let result = graph.invoke(json!({})).await.unwrap();
+
+        // Dispatcher ran.
+        assert_eq!(result["dispatched"], json!(true));
+        // The last worker merge wins for the "results" key (shallow merge).
+        // Each worker writes its own results array; the last one (task 3) overwrites.
+        assert_eq!(result["results"], json!([30]));
+    }
+
+    #[tokio::test]
+    async fn test_send_map_reduce() {
+        // Full map-reduce: dispatcher → fan-out workers → reducer collects.
+        //
+        // Workers accumulate into a "worker_outputs" array in state. Because
+        // merge_state does a shallow object merge, each worker appends via its
+        // own unique key, then the reducer reads all of them.
+
+        // Worker: reads Send arg, writes result under a unique key.
+        let worker: AsyncNodeAction = Arc::new(|input: Value| {
+            Box::pin(async move {
+                let task_id = input.get("task").and_then(|v| v.as_i64()).unwrap_or(0);
+                let key = format!("worker_result_{}", task_id);
+                let mut map = serde_json::Map::new();
+                map.insert(key, json!(task_id * 100));
+                Ok(Value::Object(map))
+            })
+        });
+
+        // Reducer: reads worker results and produces a summary.
+        let reducer: AsyncNodeAction = Arc::new(|state: Value| {
+            Box::pin(async move {
+                let mut total = 0i64;
+                if let Value::Object(map) = &state {
+                    for (k, v) in map {
+                        if k.starts_with("worker_result_") {
+                            total += v.as_i64().unwrap_or(0);
+                        }
+                    }
+                }
+                Ok(json!({ "total": total }))
+            })
+        });
+
+        let graph = StateGraph::new()
+            .add_node("dispatcher", make_set_action("dispatched", json!(true)))
+            .add_node("worker", worker)
+            .add_node("reducer", reducer)
+            .set_entry_point("dispatcher")
+            .add_conditional_edges_with_send(
+                "dispatcher",
+                Arc::new(|_state: &Value| {
+                    use crate::types::Send as S;
+                    RouterResult::Sends(vec![
+                        S { node: "worker".into(), arg: json!({"task": 1}) },
+                        S { node: "worker".into(), arg: json!({"task": 2}) },
+                        S { node: "worker".into(), arg: json!({"task": 3}) },
+                    ])
+                }),
+                None,
+            )
+            // All worker invocations lead to reducer.
+            .add_edge("worker", "reducer")
+            .set_finish_point("reducer")
+            .compile()
+            .unwrap();
+
+        let result = graph.invoke(json!({})).await.unwrap();
+
+        assert_eq!(result["dispatched"], json!(true));
+        // Workers wrote: worker_result_1=100, worker_result_2=200, worker_result_3=300
+        assert_eq!(result["worker_result_1"], json!(100));
+        assert_eq!(result["worker_result_2"], json!(200));
+        assert_eq!(result["worker_result_3"], json!(300));
+        // Reducer summed them: 100 + 200 + 300 = 600
+        assert_eq!(result["total"], json!(600));
+    }
+
+    #[tokio::test]
+    async fn test_send_with_different_inputs() {
+        // Each Send targets a different node with a unique arg.
+        let alpha: AsyncNodeAction = Arc::new(|input: Value| {
+            Box::pin(async move {
+                let x = input.get("x").and_then(|v| v.as_i64()).unwrap_or(0);
+                Ok(json!({ "alpha_result": x + 1 }))
+            })
+        });
+
+        let beta: AsyncNodeAction = Arc::new(|input: Value| {
+            Box::pin(async move {
+                let y = input.get("y").and_then(|v| v.as_str()).unwrap_or("").to_uppercase();
+                Ok(json!({ "beta_result": y }))
+            })
+        });
+
+        let graph = StateGraph::new()
+            .add_node("start_node", make_set_action("started", json!(true)))
+            .add_node("alpha", alpha)
+            .add_node("beta", beta)
+            .set_entry_point("start_node")
+            .add_conditional_edges(
+                "start_node",
+                Arc::new(|_state: &Value| {
+                    use crate::types::Send as S;
+                    RouterResult::Sends(vec![
+                        S { node: "alpha".into(), arg: json!({"x": 41}) },
+                        S { node: "beta".into(), arg: json!({"y": "hello"}) },
+                    ])
+                }),
+                None,
+            )
+            .set_finish_point("alpha")
+            .set_finish_point("beta")
+            .compile()
+            .unwrap();
+
+        let result = graph.invoke(json!({})).await.unwrap();
+
+        assert_eq!(result["started"], json!(true));
+        assert_eq!(result["alpha_result"], json!(42));
+        assert_eq!(result["beta_result"], json!("HELLO"));
+    }
+}
+
+#[cfg(test)]
+mod mermaid_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Helper: create an async node action that sets a key in state.
+    fn make_action(key: &str, value: Value) -> AsyncNodeAction {
+        let key = key.to_string();
+        Arc::new(move |_state: Value| {
+            let key = key.clone();
+            let value = value.clone();
+            Box::pin(async move {
+                let mut update = serde_json::Map::new();
+                update.insert(key, value);
+                Ok(Value::Object(update))
+            })
+        })
+    }
+
+    #[test]
+    fn test_mermaid_simple_linear_graph() {
+        let graph = StateGraph::new()
+            .add_node("agent", make_action("x", json!(1)))
+            .add_node("tools", make_action("y", json!(2)))
+            .set_entry_point("agent")
+            .add_edge("agent", "tools")
+            .add_edge("tools", "agent")
+            .set_finish_point("agent")
+            .compile()
+            .unwrap();
+
+        let mermaid = graph.draw_mermaid();
+        assert!(mermaid.contains("graph TD"));
+        assert!(mermaid.contains("__start__([__start__])"));
+        assert!(mermaid.contains("__end__([__end__])"));
+        assert!(mermaid.contains("agent([agent])"));
+        assert!(mermaid.contains("tools([tools])"));
+        assert!(mermaid.contains("__start__ --> agent"));
+        assert!(mermaid.contains("tools --> agent"));
+        assert!(mermaid.contains("agent --> tools"));
+        assert!(mermaid.contains("agent --> __end__"));
+    }
+
+    #[test]
+    fn test_mermaid_conditional_edges_with_path_map() {
+        let mut path_map = HashMap::new();
+        path_map.insert("tool_calls".to_string(), "tools".to_string());
+        path_map.insert("no_tool_calls".to_string(), END.to_string());
+
+        let graph = StateGraph::new()
+            .add_node("agent", make_action("x", json!(1)))
+            .add_node("tools", make_action("y", json!(2)))
+            .set_entry_point("agent")
+            .add_conditional_edges(
+                "agent",
+                Arc::new(|_state: &Value| {
+                    super::super::branch::RouterResult::Single("tool_calls".to_string())
+                }),
+                Some(path_map),
+            )
+            .add_edge("tools", "agent")
+            .compile()
+            .unwrap();
+
+        let mermaid = graph.draw_mermaid();
+        // Conditional edges should use dotted lines with labels.
+        assert!(mermaid.contains("agent -. no_tool_calls .-> __end__"));
+        assert!(mermaid.contains("agent -. tool_calls .-> tools"));
+        // Direct edge.
+        assert!(mermaid.contains("tools --> agent"));
+    }
+
+    #[test]
+    fn test_mermaid_conditional_without_path_map() {
+        let graph = StateGraph::new()
+            .add_node("router", make_action("x", json!(1)))
+            .add_node("a", make_action("y", json!(2)))
+            .set_entry_point("router")
+            .add_conditional_edges(
+                "router",
+                Arc::new(|_state: &Value| {
+                    super::super::branch::RouterResult::Single("a".to_string())
+                }),
+                None,
+            )
+            .set_finish_point("a")
+            .compile()
+            .unwrap();
+
+        let mermaid = graph.draw_mermaid();
+        // Without a path_map, a generic "condition" label should be used.
+        assert!(mermaid.contains("router -. condition .-> ???"));
+    }
+
+    #[test]
+    fn test_mermaid_interrupt_style() {
+        let graph = StateGraph::new()
+            .add_node("agent", make_action("x", json!(1)))
+            .add_node("human", make_action("y", json!(2)))
+            .set_entry_point("agent")
+            .add_edge("agent", "human")
+            .set_finish_point("human")
+            .interrupt_before(vec!["human"])
+            .compile()
+            .unwrap();
+
+        let mermaid = graph.draw_mermaid();
+        assert!(mermaid.contains("style human fill:#f9f,stroke:#333"));
+    }
+
+    #[test]
+    fn test_mermaid_png_wrapping() {
+        let graph = StateGraph::new()
+            .add_node("a", make_action("x", json!(1)))
+            .set_entry_point("a")
+            .set_finish_point("a")
+            .compile()
+            .unwrap();
+
+        let png = graph.draw_mermaid_png();
+        assert!(png.starts_with("```mermaid\n"));
+        assert!(png.ends_with("\n```"));
+        assert!(png.contains("graph TD"));
+    }
+
+    #[test]
+    fn test_to_json_structure() {
+        let mut path_map = HashMap::new();
+        path_map.insert("yes".to_string(), "b".to_string());
+        path_map.insert("no".to_string(), END.to_string());
+
+        let graph = StateGraph::new()
+            .add_node("a", make_action("x", json!(1)))
+            .add_node("b", make_action("y", json!(2)))
+            .set_entry_point("a")
+            .add_conditional_edges(
+                "a",
+                Arc::new(|_state: &Value| {
+                    super::super::branch::RouterResult::Single("yes".to_string())
+                }),
+                Some(path_map),
+            )
+            .add_edge("b", "a")
+            .set_finish_point("b")
+            .compile()
+            .unwrap();
+
+        let json_val = graph.to_json();
+
+        // Check nodes array.
+        let nodes = json_val["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0]["name"], "a");
+        assert_eq!(nodes[1]["name"], "b");
+
+        // Check edges array.
+        let edges = json_val["edges"].as_array().unwrap();
+        assert!(edges.len() >= 3); // start->a, a->conditional, b->a, b->end
+
+        // Check there is a conditional edge with path_map.
+        let conditional_edge = edges.iter().find(|e| e["type"] == "conditional").unwrap();
+        assert_eq!(conditional_edge["from"], "a");
+        assert!(conditional_edge.get("path_map").is_some());
+
+        // Check entry_point.
+        assert_eq!(json_val["entry_point"], "__start__");
     }
 }
