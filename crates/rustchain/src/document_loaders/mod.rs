@@ -6,10 +6,30 @@
 
 pub mod csv;
 pub mod directory;
+pub mod html;
 pub mod json;
 pub mod text;
 
+#[cfg(any(
+    feature = "openai",
+    feature = "anthropic",
+    feature = "google",
+    feature = "ollama",
+    feature = "azure",
+))]
+pub mod web;
+
 pub use self::csv::CsvLoader;
 pub use directory::DirectoryLoader;
+pub use html::HTMLLoader;
 pub use json::JsonLoader;
 pub use text::TextLoader;
+
+#[cfg(any(
+    feature = "openai",
+    feature = "anthropic",
+    feature = "google",
+    feature = "ollama",
+    feature = "azure",
+))]
+pub use web::WebBaseLoader;

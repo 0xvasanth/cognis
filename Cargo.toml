@@ -7,42 +7,6 @@ members = [
     "crates/deepagents",
 ]
 
-[package]
-name = "rustchain-examples"
-version = "0.0.0"
-edition = "2021"
-publish = false
-
-[dependencies]
-rustchain-core = { path = "crates/rustchain-core" }
-rustchain = { path = "crates/rustchain" }
-langgraph = { path = "crates/langgraph" }
-serde_json = "1"
-tokio = { version = "1", features = ["full"] }
-async-trait = "0.1"
-futures = "0.3"
-tempfile = "3"
-
-[[example]]
-name = "simple_chain"
-path = "examples/simple_chain.rs"
-
-[[example]]
-name = "tool_agent"
-path = "examples/tool_agent.rs"
-
-[[example]]
-name = "rag_pipeline"
-path = "examples/rag_pipeline.rs"
-
-[[example]]
-name = "langgraph_agent"
-path = "examples/langgraph_agent.rs"
-
-[[example]]
-name = "streaming"
-path = "examples/streaming.rs"
-
 [workspace.package]
 edition = "2021"
 license = "MIT"

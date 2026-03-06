@@ -10,6 +10,7 @@ use rustchain_core::documents::Document;
 use rustchain_core::error::{Result, RustChainError};
 
 use super::csv::CsvLoader;
+use super::html::HTMLLoader;
 use super::json::JsonLoader;
 use super::text::TextLoader;
 
@@ -20,6 +21,7 @@ use super::text::TextLoader;
 /// - `.txt`, `.md` -> [`TextLoader`]
 /// - `.json`, `.jsonl` -> [`JsonLoader`]
 /// - `.csv` -> [`CsvLoader`]
+/// - `.html`, `.htm` -> [`HTMLLoader`]
 /// - All other extensions -> [`TextLoader`] (fallback)
 ///
 /// # Example
@@ -103,6 +105,10 @@ impl DirectoryLoader {
             }
             "csv" => {
                 let loader = CsvLoader::new(path);
+                loader.load().await
+            }
+            "html" | "htm" => {
+                let loader = HTMLLoader::new(path);
                 loader.load().await
             }
             // txt, md, and everything else -> TextLoader
