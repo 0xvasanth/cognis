@@ -395,6 +395,24 @@ pub fn create_chat_model(
             }
             Ok(Box::new(builder.build()?))
         }
+        #[cfg(feature = "google")]
+        "google" | "google_genai" => {
+            let mut builder = super::google::ChatGoogleGenAI::builder()
+                .model(&config.model_name);
+            if let Some(key) = config.kwargs.get("api_key").and_then(|v| v.as_str()) {
+                builder = builder.api_key(key);
+            }
+            if let Some(temp) = config.kwargs.get("temperature").and_then(|v| v.as_f64()) {
+                builder = builder.temperature(temp);
+            }
+            if let Some(max) = config.kwargs.get("max_output_tokens").and_then(|v| v.as_u64()) {
+                builder = builder.max_output_tokens(max as u32);
+            }
+            if let Some(url) = config.kwargs.get("base_url").and_then(|v| v.as_str()) {
+                builder = builder.base_url(url);
+            }
+            Ok(Box::new(builder.build()?))
+        }
         #[cfg(feature = "ollama")]
         "ollama" => {
             let mut builder = super::ollama::ChatOllama::builder()
@@ -409,7 +427,7 @@ pub fn create_chat_model(
         }
         other => Err(RustChainError::Other(format!(
             "Provider '{}' is not available. Enable the corresponding feature flag (e.g., --features {}) \
-             or use a supported provider. Available with features: anthropic, openai, ollama.",
+             or use a supported provider. Available with features: anthropic, openai, google, ollama.",
             other, other
         ))),
     }
@@ -752,6 +770,15 @@ mod tests {
         kwargs.insert("api_key".to_string(), serde_json::json!("test-key"));
         let model = create_chat_model("openai:gpt-4o", Some(kwargs)).unwrap();
         assert_eq!(model.llm_type(), "openai");
+    }
+
+    #[cfg(feature = "google")]
+    #[test]
+    fn test_create_chat_model_google() {
+        let mut kwargs = HashMap::new();
+        kwargs.insert("api_key".to_string(), serde_json::json!("test-key"));
+        let model = create_chat_model("google_genai:gemini-2.0-flash", Some(kwargs)).unwrap();
+        assert_eq!(model.llm_type(), "google_genai");
     }
 
     #[cfg(feature = "ollama")]

@@ -9,6 +9,8 @@ pub mod structured;
 pub mod anthropic;
 #[cfg(feature = "openai")]
 pub mod openai;
+#[cfg(feature = "google")]
+pub mod google;
 #[cfg(feature = "ollama")]
 pub mod ollama;
 
