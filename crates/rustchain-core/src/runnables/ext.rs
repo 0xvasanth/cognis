@@ -132,8 +132,7 @@ pub trait RunnableExt: Runnable + Sized + 'static {
     /// When `abatch` is called on the resulting runnable, it will limit the number
     /// of concurrent invocations to `max_concurrency`.
     fn with_concurrency(self, max_concurrency: usize) -> RunnableBinding {
-        let mut config = RunnableConfig::default();
-        config.max_concurrency = Some(max_concurrency);
+        let config = RunnableConfig { max_concurrency: Some(max_concurrency), ..Default::default() };
         self.with_config(config)
     }
 

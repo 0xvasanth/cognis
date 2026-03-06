@@ -64,9 +64,8 @@ fn parse_frontmatter(raw: &str) -> (HashMap<String, Value>, String) {
 
     // Look for closing "---" at the start of a line
     // Handle the case where frontmatter is empty (closing --- is the very first line)
-    if after_opening.starts_with("---") {
-        let remaining = &after_opening[3..];
-        let remaining = remaining.strip_prefix('\n').unwrap_or(remaining);
+    if let Some(stripped) = after_opening.strip_prefix("---") {
+        let remaining = stripped.strip_prefix('\n').unwrap_or(stripped);
         return (HashMap::new(), remaining.to_string());
     }
 

@@ -160,10 +160,7 @@ impl OpenAPISpec {
                     let operation_id = op
                         .get("operationId")
                         .and_then(|v| v.as_str())
-                        .unwrap_or_else(|| {
-                            // Fallback: method_path
-                            ""
-                        })
+                        .unwrap_or("")
                         .to_string();
 
                     if operation_id.is_empty() {
@@ -173,8 +170,7 @@ impl OpenAPISpec {
                             method,
                             path.trim_start_matches('/')
                                 .replace('/', "_")
-                                .replace('{', "")
-                                .replace('}', "")
+                                .replace(['{', '}'], "")
                         );
                         let mut info = Self::parse_operation(op, &fallback, method, path);
                         // Merge shared parameters (operation-level takes priority).

@@ -36,6 +36,7 @@ use rustchain_core::tools::ToolSchema;
 pub struct GracefulChatModel {
     inner: Box<dyn BaseChatModel>,
     fallback_message: String,
+    #[allow(clippy::type_complexity)]
     on_error: Option<Arc<dyn Fn(&RustChainError) + Send + Sync>>,
 }
 

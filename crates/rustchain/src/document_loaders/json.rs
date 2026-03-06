@@ -97,9 +97,9 @@ impl JsonLoader {
             Some(key) => {
                 let content = value
                     .get(key)
-                    .and_then(|v| match v {
-                        Value::String(s) => Some(s.clone()),
-                        other => Some(other.to_string()),
+                    .map(|v| match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
                     })
                     .unwrap_or_default();
 

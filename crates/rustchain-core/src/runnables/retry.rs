@@ -34,6 +34,7 @@ pub struct RunnableRetry {
     /// Maximum delay cap in milliseconds.
     max_delay_ms: u64,
     /// Optional filter: if provided, only retry when this returns `true` for the error.
+    #[allow(clippy::type_complexity)]
     retry_on: Option<Box<dyn Fn(&RustChainError) -> bool + Send + Sync>>,
 }
 

@@ -132,6 +132,7 @@ impl Reducer for MergeReducer {
 /// This provides maximum flexibility: any `Fn(&Value, &Value) -> Value`
 /// closure can be used to define custom reduction logic.
 pub struct BinaryOpReducer {
+    #[allow(clippy::type_complexity)]
     op: Arc<dyn Fn(&Value, &Value) -> Value + Send + Sync>,
 }
 

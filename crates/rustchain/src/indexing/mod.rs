@@ -230,7 +230,7 @@ impl IndexingPipeline {
         };
 
         // Step 2: compute content hashes.
-        let hashes: Vec<String> = docs.iter().map(|d| content_hash(d)).collect();
+        let hashes: Vec<String> = docs.iter().map(content_hash).collect();
 
         let (docs_to_add, num_skipped) = match &self.record_manager {
             Some(rm) => {

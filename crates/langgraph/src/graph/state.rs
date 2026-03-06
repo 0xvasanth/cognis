@@ -1185,6 +1185,7 @@ impl CompiledStateGraph {
     }
 
     /// Execute a single node by name.
+    #[allow(dead_code)]
     async fn execute_node(&self, name: &str, state: &Value) -> Result<Value, LangGraphError> {
         let node = self.nodes.get(name).ok_or_else(|| {
             LangGraphError::Other(format!("Node '{name}' not found in compiled graph"))
@@ -1442,7 +1443,7 @@ impl CompiledStateGraph {
         serde_json::json!({
             "nodes": node_list,
             "edges": edge_list,
-            "entry_point": self.outgoing.contains_key(START).then(|| START),
+            "entry_point": self.outgoing.contains_key(START).then_some(START),
             "interrupt_before": self.interrupt_before.iter().collect::<Vec<_>>(),
             "interrupt_after": self.interrupt_after.iter().collect::<Vec<_>>(),
         })

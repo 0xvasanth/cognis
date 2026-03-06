@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use rustchain_core::language_models::chat_model::BaseChatModel;
-use rustchain_core::messages::{HumanMessage, Message, SystemMessage};
+use rustchain_core::messages::{HumanMessage, Message};
 
 use crate::middleware::{AgentState, Middleware, Result};
 

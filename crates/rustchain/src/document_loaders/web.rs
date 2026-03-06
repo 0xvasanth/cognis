@@ -34,13 +34,13 @@ pub fn extract_by_selector(html: &str, selector: &str) -> Option<String> {
     // Note: Rust's `regex` crate does not support backreferences, so all
     // patterns use an explicit tag name or a generic `\w+` tag match with
     // the closing tag also matched generically.
-    let pattern = if selector.starts_with('#') {
+    let pattern = if let Some(id_part) = selector.strip_prefix('#') {
         // ID selector: #my-id
-        let id = regex::escape(&selector[1..]);
+        let id = regex::escape(id_part);
         format!(r#"(?is)<\w+[^>]*\bid\s*=\s*["']{id}["'][^>]*>(.*?)</\w+>"#)
-    } else if selector.starts_with('.') {
+    } else if let Some(class_part) = selector.strip_prefix('.') {
         // Class selector: .my-class — match class attribute containing the class name
-        let class = regex::escape(&selector[1..]);
+        let class = regex::escape(class_part);
         format!(r#"(?is)<\w+[^>]*\bclass\s*=\s*["'][^"']*{class}[^"']*["'][^>]*>(.*?)</\w+>"#)
     } else if selector.contains('#') {
         // tag#id

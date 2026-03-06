@@ -9,11 +9,11 @@ use tokio::sync::Mutex;
 
 use rustchain_core::error::Result as CoreResult;
 use rustchain_core::language_models::chat_model::BaseChatModel;
-use rustchain_core::messages::{AIMessage, HumanMessage, Message};
+use rustchain_core::messages::{HumanMessage, Message};
 use rustchain_core::tools::base::BaseTool;
 use rustchain_core::tools::types::{ToolInput, ToolOutput};
 
-use crate::middleware::{AgentState, Middleware, Result};
+use crate::middleware::Middleware;
 
 /// Status of a sub-agent execution.
 #[derive(Debug, Clone, PartialEq, Eq)]

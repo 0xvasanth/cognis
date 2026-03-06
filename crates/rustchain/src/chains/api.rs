@@ -751,7 +751,7 @@ impl APIChain {
 
         // Try to parse as JSON, fall back to string
         let body_value =
-            serde_json::from_str::<Value>(&body_text).unwrap_or_else(|_| Value::String(body_text));
+            serde_json::from_str::<Value>(&body_text).unwrap_or(Value::String(body_text));
 
         Ok(json!({
             "status": status,

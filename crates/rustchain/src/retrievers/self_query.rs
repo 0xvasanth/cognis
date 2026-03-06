@@ -107,10 +107,10 @@ impl AttributeFilter {
         match self {
             AttributeFilter::Eq { field, value } => metadata
                 .get(field)
-                .map_or(false, |v| *v == value.to_json_value()),
+                .is_some_and(|v| *v == value.to_json_value()),
             AttributeFilter::Ne { field, value } => metadata
                 .get(field)
-                .map_or(true, |v| *v != value.to_json_value()),
+                .is_none_or(|v| *v != value.to_json_value()),
             AttributeFilter::Gt { field, value } => {
                 compare_metadata_numeric(metadata, field, value, |a, b| a > b)
             }
@@ -125,10 +125,10 @@ impl AttributeFilter {
             }
             AttributeFilter::In { field, values } => metadata
                 .get(field)
-                .map_or(false, |v| values.iter().any(|fv| *v == fv.to_json_value())),
+                .is_some_and(|v| values.iter().any(|fv| *v == fv.to_json_value())),
             AttributeFilter::Nin { field, values } => metadata
                 .get(field)
-                .map_or(true, |v| !values.iter().any(|fv| *v == fv.to_json_value())),
+                .is_none_or(|v| !values.iter().any(|fv| *v == fv.to_json_value())),
             AttributeFilter::And(filters) => filters.iter().all(|f| f.matches(metadata)),
             AttributeFilter::Or(filters) => filters.iter().any(|f| f.matches(metadata)),
             AttributeFilter::Not(filter) => !filter.matches(metadata),

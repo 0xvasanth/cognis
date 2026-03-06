@@ -209,11 +209,9 @@ pub fn should_continue(state: &Value) -> RouterResult {
         .unwrap_or_default();
 
     if let Some(last) = messages.last() {
-        if let Ok(msg) = serde_json::from_value::<Message>(last.clone()) {
-            if let Message::Ai(ai) = &msg {
-                if !ai.tool_calls.is_empty() {
-                    return RouterResult::Single("tools".to_string());
-                }
+        if let Ok(Message::Ai(ai)) = serde_json::from_value::<Message>(last.clone()).as_ref() {
+            if !ai.tool_calls.is_empty() {
+                return RouterResult::Single("tools".to_string());
             }
         }
     }

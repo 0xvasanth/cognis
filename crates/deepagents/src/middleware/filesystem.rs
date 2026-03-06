@@ -1,6 +1,6 @@
 //! Filesystem middleware — provides file read/write/list/glob/grep tools to agents.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -294,7 +294,7 @@ impl BaseTool for GrepTool {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn resolve_path(working_dir: &PathBuf, path: &str) -> PathBuf {
+fn resolve_path(working_dir: &Path, path: &str) -> PathBuf {
     let p = PathBuf::from(path);
     if p.is_absolute() {
         p

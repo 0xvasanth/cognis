@@ -380,11 +380,7 @@ impl AgentExecutor {
                             Err(e) => {
                                 let err_text = format!("Error: {e}");
                                 let _ = cb.on_tool_error(&err_text, tool_run_id).await;
-                                if self.handle_parsing_errors {
-                                    err_text
-                                } else {
-                                    err_text
-                                }
+                                err_text
                             }
                         }
                     }

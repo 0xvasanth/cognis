@@ -351,7 +351,7 @@ pub async fn prune_by_token_count(
     let mut kept: Vec<Message> = Vec::new();
     let mut total_tokens = 0usize;
     for msg in messages.iter().rev() {
-        let msg_tokens = count_tokens_approximately(&[msg.clone()], 4.0, 3.0);
+        let msg_tokens = count_tokens_approximately(std::slice::from_ref(msg), 4.0, 3.0);
         if total_tokens + msg_tokens > max_tokens && !kept.is_empty() {
             break;
         }

@@ -118,9 +118,9 @@ impl CircuitBreaker {
 
         match current_state {
             CircuitState::Open => {
-                return Err(RustChainError::Other(
+                Err(RustChainError::Other(
                     "Circuit breaker is open: too many consecutive failures".into(),
-                ));
+                ))
             }
             CircuitState::HalfOpen | CircuitState::Closed => {
                 match f().await {

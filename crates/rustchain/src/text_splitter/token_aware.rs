@@ -147,7 +147,6 @@ impl TokenAwareTextSplitter {
             if would_be > self.max_tokens && !current.is_empty() {
                 chunks.push(current.trim().to_string());
                 current = String::new();
-                current_tokens = 0;
             }
 
             if current.is_empty() {
@@ -199,7 +198,6 @@ impl TokenAwareTextSplitter {
                         if would_be > self.max_tokens && !current.is_empty() {
                             sub_chunks.push(current.trim().to_string());
                             current = String::new();
-                            current_tokens = 0;
                         }
 
                         if current.is_empty() {

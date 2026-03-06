@@ -145,7 +145,7 @@ impl Runnable for RunnableBatch {
             .as_array()
             .ok_or_else(|| RustChainError::TypeMismatch {
                 expected: "Array".into(),
-                got: format!("{}", input_type_name(&input)),
+                got: input_type_name(&input).to_string(),
             })?
             .clone();
 

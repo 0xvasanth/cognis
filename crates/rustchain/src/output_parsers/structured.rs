@@ -128,18 +128,16 @@ impl StructuredOutputParser {
     fn validate(&self, value: &Value) -> Result<()> {
         // Check that it's an object if schema expects one
         if let Some(schema_type) = self.schema.get("type").and_then(|t| t.as_str()) {
-            if schema_type == "object" {
-                if !value.is_object() {
-                    return Err(RustChainError::OutputParserError {
-                        message: format!(
-                            "Expected JSON object for {}, got {}",
-                            self.type_name,
-                            value_type_name(value)
-                        ),
-                        observation: Some(value.to_string()),
-                        llm_output: None,
-                    });
-                }
+            if schema_type == "object" && !value.is_object() {
+                return Err(RustChainError::OutputParserError {
+                    message: format!(
+                        "Expected JSON object for {}, got {}",
+                        self.type_name,
+                        value_type_name(value)
+                    ),
+                    observation: Some(value.to_string()),
+                    llm_output: None,
+                });
             }
         }
 
@@ -169,40 +167,38 @@ impl StructuredOutputParser {
         }
 
         // Validate field types
-        if let (Some(properties), Some(Value::Object(obj))) =
+        if let (Some(Value::Object(props)), Some(Value::Object(obj))) =
             (self.schema.get("properties"), Some(value))
         {
-            if let Value::Object(props) = properties {
-                let mut type_errors: Vec<String> = Vec::new();
+            let mut type_errors: Vec<String> = Vec::new();
 
-                for (field_name, field_schema) in props {
-                    if let Some(field_value) = obj.get(field_name) {
-                        if let Some(expected_type) =
-                            field_schema.get("type").and_then(|t| t.as_str())
-                        {
-                            if !check_json_type(field_value, expected_type) {
-                                type_errors.push(format!(
-                                    "field '{}': expected {}, got {}",
-                                    field_name,
-                                    expected_type,
-                                    value_type_name(field_value)
-                                ));
-                            }
+            for (field_name, field_schema) in props {
+                if let Some(field_value) = obj.get(field_name) {
+                    if let Some(expected_type) =
+                        field_schema.get("type").and_then(|t| t.as_str())
+                    {
+                        if !check_json_type(field_value, expected_type) {
+                            type_errors.push(format!(
+                                "field '{}': expected {}, got {}",
+                                field_name,
+                                expected_type,
+                                value_type_name(field_value)
+                            ));
                         }
                     }
                 }
+            }
 
-                if !type_errors.is_empty() {
-                    return Err(RustChainError::OutputParserError {
-                        message: format!(
-                            "Type validation errors in {} output: {}",
-                            self.type_name,
-                            type_errors.join("; ")
-                        ),
-                        observation: Some(value.to_string()),
-                        llm_output: None,
-                    });
-                }
+            if !type_errors.is_empty() {
+                return Err(RustChainError::OutputParserError {
+                    message: format!(
+                        "Type validation errors in {} output: {}",
+                        self.type_name,
+                        type_errors.join("; ")
+                    ),
+                    observation: Some(value.to_string()),
+                    llm_output: None,
+                });
             }
         }
 

@@ -583,7 +583,7 @@ impl ChatAnthropic {
 
             let status = response.status().as_u16();
 
-            if status >= 200 && status < 300 {
+            if (200..300).contains(&status) {
                 let body: Value = response.json().await.map_err(|e| {
                     RustChainError::Other(format!("Failed to parse response JSON: {}", e))
                 })?;
@@ -631,7 +631,7 @@ impl ChatAnthropic {
             .map_err(|e| RustChainError::Other(format!("HTTP request failed: {}", e)))?;
 
         let status = response.status().as_u16();
-        if status < 200 || status >= 300 {
+        if !(200..300).contains(&status) {
             let body = response.text().await.unwrap_or_default();
             return Err(RustChainError::HttpError { status, body });
         }
