@@ -5,6 +5,7 @@ mod token;
 mod markdown;
 mod html;
 mod json;
+pub mod token_aware;
 
 pub use character::CharacterTextSplitter;
 pub use recursive::RecursiveCharacterTextSplitter;
@@ -13,6 +14,7 @@ pub use token::TokenTextSplitter;
 pub use markdown::{MarkdownTextSplitter, MarkdownHeaderTextSplitter};
 pub use html::HTMLHeaderTextSplitter;
 pub use json::RecursiveJsonSplitter;
+pub use token_aware::TokenAwareTextSplitter;
 
 use rustchain_core::documents::Document;
 use std::collections::HashMap;
