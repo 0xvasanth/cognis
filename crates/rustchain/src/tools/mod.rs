@@ -2,6 +2,7 @@
 pub mod cached;
 pub mod calculator;
 pub mod json_query;
+pub mod openapi;
 pub mod shell;
 
 #[cfg(any(
@@ -25,6 +26,19 @@ pub mod wikipedia;
 pub use cached::{CachedTool, CacheEntry, CacheStats};
 pub use calculator::CalculatorTool;
 pub use json_query::JsonQueryTool;
+pub use openapi::{
+    generate_tools, DryRunExecutor, HttpExecutor, OpenAPISpec, OpenAPITool, OpenAPIToolkit,
+    OperationInfo, ParameterInfo,
+};
+
+#[cfg(any(
+    feature = "openai",
+    feature = "anthropic",
+    feature = "google",
+    feature = "ollama",
+    feature = "azure"
+))]
+pub use openapi::ReqwestExecutor;
 pub use shell::ShellTool;
 
 #[cfg(any(
