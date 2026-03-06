@@ -8,6 +8,7 @@
 
 pub mod buffer;
 pub mod chat_history;
+pub mod hybrid;
 pub mod summary;
 pub mod vector;
 pub mod window;
@@ -17,6 +18,7 @@ pub use chat_history::{
     ChatHistoryMemory, ChatHistoryStore, FileChatHistory, InMemoryChatHistory,
     prune_by_count, prune_by_token_count,
 };
+pub use hybrid::{ConversationTokenBufferMemory, HybridMemory, HybridMemoryBuilder};
 pub use summary::ConversationSummaryMemory;
 pub use vector::VectorStoreMemory;
 pub use window::ConversationWindowMemory;
