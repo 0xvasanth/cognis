@@ -68,13 +68,9 @@ mod tests {
     }
 
     #[test]
-    fn test_debug_default() {
+    fn test_debug_set_and_reset() {
         set_debug(false);
         assert!(!get_debug());
-    }
-
-    #[test]
-    fn test_set_debug() {
         set_debug(true);
         assert!(get_debug());
         set_debug(false);

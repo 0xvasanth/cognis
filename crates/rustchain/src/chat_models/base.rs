@@ -802,7 +802,7 @@ mod tests {
         let mut kwargs = HashMap::new();
         kwargs.insert("api_key".to_string(), serde_json::json!("test-key"));
         let model = create_chat_model("google_genai:gemini-2.0-flash", Some(kwargs)).unwrap();
-        assert_eq!(model.llm_type(), "google_genai");
+        assert_eq!(model.llm_type(), "google_gemini");
     }
 
     #[cfg(feature = "ollama")]
