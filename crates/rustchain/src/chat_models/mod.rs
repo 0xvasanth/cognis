@@ -10,6 +10,7 @@ pub mod graceful;
 pub mod rate_limited;
 pub mod retrying;
 pub mod structured;
+pub mod token_counting;
 #[cfg(feature = "anthropic")]
 pub mod anthropic;
 #[cfg(feature = "openai")]
