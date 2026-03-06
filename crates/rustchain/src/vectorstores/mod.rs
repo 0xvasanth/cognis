@@ -5,3 +5,6 @@ pub mod qdrant;
 
 #[cfg(feature = "pinecone")]
 pub mod pinecone;
+
+#[cfg(feature = "weaviate")]
+pub mod weaviate;
