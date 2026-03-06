@@ -18,6 +18,8 @@ regex = "1"
 csv = "1"
 glob = "0.3"
 pdf-extract = { version = "0.7", optional = true }
+serde_yaml = { version = "0.9", optional = true }
+toml = { version = "0.8", optional = true }
 
 [dependencies.sqlx]
 workspace = true
@@ -34,6 +36,8 @@ optional = true
 [features]
 default = []
 pdf = ["dep:pdf-extract"]
+yaml = ["dep:serde_yaml"]
+toml-loader = ["dep:toml"]
 sqlite = ["dep:sqlx"]
 openai = ["dep:reqwest", "dep:secrecy"]
 anthropic = ["dep:reqwest", "dep:secrecy"]
@@ -41,7 +45,8 @@ google = ["dep:reqwest", "dep:secrecy"]
 ollama = ["dep:reqwest", "dep:secrecy"]
 azure = ["dep:reqwest", "dep:secrecy"]
 qdrant = []
-all-providers = ["openai", "anthropic", "google", "ollama", "azure"]
+pinecone = []
+all-providers = ["openai", "anthropic", "google", "ollama", "azure", "yaml", "toml-loader"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
