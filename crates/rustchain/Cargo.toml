@@ -32,7 +32,8 @@ openai = ["dep:reqwest", "dep:secrecy"]
 anthropic = ["dep:reqwest", "dep:secrecy"]
 google = ["dep:reqwest", "dep:secrecy"]
 ollama = ["dep:reqwest"]
-all-providers = ["openai", "anthropic", "google", "ollama"]
+azure = ["dep:reqwest", "dep:secrecy"]
+all-providers = ["openai", "anthropic", "google", "ollama", "azure"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

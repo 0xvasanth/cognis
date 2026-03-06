@@ -425,9 +425,33 @@ pub fn create_chat_model(
             }
             Ok(Box::new(builder.build()?))
         }
+        #[cfg(feature = "azure")]
+        "azure" | "azure_openai" => {
+            let resource_name = config.kwargs.get("resource_name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| RustChainError::Other(
+                    "resource_name is required for Azure OpenAI".into()
+                ))?;
+            let mut builder = super::azure::ChatAzureOpenAI::builder()
+                .resource_name(resource_name)
+                .deployment_name(&config.model_name);
+            if let Some(key) = config.kwargs.get("api_key").and_then(|v| v.as_str()) {
+                builder = builder.api_key(key);
+            }
+            if let Some(temp) = config.kwargs.get("temperature").and_then(|v| v.as_f64()) {
+                builder = builder.temperature(temp);
+            }
+            if let Some(max) = config.kwargs.get("max_tokens").and_then(|v| v.as_u64()) {
+                builder = builder.max_tokens(max as u32);
+            }
+            if let Some(version) = config.kwargs.get("api_version").and_then(|v| v.as_str()) {
+                builder = builder.api_version(version);
+            }
+            Ok(Box::new(builder.build()?))
+        }
         other => Err(RustChainError::Other(format!(
             "Provider '{}' is not available. Enable the corresponding feature flag (e.g., --features {}) \
-             or use a supported provider. Available with features: anthropic, openai, google, ollama.",
+             or use a supported provider. Available with features: anthropic, openai, google, ollama, azure.",
             other, other
         ))),
     }
@@ -786,6 +810,16 @@ mod tests {
     fn test_create_chat_model_ollama() {
         let model = create_chat_model("ollama:llama3.2", None).unwrap();
         assert_eq!(model.llm_type(), "ollama");
+    }
+
+    #[cfg(feature = "azure")]
+    #[test]
+    fn test_create_chat_model_azure() {
+        let mut kwargs = HashMap::new();
+        kwargs.insert("api_key".to_string(), serde_json::json!("test-key"));
+        kwargs.insert("resource_name".to_string(), serde_json::json!("my-resource"));
+        let model = create_chat_model("azure_openai:gpt-4o", Some(kwargs)).unwrap();
+        assert_eq!(model.llm_type(), "azure_openai");
     }
 
     #[test]

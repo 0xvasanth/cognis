@@ -13,6 +13,8 @@ pub mod openai;
 pub mod google;
 #[cfg(feature = "ollama")]
 pub mod ollama;
+#[cfg(feature = "azure")]
+pub mod azure;
 
 pub use base::*;
 pub use structured::*;
