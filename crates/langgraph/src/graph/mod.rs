@@ -69,7 +69,10 @@ pub use snapshot::{
 pub use state::{AsyncNodeAction, CompiledStateGraph, NodeAction, NodeSpec, StateGraph};
 pub use stream_events::{stream_graph_events, GraphEventCollector, GraphStreamEvent};
 pub use stream_writer::{FilteredStream, StreamChunk, StreamCollector, StreamReader, StreamWriter};
-pub use subgraph::SubgraphNode;
+pub use subgraph::{
+    GraphFn, NestedSubgraph, StateMapping, SubgraphBuilder, SubgraphConfig, SubgraphNode,
+    SubgraphRegistry,
+};
 pub use time_travel::TimeTravelEngine;
 pub use ui::{ui_message_reducer, AnyUIMessage, RemoveUIMessage, UIMessage};
 pub use validator::{
