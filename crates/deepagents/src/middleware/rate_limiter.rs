@@ -350,7 +350,8 @@ impl RateLimiterMiddleware {
     /// Record token usage (call after a model response).
     pub fn record_tokens(&self, token_count: u64) {
         self.maybe_reset_token_window();
-        self.tokens_per_minute.fetch_add(token_count, Ordering::SeqCst);
+        self.tokens_per_minute
+            .fetch_add(token_count, Ordering::SeqCst);
     }
 
     /// Record cost usage.
@@ -582,7 +583,7 @@ mod tests {
     #[test]
     fn test_bucket_refill() {
         let bucket = RateLimitBucket::new(10, 1000.0); // High refill for test speed.
-        // Drain the bucket.
+                                                       // Drain the bucket.
         assert!(bucket.try_acquire(10));
         assert!(!bucket.try_acquire(1));
         // Wait a small amount for refill.

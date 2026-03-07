@@ -324,13 +324,20 @@ fn format_text(entry: &LogEntry) -> String {
 
     // Append event-specific key=value pairs.
     match &entry.event {
-        LogEvent::ModelCallStart { model, input_tokens } => {
+        LogEvent::ModelCallStart {
+            model,
+            input_tokens,
+        } => {
             parts.push(format!("model={model}"));
             if let Some(t) = input_tokens {
                 parts.push(format!("input_tokens={t}"));
             }
         }
-        LogEvent::ModelCallEnd { model, output_tokens, duration } => {
+        LogEvent::ModelCallEnd {
+            model,
+            output_tokens,
+            duration,
+        } => {
             parts.push(format!("model={model}"));
             if let Some(t) = output_tokens {
                 parts.push(format!("output_tokens={t}"));
@@ -343,7 +350,11 @@ fn format_text(entry: &LogEntry) -> String {
                 parts.push(format!("input={input}"));
             }
         }
-        LogEvent::ToolCallEnd { tool, output, duration } => {
+        LogEvent::ToolCallEnd {
+            tool,
+            output,
+            duration,
+        } => {
             parts.push(format!("tool={tool}"));
             if !output.is_empty() {
                 parts.push(format!("output={output}"));
@@ -360,7 +371,10 @@ fn format_text(entry: &LogEntry) -> String {
         LogEvent::AgentStart { agent_name } => {
             parts.push(format!("agent={agent_name}"));
         }
-        LogEvent::AgentEnd { agent_name, total_duration } => {
+        LogEvent::AgentEnd {
+            agent_name,
+            total_duration,
+        } => {
             parts.push(format!("agent={agent_name}"));
             parts.push(format!("total_duration={total_duration:?}"));
         }
@@ -376,39 +390,69 @@ fn format_text(entry: &LogEntry) -> String {
 fn format_json(entry: &LogEntry) -> String {
     let mut map = serde_json::Map::new();
     map.insert("timestamp".into(), Value::String(entry.timestamp.clone()));
-    map.insert("level".into(), Value::String(entry.level.as_str().to_string()));
-    map.insert("event".into(), Value::String(entry.event.name().to_string()));
+    map.insert(
+        "level".into(),
+        Value::String(entry.level.as_str().to_string()),
+    );
+    map.insert(
+        "event".into(),
+        Value::String(entry.event.name().to_string()),
+    );
     map.insert("message".into(), Value::String(entry.message.clone()));
 
     if let Some(d) = entry.duration {
-        map.insert("duration_ms".into(), Value::Number(serde_json::Number::from(d.as_millis() as u64)));
+        map.insert(
+            "duration_ms".into(),
+            Value::Number(serde_json::Number::from(d.as_millis() as u64)),
+        );
     }
 
     // Event-specific fields.
     match &entry.event {
-        LogEvent::ModelCallStart { model, input_tokens } => {
+        LogEvent::ModelCallStart {
+            model,
+            input_tokens,
+        } => {
             map.insert("model".into(), Value::String(model.clone()));
             if let Some(t) = input_tokens {
                 map.insert("input_tokens".into(), Value::Number((*t).into()));
             }
         }
-        LogEvent::ModelCallEnd { model, output_tokens, duration } => {
+        LogEvent::ModelCallEnd {
+            model,
+            output_tokens,
+            duration,
+        } => {
             map.insert("model".into(), Value::String(model.clone()));
             if let Some(t) = output_tokens {
                 map.insert("output_tokens".into(), Value::Number((*t).into()));
             }
-            map.insert("duration_ms".into(), Value::Number(serde_json::Number::from(duration.as_millis() as u64)));
+            map.insert(
+                "duration_ms".into(),
+                Value::Number(serde_json::Number::from(duration.as_millis() as u64)),
+            );
         }
         LogEvent::ToolCallStart { tool, input } => {
             map.insert("tool".into(), Value::String(tool.clone()));
             map.insert("input".into(), Value::String(input.clone()));
         }
-        LogEvent::ToolCallEnd { tool, output, duration } => {
+        LogEvent::ToolCallEnd {
+            tool,
+            output,
+            duration,
+        } => {
             map.insert("tool".into(), Value::String(tool.clone()));
             map.insert("output".into(), Value::String(output.clone()));
-            map.insert("duration_ms".into(), Value::Number(serde_json::Number::from(duration.as_millis() as u64)));
+            map.insert(
+                "duration_ms".into(),
+                Value::Number(serde_json::Number::from(duration.as_millis() as u64)),
+            );
         }
-        LogEvent::StateChange { key, old_value, new_value } => {
+        LogEvent::StateChange {
+            key,
+            old_value,
+            new_value,
+        } => {
             map.insert("key".into(), Value::String(key.clone()));
             if let Some(old) = old_value {
                 map.insert("old_value".into(), old.clone());
@@ -422,9 +466,15 @@ fn format_json(entry: &LogEntry) -> String {
         LogEvent::AgentStart { agent_name } => {
             map.insert("agent_name".into(), Value::String(agent_name.clone()));
         }
-        LogEvent::AgentEnd { agent_name, total_duration } => {
+        LogEvent::AgentEnd {
+            agent_name,
+            total_duration,
+        } => {
             map.insert("agent_name".into(), Value::String(agent_name.clone()));
-            map.insert("total_duration_ms".into(), Value::Number(serde_json::Number::from(total_duration.as_millis() as u64)));
+            map.insert(
+                "total_duration_ms".into(),
+                Value::Number(serde_json::Number::from(total_duration.as_millis() as u64)),
+            );
         }
     }
 
@@ -442,8 +492,8 @@ fn format_pretty(entry: &LogEntry) -> String {
     let level_tag = match entry.level {
         LogLevel::Trace => "[TRACE]",
         LogLevel::Debug => "[DEBUG]",
-        LogLevel::Info  => "[ INFO]",
-        LogLevel::Warn  => "[ WARN]",
+        LogLevel::Info => "[ INFO]",
+        LogLevel::Warn => "[ WARN]",
         LogLevel::Error => "[ERROR]",
     };
 
@@ -459,13 +509,20 @@ fn format_pretty(entry: &LogEntry) -> String {
     }
 
     match &entry.event {
-        LogEvent::ModelCallStart { model, input_tokens } => {
+        LogEvent::ModelCallStart {
+            model,
+            input_tokens,
+        } => {
             lines.push(format!("  model: {model}"));
             if let Some(t) = input_tokens {
                 lines.push(format!("  input_tokens: {t}"));
             }
         }
-        LogEvent::ModelCallEnd { model, output_tokens, duration } => {
+        LogEvent::ModelCallEnd {
+            model,
+            output_tokens,
+            duration,
+        } => {
             lines.push(format!("  model: {model}"));
             if let Some(t) = output_tokens {
                 lines.push(format!("  output_tokens: {t}"));
@@ -478,14 +535,22 @@ fn format_pretty(entry: &LogEntry) -> String {
                 lines.push(format!("  input: {input}"));
             }
         }
-        LogEvent::ToolCallEnd { tool, output, duration } => {
+        LogEvent::ToolCallEnd {
+            tool,
+            output,
+            duration,
+        } => {
             lines.push(format!("  tool: {tool}"));
             if !output.is_empty() {
                 lines.push(format!("  output: {output}"));
             }
             lines.push(format!("  duration: {duration:?}"));
         }
-        LogEvent::StateChange { key, old_value, new_value } => {
+        LogEvent::StateChange {
+            key,
+            old_value,
+            new_value,
+        } => {
             lines.push(format!("  key: {key}"));
             if let Some(old) = old_value {
                 lines.push(format!("  old: {old}"));
@@ -499,7 +564,10 @@ fn format_pretty(entry: &LogEntry) -> String {
         LogEvent::AgentStart { agent_name } => {
             lines.push(format!("  agent: {agent_name}"));
         }
-        LogEvent::AgentEnd { agent_name, total_duration } => {
+        LogEvent::AgentEnd {
+            agent_name,
+            total_duration,
+        } => {
             lines.push(format!("  agent: {agent_name}"));
             lines.push(format!("  total_duration: {total_duration:?}"));
         }
@@ -507,7 +575,12 @@ fn format_pretty(entry: &LogEntry) -> String {
 
     if let Some(d) = entry.duration {
         // Only add if not already present from event-specific rendering.
-        if !matches!(entry.event, LogEvent::ModelCallEnd { .. } | LogEvent::ToolCallEnd { .. } | LogEvent::AgentEnd { .. }) {
+        if !matches!(
+            entry.event,
+            LogEvent::ModelCallEnd { .. }
+                | LogEvent::ToolCallEnd { .. }
+                | LogEvent::AgentEnd { .. }
+        ) {
             lines.push(format!("  duration: {d:?}"));
         }
     }
@@ -777,12 +850,7 @@ impl LoggingMiddleware {
     }
 
     /// Log a state change event.
-    pub async fn log_state_change(
-        &self,
-        key: &str,
-        old_value: Option<Value>,
-        new_value: Value,
-    ) {
+    pub async fn log_state_change(&self, key: &str, old_value: Option<Value>, new_value: Value) {
         let entry = LogEntry {
             timestamp: self.now_timestamp(),
             level: LogLevel::Debug,
@@ -1148,19 +1216,51 @@ mod tests {
     #[test]
     fn test_log_event_variants() {
         let events: Vec<LogEvent> = vec![
-            LogEvent::ModelCallStart { model: "m".into(), input_tokens: Some(10) },
-            LogEvent::ModelCallEnd { model: "m".into(), output_tokens: Some(20), duration: Duration::from_secs(1) },
-            LogEvent::ToolCallStart { tool: "t".into(), input: "i".into() },
-            LogEvent::ToolCallEnd { tool: "t".into(), output: "o".into(), duration: Duration::from_millis(500) },
-            LogEvent::StateChange { key: "k".into(), old_value: None, new_value: json!(42) },
-            LogEvent::Error { source: "s".into(), message: "m".into() },
-            LogEvent::AgentStart { agent_name: "a".into() },
-            LogEvent::AgentEnd { agent_name: "a".into(), total_duration: Duration::from_secs(10) },
+            LogEvent::ModelCallStart {
+                model: "m".into(),
+                input_tokens: Some(10),
+            },
+            LogEvent::ModelCallEnd {
+                model: "m".into(),
+                output_tokens: Some(20),
+                duration: Duration::from_secs(1),
+            },
+            LogEvent::ToolCallStart {
+                tool: "t".into(),
+                input: "i".into(),
+            },
+            LogEvent::ToolCallEnd {
+                tool: "t".into(),
+                output: "o".into(),
+                duration: Duration::from_millis(500),
+            },
+            LogEvent::StateChange {
+                key: "k".into(),
+                old_value: None,
+                new_value: json!(42),
+            },
+            LogEvent::Error {
+                source: "s".into(),
+                message: "m".into(),
+            },
+            LogEvent::AgentStart {
+                agent_name: "a".into(),
+            },
+            LogEvent::AgentEnd {
+                agent_name: "a".into(),
+                total_duration: Duration::from_secs(10),
+            },
         ];
 
         let expected_names = [
-            "ModelCallStart", "ModelCallEnd", "ToolCallStart", "ToolCallEnd",
-            "StateChange", "Error", "AgentStart", "AgentEnd",
+            "ModelCallStart",
+            "ModelCallEnd",
+            "ToolCallStart",
+            "ToolCallEnd",
+            "StateChange",
+            "Error",
+            "AgentStart",
+            "AgentEnd",
         ];
 
         for (event, expected) in events.iter().zip(expected_names.iter()) {
@@ -1185,12 +1285,18 @@ mod tests {
         };
         let mw = in_memory_middleware(config);
 
-        mw.log_state_change("counter", Some(json!(1)), json!(2)).await;
+        mw.log_state_change("counter", Some(json!(1)), json!(2))
+            .await;
 
         let logs = mw.get_logs().await;
         assert_eq!(logs.len(), 1);
 
-        if let LogEvent::StateChange { key, old_value, new_value } = &logs[0].event {
+        if let LogEvent::StateChange {
+            key,
+            old_value,
+            new_value,
+        } = &logs[0].event
+        {
             assert_eq!(key, "counter");
             assert_eq!(*old_value, Some(json!(1)));
             assert_eq!(*new_value, json!(2));
@@ -1209,7 +1315,8 @@ mod tests {
         let mw = in_memory_middleware(config);
 
         mw.log_agent_start("deep-agent-1").await;
-        mw.log_agent_end("deep-agent-1", Duration::from_secs(5)).await;
+        mw.log_agent_end("deep-agent-1", Duration::from_secs(5))
+            .await;
 
         let logs = mw.get_logs().await;
         assert_eq!(logs.len(), 2);
@@ -1220,7 +1327,11 @@ mod tests {
             panic!("Expected AgentStart");
         }
 
-        if let LogEvent::AgentEnd { agent_name, total_duration } = &logs[1].event {
+        if let LogEvent::AgentEnd {
+            agent_name,
+            total_duration,
+        } = &logs[1].event
+        {
             assert_eq!(agent_name, "deep-agent-1");
             assert_eq!(*total_duration, Duration::from_secs(5));
         } else {

@@ -414,8 +414,7 @@ mod tests {
         }
 
         fn calls(&self) -> usize {
-            self.call_count
-                .load(std::sync::atomic::Ordering::Relaxed)
+            self.call_count.load(std::sync::atomic::Ordering::Relaxed)
         }
     }
 
@@ -567,10 +566,7 @@ mod tests {
 
         // With propagate=false, child only gets parent's inherited, not local
         assert_eq!(child.config().inherited_callbacks.len(), 1);
-        assert_eq!(
-            child.config().inherited_callbacks[0].name(),
-            "inherited"
-        );
+        assert_eq!(child.config().inherited_callbacks[0].name(), "inherited");
     }
 
     #[tokio::test]

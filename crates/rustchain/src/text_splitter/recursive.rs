@@ -86,12 +86,7 @@ pub struct RecursiveCharacterTextSplitter {
 impl Default for RecursiveCharacterTextSplitter {
     fn default() -> Self {
         Self {
-            separators: vec![
-                "\n\n".into(),
-                "\n".into(),
-                " ".into(),
-                "".into(),
-            ],
+            separators: vec!["\n\n".into(), "\n".into(), " ".into(), "".into()],
             chunk_size: 4000,
             chunk_overlap: 200,
             length_function: LengthFunction::default(),
@@ -492,14 +487,9 @@ impl RecursiveCharacterTextSplitterBuilder {
     /// Build the configured `RecursiveCharacterTextSplitter`.
     pub fn build(self) -> RecursiveCharacterTextSplitter {
         RecursiveCharacterTextSplitter {
-            separators: self.separators.unwrap_or_else(|| {
-                vec![
-                    "\n\n".into(),
-                    "\n".into(),
-                    " ".into(),
-                    "".into(),
-                ]
-            }),
+            separators: self
+                .separators
+                .unwrap_or_else(|| vec!["\n\n".into(), "\n".into(), " ".into(), "".into()]),
             chunk_size: self.chunk_size,
             chunk_overlap: self.chunk_overlap,
             length_function: self.length_function,
@@ -684,7 +674,11 @@ mod tests {
         let chunks = splitter.split_text(text);
         assert!(!chunks.is_empty());
         // Markdown separator hierarchy should split at headers.
-        assert!(chunks.len() >= 2, "Expected header-based splits, got {:?}", chunks);
+        assert!(
+            chunks.len() >= 2,
+            "Expected header-based splits, got {:?}",
+            chunks
+        );
     }
 
     #[test]
@@ -706,7 +700,11 @@ mod tests {
 
         let text = "fn foo() {\n    let x = 1;\n}\n\nfn bar() {\n    let y = 2;\n}\n\nstruct Baz {\n    field: i32,\n}";
         let chunks = splitter.split_text(text);
-        assert!(chunks.len() >= 2, "Expected Rust-based splits, got {:?}", chunks);
+        assert!(
+            chunks.len() >= 2,
+            "Expected Rust-based splits, got {:?}",
+            chunks
+        );
     }
 
     #[test]
@@ -740,7 +738,11 @@ mod tests {
 
         let text = "1. First item 2. Second item 3. Third item";
         let chunks = splitter.split_text(text);
-        assert!(chunks.len() >= 2, "Regex should split on numbered items, got {:?}", chunks);
+        assert!(
+            chunks.len() >= 2,
+            "Regex should split on numbered items, got {:?}",
+            chunks
+        );
     }
 
     #[test]
@@ -842,7 +844,10 @@ mod tests {
         let docs = splitter.create_documents(&texts, Some(&metadatas));
         assert!(!docs.is_empty());
         for d in &docs {
-            assert_eq!(d.metadata.get("key"), Some(&Value::String("val".to_string())));
+            assert_eq!(
+                d.metadata.get("key"),
+                Some(&Value::String("val".to_string()))
+            );
         }
     }
 

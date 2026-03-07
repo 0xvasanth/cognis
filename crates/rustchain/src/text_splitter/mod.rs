@@ -13,11 +13,11 @@ pub use code::Language;
 pub use html::HTMLHeaderTextSplitter;
 pub use json::RecursiveJsonSplitter;
 pub use markdown::{MarkdownHeaderTextSplitter, MarkdownTextSplitter};
-pub use sentence::{SentencePattern, SentenceTextSplitter, SentenceTextSplitterBuilder};
 pub use recursive::{
     KeepSeparator, LengthFunction, RecursiveCharacterTextSplitter,
     RecursiveCharacterTextSplitterBuilder,
 };
+pub use sentence::{SentencePattern, SentenceTextSplitter, SentenceTextSplitterBuilder};
 pub use token::TokenTextSplitter;
 pub use token_aware::TokenAwareTextSplitter;
 

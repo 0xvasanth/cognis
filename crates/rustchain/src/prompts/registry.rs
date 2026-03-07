@@ -133,14 +133,7 @@ impl PromptRegistry {
     /// If a prompt with the same name already exists a new version is created.
     /// The latest registered version becomes the current one.
     pub fn register(&self, name: impl Into<String>, template: impl Into<String>) {
-        self.register_full(
-            name,
-            template,
-            None,
-            Vec::new(),
-            None,
-            HashMap::new(),
-        );
+        self.register_full(name, template, None, Vec::new(), None, HashMap::new());
     }
 
     /// Register a prompt with full metadata.
@@ -159,10 +152,12 @@ impl PromptRegistry {
         let now = current_timestamp();
 
         let mut store = self.store.write().unwrap();
-        let entry = store.entry(name.clone()).or_insert_with(|| PromptVersionStore {
-            versions: Vec::new(),
-            current_idx: 0,
-        });
+        let entry = store
+            .entry(name.clone())
+            .or_insert_with(|| PromptVersionStore {
+                versions: Vec::new(),
+                current_idx: 0,
+            });
 
         let version = entry.versions.last().map_or(1, |p| p.version + 1);
         let created_at = entry
@@ -272,9 +267,9 @@ impl PromptRegistry {
     /// found.
     pub fn rollback(&self, name: &str, version: u32) -> Result<()> {
         let mut store = self.store.write().unwrap();
-        let entry = store.get_mut(name).ok_or_else(|| {
-            RustChainError::Other(format!("Prompt '{}' not found", name))
-        })?;
+        let entry = store
+            .get_mut(name)
+            .ok_or_else(|| RustChainError::Other(format!("Prompt '{}' not found", name)))?;
         let idx = entry
             .versions
             .iter()
@@ -448,7 +443,10 @@ mod tests {
         let latest = reg.get("t").unwrap();
         assert_eq!(latest.version, 2);
         assert_eq!(latest.template, "v2 {x} {y}");
-        assert_eq!(latest.input_variables, vec!["x".to_string(), "y".to_string()]);
+        assert_eq!(
+            latest.input_variables,
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
@@ -545,9 +543,30 @@ mod tests {
     #[test]
     fn test_category_filtering() {
         let reg = PromptRegistry::new();
-        reg.register_full("a", "tmpl a", None, vec![], Some("chat".into()), HashMap::new());
-        reg.register_full("b", "tmpl b", None, vec![], Some("extraction".into()), HashMap::new());
-        reg.register_full("c", "tmpl c", None, vec![], Some("chat".into()), HashMap::new());
+        reg.register_full(
+            "a",
+            "tmpl a",
+            None,
+            vec![],
+            Some("chat".into()),
+            HashMap::new(),
+        );
+        reg.register_full(
+            "b",
+            "tmpl b",
+            None,
+            vec![],
+            Some("extraction".into()),
+            HashMap::new(),
+        );
+        reg.register_full(
+            "c",
+            "tmpl c",
+            None,
+            vec![],
+            Some("chat".into()),
+            HashMap::new(),
+        );
 
         let mut chat = reg.list_by_category("chat");
         chat.sort();
@@ -600,10 +619,7 @@ mod tests {
 
     #[test]
     fn test_prompt_composer() {
-        let result = PromptComposer::compose(
-            &["Hello {name}!", "How are you?"],
-            "\n",
-        );
+        let result = PromptComposer::compose(&["Hello {name}!", "How are you?"], "\n");
         assert_eq!(result, "Hello {name}!\nHow are you?");
 
         let reg = PromptRegistry::new();
@@ -658,7 +674,10 @@ mod tests {
 
         let p = reg.get("tagged").unwrap();
         assert_eq!(p.tags, vec!["greeting", "test"]);
-        assert_eq!(p.metadata.get("author").unwrap(), &Value::String("alice".to_string()));
+        assert_eq!(
+            p.metadata.get("author").unwrap(),
+            &Value::String("alice".to_string())
+        );
         assert_eq!(p.metadata.get("priority").unwrap(), &serde_json::json!(1));
         assert_eq!(p.category, Some("chat".to_string()));
         assert!(!p.created_at.is_empty());

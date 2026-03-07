@@ -44,7 +44,10 @@ impl std::fmt::Debug for ChromaConfig {
             .field("collection_name", &self.collection_name)
             .field("tenant", &self.tenant)
             .field("database", &self.database)
-            .field("embedding_function", &self.embedding_function.as_ref().map(|_| "..."))
+            .field(
+                "embedding_function",
+                &self.embedding_function.as_ref().map(|_| "..."),
+            )
             .finish()
     }
 }
@@ -391,7 +394,9 @@ fn matches_where_filter(metadata: &HashMap<String, Value>, filter: &ChromaWhereF
         ChromaWhereFilter::Condition { field, operator } => {
             evaluate_operator(metadata.get(field), operator)
         }
-        ChromaWhereFilter::And(filters) => filters.iter().all(|f| matches_where_filter(metadata, f)),
+        ChromaWhereFilter::And(filters) => {
+            filters.iter().all(|f| matches_where_filter(metadata, f))
+        }
         ChromaWhereFilter::Or(filters) => filters.iter().any(|f| matches_where_filter(metadata, f)),
     }
 }
@@ -424,9 +429,7 @@ impl ChromaClient for MockChromaClient {
         metadata: Option<HashMap<String, Value>>,
     ) -> Result<()> {
         let mut collections = self.collections.write().await;
-        collections
-            .entry(name.to_string())
-            .or_insert_with(Vec::new);
+        collections.entry(name.to_string()).or_insert_with(Vec::new);
 
         if let Some(meta) = metadata {
             let mut col_meta = self.collection_metadata.write().await;
@@ -831,11 +834,7 @@ impl VectorStore for ChromaVectorStore {
             return Ok(false);
         };
         self.client
-            .delete(
-                &self.config.collection_name,
-                Some(ids.to_vec()),
-                None,
-            )
+            .delete(&self.config.collection_name, Some(ids.to_vec()), None)
             .await?;
         Ok(true)
     }
@@ -883,7 +882,8 @@ impl VectorStore for ChromaVectorStore {
         query: &str,
         k: usize,
     ) -> Result<Vec<(Document, f32)>> {
-        self.similarity_search_with_filter(query, k, None, None).await
+        self.similarity_search_with_filter(query, k, None, None)
+            .await
     }
 
     async fn similarity_search_by_vector(
@@ -1054,10 +1054,7 @@ mod tests {
         let texts = vec!["cat".into(), "dog".into(), "fish".into()];
         store.add_texts(&texts, None, None).await.unwrap();
 
-        let results = store
-            .similarity_search_with_score("cat", 3)
-            .await
-            .unwrap();
+        let results = store.similarity_search_with_score("cat", 3).await.unwrap();
         assert_eq!(results.len(), 3);
         // First result should be "cat" with highest score.
         assert_eq!(results[0].0.page_content, "cat");
@@ -1510,10 +1507,7 @@ mod tests {
         assert_eq!(ids.len(), 50);
 
         // Query to verify all documents are stored.
-        let results = store
-            .similarity_search("document_25", 5)
-            .await
-            .unwrap();
+        let results = store.similarity_search("document_25", 5).await.unwrap();
         assert_eq!(results.len(), 5);
 
         // Delete a batch of documents.

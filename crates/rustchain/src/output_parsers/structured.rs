@@ -174,9 +174,7 @@ impl StructuredOutputParser {
 
             for (field_name, field_schema) in props {
                 if let Some(field_value) = obj.get(field_name) {
-                    if let Some(expected_type) =
-                        field_schema.get("type").and_then(|t| t.as_str())
-                    {
+                    if let Some(expected_type) = field_schema.get("type").and_then(|t| t.as_str()) {
                         if !check_json_type(field_value, expected_type) {
                             type_errors.push(format!(
                                 "field '{}': expected {}, got {}",

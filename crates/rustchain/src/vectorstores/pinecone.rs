@@ -369,14 +369,18 @@ fn matches_filter(metadata: &HashMap<String, Value>, filter: &PineconeFilter) ->
         match &cond.operator {
             PineconeFilterOperator::Eq => field_val == &cond.value,
             PineconeFilterOperator::Ne => field_val != &cond.value,
-            PineconeFilterOperator::Gt => compare_values(field_val, &cond.value) == Some(std::cmp::Ordering::Greater),
+            PineconeFilterOperator::Gt => {
+                compare_values(field_val, &cond.value) == Some(std::cmp::Ordering::Greater)
+            }
             PineconeFilterOperator::Gte => {
                 matches!(
                     compare_values(field_val, &cond.value),
                     Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
                 )
             }
-            PineconeFilterOperator::Lt => compare_values(field_val, &cond.value) == Some(std::cmp::Ordering::Less),
+            PineconeFilterOperator::Lt => {
+                compare_values(field_val, &cond.value) == Some(std::cmp::Ordering::Less)
+            }
             PineconeFilterOperator::Lte => {
                 matches!(
                     compare_values(field_val, &cond.value),
@@ -456,7 +460,11 @@ impl PineconeClient for MockPineconeClient {
             })
             .collect();
 
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.truncate(top_k);
         Ok(scored)
     }
@@ -535,10 +543,7 @@ impl PineconeVectorStore {
 
     /// Return the effective namespace (defaults to empty string).
     fn namespace(&self) -> &str {
-        self.config
-            .namespace
-            .as_deref()
-            .unwrap_or("")
+        self.config.namespace.as_deref().unwrap_or("")
     }
 
     /// Perform a similarity search with an optional metadata filter, returning scores.
@@ -567,9 +572,7 @@ impl PineconeVectorStore {
                 let mut metadata = r.metadata.clone();
                 metadata.remove("page_content");
 
-                let doc = Document::new(content)
-                    .with_id(r.id)
-                    .with_metadata(metadata);
+                let doc = Document::new(content).with_id(r.id).with_metadata(metadata);
 
                 (doc, r.score)
             })
@@ -609,10 +612,7 @@ impl VectorStore for PineconeVectorStore {
                 .and_then(|m| m.get(i).cloned())
                 .unwrap_or_default();
 
-            metadata.insert(
-                "page_content".to_string(),
-                Value::String(text.clone()),
-            );
+            metadata.insert("page_content".to_string(), Value::String(text.clone()));
 
             vectors.push(PineconeVector {
                 id: id.clone(),
@@ -624,9 +624,7 @@ impl VectorStore for PineconeVectorStore {
             result_ids.push(id);
         }
 
-        self.client
-            .upsert(self.namespace(), vectors)
-            .await?;
+        self.client.upsert(self.namespace(), vectors).await?;
 
         Ok(result_ids)
     }
@@ -675,9 +673,7 @@ impl VectorStore for PineconeVectorStore {
                 let mut metadata = v.metadata.clone();
                 metadata.remove("page_content");
 
-                Document::new(content)
-                    .with_id(v.id)
-                    .with_metadata(metadata)
+                Document::new(content).with_id(v.id).with_metadata(metadata)
             })
             .collect())
     }
@@ -718,9 +714,7 @@ impl VectorStore for PineconeVectorStore {
                 let mut metadata = r.metadata.clone();
                 metadata.remove("page_content");
 
-                Document::new(content)
-                    .with_id(r.id)
-                    .with_metadata(metadata)
+                Document::new(content).with_id(r.id).with_metadata(metadata)
             })
             .collect())
     }
@@ -838,10 +832,7 @@ mod tests {
         let texts = vec!["cat".into(), "dog".into(), "fish".into()];
         store.add_texts(&texts, None, None).await.unwrap();
 
-        let results = store
-            .similarity_search_with_score("cat", 3)
-            .await
-            .unwrap();
+        let results = store.similarity_search_with_score("cat", 3).await.unwrap();
         assert_eq!(results.len(), 3);
         // First result should be "cat" with highest score.
         assert_eq!(results[0].0.page_content, "cat");

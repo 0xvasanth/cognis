@@ -215,11 +215,7 @@ impl ConversationChain {
     }
 
     /// Format a template string by replacing `{variable}` placeholders.
-    fn format_template(
-        &self,
-        template: &str,
-        vars: &HashMap<String, String>,
-    ) -> Result<String> {
+    fn format_template(&self, template: &str, vars: &HashMap<String, String>) -> Result<String> {
         let re = Regex::new(r"\{(\w+)\}").unwrap();
         let mut missing: Vec<String> = Vec::new();
 
@@ -300,10 +296,12 @@ impl Runnable for ConversationChain {
             Value::Object(map) => map
                 .get(&self.input_key)
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| RustChainError::InvalidKey(format!(
-                    "Input object missing '{}' key",
-                    self.input_key
-                )))?
+                .ok_or_else(|| {
+                    RustChainError::InvalidKey(format!(
+                        "Input object missing '{}' key",
+                        self.input_key
+                    ))
+                })?
                 .to_string(),
             _ => {
                 return Err(RustChainError::TypeMismatch {

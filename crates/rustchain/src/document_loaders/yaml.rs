@@ -101,9 +101,7 @@ impl YamlDocumentLoader {
     /// Read the raw YAML content from the source.
     async fn read_content(&self) -> Result<String> {
         match &self.source {
-            YamlSource::File(path) => {
-                tokio::fs::read_to_string(path).await.map_err(Into::into)
-            }
+            YamlSource::File(path) => tokio::fs::read_to_string(path).await.map_err(Into::into),
             YamlSource::String(s) => Ok(s.clone()),
         }
     }
@@ -154,7 +152,12 @@ impl YamlDocumentLoader {
     }
 
     /// Convert a YAML value into a `Document`.
-    fn value_to_document(&self, yaml_val: &serde_yaml::Value, source: &str, doc_index: usize) -> Document {
+    fn value_to_document(
+        &self,
+        yaml_val: &serde_yaml::Value,
+        source: &str,
+        doc_index: usize,
+    ) -> Document {
         let json_val = Self::yaml_to_json(yaml_val);
 
         let mut metadata = HashMap::new();
@@ -224,7 +227,10 @@ impl BaseLoader for YamlDocumentLoader {
         let mut doc_index = 0usize;
         for document in serde_yaml::Deserializer::from_str(&raw) {
             let yaml_val = serde_yaml::Value::deserialize(document).map_err(|e| {
-                RustChainError::Other(format!("Failed to parse YAML document {}: {}", doc_index, e))
+                RustChainError::Other(format!(
+                    "Failed to parse YAML document {}: {}",
+                    doc_index, e
+                ))
             })?;
 
             // Skip null documents (empty docs between --- separators).
@@ -273,8 +279,7 @@ mod tests {
     #[tokio::test]
     async fn test_yaml_content_key() {
         let content = "title: Hello World\nbody: This is the content\nauthor: Alice\n";
-        let loader = YamlDocumentLoader::from_string(content)
-            .with_content_key("body");
+        let loader = YamlDocumentLoader::from_string(content).with_content_key("body");
         let docs = loader.load().await.unwrap();
 
         assert_eq!(docs.len(), 1);
@@ -331,8 +336,7 @@ mod tests {
     #[tokio::test]
     async fn test_yaml_nested_structures() {
         let content = "database:\n  host: localhost\n  port: 5432\n  credentials:\n    user: admin\n    password: secret\n";
-        let loader = YamlDocumentLoader::from_string(content)
-            .with_content_key("database");
+        let loader = YamlDocumentLoader::from_string(content).with_content_key("database");
         let docs = loader.load().await.unwrap();
 
         assert_eq!(docs.len(), 1);
@@ -364,8 +368,7 @@ mod tests {
     #[tokio::test]
     async fn test_yaml_multi_doc_with_content_key() {
         let content = "name: Alice\nrole: admin\n---\nname: Bob\nrole: user\n";
-        let loader = YamlDocumentLoader::from_string(content)
-            .with_content_key("name");
+        let loader = YamlDocumentLoader::from_string(content).with_content_key("name");
         let docs = loader.load().await.unwrap();
 
         assert_eq!(docs.len(), 2);

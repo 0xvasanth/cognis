@@ -82,11 +82,7 @@ impl InterceptedChatModel {
 
 #[async_trait]
 impl BaseChatModel for InterceptedChatModel {
-    async fn _generate(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatResult> {
+    async fn _generate(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatResult> {
         // Clone inputs so interceptors can mutate them.
         let mut msgs = messages.to_vec();
         let mut stop_owned: Option<Vec<String>> = stop.map(|s| s.to_vec());
@@ -112,11 +108,7 @@ impl BaseChatModel for InterceptedChatModel {
         Box::leak(s.into_boxed_str())
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         self.inner._stream(messages, stop).await
     }
 
@@ -573,7 +565,11 @@ impl InterceptedChatModelBuilder {
     }
 
     /// Convenience: add a [`ContentFilter`] with the given pattern and replacement.
-    pub fn with_content_filter(self, pattern: &str, replacement: impl Into<String>) -> Result<Self> {
+    pub fn with_content_filter(
+        self,
+        pattern: &str,
+        replacement: impl Into<String>,
+    ) -> Result<Self> {
         let filter = ContentFilter::new(pattern, replacement)?;
         Ok(self.add_request_interceptor(Box::new(filter)))
     }
@@ -611,9 +607,7 @@ fn rebuild_message_with_text(original: &Message, new_text: String) -> Message {
         Message::Ai(_) => Message::Ai(AIMessage::new(new_text)),
         Message::System(_) => Message::System(SystemMessage::new(new_text)),
         Message::Tool(t) => Message::Tool(ToolMessage::new(new_text, &t.tool_call_id)),
-        Message::Chat(c) => {
-            Message::Chat(ChatMessage::new(new_text, c.role.clone()))
-        }
+        Message::Chat(c) => Message::Chat(ChatMessage::new(new_text, c.role.clone())),
         // For chunk types, just rebuild as the base type.
         _ => Message::Human(HumanMessage::new(new_text)),
     }
@@ -772,8 +766,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_response_validator_required_keyword_fail() {
-        let validator =
-            ResponseValidator::new().with_required_keywords(vec!["magic".to_string()]);
+        let validator = ResponseValidator::new().with_required_keywords(vec!["magic".to_string()]);
         let mut result = ChatResult {
             generations: vec![rustchain_core::outputs::ChatGeneration::new(
                 rustchain_core::messages::AIMessage::new("no keyword here"),
@@ -951,9 +944,15 @@ mod tests {
 
     #[test]
     fn test_interceptor_names() {
-        assert_eq!(SystemMessageInjector::new("x").name(), "SystemMessageInjector");
+        assert_eq!(
+            SystemMessageInjector::new("x").name(),
+            "SystemMessageInjector"
+        );
         assert_eq!(MessageTrimmer::new(5).name(), "MessageTrimmer");
-        assert_eq!(ContentFilter::new("a", "b").unwrap().name(), "ContentFilter");
+        assert_eq!(
+            ContentFilter::new("a", "b").unwrap().name(),
+            "ContentFilter"
+        );
         assert_eq!(MessageLogger::new().name(), "MessageLogger");
         assert_eq!(ResponseValidator::new().name(), "ResponseValidator");
         assert_eq!(ResponseTransformer::new().name(), "ResponseTransformer");
@@ -972,7 +971,10 @@ mod tests {
             .build()
             .unwrap();
 
-        let result = model._generate(&[human("this is bad")], None).await.unwrap();
+        let result = model
+            ._generate(&[human("this is bad")], None)
+            .await
+            .unwrap();
         assert_eq!(result.generations[0].text, "filtered");
     }
 }

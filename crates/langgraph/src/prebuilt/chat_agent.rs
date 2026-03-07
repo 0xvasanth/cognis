@@ -118,7 +118,11 @@ pub struct ToolCallInfo {
 
 impl ToolCallInfo {
     /// Create a new `ToolCallInfo`.
-    pub fn new(name: impl Into<String>, args: HashMap<String, Value>, id: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        args: HashMap<String, Value>,
+        id: impl Into<String>,
+    ) -> Self {
         Self {
             name: name.into(),
             args,
@@ -203,7 +207,10 @@ impl ChatAgent {
 
         // Prepend system message if configured and not already present.
         if let Some(ref sys) = self.system_message {
-            let has_system = state.messages.iter().any(|m| matches!(m, Message::System(_)));
+            let has_system = state
+                .messages
+                .iter()
+                .any(|m| matches!(m, Message::System(_)));
             if !has_system {
                 state
                     .messages
@@ -327,7 +334,10 @@ impl ChatAgent {
 
         // Prepend system message if configured.
         if let Some(ref sys) = self.system_message {
-            let has_system = state.messages.iter().any(|m| matches!(m, Message::System(_)));
+            let has_system = state
+                .messages
+                .iter()
+                .any(|m| matches!(m, Message::System(_)));
             if !has_system {
                 state
                     .messages
@@ -634,10 +644,7 @@ mod tests {
             ..Default::default()
         });
 
-        let response = agent
-            .invoke(vec![Message::human("Hello")])
-            .await
-            .unwrap();
+        let response = agent.invoke(vec![Message::human("Hello")]).await.unwrap();
 
         // Should have system + human + ai = 3 messages.
         assert_eq!(response.messages.len(), 3);
@@ -717,10 +724,7 @@ mod tests {
         });
 
         use futures::StreamExt;
-        let stream = agent
-            .stream(vec![Message::human("hi")])
-            .await
-            .unwrap();
+        let stream = agent.stream(vec![Message::human("hi")]).await.unwrap();
         let events: Vec<_> = stream.collect().await;
 
         assert!(events.len() >= 3); // ModelStart, ModelEnd, AgentFinish

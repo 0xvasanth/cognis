@@ -379,20 +379,14 @@ impl BaseChannel for BroadcastChannel {
                                     .get("topic")
                                     .and_then(|t| t.as_str())
                                     .map(|s| s.to_string()),
-                                payload: m
-                                    .get("payload")
-                                    .cloned()
-                                    .unwrap_or(Value::Null),
+                                payload: m.get("payload").cloned().unwrap_or(Value::Null),
                                 sender: m
                                     .get("sender")
                                     .and_then(|s| s.as_str())
                                     .unwrap_or("")
                                     .to_string(),
                                 timestamp: Instant::now(),
-                                sequence: m
-                                    .get("sequence")
-                                    .and_then(|s| s.as_u64())
-                                    .unwrap_or(0),
+                                sequence: m.get("sequence").and_then(|s| s.as_u64()).unwrap_or(0),
                             })
                             .collect()
                     })
@@ -443,7 +437,10 @@ impl BaseChannel for BroadcastChannel {
             return Ok(false);
         }
         for v in values {
-            let topic = v.get("topic").and_then(|t| t.as_str()).map(|s| s.to_string());
+            let topic = v
+                .get("topic")
+                .and_then(|t| t.as_str())
+                .map(|s| s.to_string());
             let payload = v.get("payload").cloned().unwrap_or_else(|| v.clone());
             let sender = v
                 .get("sender")
@@ -512,9 +509,7 @@ mod tests {
     #[test]
     fn test_topic_filtering() {
         let channel = BroadcastChannel::new("test");
-        let sub = channel.subscribe(Some(BroadcastFilter::topics(vec![
-            "events".to_string(),
-        ])));
+        let sub = channel.subscribe(Some(BroadcastFilter::topics(vec!["events".to_string()])));
 
         // This message has a non-matching topic.
         channel

@@ -374,7 +374,10 @@ impl AuditReport {
     /// Return a human-readable summary string.
     pub fn summary(&self) -> String {
         let mut out = String::new();
-        out.push_str(&format!("Audit Report: {} total events\n", self.total_events));
+        out.push_str(&format!(
+            "Audit Report: {} total events\n",
+            self.total_events
+        ));
 
         if !self.event_counts.is_empty() {
             out.push_str("Event counts:\n");
@@ -557,14 +560,24 @@ mod tests {
     #[test]
     fn test_record_and_retrieve_events() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::GraphStart, None, "start", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::GraphStart,
+            None,
+            "start",
+            AuditSeverity::Info,
+        ));
         log.record(evt(
             AuditEventType::NodeEnter,
             Some("agent"),
             "entering agent",
             AuditSeverity::Info,
         ));
-        log.record(evt(AuditEventType::GraphEnd, None, "end", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::GraphEnd,
+            None,
+            "end",
+            AuditSeverity::Info,
+        ));
 
         let events = log.get_events();
         assert_eq!(events.len(), 3);
@@ -577,10 +590,30 @@ mod tests {
     #[test]
     fn test_filter_by_event_type() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::GraphStart, None, "s", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeEnter, Some("a"), "n", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeEnter, Some("b"), "n", AuditSeverity::Info));
-        log.record(evt(AuditEventType::GraphEnd, None, "e", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::GraphStart,
+            None,
+            "s",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("a"),
+            "n",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("b"),
+            "n",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::GraphEnd,
+            None,
+            "e",
+            AuditSeverity::Info,
+        ));
 
         let enters = log.get_events_by_type(&AuditEventType::NodeEnter);
         assert_eq!(enters.len(), 2);
@@ -593,9 +626,24 @@ mod tests {
     #[test]
     fn test_filter_by_node_name() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::NodeEnter, Some("agent"), "enter", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeExit, Some("agent"), "exit", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeEnter, Some("tools"), "enter", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("agent"),
+            "enter",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeExit,
+            Some("agent"),
+            "exit",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("tools"),
+            "enter",
+            AuditSeverity::Info,
+        ));
 
         let agent_events = log.get_events_for_node("agent");
         assert_eq!(agent_events.len(), 2);
@@ -612,19 +660,31 @@ mod tests {
     fn test_time_range_filtering() {
         let log = AuditLog::new(AuditLogConfig::default());
         log.record(evt_at(
-            AuditEventType::GraphStart, None, "s", AuditSeverity::Info,
+            AuditEventType::GraphStart,
+            None,
+            "s",
+            AuditSeverity::Info,
             "2026-01-01T00:00:00Z",
         ));
         log.record(evt_at(
-            AuditEventType::NodeEnter, Some("a"), "n", AuditSeverity::Info,
+            AuditEventType::NodeEnter,
+            Some("a"),
+            "n",
+            AuditSeverity::Info,
             "2026-01-01T01:00:00Z",
         ));
         log.record(evt_at(
-            AuditEventType::NodeExit, Some("a"), "n", AuditSeverity::Info,
+            AuditEventType::NodeExit,
+            Some("a"),
+            "n",
+            AuditSeverity::Info,
             "2026-01-01T02:00:00Z",
         ));
         log.record(evt_at(
-            AuditEventType::GraphEnd, None, "e", AuditSeverity::Info,
+            AuditEventType::GraphEnd,
+            None,
+            "e",
+            AuditSeverity::Info,
             "2026-01-01T03:00:00Z",
         ));
 
@@ -636,10 +696,22 @@ mod tests {
     #[test]
     fn test_text_search() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::NodeEnter, Some("a"), "Entering node agent", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeExit, Some("a"), "Exiting node agent", AuditSeverity::Info));
         log.record(evt(
-            AuditEventType::Error { message: "boom".into() },
+            AuditEventType::NodeEnter,
+            Some("a"),
+            "Entering node agent",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeExit,
+            Some("a"),
+            "Exiting node agent",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::Error {
+                message: "boom".into(),
+            },
             Some("b"),
             "Error in tools: timeout occurred",
             AuditSeverity::Error,
@@ -662,8 +734,18 @@ mod tests {
     #[test]
     fn test_export_json() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::GraphStart, None, "s", AuditSeverity::Info));
-        log.record(evt(AuditEventType::GraphEnd, None, "e", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::GraphStart,
+            None,
+            "s",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::GraphEnd,
+            None,
+            "e",
+            AuditSeverity::Info,
+        ));
 
         let json_str = log.export_json();
         let parsed: Vec<AuditEvent> = serde_json::from_str(&json_str).unwrap();
@@ -706,16 +788,30 @@ mod tests {
         };
         let log = AuditLog::new(config);
 
-        log.record(evt(AuditEventType::GraphStart, None, "info event", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeEnter, Some("a"), "warn event", AuditSeverity::Warning));
         log.record(evt(
-            AuditEventType::Error { message: "err".into() },
+            AuditEventType::GraphStart,
+            None,
+            "info event",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("a"),
+            "warn event",
+            AuditSeverity::Warning,
+        ));
+        log.record(evt(
+            AuditEventType::Error {
+                message: "err".into(),
+            },
             Some("b"),
             "error event",
             AuditSeverity::Error,
         ));
         log.record(evt(
-            AuditEventType::Error { message: "crit".into() },
+            AuditEventType::Error {
+                message: "crit".into(),
+            },
             None,
             "critical event",
             AuditSeverity::Critical,
@@ -731,11 +827,28 @@ mod tests {
     #[test]
     fn test_audit_report_generation() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::GraphStart, None, "start", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeEnter, Some("agent"), "enter", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeExit, Some("agent"), "exit", AuditSeverity::Info));
         log.record(evt(
-            AuditEventType::Error { message: "oops".into() },
+            AuditEventType::GraphStart,
+            None,
+            "start",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("agent"),
+            "enter",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeExit,
+            Some("agent"),
+            "exit",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::Error {
+                message: "oops".into(),
+            },
             Some("agent"),
             "something broke",
             AuditSeverity::Error,
@@ -758,10 +871,30 @@ mod tests {
     #[test]
     fn test_event_counts_by_type() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::NodeEnter, Some("a"), "e", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeEnter, Some("b"), "e", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeExit, Some("a"), "x", AuditSeverity::Info));
-        log.record(evt(AuditEventType::EdgeTraversal, None, "edge", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("a"),
+            "e",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("b"),
+            "e",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeExit,
+            Some("a"),
+            "x",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::EdgeTraversal,
+            None,
+            "edge",
+            AuditSeverity::Info,
+        ));
 
         let report = AuditReport::generate(&log);
         assert_eq!(report.event_counts.get("NodeEnter"), Some(&2));
@@ -773,10 +906,30 @@ mod tests {
     #[test]
     fn test_audit_trail_trace_node() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::NodeEnter, Some("agent"), "enter", AuditSeverity::Info));
-        log.record(evt(AuditEventType::EdgeTraversal, Some("agent"), "edge", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeExit, Some("agent"), "exit", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeEnter, Some("tools"), "enter", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("agent"),
+            "enter",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::EdgeTraversal,
+            Some("agent"),
+            "edge",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeExit,
+            Some("agent"),
+            "exit",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("tools"),
+            "enter",
+            AuditSeverity::Info,
+        ));
 
         let trail = AuditTrail::new(&log);
         let agent_trace = trail.trace_node_execution("agent");
@@ -789,20 +942,34 @@ mod tests {
     #[test]
     fn test_audit_trail_find_errors() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::GraphStart, None, "s", AuditSeverity::Info));
         log.record(evt(
-            AuditEventType::Error { message: "timeout".into() },
+            AuditEventType::GraphStart,
+            None,
+            "s",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::Error {
+                message: "timeout".into(),
+            },
             Some("agent"),
             "timeout",
             AuditSeverity::Error,
         ));
         log.record(evt(
-            AuditEventType::Error { message: "crash".into() },
+            AuditEventType::Error {
+                message: "crash".into(),
+            },
             Some("tools"),
             "crash",
             AuditSeverity::Critical,
         ));
-        log.record(evt(AuditEventType::GraphEnd, None, "e", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::GraphEnd,
+            None,
+            "e",
+            AuditSeverity::Info,
+        ));
 
         let trail = AuditTrail::new(&log);
         let errors = trail.find_errors();
@@ -813,8 +980,18 @@ mod tests {
     #[test]
     fn test_clear_log() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::GraphStart, None, "s", AuditSeverity::Info));
-        log.record(evt(AuditEventType::GraphEnd, None, "e", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::GraphStart,
+            None,
+            "s",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::GraphEnd,
+            None,
+            "e",
+            AuditSeverity::Info,
+        ));
         assert_eq!(log.size(), 2);
 
         log.clear();
@@ -851,10 +1028,30 @@ mod tests {
     #[test]
     fn test_audit_trail_trace_graph_execution() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::GraphStart, None, "start", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeEnter, Some("a"), "n", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeExit, Some("a"), "n", AuditSeverity::Info));
-        log.record(evt(AuditEventType::GraphEnd, None, "end", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::GraphStart,
+            None,
+            "start",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("a"),
+            "n",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeExit,
+            Some("a"),
+            "n",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::GraphEnd,
+            None,
+            "end",
+            AuditSeverity::Info,
+        ));
 
         let trail = AuditTrail::new(&log);
         let trace = trail.trace_graph_execution();
@@ -871,8 +1068,18 @@ mod tests {
             ..Default::default()
         };
         let log = AuditLog::new(config);
-        log.record(evt(AuditEventType::GraphStart, None, "s", AuditSeverity::Info));
-        log.record(evt(AuditEventType::GraphEnd, None, "e", AuditSeverity::Critical));
+        log.record(evt(
+            AuditEventType::GraphStart,
+            None,
+            "s",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::GraphEnd,
+            None,
+            "e",
+            AuditSeverity::Critical,
+        ));
         assert_eq!(log.size(), 0);
     }
 
@@ -880,11 +1087,36 @@ mod tests {
     #[test]
     fn test_node_activity_in_report() {
         let log = AuditLog::new(AuditLogConfig::default());
-        log.record(evt(AuditEventType::NodeEnter, Some("agent"), "e", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeExit, Some("agent"), "x", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeEnter, Some("agent"), "e", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeExit, Some("agent"), "x", AuditSeverity::Info));
-        log.record(evt(AuditEventType::NodeEnter, Some("tools"), "e", AuditSeverity::Info));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("agent"),
+            "e",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeExit,
+            Some("agent"),
+            "x",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("agent"),
+            "e",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeExit,
+            Some("agent"),
+            "x",
+            AuditSeverity::Info,
+        ));
+        log.record(evt(
+            AuditEventType::NodeEnter,
+            Some("tools"),
+            "e",
+            AuditSeverity::Info,
+        ));
 
         let report = AuditReport::generate(&log);
         assert_eq!(report.node_activity.get("agent"), Some(&4));

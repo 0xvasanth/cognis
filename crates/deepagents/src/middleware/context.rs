@@ -215,9 +215,10 @@ impl ContextSource for UserProfileContext {
             lines.push(format!("  {k}: {v}"));
         }
         let mut entry = ContextEntry::new(lines.join("\n"), self.name.clone(), self.priority);
-        entry
-            .metadata
-            .insert("user_name".to_string(), Value::String(self.user_name.clone()));
+        entry.metadata.insert(
+            "user_name".to_string(),
+            Value::String(self.user_name.clone()),
+        );
         Ok(entry)
     }
 
@@ -270,10 +271,7 @@ impl ContextSource for SessionContext {
         if data.is_empty() {
             return Ok(ContextEntry::new("", self.name.clone(), self.priority));
         }
-        let lines: Vec<String> = data
-            .iter()
-            .map(|(k, v)| format!("  {k}: {v}"))
-            .collect();
+        let lines: Vec<String> = data.iter().map(|(k, v)| format!("  {k}: {v}")).collect();
         let content = format!("Session data:\n{}", lines.join("\n"));
         let mut entry = ContextEntry::new(content, self.name.clone(), self.priority);
         for (k, v) in data.iter() {
@@ -542,29 +540,25 @@ impl Middleware for ContextMiddleware {
                         0
                     }
                 }
-                ContextPosition::BeforeUser => {
-                    messages
-                        .iter()
-                        .position(|m| {
-                            m.get("type")
-                                .and_then(|t| t.as_str())
-                                .map(|t| t == "human" || t == "user")
-                                .unwrap_or(false)
-                        })
-                        .unwrap_or(messages.len())
-                }
-                ContextPosition::AfterUser => {
-                    messages
-                        .iter()
-                        .position(|m| {
-                            m.get("type")
-                                .and_then(|t| t.as_str())
-                                .map(|t| t == "human" || t == "user")
-                                .unwrap_or(false)
-                        })
-                        .map(|i| i + 1)
-                        .unwrap_or(messages.len())
-                }
+                ContextPosition::BeforeUser => messages
+                    .iter()
+                    .position(|m| {
+                        m.get("type")
+                            .and_then(|t| t.as_str())
+                            .map(|t| t == "human" || t == "user")
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(messages.len()),
+                ContextPosition::AfterUser => messages
+                    .iter()
+                    .position(|m| {
+                        m.get("type")
+                            .and_then(|t| t.as_str())
+                            .map(|t| t == "human" || t == "user")
+                            .unwrap_or(false)
+                    })
+                    .map(|i| i + 1)
+                    .unwrap_or(messages.len()),
             };
 
             let pos = pos.min(messages.len());
@@ -733,7 +727,7 @@ mod tests {
     async fn test_ttl_expiration() {
         let mut entry = ContextEntry::new("temporary", "src", 5);
         entry.ttl = Some(Duration::from_millis(0)); // Already expired
-        // Sleep a tiny bit to ensure elapsed > 0
+                                                    // Sleep a tiny bit to ensure elapsed > 0
         tokio::time::sleep(Duration::from_millis(1)).await;
         assert!(entry.is_expired());
 

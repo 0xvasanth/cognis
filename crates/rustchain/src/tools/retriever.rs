@@ -158,10 +158,7 @@ impl RetrieverTool {
                             .find_map(|v| v.as_str().map(|s| s.to_string()))
                             .unwrap_or_default()
                     });
-                let k = map
-                    .get("k")
-                    .and_then(|v| v.as_u64())
-                    .map(|k| k as usize);
+                let k = map.get("k").and_then(|v| v.as_u64()).map(|k| k as usize);
                 (query, k)
             }
             ToolInput::ToolCall(tc) => {
@@ -240,9 +237,7 @@ impl BaseTool for RetrieverTool {
             docs.truncate(max);
         }
 
-        let text = self
-            .document_formatter
-            .format(&docs, self.include_metadata);
+        let text = self.document_formatter.format(&docs, self.include_metadata);
         Ok(ToolOutput::Content(Value::String(text)))
     }
 }
@@ -858,14 +853,13 @@ mod tests {
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn test_retriever_tool_multi_retriever_routing() {
-        let r1 = Arc::new(mock_retriever(vec![Document::new("from docs")])) as Arc<dyn BaseRetriever>;
-        let r2 = Arc::new(mock_retriever(vec![Document::new("from code")])) as Arc<dyn BaseRetriever>;
+        let r1 =
+            Arc::new(mock_retriever(vec![Document::new("from docs")])) as Arc<dyn BaseRetriever>;
+        let r2 =
+            Arc::new(mock_retriever(vec![Document::new("from code")])) as Arc<dyn BaseRetriever>;
 
         let tool = MultiRetrieverTool::new(
-            vec![
-                ("docs".to_string(), r1),
-                ("code".to_string(), r2),
-            ],
+            vec![("docs".to_string(), r1), ("code".to_string(), r2)],
             "multi_search",
             "Search multiple sources",
             RoutingStrategy::ByPrefix,
@@ -873,10 +867,7 @@ mod tests {
 
         // Route to "docs"
         let input_json = r#"{"query": "test", "retriever": "docs"}"#;
-        let result = tool
-            ._run(ToolInput::Text(input_json.into()))
-            .await
-            .unwrap();
+        let result = tool._run(ToolInput::Text(input_json.into())).await.unwrap();
         match result {
             ToolOutput::Content(Value::String(s)) => {
                 assert_eq!(s, "from docs");
@@ -886,10 +877,7 @@ mod tests {
 
         // Route to "code"
         let input_json = r#"{"query": "test", "retriever": "code"}"#;
-        let result = tool
-            ._run(ToolInput::Text(input_json.into()))
-            .await
-            .unwrap();
+        let result = tool._run(ToolInput::Text(input_json.into())).await.unwrap();
         match result {
             ToolOutput::Content(Value::String(s)) => {
                 assert_eq!(s, "from code");
@@ -900,17 +888,22 @@ mod tests {
         // All (no retriever specified)
         let tool_all = MultiRetrieverTool::new(
             vec![
-                ("docs".to_string(), Arc::new(mock_retriever(vec![Document::new("from docs")])) as Arc<dyn BaseRetriever>),
-                ("code".to_string(), Arc::new(mock_retriever(vec![Document::new("from code")])) as Arc<dyn BaseRetriever>),
+                (
+                    "docs".to_string(),
+                    Arc::new(mock_retriever(vec![Document::new("from docs")]))
+                        as Arc<dyn BaseRetriever>,
+                ),
+                (
+                    "code".to_string(),
+                    Arc::new(mock_retriever(vec![Document::new("from code")]))
+                        as Arc<dyn BaseRetriever>,
+                ),
             ],
             "multi_search",
             "Search multiple sources",
             RoutingStrategy::All,
         );
-        let result = tool_all
-            ._run(ToolInput::Text("test".into()))
-            .await
-            .unwrap();
+        let result = tool_all._run(ToolInput::Text("test".into())).await.unwrap();
         match result {
             ToolOutput::Content(Value::String(s)) => {
                 assert!(s.contains("from docs"));
@@ -934,10 +927,7 @@ mod tests {
 
         // JSON with k override
         let input_json = r#"{"query": "test", "k": 1}"#;
-        let result = tool
-            ._run(ToolInput::Text(input_json.into()))
-            .await
-            .unwrap();
+        let result = tool._run(ToolInput::Text(input_json.into())).await.unwrap();
         match result {
             ToolOutput::Content(Value::String(s)) => {
                 // Should only have 1 result

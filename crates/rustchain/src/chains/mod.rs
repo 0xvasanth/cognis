@@ -34,12 +34,11 @@ pub use api::{
 };
 pub mod streaming;
 pub use streaming::{
-    ConsoleStreamingCallback, StreamingCallback, StreamingCallbackAdapter, StreamingChainExecutor,
-    StreamingChainResult, TokenCollector, stream_chain,
+    stream_chain, ConsoleStreamingCallback, StreamingCallback, StreamingCallbackAdapter,
+    StreamingChainExecutor, StreamingChainResult, TokenCollector,
 };
 pub mod extraction;
 pub use extraction::{
-    ExtractionChain, ExtractionChainBuilder, ExtractionExample, ExtractionResult,
-    ExtractionSchema, ExtractionSchemaBuilder, FieldType, OutputFormat, SchemaField,
-    SchemaFieldBuilder,
+    ExtractionChain, ExtractionChainBuilder, ExtractionExample, ExtractionResult, ExtractionSchema,
+    ExtractionSchemaBuilder, FieldType, OutputFormat, SchemaField, SchemaFieldBuilder,
 };

@@ -194,9 +194,7 @@ impl SnapshotStorage for InMemorySnapshotStorage {
         if removed.is_some() {
             Ok(())
         } else {
-            Err(LangGraphError::Other(format!(
-                "snapshot not found: {id}"
-            )))
+            Err(LangGraphError::Other(format!("snapshot not found: {id}")))
         }
     }
 
@@ -266,9 +264,7 @@ impl SnapshotStorage for FileSnapshotStorage {
             std::fs::remove_file(&path)
                 .map_err(|e| LangGraphError::Other(format!("delete failed: {e}")))
         } else {
-            Err(LangGraphError::Other(format!(
-                "snapshot not found: {id}"
-            )))
+            Err(LangGraphError::Other(format!("snapshot not found: {id}")))
         }
     }
 
@@ -527,9 +523,7 @@ fn chrono_now() -> String {
 
     // Days since 1970-01-01.
     let (year, month, day) = days_to_ymd(days);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z"
-    )
+    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
 /// Convert days since 1970-01-01 to (year, month, day).

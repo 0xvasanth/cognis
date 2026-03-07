@@ -160,7 +160,10 @@ pub struct CodeSanitizer;
 
 impl CodeSanitizer {
     /// Sanitize the given code, returning the cleaned code or an error.
-    pub fn sanitize(code: &str, config: &PythonREPLConfig) -> std::result::Result<String, SanitizationError> {
+    pub fn sanitize(
+        code: &str,
+        config: &PythonREPLConfig,
+    ) -> std::result::Result<String, SanitizationError> {
         let code = Self::strip_shell_escapes(code);
 
         // Check for dangerous built-in operations
@@ -210,8 +213,10 @@ impl CodeSanitizer {
 
     /// Check for `open(...)` calls that include a write mode.
     fn check_open_write(code: &str) -> std::result::Result<(), SanitizationError> {
-        let write_modes = ["\"w\"", "'w'", "\"a\"", "'a'", "\"w+\"", "'w+'", "\"a+\"", "'a+'",
-                           "\"wb\"", "'wb'", "\"ab\"", "'ab'"];
+        let write_modes = [
+            "\"w\"", "'w'", "\"a\"", "'a'", "\"w+\"", "'w+'", "\"a+\"", "'a+'", "\"wb\"", "'wb'",
+            "\"ab\"", "'ab'",
+        ];
         for line in code.lines() {
             let trimmed = line.trim();
             if trimmed.contains("open(") || trimmed.contains("open (") {
@@ -229,7 +234,10 @@ impl CodeSanitizer {
     }
 
     /// Check imports against allowed/blocked lists.
-    fn check_imports(code: &str, config: &PythonREPLConfig) -> std::result::Result<(), SanitizationError> {
+    fn check_imports(
+        code: &str,
+        config: &PythonREPLConfig,
+    ) -> std::result::Result<(), SanitizationError> {
         let imports = Self::extract_imports(code);
 
         if let Some(ref allowed) = config.allowed_imports {
@@ -334,9 +342,8 @@ impl PythonREPLTool {
         }
 
         if self.config.sanitize_input {
-            CodeSanitizer::sanitize(code, &self.config).map_err(|e| {
-                RustChainError::ToolValidationError(e.to_string())
-            })?;
+            CodeSanitizer::sanitize(code, &self.config)
+                .map_err(|e| RustChainError::ToolValidationError(e.to_string()))?;
         }
 
         Ok(())
@@ -356,9 +363,8 @@ impl PythonREPLTool {
         self.validate(code)?;
 
         let sanitized = if self.config.sanitize_input {
-            CodeSanitizer::sanitize(code, &self.config).map_err(|e| {
-                RustChainError::ToolValidationError(e.to_string())
-            })?
+            CodeSanitizer::sanitize(code, &self.config)
+                .map_err(|e| RustChainError::ToolValidationError(e.to_string()))?
         } else {
             code.to_string()
         };
@@ -384,9 +390,7 @@ impl PythonREPLTool {
                     timeout
                 ))
             })?
-            .map_err(|e| {
-                RustChainError::ToolException(format!("Failed to run Python: {}", e))
-            })?;
+            .map_err(|e| RustChainError::ToolException(format!("Failed to run Python: {}", e)))?;
 
         let execution_time = start.elapsed();
         let mut stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -516,9 +520,8 @@ impl MockPythonREPL {
         }
 
         if self.config.sanitize_input {
-            CodeSanitizer::sanitize(code, &self.config).map_err(|e| {
-                RustChainError::ToolValidationError(e.to_string())
-            })?;
+            CodeSanitizer::sanitize(code, &self.config)
+                .map_err(|e| RustChainError::ToolValidationError(e.to_string()))?;
         }
 
         Ok(())

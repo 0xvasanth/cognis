@@ -215,7 +215,10 @@ impl LangSmithTracer {
     /// POST /runs format. Returns an array of run payloads.
     pub fn export_json(&self) -> Value {
         let runs = self.runs.lock().unwrap();
-        let payloads: Vec<Value> = runs.iter().map(|r| run_to_api_payload(r, &self.config)).collect();
+        let payloads: Vec<Value> = runs
+            .iter()
+            .map(|r| run_to_api_payload(r, &self.config))
+            .collect();
         Value::Array(payloads)
     }
 
@@ -328,7 +331,10 @@ fn run_to_api_payload(run: &LangSmithRun, config: &LangSmithConfig) -> Value {
         );
     }
     if !run.extra.is_empty() {
-        obj.insert("extra".to_string(), serde_json::to_value(&run.extra).unwrap());
+        obj.insert(
+            "extra".to_string(),
+            serde_json::to_value(&run.extra).unwrap(),
+        );
     }
     if !run.tags.is_empty() {
         obj.insert("tags".to_string(), serde_json::to_value(&run.tags).unwrap());
@@ -452,11 +458,7 @@ impl CallbackHandler for LangSmithTracer {
         run_id: Uuid,
         _parent_run_id: Option<Uuid>,
     ) -> Result<()> {
-        self.finish_run(
-            run_id,
-            Some(serde_json::json!({ "output": output })),
-            None,
-        );
+        self.finish_run(run_id, Some(serde_json::json!({ "output": output })), None);
         Ok(())
     }
 
@@ -856,12 +858,8 @@ mod tests {
     #[test]
     fn test_exporter_batch() {
         let config = test_config();
-        let mut completed = LangSmithRun::new(
-            Uuid::new_v4(),
-            "done",
-            LangSmithRunType::Llm,
-            Value::Null,
-        );
+        let mut completed =
+            LangSmithRun::new(Uuid::new_v4(), "done", LangSmithRunType::Llm, Value::Null);
         completed.end_time = Some(now_millis());
 
         let pending = LangSmithRun::new(

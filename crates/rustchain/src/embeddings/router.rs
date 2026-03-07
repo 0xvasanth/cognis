@@ -33,8 +33,7 @@ impl ContentPattern {
             ContentPattern::Code => Self::is_code(text),
             ContentPattern::Natural => !Self::is_code(text) && text.len() <= 1000,
             ContentPattern::Query => {
-                text.len() <= 200
-                    && (text.contains('?') || text.split_whitespace().count() <= 15)
+                text.len() <= 200 && (text.contains('?') || text.split_whitespace().count() <= 15)
             }
             ContentPattern::Document => text.len() > 1000,
         }
@@ -42,8 +41,22 @@ impl ContentPattern {
 
     fn is_code(text: &str) -> bool {
         let code_indicators = [
-            "{", "}", ";", "fn ", "def ", "class ", "import ", "use ", "#include", "//", "/*",
-            "pub ", "let ", "const ", "var ", "function ",
+            "{",
+            "}",
+            ";",
+            "fn ",
+            "def ",
+            "class ",
+            "import ",
+            "use ",
+            "#include",
+            "//",
+            "/*",
+            "pub ",
+            "let ",
+            "const ",
+            "var ",
+            "function ",
         ];
         let matches = code_indicators
             .iter()

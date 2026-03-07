@@ -205,11 +205,7 @@ pub struct WeaviatePropertyConfig {
 #[async_trait]
 pub trait WeaviateClient: Send + Sync {
     /// Batch insert objects into a Weaviate class.
-    async fn batch_create_objects(
-        &self,
-        class: &str,
-        objects: Vec<WeaviateObject>,
-    ) -> Result<()>;
+    async fn batch_create_objects(&self, class: &str, objects: Vec<WeaviateObject>) -> Result<()>;
 
     /// Perform a vector similarity search.
     async fn search(
@@ -271,12 +267,14 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 /// Check whether an object's properties match a Weaviate where filter.
 fn matches_where_filter(props: &HashMap<String, Value>, filter: &WeaviateWhereFilter) -> bool {
     match filter.operator {
-        WeaviateOperator::And => {
-            filter.operands.iter().all(|op| matches_where_filter(props, op))
-        }
-        WeaviateOperator::Or => {
-            filter.operands.iter().any(|op| matches_where_filter(props, op))
-        }
+        WeaviateOperator::And => filter
+            .operands
+            .iter()
+            .all(|op| matches_where_filter(props, op)),
+        WeaviateOperator::Or => filter
+            .operands
+            .iter()
+            .any(|op| matches_where_filter(props, op)),
         _ => {
             // Leaf condition — need path and value.
             let prop_name = match filter.path.first() {
@@ -295,18 +293,14 @@ fn matches_where_filter(props: &HashMap<String, Value>, filter: &WeaviateWhereFi
             match filter.operator {
                 WeaviateOperator::Equal => prop_val == filter_val,
                 WeaviateOperator::NotEqual => prop_val != filter_val,
-                WeaviateOperator::GreaterThan => {
-                    match (prop_val.as_f64(), filter_val.as_f64()) {
-                        (Some(a), Some(b)) => a > b,
-                        _ => false,
-                    }
-                }
-                WeaviateOperator::LessThan => {
-                    match (prop_val.as_f64(), filter_val.as_f64()) {
-                        (Some(a), Some(b)) => a < b,
-                        _ => false,
-                    }
-                }
+                WeaviateOperator::GreaterThan => match (prop_val.as_f64(), filter_val.as_f64()) {
+                    (Some(a), Some(b)) => a > b,
+                    _ => false,
+                },
+                WeaviateOperator::LessThan => match (prop_val.as_f64(), filter_val.as_f64()) {
+                    (Some(a), Some(b)) => a < b,
+                    _ => false,
+                },
                 WeaviateOperator::Like => {
                     // Simple prefix/wildcard matching: "foo*" matches "foobar".
                     match (prop_val.as_str(), filter_val.as_str()) {
@@ -324,17 +318,13 @@ fn matches_where_filter(props: &HashMap<String, Value>, filter: &WeaviateWhereFi
                 }
                 WeaviateOperator::ContainsAny => {
                     match (prop_val.as_array(), filter_val.as_array()) {
-                        (Some(arr), Some(targets)) => {
-                            targets.iter().any(|t| arr.contains(t))
-                        }
+                        (Some(arr), Some(targets)) => targets.iter().any(|t| arr.contains(t)),
                         _ => false,
                     }
                 }
                 WeaviateOperator::ContainsAll => {
                     match (prop_val.as_array(), filter_val.as_array()) {
-                        (Some(arr), Some(targets)) => {
-                            targets.iter().all(|t| arr.contains(t))
-                        }
+                        (Some(arr), Some(targets)) => targets.iter().all(|t| arr.contains(t)),
                         _ => false,
                     }
                 }
@@ -347,11 +337,7 @@ fn matches_where_filter(props: &HashMap<String, Value>, filter: &WeaviateWhereFi
 
 #[async_trait]
 impl WeaviateClient for MockWeaviateClient {
-    async fn batch_create_objects(
-        &self,
-        class: &str,
-        objects: Vec<WeaviateObject>,
-    ) -> Result<()> {
+    async fn batch_create_objects(&self, class: &str, objects: Vec<WeaviateObject>) -> Result<()> {
         let mut classes = self.classes.write().await;
         let coll = classes.entry(class.to_string()).or_default();
 
@@ -422,7 +408,11 @@ impl WeaviateClient for MockWeaviateClient {
         let Some(coll) = classes.get(class) else {
             return Ok(vec![]);
         };
-        Ok(coll.iter().filter(|o| ids.contains(&o.id)).cloned().collect())
+        Ok(coll
+            .iter()
+            .filter(|o| ids.contains(&o.id))
+            .cloned()
+            .collect())
     }
 
     async fn create_class(&self, class_config: WeaviateClassConfig) -> Result<()> {
@@ -501,9 +491,7 @@ impl WeaviateVectorStore {
                 // Use certainty as the score (higher = better).
                 let score = r.certainty.unwrap_or(0.0);
 
-                let doc = Document::new(content)
-                    .with_id(r.id)
-                    .with_metadata(metadata);
+                let doc = Document::new(content).with_id(r.id).with_metadata(metadata);
 
                 (doc, score)
             })
@@ -556,10 +544,7 @@ impl VectorStore for WeaviateVectorStore {
                 .unwrap_or_default();
 
             // Store text content under the configured text key.
-            properties.insert(
-                self.config.text_key.clone(),
-                Value::String(text.clone()),
-            );
+            properties.insert(self.config.text_key.clone(), Value::String(text.clone()));
 
             objects.push(WeaviateObject {
                 id: id.clone(),
@@ -672,7 +657,13 @@ impl VectorStore for WeaviateVectorStore {
         let query_embedding = self.embeddings.embed_query(query).await?;
         let results = self
             .client
-            .search(&self.config.class_name, &query_embedding, fetch_k, None, None)
+            .search(
+                &self.config.class_name,
+                &query_embedding,
+                fetch_k,
+                None,
+                None,
+            )
             .await?;
 
         if results.is_empty() {
@@ -682,7 +673,9 @@ impl VectorStore for WeaviateVectorStore {
         let candidate_embeddings: Vec<Vec<f64>> = results
             .iter()
             .filter_map(|r| {
-                r.vector.as_ref().map(|v| v.iter().map(|&x| x as f64).collect())
+                r.vector
+                    .as_ref()
+                    .map(|v| v.iter().map(|&x| x as f64).collect())
             })
             .collect();
         let query_emb_f64: Vec<f64> = query_embedding.iter().map(|&v| v as f64).collect();
@@ -754,10 +747,7 @@ mod tests {
         let texts = vec!["cat".into(), "dog".into(), "fish".into()];
         store.add_texts(&texts, None, None).await.unwrap();
 
-        let results = store
-            .similarity_search_with_score("cat", 3)
-            .await
-            .unwrap();
+        let results = store.similarity_search_with_score("cat", 3).await.unwrap();
         assert_eq!(results.len(), 3);
         // First result should be "cat" with highest score.
         assert_eq!(results[0].0.page_content, "cat");
@@ -1110,10 +1100,7 @@ mod tests {
         }];
         client.batch_create_objects("Test", updated).await.unwrap();
 
-        let after = client
-            .get_objects("Test", &["o1".into()])
-            .await
-            .unwrap();
+        let after = client.get_objects("Test", &["o1".into()]).await.unwrap();
         assert_eq!(after.len(), 1);
         assert_eq!(
             after[0].properties.get("text").unwrap(),
@@ -1125,7 +1112,11 @@ mod tests {
     #[tokio::test]
     async fn test_like_filter_prefix() {
         let store = make_store();
-        let texts = vec!["apple pie".into(), "apple sauce".into(), "banana split".into()];
+        let texts = vec![
+            "apple pie".into(),
+            "apple sauce".into(),
+            "banana split".into(),
+        ];
         let metadatas = vec![
             {
                 let mut m = HashMap::new();
@@ -1169,19 +1160,17 @@ mod tests {
     #[tokio::test]
     async fn test_search_with_property_selection() {
         let client = MockWeaviateClient::new();
-        let objects = vec![
-            WeaviateObject {
-                id: "p1".to_string(),
-                class: "Article".to_string(),
-                properties: {
-                    let mut m = HashMap::new();
-                    m.insert("title".into(), Value::String("Hello".into()));
-                    m.insert("body".into(), Value::String("World".into()));
-                    m
-                },
-                vector: vec![1.0, 0.0, 0.0],
+        let objects = vec![WeaviateObject {
+            id: "p1".to_string(),
+            class: "Article".to_string(),
+            properties: {
+                let mut m = HashMap::new();
+                m.insert("title".into(), Value::String("Hello".into()));
+                m.insert("body".into(), Value::String("World".into()));
+                m
             },
-        ];
+            vector: vec![1.0, 0.0, 0.0],
+        }];
 
         client
             .batch_create_objects("Article", objects)

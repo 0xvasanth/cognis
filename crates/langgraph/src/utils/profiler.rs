@@ -347,11 +347,7 @@ impl GraphProfiler {
             };
 
             // Count errors for this node.
-            let error_count = state
-                .errors
-                .iter()
-                .filter(|e| e._node == *name)
-                .count();
+            let error_count = state.errors.iter().filter(|e| e._node == *name).count();
 
             node_profiles.insert(
                 name.clone(),
@@ -537,12 +533,7 @@ pub fn format_report(report: &ProfileReport) -> String {
     nodes.sort_by(|a, b| b.total_duration.cmp(&a.total_duration));
 
     // Determine column widths.
-    let node_width = nodes
-        .iter()
-        .map(|n| n.name.len())
-        .max()
-        .unwrap_or(4)
-        .max(4);
+    let node_width = nodes.iter().map(|n| n.name.len()).max().unwrap_or(4).max(4);
     let calls_width = 5;
     let total_width = 9;
     let avg_width = 9;
@@ -550,7 +541,10 @@ pub fn format_report(report: &ProfileReport) -> String {
     let inner_width = node_width + calls_width + total_width + avg_width + 9; // separators
 
     // Top border.
-    out.push_str(&format!("\u{250c}{}\u{2510}\n", "\u{2500}".repeat(inner_width)));
+    out.push_str(&format!(
+        "\u{250c}{}\u{2510}\n",
+        "\u{2500}".repeat(inner_width)
+    ));
 
     // Title.
     let title = "Graph Execution Profile";
@@ -646,7 +640,10 @@ pub fn format_report(report: &ProfileReport) -> String {
     ));
 
     // Bottom border.
-    out.push_str(&format!("\u{2514}{}\u{2518}\n", "\u{2500}".repeat(inner_width)));
+    out.push_str(&format!(
+        "\u{2514}{}\u{2518}\n",
+        "\u{2500}".repeat(inner_width)
+    ));
 
     out
 }
@@ -928,7 +925,10 @@ mod tests {
             .get("sampled")
             .map(|p| p.call_count)
             .unwrap_or(0);
-        assert!(calls < 10, "expected fewer calls due to sampling, got {calls}");
+        assert!(
+            calls < 10,
+            "expected fewer calls due to sampling, got {calls}"
+        );
         assert!(calls > 0, "expected some calls to be sampled");
     }
 

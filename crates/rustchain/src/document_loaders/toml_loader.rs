@@ -88,9 +88,7 @@ impl TomlDocumentLoader {
     /// Read the raw TOML content from the source.
     async fn read_content(&self) -> Result<String> {
         match &self.source {
-            TomlSource::File(path) => {
-                tokio::fs::read_to_string(path).await.map_err(Into::into)
-            }
+            TomlSource::File(path) => tokio::fs::read_to_string(path).await.map_err(Into::into),
             TomlSource::String(s) => Ok(s.clone()),
         }
     }
@@ -108,16 +106,12 @@ impl TomlDocumentLoader {
         match toml_val {
             toml::Value::String(s) => Value::String(s.clone()),
             toml::Value::Integer(i) => Value::Number((*i).into()),
-            toml::Value::Float(f) => {
-                serde_json::Number::from_f64(*f)
-                    .map(Value::Number)
-                    .unwrap_or(Value::Null)
-            }
+            toml::Value::Float(f) => serde_json::Number::from_f64(*f)
+                .map(Value::Number)
+                .unwrap_or(Value::Null),
             toml::Value::Boolean(b) => Value::Bool(*b),
             toml::Value::Datetime(dt) => Value::String(dt.to_string()),
-            toml::Value::Array(arr) => {
-                Value::Array(arr.iter().map(Self::toml_to_json).collect())
-            }
+            toml::Value::Array(arr) => Value::Array(arr.iter().map(Self::toml_to_json).collect()),
             toml::Value::Table(table) => {
                 let mut map = serde_json::Map::new();
                 for (k, v) in table {
@@ -188,14 +182,10 @@ impl BaseLoader for TomlDocumentLoader {
         let docs: Vec<Result<Document>> = if self.section_mode {
             // Each top-level table becomes a separate document.
             match &root {
-                toml::Value::Table(table) => {
-                    table
-                        .iter()
-                        .map(|(key, val)| {
-                            Ok(self.value_to_document(val, &source, Some(key)))
-                        })
-                        .collect()
-                }
+                toml::Value::Table(table) => table
+                    .iter()
+                    .map(|(key, val)| Ok(self.value_to_document(val, &source, Some(key))))
+                    .collect(),
                 _ => {
                     vec![Ok(self.value_to_document(&root, &source, None))]
                 }
@@ -244,8 +234,7 @@ tokio = "1.0"
 [dev-dependencies]
 tempfile = "3"
 "#;
-        let loader = TomlDocumentLoader::from_string(content)
-            .with_section_mode(true);
+        let loader = TomlDocumentLoader::from_string(content).with_section_mode(true);
         let docs = loader.load().await.unwrap();
 
         assert_eq!(docs.len(), 3);
@@ -267,8 +256,7 @@ name = "test-project"
 description = "A test project"
 version = "1.0.0"
 "#;
-        let loader = TomlDocumentLoader::from_string(content)
-            .with_content_key("description");
+        let loader = TomlDocumentLoader::from_string(content).with_content_key("description");
         let docs = loader.load().await.unwrap();
 
         assert_eq!(docs.len(), 1);
@@ -303,8 +291,7 @@ port = 8080
 enabled = true
 cert = "/path/to/cert"
 "#;
-        let loader = TomlDocumentLoader::from_string(content)
-            .with_section_mode(true);
+        let loader = TomlDocumentLoader::from_string(content).with_section_mode(true);
         let docs = loader.load().await.unwrap();
 
         assert_eq!(docs.len(), 1); // "server" is the only top-level table.
@@ -364,8 +351,7 @@ title = "root value"
 [settings]
 debug = true
 "#;
-        let loader = TomlDocumentLoader::from_string(content)
-            .with_section_mode(true);
+        let loader = TomlDocumentLoader::from_string(content).with_section_mode(true);
         let docs = loader.load().await.unwrap();
 
         // "title" and "settings" are both top-level keys.

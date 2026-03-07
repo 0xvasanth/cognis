@@ -233,8 +233,7 @@ impl CheckpointSerializer for CompressedSerializer {
     fn serialize(&self, checkpoint: &Checkpoint) -> Result<Vec<u8>> {
         let raw = self.inner.serialize(checkpoint)?;
 
-        let mut encoder =
-            flate2::write::DeflateEncoder::new(Vec::new(), self.level.to_flate2());
+        let mut encoder = flate2::write::DeflateEncoder::new(Vec::new(), self.level.to_flate2());
         encoder
             .write_all(&raw)
             .map_err(|e| LangGraphError::Other(format!("Compression failed: {e}")))?;
@@ -541,8 +540,7 @@ mod tests {
         let mut cp = empty_checkpoint();
         cp.channel_values
             .insert("messages".to_string(), json!(["hello", "world"]));
-        cp.channel_values
-            .insert("counter".to_string(), json!(42));
+        cp.channel_values.insert("counter".to_string(), json!(42));
         cp.channel_versions.insert("messages".to_string(), 2);
         cp.channel_versions.insert("counter".to_string(), 1);
         cp
@@ -702,11 +700,10 @@ mod tests {
 
         let mut new = sample_checkpoint();
         new.id = "new-id".to_string();
-        new.channel_values
-            .insert("counter".to_string(), json!(99)); // modified
+        new.channel_values.insert("counter".to_string(), json!(99)); // modified
         new.channel_values
             .insert("added_key".to_string(), json!("new")); // added
-        // "temp" is absent → removed
+                                                            // "temp" is absent → removed
 
         let diff = CheckpointDiff::compute_diff(&old, &new);
 
@@ -740,8 +737,7 @@ mod tests {
 
         let mut new = sample_checkpoint();
         new.id = "target-id".to_string();
-        new.channel_values
-            .insert("counter".to_string(), json!(100));
+        new.channel_values.insert("counter".to_string(), json!(100));
         new.channel_values
             .insert("extra".to_string(), json!("bonus"));
 
@@ -751,10 +747,7 @@ mod tests {
         assert_eq!(result.id, "target-id");
         assert_eq!(result.channel_values["counter"], json!(100));
         assert_eq!(result.channel_values["extra"], json!("bonus"));
-        assert_eq!(
-            result.channel_values["messages"],
-            json!(["hello", "world"])
-        );
+        assert_eq!(result.channel_values["messages"], json!(["hello", "world"]));
     }
 
     // -- Edge cases ----------------------------------------------------------
@@ -779,8 +772,10 @@ mod tests {
         let mut cp = empty_checkpoint();
         // Insert 500 keys.
         for i in 0..500 {
-            cp.channel_values
-                .insert(format!("key_{i}"), json!({"index": i, "data": "x".repeat(100)}));
+            cp.channel_values.insert(
+                format!("key_{i}"),
+                json!({"index": i, "data": "x".repeat(100)}),
+            );
         }
 
         let serializer = JsonSerializer::compact();
@@ -788,10 +783,7 @@ mod tests {
         let restored = serializer.deserialize(&bytes).unwrap();
 
         assert_eq!(restored.channel_values.len(), 500);
-        assert_eq!(
-            restored.channel_values["key_0"]["index"],
-            json!(0)
-        );
+        assert_eq!(restored.channel_values["key_0"]["index"], json!(0));
     }
 
     #[test]

@@ -128,7 +128,8 @@ impl ToolCallValidator {
 
     /// Validate a single tool call against a schema.
     pub fn validate(&self, tool_call: &ToolCall, schema: &ToolSchema) -> ValidationResult {
-        let args_value = serde_json::to_value(&tool_call.args).unwrap_or(Value::Object(Default::default()));
+        let args_value =
+            serde_json::to_value(&tool_call.args).unwrap_or(Value::Object(Default::default()));
         self.validate_value(&args_value, schema)
     }
 
@@ -193,13 +194,9 @@ impl ToolCallValidator {
         for key in args_obj.keys() {
             if !properties.contains_key(key) {
                 if self.mode == StrictnessMode::Strict {
-                    errors.push(ValidationError::UnexpectedField {
-                        field: key.clone(),
-                    });
+                    errors.push(ValidationError::UnexpectedField { field: key.clone() });
                 } else if self.mode == StrictnessMode::AutoCorrect {
-                    errors.push(ValidationError::UnexpectedField {
-                        field: key.clone(),
-                    });
+                    errors.push(ValidationError::UnexpectedField { field: key.clone() });
                 }
                 // In Lenient mode we silently skip unexpected fields.
             }
@@ -248,8 +245,8 @@ impl ToolCallValidator {
                 if let Some(schema) = schemas.get(&tc.name) {
                     self.validate(tc, schema)
                 } else {
-                    let args_value = serde_json::to_value(&tc.args)
-                        .unwrap_or(Value::Object(Default::default()));
+                    let args_value =
+                        serde_json::to_value(&tc.args).unwrap_or(Value::Object(Default::default()));
                     ValidationResult {
                         is_valid: false,
                         errors: vec![ValidationError::InvalidValue {
@@ -406,15 +403,18 @@ impl ValidatedToolExecutor {
 
     /// Validate and execute a tool call.
     pub async fn execute(&self, tool_call: &ToolCall) -> Result<Value> {
-        let args_value = serde_json::to_value(&tool_call.args)
-            .unwrap_or(Value::Object(Default::default()));
+        let args_value =
+            serde_json::to_value(&tool_call.args).unwrap_or(Value::Object(Default::default()));
 
         let result = self.validator.validate_value(&args_value, &self.schema);
 
         if result.is_valid {
             return self
                 .inner
-                .run(ToolInput::Structured(tool_call.args.clone()), tool_call.id.as_deref())
+                .run(
+                    ToolInput::Structured(tool_call.args.clone()),
+                    tool_call.id.as_deref(),
+                )
                 .await;
         }
 
@@ -478,8 +478,7 @@ impl BaseTool for ValidatedToolExecutor {
             ToolInput::Structured(m) => m.clone(),
             ToolInput::ToolCall(tc) => tc.args.clone(),
             ToolInput::Text(s) => {
-                let parsed: HashMap<String, Value> =
-                    serde_json::from_str(s).unwrap_or_default();
+                let parsed: HashMap<String, Value> = serde_json::from_str(s).unwrap_or_default();
                 parsed
             }
         };
@@ -905,17 +904,17 @@ mod tests {
 
         // Strict reports the unexpected field.
         assert!(!strict_result.is_valid);
-        assert!(strict_result.errors.iter().any(|e| matches!(
-            e,
-            ValidationError::UnexpectedField { .. }
-        )));
+        assert!(strict_result
+            .errors
+            .iter()
+            .any(|e| matches!(e, ValidationError::UnexpectedField { .. })));
 
         // Lenient does not report unexpected fields.
         assert!(lenient_result.is_valid);
-        assert!(!lenient_result.errors.iter().any(|e| matches!(
-            e,
-            ValidationError::UnexpectedField { .. }
-        )));
+        assert!(!lenient_result
+            .errors
+            .iter()
+            .any(|e| matches!(e, ValidationError::UnexpectedField { .. })));
     }
 
     // 15. Multiple errors in one validation
@@ -934,18 +933,24 @@ mod tests {
         let result = v.validate(&tc, &schema);
         assert!(!result.is_valid);
 
-        let has_missing = result.errors.iter().any(|e| matches!(
-            e,
-            ValidationError::MissingRequiredField { field } if field == "a"
-        ));
-        let has_type_mismatch = result.errors.iter().any(|e| matches!(
-            e,
-            ValidationError::TypeMismatch { field, .. } if field == "b"
-        ));
-        let has_unexpected = result.errors.iter().any(|e| matches!(
-            e,
-            ValidationError::UnexpectedField { field } if field == "c"
-        ));
+        let has_missing = result.errors.iter().any(|e| {
+            matches!(
+                e,
+                ValidationError::MissingRequiredField { field } if field == "a"
+            )
+        });
+        let has_type_mismatch = result.errors.iter().any(|e| {
+            matches!(
+                e,
+                ValidationError::TypeMismatch { field, .. } if field == "b"
+            )
+        });
+        let has_unexpected = result.errors.iter().any(|e| {
+            matches!(
+                e,
+                ValidationError::UnexpectedField { field } if field == "c"
+            )
+        });
 
         assert!(has_missing, "should detect missing field 'a'");
         assert!(has_type_mismatch, "should detect type mismatch on 'b'");

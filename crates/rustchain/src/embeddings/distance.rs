@@ -236,7 +236,11 @@ pub fn max_marginal_relevance(
     let first = remaining
         .iter()
         .copied()
-        .max_by(|&a, &b| query_sims[a].partial_cmp(&query_sims[b]).unwrap_or(std::cmp::Ordering::Equal))
+        .max_by(|&a, &b| {
+            query_sims[a]
+                .partial_cmp(&query_sims[b])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
         .unwrap();
     selected.push(first);
     remaining.retain(|&i| i != first);
@@ -307,7 +311,10 @@ pub fn mean_vector(vectors: &[Vec<f32>]) -> Vec<f32> {
 /// Panics if `vectors` and `weights` have different lengths, or if `vectors` is
 /// empty.
 pub fn weighted_mean(vectors: &[Vec<f32>], weights: &[f32]) -> Vec<f32> {
-    assert!(!vectors.is_empty(), "cannot compute weighted mean of empty set");
+    assert!(
+        !vectors.is_empty(),
+        "cannot compute weighted mean of empty set"
+    );
     assert_eq!(
         vectors.len(),
         weights.len(),
@@ -376,11 +383,7 @@ impl EmbeddingComparator {
     /// Two vectors are in the same cluster if their similarity is at or above
     /// `threshold`. Uses a greedy approach: each vector is assigned to the first
     /// cluster whose representative it is similar enough to.
-    pub fn cluster_by_similarity(
-        &self,
-        vectors: &[Vec<f32>],
-        threshold: f32,
-    ) -> Vec<Vec<usize>> {
+    pub fn cluster_by_similarity(&self, vectors: &[Vec<f32>], threshold: f32) -> Vec<Vec<usize>> {
         let mut clusters: Vec<Vec<usize>> = Vec::new();
         let mut representatives: Vec<usize> = Vec::new();
 
@@ -433,7 +436,10 @@ mod tests {
     fn test_cosine_similarity_identical() {
         let v = vec![1.0, 2.0, 3.0];
         let sim = cosine_similarity(&v, &v);
-        assert!((sim - 1.0).abs() < 1e-6, "identical vectors should have similarity 1.0");
+        assert!(
+            (sim - 1.0).abs() < 1e-6,
+            "identical vectors should have similarity 1.0"
+        );
     }
 
     #[test]
@@ -441,7 +447,10 @@ mod tests {
         let a = vec![1.0, 0.0, 0.0];
         let b = vec![0.0, 1.0, 0.0];
         let sim = cosine_similarity(&a, &b);
-        assert!(sim.abs() < 1e-6, "orthogonal vectors should have similarity 0.0");
+        assert!(
+            sim.abs() < 1e-6,
+            "orthogonal vectors should have similarity 0.0"
+        );
     }
 
     #[test]
@@ -449,7 +458,10 @@ mod tests {
         let a = vec![1.0, 0.0];
         let b = vec![0.0, 1.0];
         let d = cosine_distance(&a, &b);
-        assert!((d - 1.0).abs() < 1e-6, "orthogonal cosine distance should be 1.0");
+        assert!(
+            (d - 1.0).abs() < 1e-6,
+            "orthogonal cosine distance should be 1.0"
+        );
     }
 
     #[test]
@@ -497,7 +509,10 @@ mod tests {
         let v = vec![3.0, 4.0];
         let n = normalize(&v);
         let mag: f32 = n.iter().map(|x| x * x).sum::<f32>().sqrt();
-        assert!((mag - 1.0).abs() < 1e-6, "normalized vector should have unit length");
+        assert!(
+            (mag - 1.0).abs() < 1e-6,
+            "normalized vector should have unit length"
+        );
         assert!((n[0] - 0.6).abs() < 1e-6);
         assert!((n[1] - 0.8).abs() < 1e-6);
     }
@@ -514,9 +529,9 @@ mod tests {
     fn test_nearest_neighbors() {
         let query = vec![1.0, 0.0, 0.0];
         let vectors = vec![
-            vec![1.0, 0.0, 0.0],  // identical to query
-            vec![0.0, 1.0, 0.0],  // orthogonal
-            vec![0.9, 0.1, 0.0],  // close to query
+            vec![1.0, 0.0, 0.0], // identical to query
+            vec![0.0, 1.0, 0.0], // orthogonal
+            vec![0.9, 0.1, 0.0], // close to query
         ];
         let nn = nearest_neighbors(&query, &vectors, 2, DistanceMetric::Cosine);
         assert_eq!(nn.len(), 2);
@@ -539,7 +554,10 @@ mod tests {
         assert_eq!(selected.len(), 2);
         assert_eq!(selected[0], 0, "first pick should be most relevant");
         // Second pick should be the most diverse from index 0 => index 2 (orthogonal).
-        assert_eq!(selected[1], 2, "MMR with lambda=0 should pick most diverse vector");
+        assert_eq!(
+            selected[1], 2,
+            "MMR with lambda=0 should pick most diverse vector"
+        );
     }
 
     #[test]
@@ -563,7 +581,10 @@ mod tests {
         let query = vec![1.0, 0.0];
         let candidates = vec![vec![0.0, 1.0], vec![1.0, 0.0], vec![0.5, 0.5]];
         let ranked = comp.rank(&query, &candidates);
-        assert_eq!(ranked[0].0, 1, "most similar should be the identical vector");
+        assert_eq!(
+            ranked[0].0, 1,
+            "most similar should be the identical vector"
+        );
     }
 
     #[test]
@@ -571,9 +592,9 @@ mod tests {
         let comp = EmbeddingComparator::new(DistanceMetric::Cosine);
         let vectors = vec![
             vec![1.0, 0.0],
-            vec![0.99, 0.01],  // very similar to 0
+            vec![0.99, 0.01], // very similar to 0
             vec![0.0, 1.0],
-            vec![0.01, 0.99],  // very similar to 2
+            vec![0.01, 0.99], // very similar to 2
         ];
         let clusters = comp.cluster_by_similarity(&vectors, 0.95);
         assert_eq!(clusters.len(), 2, "should form 2 clusters");
@@ -589,8 +610,8 @@ mod tests {
         let vectors = vec![
             vec![1.0, 0.0],
             vec![0.999, 0.001], // near-duplicate of 0
-            vec![0.0, 1.0],    // unique
-            vec![0.0, 0.999],  // near-duplicate of 2
+            vec![0.0, 1.0],     // unique
+            vec![0.0, 0.999],   // near-duplicate of 2
         ];
         let unique = comp.deduplicate(&vectors, 0.99);
         assert_eq!(unique.len(), 2);

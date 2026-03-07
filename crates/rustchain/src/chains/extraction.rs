@@ -595,9 +595,7 @@ impl ExtractionChain {
         let mut result = self.extract(&doc.page_content).await?;
         // Carry over document metadata
         if let Some(ref id) = doc.id {
-            result
-                .metadata
-                .insert("document_id".to_string(), json!(id));
+            result.metadata.insert("document_id".to_string(), json!(id));
         }
         for (key, value) in &doc.metadata {
             result
@@ -654,25 +652,20 @@ mod tests {
         assert_eq!(field_str.field_type, FieldType::String);
         assert_eq!(field_str.field_type.to_string(), "string");
 
-        let field_int = SchemaFieldBuilder::new("count", FieldType::Integer)
-            .build();
+        let field_int = SchemaFieldBuilder::new("count", FieldType::Integer).build();
         assert_eq!(field_int.field_type, FieldType::Integer);
         assert_eq!(field_int.field_type.to_string(), "integer");
 
-        let field_float = SchemaFieldBuilder::new("score", FieldType::Float)
-            .build();
+        let field_float = SchemaFieldBuilder::new("score", FieldType::Float).build();
         assert_eq!(field_float.field_type, FieldType::Float);
 
-        let field_bool = SchemaFieldBuilder::new("active", FieldType::Boolean)
-            .build();
+        let field_bool = SchemaFieldBuilder::new("active", FieldType::Boolean).build();
         assert_eq!(field_bool.field_type, FieldType::Boolean);
 
-        let field_arr = SchemaFieldBuilder::new("tags", FieldType::Array)
-            .build();
+        let field_arr = SchemaFieldBuilder::new("tags", FieldType::Array).build();
         assert_eq!(field_arr.field_type, FieldType::Array);
 
-        let field_obj = SchemaFieldBuilder::new("address", FieldType::Object)
-            .build();
+        let field_obj = SchemaFieldBuilder::new("address", FieldType::Object).build();
         assert_eq!(field_obj.field_type, FieldType::Object);
     }
 
@@ -731,10 +724,8 @@ mod tests {
     // 6. Few-shot examples in prompt
     #[tokio::test]
     async fn test_few_shot_examples_in_prompt() {
-        let example = ExtractionExample::new(
-            "John is 40 years old",
-            json!([{"name": "John", "age": 40}]),
-        );
+        let example =
+            ExtractionExample::new("John is 40 years old", json!([{"name": "John", "age": 40}]));
 
         let chain = ExtractionChain::builder()
             .llm(fake_model(vec![r#"[{"name": "Jane", "age": 35}]"#]))
@@ -744,10 +735,7 @@ mod tests {
 
         // Verify the messages include the example
         let messages = chain.build_messages("Jane is 35");
-        let message_texts: Vec<String> = messages
-            .iter()
-            .map(|m| m.content().text())
-            .collect();
+        let message_texts: Vec<String> = messages.iter().map(|m| m.content().text()).collect();
 
         // Should contain the example input and output
         assert!(message_texts.iter().any(|t| t.contains("John is 40")));

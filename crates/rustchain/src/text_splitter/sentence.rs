@@ -96,10 +96,10 @@ impl SentenceTextSplitter {
         // and URLs.
 
         let abbrevs = [
-            "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "St.", "Gen.",
-            "Gov.", "Sgt.", "Cpl.", "Pvt.", "Lt.", "Col.", "Capt.", "Maj.",
-            "Rev.", "Hon.", "Pres.", "Inc.", "Corp.", "Ltd.", "Co.", "vs.",
-            "etc.", "approx.", "dept.", "est.", "vol.", "fig.", "no.",
+            "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "St.", "Gen.", "Gov.", "Sgt.",
+            "Cpl.", "Pvt.", "Lt.", "Col.", "Capt.", "Maj.", "Rev.", "Hon.", "Pres.", "Inc.",
+            "Corp.", "Ltd.", "Co.", "vs.", "etc.", "approx.", "dept.", "est.", "vol.", "fig.",
+            "no.",
         ];
 
         let chars: Vec<char> = text.chars().collect();
@@ -122,7 +122,9 @@ impl SentenceTextSplitter {
                 // Handle multiple punctuation (e.g. "!!" or "...")
                 let mut end_punct = i;
                 while end_punct + 1 < len
-                    && (chars[end_punct + 1] == '.' || chars[end_punct + 1] == '!' || chars[end_punct + 1] == '?')
+                    && (chars[end_punct + 1] == '.'
+                        || chars[end_punct + 1] == '!'
+                        || chars[end_punct + 1] == '?')
                 {
                     end_punct += 1;
                 }
@@ -134,9 +136,7 @@ impl SentenceTextSplitter {
 
                     // Check known abbreviations — match whole word only
                     let last_word = trimmed.split_whitespace().last().unwrap_or("");
-                    let is_abbrev = abbrevs.iter().any(|a| {
-                        last_word.eq_ignore_ascii_case(a)
-                    });
+                    let is_abbrev = abbrevs.iter().any(|a| last_word.eq_ignore_ascii_case(a));
 
                     // Check single-letter abbreviation pattern (e.g. U.S., U.K.)
                     let is_single_letter_abbrev = if end_punct >= 1 && chars[end_punct] == '.' {
@@ -630,12 +630,8 @@ mod tests {
 
     #[test]
     fn test_basic_sentence_splitting() {
-        let splitter = SentenceTextSplitter::builder()
-            .chunk_size(1000)
-            .build();
-        let sentences = splitter.split_into_sentences(
-            "Hello world. This is a test. How are you?",
-        );
+        let splitter = SentenceTextSplitter::builder().chunk_size(1000).build();
+        let sentences = splitter.split_into_sentences("Hello world. This is a test. How are you?");
         assert_eq!(sentences.len(), 3, "Got {:?}", sentences);
         assert_eq!(sentences[0], "Hello world.");
         assert_eq!(sentences[1], "This is a test.");
@@ -648,9 +644,14 @@ mod tests {
             .chunk_size(40)
             .chunk_overlap(0)
             .build();
-        let text = "First sentence here. Second sentence here. Third sentence here. Fourth sentence.";
+        let text =
+            "First sentence here. Second sentence here. Third sentence here. Fourth sentence.";
         let chunks = splitter.split_text(text);
-        assert!(chunks.len() > 1, "Expected multiple chunks, got {:?}", chunks);
+        assert!(
+            chunks.len() > 1,
+            "Expected multiple chunks, got {:?}",
+            chunks
+        );
         for chunk in &chunks {
             assert!(
                 chunk.len() <= 45, // small tolerance
@@ -669,7 +670,11 @@ mod tests {
             .build();
         let text = "Sentence one. Sentence two. Sentence three. Sentence four.";
         let chunks = splitter.split_text(text);
-        assert!(chunks.len() >= 2, "Expected multiple chunks, got {:?}", chunks);
+        assert!(
+            chunks.len() >= 2,
+            "Expected multiple chunks, got {:?}",
+            chunks
+        );
         // With overlap of 1, the last sentence of chunk N should appear in chunk N+1
         if chunks.len() >= 2 {
             // Find a shared sentence
@@ -686,9 +691,7 @@ mod tests {
 
     #[test]
     fn test_abbreviation_mr_dr() {
-        let splitter = SentenceTextSplitter::builder()
-            .chunk_size(1000)
-            .build();
+        let splitter = SentenceTextSplitter::builder().chunk_size(1000).build();
         let text = "Mr. Smith went to Washington. Dr. Jones stayed home.";
         let sentences = splitter.split_into_sentences(text);
         assert_eq!(
@@ -703,9 +706,7 @@ mod tests {
 
     #[test]
     fn test_decimal_numbers_not_split() {
-        let splitter = SentenceTextSplitter::builder()
-            .chunk_size(1000)
-            .build();
+        let splitter = SentenceTextSplitter::builder().chunk_size(1000).build();
         let text = "The value is 3.14 approximately. Pi is important.";
         let sentences = splitter.split_into_sentences(text);
         assert_eq!(
@@ -719,9 +720,7 @@ mod tests {
 
     #[test]
     fn test_multiple_punctuation() {
-        let splitter = SentenceTextSplitter::builder()
-            .chunk_size(1000)
-            .build();
+        let splitter = SentenceTextSplitter::builder().chunk_size(1000).build();
         let text = "What a day!! It was incredible... Really.";
         let sentences = splitter.split_into_sentences(text);
         // "What a day!!" and "It was incredible..." and "Really."
@@ -743,9 +742,7 @@ mod tests {
 
     #[test]
     fn test_single_sentence() {
-        let splitter = SentenceTextSplitter::builder()
-            .chunk_size(1000)
-            .build();
+        let splitter = SentenceTextSplitter::builder().chunk_size(1000).build();
         let text = "Just one sentence here.";
         let chunks = splitter.split_text(text);
         assert_eq!(chunks.len(), 1);
@@ -767,8 +764,14 @@ mod tests {
         assert!(!chunks.is_empty());
         // With large enough chunk_size, paragraphs should stay together
         // Check that at least one chunk contains a full paragraph
-        let has_full_para = chunks.iter().any(|c| c.contains("First paragraph") && c.contains("Sentence two."));
-        assert!(has_full_para, "Expected paragraphs to be preserved, got {:?}", chunks);
+        let has_full_para = chunks
+            .iter()
+            .any(|c| c.contains("First paragraph") && c.contains("Sentence two."));
+        assert!(
+            has_full_para,
+            "Expected paragraphs to be preserved, got {:?}",
+            chunks
+        );
     }
 
     #[test]
@@ -780,7 +783,12 @@ mod tests {
         // Simple mode does NOT handle abbreviations
         let text = "Hello world. This is a test! Are you sure? Yes.";
         let sentences = splitter.split_into_sentences(text);
-        assert_eq!(sentences.len(), 4, "Simple split on .!? got {:?}", sentences);
+        assert_eq!(
+            sentences.len(),
+            4,
+            "Simple split on .!? got {:?}",
+            sentences
+        );
     }
 
     #[test]
@@ -831,7 +839,11 @@ mod tests {
             .with_metadata(meta.clone());
 
         let result = splitter.split_documents(&[doc]);
-        assert!(result.len() >= 2, "Expected multiple doc chunks, got {:?}", result);
+        assert!(
+            result.len() >= 2,
+            "Expected multiple doc chunks, got {:?}",
+            result
+        );
         for d in &result {
             assert_eq!(
                 d.metadata.get("source"),
@@ -874,7 +886,10 @@ mod tests {
         assert_eq!(splitter.min_chunk_size, Some(50));
         assert!(!splitter.strip_whitespace);
         assert!(splitter.preserve_paragraphs);
-        assert!(matches!(splitter.separator_pattern, SentencePattern::Simple));
+        assert!(matches!(
+            splitter.separator_pattern,
+            SentencePattern::Simple
+        ));
     }
 
     #[test]
@@ -883,20 +898,23 @@ mod tests {
             .chunk_size(20)
             .chunk_overlap(0)
             .build();
-        let text = "This is one very long sentence that clearly exceeds the chunk size limit by a lot.";
+        let text =
+            "This is one very long sentence that clearly exceeds the chunk size limit by a lot.";
         let chunks = splitter.split_text(text);
         // A single sentence that exceeds chunk_size should still be returned
         // (we don't break mid-sentence)
         assert!(!chunks.is_empty(), "Should produce at least one chunk");
-        assert_eq!(chunks.len(), 1, "Single sentence should not be split mid-sentence");
+        assert_eq!(
+            chunks.len(),
+            1,
+            "Single sentence should not be split mid-sentence"
+        );
         assert_eq!(chunks[0], text);
     }
 
     #[test]
     fn test_us_uk_abbreviation() {
-        let splitter = SentenceTextSplitter::builder()
-            .chunk_size(1000)
-            .build();
+        let splitter = SentenceTextSplitter::builder().chunk_size(1000).build();
         let text = "The U.S. is a country. The U.K. is also a country.";
         let sentences = splitter.split_into_sentences(text);
         assert_eq!(

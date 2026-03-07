@@ -168,10 +168,7 @@ impl PermissionChecker {
     ) -> std::result::Result<(), SandboxViolation> {
         // Read-only mode blocks mutating operations.
         if self.config.read_only
-            && matches!(
-                operation,
-                PathOperation::Write | PathOperation::Delete
-            )
+            && matches!(operation, PathOperation::Write | PathOperation::Delete)
         {
             return Err(SandboxViolation::ReadOnlyViolation { path: path.clone() });
         }
@@ -220,10 +217,7 @@ impl PermissionChecker {
     }
 
     /// Check whether the given environment variable may be read.
-    pub fn check_env_access(
-        &self,
-        var_name: &str,
-    ) -> std::result::Result<(), SandboxViolation> {
+    pub fn check_env_access(&self, var_name: &str) -> std::result::Result<(), SandboxViolation> {
         if !self.config.allow_env_vars {
             return Err(SandboxViolation::EnvVarAccessDenied {
                 var_name: var_name.to_string(),
@@ -533,7 +527,10 @@ mod tests {
         };
         let checker = PermissionChecker::new(config);
         assert!(checker
-            .check_path_access(&PathBuf::from("/home/user/project/src/main.rs"), PathOperation::Read)
+            .check_path_access(
+                &PathBuf::from("/home/user/project/src/main.rs"),
+                PathOperation::Read
+            )
             .is_ok());
     }
 
@@ -554,7 +551,10 @@ mod tests {
 
         // Denied subdir is blocked even though parent is allowed
         let err = checker
-            .check_path_access(&PathBuf::from("/home/user/secret/key.pem"), PathOperation::Read)
+            .check_path_access(
+                &PathBuf::from("/home/user/secret/key.pem"),
+                PathOperation::Read,
+            )
             .unwrap_err();
         assert!(matches!(err, SandboxViolation::PathAccessDenied { .. }));
     }
@@ -643,7 +643,10 @@ mod tests {
         tracker.track_memory(600); // total 1100 > 1000
         assert!(matches!(
             tracker.check_memory_limit().unwrap_err(),
-            SandboxViolation::MemoryLimitExceeded { limit: 1000, used: 1100 }
+            SandboxViolation::MemoryLimitExceeded {
+                limit: 1000,
+                used: 1100
+            }
         ));
     }
 
@@ -785,16 +788,10 @@ mod tests {
         tracker.record_operation();
         tracker.record_operation();
         tracker.record_operation();
-        tracker
-            .record_file_access(PathBuf::from("/a.txt"))
-            .await;
-        tracker
-            .record_file_access(PathBuf::from("/b.txt"))
-            .await;
+        tracker.record_file_access(PathBuf::from("/a.txt")).await;
+        tracker.record_file_access(PathBuf::from("/b.txt")).await;
         // duplicate should not increase count
-        tracker
-            .record_file_access(PathBuf::from("/a.txt"))
-            .await;
+        tracker.record_file_access(PathBuf::from("/a.txt")).await;
 
         let stats = tracker.stats().await;
         assert_eq!(stats.memory_used, 300);
@@ -822,7 +819,10 @@ mod tests {
 
         // Allowed paths
         assert!(checker
-            .check_path_access(&PathBuf::from("/home/user/project/main.rs"), PathOperation::Read)
+            .check_path_access(
+                &PathBuf::from("/home/user/project/main.rs"),
+                PathOperation::Read
+            )
             .is_ok());
         assert!(checker
             .check_path_access(&PathBuf::from("/tmp/scratch.txt"), PathOperation::Write)
@@ -836,7 +836,10 @@ mod tests {
             .check_path_access(&PathBuf::from("/tmp/private/key"), PathOperation::Read)
             .is_err());
         assert!(checker
-            .check_path_access(&PathBuf::from("/var/data/secrets/token"), PathOperation::Read)
+            .check_path_access(
+                &PathBuf::from("/var/data/secrets/token"),
+                PathOperation::Read
+            )
             .is_err());
 
         // Completely outside allowed

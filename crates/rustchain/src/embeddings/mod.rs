@@ -8,12 +8,12 @@ pub mod anthropic;
 pub mod base;
 pub mod cached;
 pub mod distance;
-pub mod router;
 #[cfg(feature = "google")]
 pub mod google;
 #[cfg(feature = "ollama")]
 pub mod ollama;
 #[cfg(feature = "openai")]
 pub mod openai;
+pub mod router;
 
 pub use base::*;

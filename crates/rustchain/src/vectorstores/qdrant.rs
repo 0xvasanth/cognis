@@ -278,9 +278,7 @@ fn compute_score(a: &[f32], b: &[f32], metric: DistanceMetric) -> f32 {
             // Convert distance to similarity: higher is more similar.
             1.0 / (1.0 + dist)
         }
-        DistanceMetric::DotProduct => {
-            a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
-        }
+        DistanceMetric::DotProduct => a.iter().zip(b.iter()).map(|(x, y)| x * y).sum(),
     }
 }
 
@@ -382,7 +380,11 @@ impl QdrantClient for MockQdrantClient {
         let Some(coll) = collections.get(collection) else {
             return Ok(vec![]);
         };
-        Ok(coll.iter().filter(|p| ids.contains(&p.id)).cloned().collect())
+        Ok(coll
+            .iter()
+            .filter(|p| ids.contains(&p.id))
+            .cloned()
+            .collect())
     }
 
     async fn create_collection(&self, collection: &str, config: CollectionConfig) -> Result<()> {
@@ -514,10 +516,7 @@ impl VectorStore for QdrantVectorStore {
                 .unwrap_or_default();
 
             // Store page_content in the payload so we can reconstruct documents.
-            payload.insert(
-                "page_content".to_string(),
-                Value::String(text.clone()),
-            );
+            payload.insert("page_content".to_string(), Value::String(text.clone()));
 
             points.push(QdrantPoint {
                 id: id.clone(),
@@ -643,7 +642,12 @@ impl VectorStore for QdrantVectorStore {
         let query_embedding = self.embeddings.embed_query(query).await?;
         let results = self
             .client
-            .search_points(&self.config.collection_name, &query_embedding, fetch_k, None)
+            .search_points(
+                &self.config.collection_name,
+                &query_embedding,
+                fetch_k,
+                None,
+            )
             .await?;
 
         if results.is_empty() {
@@ -707,7 +711,9 @@ mod tests {
         QdrantVectorStore::new(client, embeddings, config)
     }
 
-    fn make_store_with_metric(metric: DistanceMetric) -> (QdrantVectorStore, Arc<MockQdrantClient>) {
+    fn make_store_with_metric(
+        metric: DistanceMetric,
+    ) -> (QdrantVectorStore, Arc<MockQdrantClient>) {
         let client = Arc::new(MockQdrantClient::new());
         let embeddings = make_embeddings();
         let config = QdrantConfig::new("test_collection").with_distance(metric);
@@ -738,10 +744,7 @@ mod tests {
         let texts = vec!["cat".into(), "dog".into(), "fish".into()];
         store.add_texts(&texts, None, None).await.unwrap();
 
-        let results = store
-            .similarity_search_with_score("cat", 3)
-            .await
-            .unwrap();
+        let results = store.similarity_search_with_score("cat", 3).await.unwrap();
         assert_eq!(results.len(), 3);
         // First result should be "cat" with highest score.
         assert_eq!(results[0].0.page_content, "cat");
@@ -919,10 +922,7 @@ mod tests {
         let texts = vec!["near".into(), "far".into()];
         store.add_texts(&texts, None, None).await.unwrap();
 
-        let results = store
-            .similarity_search_with_score("near", 2)
-            .await
-            .unwrap();
+        let results = store.similarity_search_with_score("near", 2).await.unwrap();
         assert_eq!(results.len(), 2);
         // First result should be the most similar.
         assert_eq!(results[0].0.page_content, "near");
@@ -971,10 +971,7 @@ mod tests {
         let ids = store.add_texts(&texts, None, None).await.unwrap();
         assert_eq!(ids.len(), 100);
 
-        let results = store
-            .similarity_search("document_50", 5)
-            .await
-            .unwrap();
+        let results = store.similarity_search("document_50", 5).await.unwrap();
         assert_eq!(results.len(), 5);
     }
 
@@ -1011,10 +1008,7 @@ mod tests {
         }];
         client.upsert_points("coll", updated).await.unwrap();
 
-        let after = client
-            .get_points("coll", &["p1".into()])
-            .await
-            .unwrap();
+        let after = client.get_points("coll", &["p1".into()]).await.unwrap();
         assert_eq!(after.len(), 1);
         assert_eq!(after[0].vector, vec![0.5, 0.5, 0.0]);
     }

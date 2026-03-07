@@ -107,10 +107,7 @@ struct GraphLayout {
 
 impl GraphLayout {
     /// Build a layout from nodes and edges.
-    fn build(
-        node_names: &[String],
-        edges: &[(String, String, Option<String>)],
-    ) -> Self {
+    fn build(node_names: &[String], edges: &[(String, String, Option<String>)]) -> Self {
         let mut adj: HashMap<String, Vec<String>> = HashMap::new();
         let mut all_nodes: BTreeSet<String> = BTreeSet::new();
 
@@ -380,7 +377,10 @@ fn render_vertical(layout: &GraphLayout, options: &AsciiRenderOptions) -> String
             for (from, to, label) in &layout.edges {
                 let from_in_prev = prev_layer.contains(from);
                 let to_in_cur = layer.contains(to);
-                if from_in_prev && to_in_cur && !layout.back_edges.contains(&(from.clone(), to.clone())) {
+                if from_in_prev
+                    && to_in_cur
+                    && !layout.back_edges.contains(&(from.clone(), to.clone()))
+                {
                     connections.push((from.clone(), to.clone(), label.clone()));
                 }
             }
@@ -422,10 +422,8 @@ fn render_vertical(layout: &GraphLayout, options: &AsciiRenderOptions) -> String
                     }
 
                     // Gather targets from this source.
-                    let targets: Vec<&(String, String, Option<String>)> = connections
-                        .iter()
-                        .filter(|(f, _, _)| f == *from)
-                        .collect();
+                    let targets: Vec<&(String, String, Option<String>)> =
+                        connections.iter().filter(|(f, _, _)| f == *from).collect();
 
                     if targets.len() > 1 {
                         // Draw a branching line.
@@ -496,9 +494,7 @@ fn render_vertical(layout: &GraphLayout, options: &AsciiRenderOptions) -> String
                         if let Some(label) = &targets[0].2 {
                             if options.show_edge_labels {
                                 let lx = from_center.min(to_center);
-                                output_lines.push(format!(
-                                    "{}{}", " ".repeat(lx), label
-                                ));
+                                output_lines.push(format!("{}{}", " ".repeat(lx), label));
                             }
                         }
 
@@ -517,7 +513,11 @@ fn render_vertical(layout: &GraphLayout, options: &AsciiRenderOptions) -> String
         }
 
         // Find max height in this layer.
-        let max_h = node_renders.iter().map(|(_, lines, _)| lines.len()).max().unwrap_or(0);
+        let max_h = node_renders
+            .iter()
+            .map(|(_, lines, _)| lines.len())
+            .max()
+            .unwrap_or(0);
 
         for row in 0..max_h {
             let mut line_chars: Vec<char> = vec![' '; canvas_width + 20];
@@ -620,11 +620,7 @@ fn render_horizontal(layout: &GraphLayout, options: &AsciiRenderOptions) -> Stri
     for r in 0..max_rows {
         let mut line = String::new();
         for (ci, col) in column_strings.iter().enumerate() {
-            let cell = if r < col.len() {
-                &col[r]
-            } else {
-                ""
-            };
+            let cell = if r < col.len() { &col[r] } else { "" };
             let w = col_widths[ci];
             let padded = format!("{:width$}", cell, width = w);
             line.push_str(&padded);
@@ -680,8 +676,7 @@ mod tests {
         path_map.insert("left".to_string(), "node_left".to_string());
         path_map.insert("right".to_string(), "node_right".to_string());
 
-        let router: RouterFn =
-            Arc::new(|_state: &Value| RouterResult::Single("left".to_string()));
+        let router: RouterFn = Arc::new(|_state: &Value| RouterResult::Single("left".to_string()));
 
         let graph = StateGraph::new()
             .add_node("a", noop_action())
@@ -799,8 +794,7 @@ mod tests {
         path_map.insert("yes".to_string(), "do_it".to_string());
         path_map.insert("no".to_string(), END.to_string());
 
-        let router: RouterFn =
-            Arc::new(|_state: &Value| RouterResult::Single("yes".to_string()));
+        let router: RouterFn = Arc::new(|_state: &Value| RouterResult::Single("yes".to_string()));
 
         let graph = StateGraph::new()
             .add_node("check", noop_action())

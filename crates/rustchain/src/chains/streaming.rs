@@ -330,18 +330,14 @@ impl StreamingChainExecutor {
         let serialized = serde_json::json!({"name": chain_name});
         for cb in &all_callbacks {
             if !cb.ignore_chain() {
-                cb.on_chain_start(&serialized, &input, run_id, None)
-                    .await?;
+                cb.on_chain_start(&serialized, &input, run_id, None).await?;
             }
         }
 
         // Build a RunnableConfig that carries the callbacks so the model
         // can fire on_llm_new_token through them.
         let mut config = RunnableConfig::default();
-        config.callbacks = all_callbacks
-            .iter()
-            .map(|cb| Arc::clone(cb))
-            .collect();
+        config.callbacks = all_callbacks.iter().map(|cb| Arc::clone(cb)).collect();
 
         // Execute the inner chain
         let result = self.chain.invoke(input, Some(&config)).await;
@@ -358,12 +354,8 @@ impl StreamingChainExecutor {
                 // Extract output text
                 let output_text = output
                     .as_object()
-                    .and_then(|m| {
-                        m.values().next().and_then(|v| v.as_str().map(String::from))
-                    })
-                    .unwrap_or_else(|| {
-                        serde_json::to_string(&output).unwrap_or_default()
-                    });
+                    .and_then(|m| m.values().next().and_then(|v| v.as_str().map(String::from)))
+                    .unwrap_or_else(|| serde_json::to_string(&output).unwrap_or_default());
 
                 // Collect tokens from any TokenCollector callbacks
                 let mut all_chunks: Vec<String> = Vec::new();
@@ -381,14 +373,8 @@ impl StreamingChainExecutor {
 
                 let token_count = all_chunks.len();
                 let mut metadata = HashMap::new();
-                metadata.insert(
-                    "chain_name".to_string(),
-                    Value::String(chain_name),
-                );
-                metadata.insert(
-                    "run_id".to_string(),
-                    Value::String(run_id.to_string()),
-                );
+                metadata.insert("chain_name".to_string(), Value::String(chain_name));
+                metadata.insert("run_id".to_string(), Value::String(run_id.to_string()));
 
                 Ok(StreamingChainResult::new(
                     output_text,
@@ -435,8 +421,8 @@ pub async fn stream_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustchain_core::language_models::fake::FakeListChatModel;
     use rustchain_core::language_models::chat_model::BaseChatModel;
+    use rustchain_core::language_models::fake::FakeListChatModel;
 
     fn fake_model(responses: Vec<&str>) -> Arc<dyn BaseChatModel> {
         Arc::new(FakeListChatModel::new(
@@ -472,7 +458,6 @@ mod tests {
         fn events(&self) -> Vec<String> {
             self.events.lock().unwrap().clone()
         }
-
     }
 
     #[async_trait]
@@ -487,17 +472,11 @@ mod tests {
         }
 
         async fn on_chain_end(&self, output: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(format!("end:{}", output));
+            self.events.lock().unwrap().push(format!("end:{}", output));
         }
 
         async fn on_error(&self, error: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(format!("error:{}", error));
+            self.events.lock().unwrap().push(format!("error:{}", error));
         }
     }
 
@@ -682,12 +661,7 @@ mod tests {
         assert_eq!(collector.get_full_text(), "");
 
         // StreamingChainResult with empty chunks
-        let result = StreamingChainResult::new(
-            String::new(),
-            0,
-            Vec::new(),
-            HashMap::new(),
-        );
+        let result = StreamingChainResult::new(String::new(), 0, Vec::new(), HashMap::new());
 
         assert_eq!(result.output, "");
         assert_eq!(result.token_count, 0);
@@ -739,8 +713,7 @@ mod tests {
             Arc::new(StreamingCallbackAdapter::new(recording.clone()));
 
         let chain = make_chain(vec!["response"]);
-        let executor = StreamingChainExecutor::new(chain)
-            .with_callback(adapter);
+        let executor = StreamingChainExecutor::new(chain).with_callback(adapter);
 
         let _result = executor
             .execute_streaming(serde_json::json!({"input": "test"}), None)
@@ -777,8 +750,7 @@ mod tests {
         let adapter: Arc<dyn CallbackHandler> =
             Arc::new(StreamingCallbackAdapter::new(recording.clone()));
 
-        let executor = StreamingChainExecutor::new(chain)
-            .with_callback(adapter);
+        let executor = StreamingChainExecutor::new(chain).with_callback(adapter);
 
         let result = executor
             .execute_streaming(serde_json::json!({"input": "test"}), None)

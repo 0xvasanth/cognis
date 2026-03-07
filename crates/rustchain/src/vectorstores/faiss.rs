@@ -488,7 +488,9 @@ impl HNSWIndex {
         let r = {
             let seed = self.nodes.len() as u64;
             // Simple xorshift-like hash.
-            let mut x = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let mut x = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             x ^= x >> 33;
             x ^= x << 13;
             x ^= x >> 7;
@@ -521,7 +523,10 @@ impl HNSWIndex {
         }
 
         while let Some(std::cmp::Reverse((OrderedF32(neg_dist), node_idx))) = candidates.pop() {
-            let worst_result = results.peek().map(|(OrderedF32(d), _)| *d).unwrap_or(f32::INFINITY);
+            let worst_result = results
+                .peek()
+                .map(|(OrderedF32(d), _)| *d)
+                .unwrap_or(f32::INFINITY);
             if neg_dist > worst_result {
                 break;
             }
@@ -533,7 +538,10 @@ impl HNSWIndex {
                             compute_similarity(query, &self.nodes[neighbor].vector, self.metric);
                         let neg_sim = -sim;
 
-                        let worst = results.peek().map(|(OrderedF32(d), _)| *d).unwrap_or(f32::INFINITY);
+                        let worst = results
+                            .peek()
+                            .map(|(OrderedF32(d), _)| *d)
+                            .unwrap_or(f32::INFINITY);
                         if results.len() < ef || neg_sim < worst {
                             candidates.push(std::cmp::Reverse((OrderedF32(neg_sim), neighbor)));
                             results.push((OrderedF32(neg_sim), neighbor));
@@ -586,7 +594,9 @@ impl PartialOrd for OrderedF32 {
 
 impl Ord for OrderedF32 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.partial_cmp(&other.0).unwrap_or(std::cmp::Ordering::Equal)
+        self.0
+            .partial_cmp(&other.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
     }
 }
 
@@ -662,9 +672,15 @@ impl FaissIndex for HNSWIndex {
                     let nbr_vec = &self.nodes[neighbor_idx].vector;
                     let mut scored: Vec<(usize, f32)> = self.nodes[neighbor_idx].neighbors[level]
                         .iter()
-                        .map(|&n| (n, compute_similarity(nbr_vec, &self.nodes[n].vector, self.metric)))
+                        .map(|&n| {
+                            (
+                                n,
+                                compute_similarity(nbr_vec, &self.nodes[n].vector, self.metric),
+                            )
+                        })
                         .collect();
-                    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    scored
+                        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
                     scored.truncate(max_m);
                     self.nodes[neighbor_idx].neighbors[level] =
                         scored.into_iter().map(|(idx, _)| idx).collect();
@@ -848,10 +864,7 @@ fn create_index(config: &FaissConfig) -> Box<dyn FaissIndex> {
             config.nprobe,
             config.metric,
         )),
-        FaissIndexType::HNSW {
-            m,
-            ef_construction,
-        } => Box::new(HNSWIndex::new(
+        FaissIndexType::HNSW { m, ef_construction } => Box::new(HNSWIndex::new(
             config.dimension,
             *m,
             *ef_construction,
@@ -1088,11 +1101,11 @@ impl VectorStore for FaissVectorStore {
         // Get the embeddings for the candidates by looking up from the index.
         // We need to re-embed, but that's expensive. Instead, search the index
         // for vectors directly. Since we store docs separately, we'll re-embed.
-        let candidate_texts: Vec<String> = results.iter().map(|(d, _)| d.page_content.clone()).collect();
-        let candidate_embeddings_raw = self
-            .embeddings
-            .embed_documents(candidate_texts)
-            .await?;
+        let candidate_texts: Vec<String> = results
+            .iter()
+            .map(|(d, _)| d.page_content.clone())
+            .collect();
+        let candidate_embeddings_raw = self.embeddings.embed_documents(candidate_texts).await?;
 
         let query_emb_f64: Vec<f64> = query_embedding.iter().map(|&v| v as f64).collect();
         let candidate_embeddings: Vec<Vec<f64>> = candidate_embeddings_raw
@@ -1337,10 +1350,7 @@ mod tests {
         let texts = vec!["cat".into(), "dog".into(), "fish".into()];
         store.add_texts(&texts, None, None).await.unwrap();
 
-        let results = store
-            .similarity_search_with_score("cat", 3)
-            .await
-            .unwrap();
+        let results = store.similarity_search_with_score("cat", 3).await.unwrap();
         assert_eq!(results.len(), 3);
         assert_eq!(results[0].0.page_content, "cat");
         // Scores should be in descending order (higher = more similar).
@@ -1376,10 +1386,7 @@ mod tests {
         let ids = store.add_texts(&texts, None, None).await.unwrap();
         assert_eq!(ids.len(), 150);
 
-        let results = store
-            .similarity_search("document_50", 5)
-            .await
-            .unwrap();
+        let results = store.similarity_search("document_50", 5).await.unwrap();
         assert_eq!(results.len(), 5);
     }
 

@@ -421,11 +421,9 @@ impl DocumentCompressor for ContentTruncator {
                 if doc.page_content.len() <= self.max_chars {
                     doc.clone()
                 } else {
-                    let truncated: String =
-                        doc.page_content.chars().take(self.max_chars).collect();
+                    let truncated: String = doc.page_content.chars().take(self.max_chars).collect();
                     let mut new_doc = doc.clone();
-                    new_doc.page_content =
-                        format!("{}{}", truncated, self.truncation_suffix);
+                    new_doc.page_content = format!("{}{}", truncated, self.truncation_suffix);
                     new_doc
                 }
             })
@@ -484,12 +482,14 @@ impl DocumentCompressor for KeywordExtractor {
             .filter(|doc| {
                 let content_lower = doc.page_content.to_lowercase();
                 match self.mode {
-                    KeywordMode::Any => {
-                        self.keywords.iter().any(|kw| content_lower.contains(kw.as_str()))
-                    }
-                    KeywordMode::All => {
-                        self.keywords.iter().all(|kw| content_lower.contains(kw.as_str()))
-                    }
+                    KeywordMode::Any => self
+                        .keywords
+                        .iter()
+                        .any(|kw| content_lower.contains(kw.as_str())),
+                    KeywordMode::All => self
+                        .keywords
+                        .iter()
+                        .all(|kw| content_lower.contains(kw.as_str())),
                 }
             })
             .cloned()
@@ -543,11 +543,7 @@ impl CompressorPipelineBuilder {
     }
 
     /// Add a metadata filter.
-    pub fn add_metadata_filter(
-        mut self,
-        required: Vec<String>,
-        forbidden: Vec<String>,
-    ) -> Self {
+    pub fn add_metadata_filter(mut self, required: Vec<String>, forbidden: Vec<String>) -> Self {
         self.compressors.push(Box::new(
             MetadataFilter::new()
                 .with_required_keys(required)
@@ -661,14 +657,17 @@ mod tests {
     async fn test_duplicate_filter_removes_near_duplicates() {
         let docs = vec![
             doc("the quick brown fox jumps over the lazy dog"),
-            doc("the quick brown fox jumps over the lazy cat"),  // near duplicate
+            doc("the quick brown fox jumps over the lazy cat"), // near duplicate
             doc("machine learning is a branch of artificial intelligence"),
         ];
         let filter = DuplicateFilter::new(0.7);
         let result = filter.compress_documents(&docs, "q").await.unwrap();
         // The first and second are very similar, so second should be removed.
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0].page_content, "the quick brown fox jumps over the lazy dog");
+        assert_eq!(
+            result[0].page_content,
+            "the quick brown fox jumps over the lazy dog"
+        );
         assert_eq!(
             result[1].page_content,
             "machine learning is a branch of artificial intelligence"
@@ -677,10 +676,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_duplicate_filter_keeps_unique() {
-        let docs = vec![
-            doc("alpha beta gamma"),
-            doc("delta epsilon zeta"),
-        ];
+        let docs = vec![doc("alpha beta gamma"), doc("delta epsilon zeta")];
         let filter = DuplicateFilter::new(0.9);
         let result = filter.compress_documents(&docs, "q").await.unwrap();
         assert_eq!(result.len(), 2);
@@ -694,8 +690,7 @@ mod tests {
             doc_with_meta("has source", vec![("source", Value::from("a.txt"))]),
             doc("no metadata"),
         ];
-        let filter =
-            MetadataFilter::new().with_required_keys(vec!["source".to_string()]);
+        let filter = MetadataFilter::new().with_required_keys(vec!["source".to_string()]);
         let result = filter.compress_documents(&docs, "q").await.unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].page_content, "has source");
@@ -707,8 +702,7 @@ mod tests {
             doc_with_meta("has draft", vec![("draft", Value::from(true))]),
             doc_with_meta("published", vec![("source", Value::from("b.txt"))]),
         ];
-        let filter =
-            MetadataFilter::new().with_forbidden_keys(vec!["draft".to_string()]);
+        let filter = MetadataFilter::new().with_forbidden_keys(vec!["draft".to_string()]);
         let result = filter.compress_documents(&docs, "q").await.unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].page_content, "published");
@@ -795,8 +789,8 @@ mod tests {
             .with(ContentTruncator::new(10));
 
         let docs = vec![
-            doc("hi"),                          // filtered out by length
-            doc("hello world, this is great"),  // kept, then truncated
+            doc("hi"),                         // filtered out by length
+            doc("hello world, this is great"), // kept, then truncated
         ];
         let result = pipeline.compress_documents(&docs, "q").await.unwrap();
         assert_eq!(result.len(), 1);
@@ -826,9 +820,9 @@ mod tests {
             .build();
 
         let docs = vec![
-            doc("hi"),                          // too short
-            doc("Rust is a great language"),    // kept, has keyword, truncated
-            doc("Python is also nice"),         // no keyword
+            doc("hi"),                       // too short
+            doc("Rust is a great language"), // kept, has keyword, truncated
+            doc("Python is also nice"),      // no keyword
         ];
         let result = pipeline.compress_documents(&docs, "q").await.unwrap();
         assert_eq!(result.len(), 1);
@@ -839,16 +833,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_document_list() {
-        let pipeline = CompressorPipeline::new()
-            .with(LengthFilter::new().with_min(10));
+        let pipeline = CompressorPipeline::new().with(LengthFilter::new().with_min(10));
         let result = pipeline.compress_documents(&[], "q").await.unwrap();
         assert!(result.is_empty());
     }
 
     #[tokio::test]
     async fn test_single_compressor_pipeline() {
-        let pipeline = CompressorPipeline::new()
-            .with(LengthFilter::new().with_max(5));
+        let pipeline = CompressorPipeline::new().with(LengthFilter::new().with_max(5));
         let docs = vec![doc("hi"), doc("hello world")];
         let result = pipeline.compress_documents(&docs, "q").await.unwrap();
         assert_eq!(result.len(), 1);
@@ -869,7 +861,10 @@ mod tests {
     #[tokio::test]
     async fn test_compressor_name_method() {
         assert_eq!(LengthFilter::new().name(), "LengthFilter");
-        assert_eq!(RelevanceScoreFilter::new(0.5).name(), "RelevanceScoreFilter");
+        assert_eq!(
+            RelevanceScoreFilter::new(0.5).name(),
+            "RelevanceScoreFilter"
+        );
         assert_eq!(DuplicateFilter::new(0.9).name(), "DuplicateFilter");
         assert_eq!(MetadataFilter::new().name(), "MetadataFilter");
         assert_eq!(ContentTruncator::new(10).name(), "ContentTruncator");
