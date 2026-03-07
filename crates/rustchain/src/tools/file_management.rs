@@ -11,7 +11,6 @@ use rustchain_core::tools::base::{BaseTool, BaseToolkit};
 use rustchain_core::tools::types::{ToolInput, ToolOutput};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -121,9 +120,9 @@ impl FileSystemConfig {
                         parent.display()
                     ))
                 })?;
-                let file_name = candidate.file_name().ok_or_else(|| {
-                    RustChainError::ToolException("Path has no file name".into())
-                })?;
+                let file_name = candidate
+                    .file_name()
+                    .ok_or_else(|| RustChainError::ToolException("Path has no file name".into()))?;
                 canonical_parent.join(file_name)
             }
         };
@@ -241,10 +240,7 @@ impl BaseTool for ReadFileTool {
         self.config.check_extension(&resolved)?;
 
         let metadata = std::fs::metadata(&resolved).map_err(|e| {
-            RustChainError::ToolException(format!(
-                "Cannot read '{}': {e}",
-                resolved.display()
-            ))
+            RustChainError::ToolException(format!("Cannot read '{}': {e}", resolved.display()))
         })?;
 
         if metadata.len() as usize > self.config.max_file_size {
@@ -256,10 +252,7 @@ impl BaseTool for ReadFileTool {
         }
 
         let content = std::fs::read_to_string(&resolved).map_err(|e| {
-            RustChainError::ToolException(format!(
-                "Failed to read '{}': {e}",
-                resolved.display()
-            ))
+            RustChainError::ToolException(format!("Failed to read '{}': {e}", resolved.display()))
         })?;
 
         Ok(ToolOutput::Content(Value::String(content)))
@@ -332,10 +325,7 @@ impl BaseTool for WriteFileTool {
         }
 
         std::fs::write(&resolved, &content).map_err(|e| {
-            RustChainError::ToolException(format!(
-                "Failed to write '{}': {e}",
-                resolved.display()
-            ))
+            RustChainError::ToolException(format!("Failed to write '{}': {e}", resolved.display()))
         })?;
 
         Ok(ToolOutput::Content(Value::String(format!(
@@ -395,10 +385,7 @@ impl BaseTool for ListDirectoryTool {
 
         let mut entries = Vec::new();
         let read_dir = std::fs::read_dir(&resolved).map_err(|e| {
-            RustChainError::ToolException(format!(
-                "Failed to list '{}': {e}",
-                resolved.display()
-            ))
+            RustChainError::ToolException(format!("Failed to list '{}': {e}", resolved.display()))
         })?;
 
         for entry in read_dir {
@@ -476,9 +463,9 @@ impl BaseTool for SearchFilesTool {
             RustChainError::ToolException(format!("Failed to resolve root_dir: {e}"))
         })?;
 
-        for entry in glob::glob(&full_pattern_str).map_err(|e| {
-            RustChainError::ToolException(format!("Invalid glob pattern: {e}"))
-        })? {
+        for entry in glob::glob(&full_pattern_str)
+            .map_err(|e| RustChainError::ToolException(format!("Invalid glob pattern: {e}")))?
+        {
             match entry {
                 Ok(path) => {
                     let canonical = path.canonicalize().unwrap_or(path.clone());
@@ -623,10 +610,7 @@ impl BaseTool for FileInfoTool {
         let resolved = self.config.resolve_path(&path_str)?;
 
         let metadata = std::fs::metadata(&resolved).map_err(|e| {
-            RustChainError::ToolException(format!(
-                "Cannot stat '{}': {e}",
-                resolved.display()
-            ))
+            RustChainError::ToolException(format!("Cannot stat '{}': {e}", resolved.display()))
         })?;
 
         let size = metadata.len();
@@ -699,6 +683,7 @@ pub fn create_file_toolkit(config: FileSystemConfig) -> FileToolkit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use tempfile::TempDir;
 
     fn make_config(dir: &TempDir) -> FileSystemConfig {

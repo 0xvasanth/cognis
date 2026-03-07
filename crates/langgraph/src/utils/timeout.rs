@@ -158,12 +158,10 @@ impl NodeTimeout {
             TimeoutAction::Error => Err(LangGraphError::Other(err.to_string())),
             TimeoutAction::ReturnPartial(value) => Ok(value.clone()),
             TimeoutAction::Skip => Ok(Value::Null),
-            TimeoutAction::Retry { .. } => {
-                Err(LangGraphError::Other(format!(
-                    "Node '{}' timed out and retry requires execute_with_retries",
-                    node_name
-                )))
-            }
+            TimeoutAction::Retry { .. } => Err(LangGraphError::Other(format!(
+                "Node '{}' timed out and retry requires execute_with_retries",
+                node_name
+            ))),
         }
     }
 
@@ -384,11 +382,7 @@ impl TimeoutManager {
     }
 
     /// Execute a function with the appropriate timeout for the given node.
-    pub async fn execute_with_timeout<F, Fut>(
-        &self,
-        node: &str,
-        f: F,
-    ) -> Result<Value>
+    pub async fn execute_with_timeout<F, Fut>(&self, node: &str, f: F) -> Result<Value>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<Value>>,
@@ -399,11 +393,7 @@ impl TimeoutManager {
     }
 
     /// Execute a function with retry support using the appropriate timeout.
-    pub async fn execute_with_retries<F, Fut>(
-        &self,
-        node: &str,
-        factory: F,
-    ) -> Result<Value>
+    pub async fn execute_with_retries<F, Fut>(&self, node: &str, factory: F) -> Result<Value>
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<Value>>,

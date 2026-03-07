@@ -500,7 +500,7 @@ mod tests {
     #[tokio::test]
     async fn test_structured_input_cache_key_determinism() {
         let counter = Arc::new(AtomicU32::new(0));
-        let tool = CachedTool::new(counting_tool("echo", counter.clone()));
+        let _tool = CachedTool::new(counting_tool("echo", counter.clone()));
 
         let mut map1 = HashMap::new();
         map1.insert("b".to_string(), Value::String("2".into()));

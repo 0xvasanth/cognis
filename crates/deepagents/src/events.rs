@@ -184,7 +184,10 @@ pub struct AgentEvent {
 #[async_trait]
 pub trait EventHandler: Send + Sync {
     /// Process an event. Errors are logged but do not stop dispatch.
-    async fn handle(&self, event: &AgentEvent) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    async fn handle(
+        &self,
+        event: &AgentEvent,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
     /// If `Some`, only events whose [`AgentEventType::name`] is in the
     /// returned list will be dispatched to this handler.
@@ -203,7 +206,10 @@ pub struct LoggingEventHandler;
 
 #[async_trait]
 impl EventHandler for LoggingEventHandler {
-    async fn handle(&self, event: &AgentEvent) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(
+        &self,
+        event: &AgentEvent,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         eprintln!(
             "[event seq={} run={}] {}",
             event.sequence, event.run_id, event.event_type
@@ -260,7 +266,10 @@ impl Default for MetricsEventHandler {
 
 #[async_trait]
 impl EventHandler for MetricsEventHandler {
-    async fn handle(&self, event: &AgentEvent) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(
+        &self,
+        event: &AgentEvent,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let name = event.event_type.name().to_string();
         let duration = event.event_type.duration().unwrap_or(Duration::ZERO);
         let mut metrics = self.metrics.write().unwrap();
@@ -305,7 +314,10 @@ impl BufferEventHandler {
 
 #[async_trait]
 impl EventHandler for BufferEventHandler {
-    async fn handle(&self, event: &AgentEvent) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn handle(
+        &self,
+        event: &AgentEvent,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut buf = self.events.write().unwrap();
         if buf.len() >= self.capacity {
             buf.remove(0);
@@ -338,10 +350,7 @@ impl fmt::Debug for EventBus {
         f.debug_struct("EventBus")
             .field("run_id", &self.inner.run_id)
             .field("sequence", &self.inner.sequence.load(Ordering::Relaxed))
-            .field(
-                "handler_count",
-                &self.inner.handlers.read().unwrap().len(),
-            )
+            .field("handler_count", &self.inner.handlers.read().unwrap().len())
             .finish()
     }
 }
@@ -529,7 +538,10 @@ mod tests {
 
     #[async_trait]
     impl EventHandler for CountingHandler {
-        async fn handle(&self, _event: &AgentEvent) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        async fn handle(
+            &self,
+            _event: &AgentEvent,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             self.count.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
@@ -544,7 +556,10 @@ mod tests {
 
     #[async_trait]
     impl EventHandler for FailingHandler {
-        async fn handle(&self, _event: &AgentEvent) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        async fn handle(
+            &self,
+            _event: &AgentEvent,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             Err("intentional failure".into())
         }
     }
@@ -707,8 +722,14 @@ mod tests {
         bus.subscribe(m.clone());
         bus.emit(tool_call_end()).await.unwrap();
         let snap = m.snapshot();
-        assert_eq!(snap["ToolCallEnd"].total_duration, Duration::from_millis(42));
-        assert_eq!(snap["ToolCallEnd"].avg_duration(), Duration::from_millis(42));
+        assert_eq!(
+            snap["ToolCallEnd"].total_duration,
+            Duration::from_millis(42)
+        );
+        assert_eq!(
+            snap["ToolCallEnd"].avg_duration(),
+            Duration::from_millis(42)
+        );
     }
 
     // 13. MetricsEventHandler average duration
@@ -732,7 +753,10 @@ mod tests {
         .await
         .unwrap();
         let snap = m.snapshot();
-        assert_eq!(snap["ToolCallEnd"].avg_duration(), Duration::from_millis(20));
+        assert_eq!(
+            snap["ToolCallEnd"].avg_duration(),
+            Duration::from_millis(20)
+        );
     }
 
     // 14. EventBusBuilder basic build
@@ -886,7 +910,10 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_filters() {
         let bus = EventBus::new();
-        let h_agent = Arc::new(CountingHandler::with_filter(vec!["AgentStarted", "AgentError"]));
+        let h_agent = Arc::new(CountingHandler::with_filter(vec![
+            "AgentStarted",
+            "AgentError",
+        ]));
         let h_tool = Arc::new(CountingHandler::with_filter(vec!["ToolCallEnd"]));
         bus.subscribe(h_agent.clone());
         bus.subscribe(h_tool.clone());

@@ -4,7 +4,6 @@
 //! to answer questions from a set of documents. Includes a `RetrievalQAChain` that
 //! combines a retriever with the QA chain for end-to-end RAG workflows.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -24,9 +23,10 @@ use super::documents::DocumentFormatter;
 // ---------------------------------------------------------------------------
 
 /// The strategy used by a QA chain to combine documents and produce an answer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QAChainType {
     /// Concatenate all documents into a single context block and answer in one pass.
+    #[default]
     Stuff,
     /// Map each document independently, then reduce the intermediate answers.
     MapReduce,
@@ -41,12 +41,6 @@ impl std::fmt::Display for QAChainType {
             Self::MapReduce => write!(f, "map_reduce"),
             Self::Refine => write!(f, "refine"),
         }
-    }
-}
-
-impl Default for QAChainType {
-    fn default() -> Self {
-        Self::Stuff
     }
 }
 
@@ -209,8 +203,7 @@ impl CitedAnswer {
                             .unwrap_or("unknown")
                             .to_string();
                         let snippet_len = doc.page_content.len().min(100);
-                        let page_content_snippet =
-                            doc.page_content[..snippet_len].to_string();
+                        let page_content_snippet = doc.page_content[..snippet_len].to_string();
                         citations.push(Citation {
                             source,
                             page_content_snippet,
@@ -224,7 +217,10 @@ impl CitedAnswer {
             }
         }
 
-        Self { answer: answer.to_string(), citations }
+        Self {
+            answer: answer.to_string(),
+            citations,
+        }
     }
 }
 
@@ -348,11 +344,7 @@ impl QAChain {
     }
 
     /// Extract citations from a generated answer that uses `[N]` markers.
-    pub fn extract_citations(
-        &self,
-        answer: &str,
-        documents: &[Document],
-    ) -> CitedAnswer {
+    pub fn extract_citations(&self, answer: &str, documents: &[Document]) -> CitedAnswer {
         CitedAnswer::from_answer_and_docs(answer, documents)
     }
 }
@@ -460,6 +452,7 @@ pub fn create_qa_chain(config: QAConfig) -> QAChain {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::HashMap;
 
     // -- Helpers --
 
@@ -598,9 +591,7 @@ mod tests {
 
     #[test]
     fn test_answer_no_source_documents() {
-        let config = QAConfig::builder()
-            .return_source_documents(false)
-            .build();
+        let config = QAConfig::builder().return_source_documents(false).build();
         let chain = create_qa_chain(config);
         let docs = vec![make_doc("Some content")];
         let result = chain.answer("question?", &docs).unwrap();
@@ -645,8 +636,7 @@ mod tests {
 
     #[test]
     fn test_custom_document_prompt() {
-        let chain = default_chain()
-            .with_document_prompt("Source [{doc_index}]: {page_content}");
+        let chain = default_chain().with_document_prompt("Source [{doc_index}]: {page_content}");
         let docs = vec![make_doc("Hello world")];
         let result = chain.answer("test?", &docs).unwrap();
 
@@ -655,8 +645,7 @@ mod tests {
 
     #[test]
     fn test_custom_qa_prompt() {
-        let chain = default_chain()
-            .with_qa_prompt("Context: {context}\nQ: {question}\nA:");
+        let chain = default_chain().with_qa_prompt("Context: {context}\nQ: {question}\nA:");
         let docs = vec![make_doc("content here")];
         let result = chain.answer("what?", &docs).unwrap();
 
@@ -667,8 +656,7 @@ mod tests {
 
     #[test]
     fn test_document_prompt_with_metadata() {
-        let chain = default_chain()
-            .with_document_prompt("{page_content} (from {metadata.source})");
+        let chain = default_chain().with_document_prompt("{page_content} (from {metadata.source})");
         let docs = vec![make_doc_with_source("content", "wiki.txt")];
         let result = chain.answer("q?", &docs).unwrap();
 
@@ -722,10 +710,7 @@ mod tests {
     #[test]
     fn test_citation_deduplication() {
         let docs = vec![make_doc_with_source("content", "src.txt")];
-        let cited = CitedAnswer::from_answer_and_docs(
-            "See [1] and again [1].",
-            &docs,
-        );
+        let cited = CitedAnswer::from_answer_and_docs("See [1] and again [1].", &docs);
         assert_eq!(cited.citations.len(), 1);
     }
 
@@ -788,10 +773,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_retrieval_qa_run() {
-        let docs = vec![
-            make_doc("Rust is safe."),
-            make_doc("Rust is fast."),
-        ];
+        let docs = vec![make_doc("Rust is safe."), make_doc("Rust is fast.")];
         let retriever = mock_retriever(docs);
         let qa_chain = default_chain();
         let chain = RetrievalQAChain::new(retriever, qa_chain);
