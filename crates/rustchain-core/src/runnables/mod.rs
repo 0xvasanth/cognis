@@ -63,6 +63,7 @@ pub use scoped_callbacks::{
 };
 pub use sequence::RunnableSequence;
 pub use timeout::{RunnableDeadline, RunnableTimeout, TimeoutBehavior, TimeoutConfig};
+pub use events::{EventEmitter, EventFilter, EventTrace, RunEvent, RunEventType};
 
 /// Creates a `RunnableSequence` from a list of runnables.
 ///
