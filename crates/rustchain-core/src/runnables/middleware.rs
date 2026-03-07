@@ -1,3 +1,17 @@
+//! Middleware framework for runnable pipelines.
+//!
+//! Provides a composable middleware system that intercepts inputs and outputs
+//! flowing through a runnable chain. Each middleware can inspect, transform,
+//! or short-circuit values at any point in the pipeline.
+//!
+//! - [`MiddlewareAction`] — control-flow enum returned by middleware hooks (continue, short-circuit, or error)
+//! - [`Middleware`] — trait for implementing custom middleware logic
+//! - [`MiddlewareChain`] — ordered sequence of middleware that processes values in series
+//! - [`RetryMiddleware`] — retries failed invocations with configurable backoff
+//! - [`CacheMiddleware`] — caches results keyed by input to avoid redundant computation
+//! - [`TimeoutMiddleware`] — enforces a maximum duration on downstream processing
+//! - [`LoggingMiddleware`] — logs inputs, outputs, and errors for observability
+
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -90,18 +104,12 @@ impl RunnableMiddleware for LoggingMiddleware {
     }
 
     fn before(&self, input: &Value) -> MiddlewareAction {
-        self.logs
-            .lock()
-            .unwrap()
-            .push(format!("before: {}", input));
+        self.logs.lock().unwrap().push(format!("before: {}", input));
         MiddlewareAction::Continue(input.clone())
     }
 
     fn after(&self, _input: &Value, output: &Value) -> MiddlewareAction {
-        self.logs
-            .lock()
-            .unwrap()
-            .push(format!("after: {}", output));
+        self.logs.lock().unwrap().push(format!("after: {}", output));
         MiddlewareAction::Continue(output.clone())
     }
 }
@@ -157,10 +165,7 @@ impl RunnableMiddleware for ValidationMiddleware {
         if let Some(obj) = input.as_object() {
             for field in &self.required_fields {
                 if !obj.contains_key(field) {
-                    return MiddlewareAction::Error(format!(
-                        "Missing required field: '{}'",
-                        field
-                    ));
+                    return MiddlewareAction::Error(format!("Missing required field: '{}'", field));
                 }
             }
             MiddlewareAction::Continue(input.clone())
@@ -255,10 +260,7 @@ impl RunnableMiddleware for RetryMiddleware {
         let mut attempts = self.attempts.lock().unwrap();
         *attempts += 1;
         if *attempts > self.max_retries + 1 {
-            return MiddlewareAction::Error(format!(
-                "Max retries ({}) exceeded",
-                self.max_retries
-            ));
+            return MiddlewareAction::Error(format!("Max retries ({}) exceeded", self.max_retries));
         }
         MiddlewareAction::Continue(input.clone())
     }
@@ -476,9 +478,8 @@ mod tests {
 
     #[test]
     fn test_transform_middleware_modifies_input() {
-        let transform = TransformMiddleware::new("double", |v: &Value| {
-            json!(v.as_i64().unwrap_or(0) * 2)
-        });
+        let transform =
+            TransformMiddleware::new("double", |v: &Value| json!(v.as_i64().unwrap_or(0) * 2));
         let action = transform.before(&json!(5));
         assert!(action.is_continue());
         assert_eq!(action.into_value().unwrap(), json!(10));
@@ -679,7 +680,9 @@ mod tests {
     fn test_chain_short_circuit_stops_processing() {
         struct ShortCircuitMW;
         impl RunnableMiddleware for ShortCircuitMW {
-            fn name(&self) -> &str { "short_circuit" }
+            fn name(&self) -> &str {
+                "short_circuit"
+            }
             fn before(&self, _input: &Value) -> MiddlewareAction {
                 MiddlewareAction::ShortCircuit(json!("stopped"))
             }
@@ -744,8 +747,7 @@ mod tests {
     #[test]
     fn test_runnable_with_logging() {
         let logger = Arc::new(LoggingMiddleware::new());
-        let runnable = RunnableWithMiddleware::new("logged")
-            .with_middleware(logger.clone());
+        let runnable = RunnableWithMiddleware::new("logged").with_middleware(logger.clone());
         let result = runnable.execute(json!("test")).unwrap();
         assert_eq!(result, json!("test"));
         let logs = logger.logs();
@@ -756,10 +758,11 @@ mod tests {
 
     #[test]
     fn test_runnable_with_transform() {
-        let runnable = RunnableWithMiddleware::new("transformed")
-            .with_middleware(Arc::new(TransformMiddleware::new("upper", |v: &Value| {
+        let runnable = RunnableWithMiddleware::new("transformed").with_middleware(Arc::new(
+            TransformMiddleware::new("upper", |v: &Value| {
                 json!(v.as_str().unwrap_or("").to_uppercase())
-            })));
+            }),
+        ));
         let result = runnable.execute(json!("hello")).unwrap();
         assert_eq!(result, json!("HELLO"));
     }
@@ -785,14 +788,15 @@ mod tests {
     fn test_runnable_short_circuit_in_before() {
         struct EarlyReturn;
         impl RunnableMiddleware for EarlyReturn {
-            fn name(&self) -> &str { "early_return" }
+            fn name(&self) -> &str {
+                "early_return"
+            }
             fn before(&self, _input: &Value) -> MiddlewareAction {
                 MiddlewareAction::ShortCircuit(json!("early"))
             }
         }
 
-        let runnable = RunnableWithMiddleware::new("short")
-            .with_middleware(Arc::new(EarlyReturn));
+        let runnable = RunnableWithMiddleware::new("short").with_middleware(Arc::new(EarlyReturn));
         let result = runnable.execute(json!("ignored")).unwrap();
         assert_eq!(result, json!("early"));
     }
@@ -810,9 +814,10 @@ mod tests {
         let logger = Arc::new(LoggingMiddleware::new());
         let runnable = RunnableWithMiddleware::new("composed")
             .with_middleware(Arc::new(ValidationMiddleware::new(vec!["value".into()])))
-            .with_middleware(Arc::new(TransformMiddleware::new("extract", |v: &Value| {
-                v.get("value").cloned().unwrap_or(json!(null))
-            })))
+            .with_middleware(Arc::new(TransformMiddleware::new(
+                "extract",
+                |v: &Value| v.get("value").cloned().unwrap_or(json!(null)),
+            )))
             .with_middleware(logger.clone());
 
         let result = runnable.execute(json!({"value": 99})).unwrap();
@@ -823,8 +828,7 @@ mod tests {
     #[test]
     fn test_runnable_with_timing() {
         let timer = Arc::new(TimingMiddleware::new());
-        let runnable = RunnableWithMiddleware::new("timed")
-            .with_middleware(timer.clone());
+        let runnable = RunnableWithMiddleware::new("timed").with_middleware(timer.clone());
 
         runnable.execute(json!("a")).unwrap();
         runnable.execute(json!("b")).unwrap();
@@ -835,8 +839,7 @@ mod tests {
     #[test]
     fn test_runnable_with_retry_within_limit() {
         let retry = Arc::new(RetryMiddleware::new(3));
-        let runnable = RunnableWithMiddleware::new("retry_ok")
-            .with_middleware(retry.clone());
+        let runnable = RunnableWithMiddleware::new("retry_ok").with_middleware(retry.clone());
 
         assert!(runnable.execute(json!("try")).is_ok());
         assert_eq!(retry.attempts(), 1);
@@ -846,7 +849,9 @@ mod tests {
     fn test_chain_after_short_circuit() {
         struct AfterShortCircuit;
         impl RunnableMiddleware for AfterShortCircuit {
-            fn name(&self) -> &str { "after_sc" }
+            fn name(&self) -> &str {
+                "after_sc"
+            }
             fn after(&self, _input: &Value, _output: &Value) -> MiddlewareAction {
                 MiddlewareAction::ShortCircuit(json!("after_early"))
             }
@@ -863,7 +868,9 @@ mod tests {
     fn test_chain_after_error() {
         struct AfterError;
         impl RunnableMiddleware for AfterError {
-            fn name(&self) -> &str { "after_err" }
+            fn name(&self) -> &str {
+                "after_err"
+            }
             fn after(&self, _input: &Value, _output: &Value) -> MiddlewareAction {
                 MiddlewareAction::Error("after failed".into())
             }
@@ -882,7 +889,9 @@ mod tests {
     fn test_default_trait_impls_pass_through() {
         struct NoopMiddleware;
         impl RunnableMiddleware for NoopMiddleware {
-            fn name(&self) -> &str { "noop" }
+            fn name(&self) -> &str {
+                "noop"
+            }
         }
 
         let mw = NoopMiddleware;
