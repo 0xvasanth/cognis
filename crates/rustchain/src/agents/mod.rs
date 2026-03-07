@@ -4,6 +4,7 @@
 
 pub mod executor;
 pub mod middleware;
+pub mod output_parser;
 pub mod structured_output;
 pub mod tool_calling;
 
@@ -17,5 +18,8 @@ pub use structured_output::{
     AutoStrategy, ErrorHandling, MultipleStructuredOutputsError, OutputToolBinding,
     ProviderStrategy, ProviderStrategyBinding, ResponseFormat, SchemaKind, SchemaSpec,
     StructuredOutputError, StructuredOutputValidationError, ToolStrategy,
+};
+pub use output_parser::{
+    AgentOutputParser, JsonOutputParser, ReActOutputParser, ToolCallOutputParser, XmlOutputParser,
 };
 pub use tool_calling::{format_to_tool_messages, parse_ai_message_to_agent_output, AgentOutput};
