@@ -300,11 +300,14 @@ impl Default for EventEmitter {
     }
 }
 
+/// Type alias for event filter predicate functions.
+type EventPredicate = Box<dyn Fn(&RunEvent) -> bool + Send + Sync>;
+
 /// A filter for selecting events by type, name, or a custom predicate.
 pub struct EventFilter {
     types: Option<Vec<RunEventType>>,
     names: Option<Vec<String>>,
-    predicate: Option<Box<dyn Fn(&RunEvent) -> bool + Send + Sync>>,
+    predicate: Option<EventPredicate>,
 }
 
 impl EventFilter {
@@ -360,11 +363,7 @@ impl EventFilter {
 
     /// Return a new `Vec` containing only the events that match this filter.
     pub fn filter(&self, events: &[RunEvent]) -> Vec<RunEvent> {
-        events
-            .iter()
-            .filter(|e| self.matches(e))
-            .cloned()
-            .collect()
+        events.iter().filter(|e| self.matches(e)).cloned().collect()
     }
 }
 
@@ -623,8 +622,8 @@ mod tests {
 
     #[test]
     fn test_run_event_with_parent() {
-        let event = RunEvent::new(RunEventType::Start, "child", json!(null))
-            .with_parent("parent-123");
+        let event =
+            RunEvent::new(RunEventType::Start, "child", json!(null)).with_parent("parent-123");
         assert_eq!(event.parent_run_id, Some("parent-123".to_string()));
     }
 
@@ -796,8 +795,7 @@ mod tests {
 
     #[test]
     fn test_filter_by_types() {
-        let filter = EventFilter::new()
-            .with_types(vec![RunEventType::Start, RunEventType::End]);
+        let filter = EventFilter::new().with_types(vec![RunEventType::Start, RunEventType::End]);
         assert!(filter.matches(&RunEvent::new(RunEventType::Start, "a", json!(null))));
         assert!(filter.matches(&RunEvent::new(RunEventType::End, "b", json!(null))));
         assert!(!filter.matches(&RunEvent::new(RunEventType::Error, "c", json!(null))));
@@ -805,16 +803,14 @@ mod tests {
 
     #[test]
     fn test_filter_by_names() {
-        let filter = EventFilter::new()
-            .with_names(vec!["alpha".to_string(), "beta".to_string()]);
+        let filter = EventFilter::new().with_names(vec!["alpha".to_string(), "beta".to_string()]);
         assert!(filter.matches(&RunEvent::new(RunEventType::Start, "alpha", json!(null))));
         assert!(!filter.matches(&RunEvent::new(RunEventType::Start, "gamma", json!(null))));
     }
 
     #[test]
     fn test_filter_with_predicate() {
-        let filter = EventFilter::new()
-            .with_predicate(|e: &RunEvent| e.data != Value::Null);
+        let filter = EventFilter::new().with_predicate(|e: &RunEvent| e.data != Value::Null);
 
         assert!(filter.matches(&RunEvent::new(RunEventType::Start, "a", json!(42))));
         assert!(!filter.matches(&RunEvent::new(RunEventType::Start, "b", json!(null))));
@@ -859,7 +855,12 @@ mod tests {
     // EventTrace tests
     // -----------------------------------------------------------------------
 
-    fn make_event(event_type: RunEventType, name: &str, run_id: &str, parent: Option<&str>) -> RunEvent {
+    fn make_event(
+        event_type: RunEventType,
+        name: &str,
+        run_id: &str,
+        parent: Option<&str>,
+    ) -> RunEvent {
         let mut e = RunEvent::new(event_type, name, json!(null));
         e.run_id = run_id.to_string();
         e.parent_run_id = parent.map(|s| s.to_string());

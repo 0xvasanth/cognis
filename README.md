@@ -8,8 +8,8 @@
 [![Crate Version](https://img.shields.io/badge/crates.io-v0.1.0-blue)](https://crates.io/crates/rustchain)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-4%2C579%2B-green)](.)
-[![Lines of Code](https://img.shields.io/badge/lines-178K-informational)](.)
+[![Tests](https://img.shields.io/badge/tests-5%2C079%2B-green)](.)
+[![Lines of Code](https://img.shields.io/badge/lines-190K-informational)](.)
 
 [Getting Started](#getting-started) · [Examples](#examples) · [Architecture](#architecture) · [Feature Flags](#feature-flags) · [Contributing](#contributing)
 
@@ -21,7 +21,7 @@
 
 RustChain is a Rust-native LLM application framework that ports the Python [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), and [DeepAgents](https://github.com/langchain-ai/deepagents) ecosystem to Rust. It provides composable abstractions for building chains, agents, RAG pipelines, and stateful graph workflows -- all with Rust's performance, type safety, and fearless concurrency.
 
-The project spans **4 crates**, **430 source files**, **~178K lines of Rust**, and **~4,579 tests**.
+The project spans **4 crates**, **437 source files**, **~190K lines of Rust**, and **~5,079 tests**.
 
 ### Why Rust?
 
@@ -43,7 +43,8 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 |               deepagents  (Application Layer)              |
 |  create_deep_agent(), middleware hooks, storage backends,  |
 |  tool registry, planning, presets, events, conversations,  |
-|  health monitoring, workflow engine                        |
+|  health monitoring, workflow engine, telemetry, sessions,  |
+|  plugin system                                             |
 +--------------------------+--------------------------------+
                            | depends on
 +--------------------------v--------------------------------+
@@ -57,9 +58,9 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 +--------------------------v--------------------------------+
 |               rustchain  (Implementation Layer)            |
 |  Chat models (5 providers + factory + load balancer),       |
-|  chains (19 types), memory (9 types), retrievers (11),     |
+|  chains (19 types), memory (10 types), retrievers (12),    |
 |  tools (14), agents (plan-and-execute, ReAct, tool-calling),|
-|  document transformers, vectorstore filters                |
+|  output parsers, document transformers, vectorstore filters|
 +--------------------------+--------------------------------+
                            | depends on
 +--------------------------v--------------------------------+
@@ -89,7 +90,7 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 |---|---|
 | `messages` | `Message` enum (Human, AI, System, Tool, Function) with streaming chunks, merge, and trim utilities |
 | `language_models` | `BaseChatModel` and `BaseLLM` traits, plus fake/testing models |
-| `runnables` | `Runnable` trait with sequence, parallel, branch, lambda, retry, fallback, scoped callbacks, **rate limiter/throttle wrappers**, **timeout/deadline** (configurable timeout behavior with fallback and default-value strategies), and 30+ combinators |
+| `runnables` | `Runnable` trait with sequence, parallel, branch, lambda, retry, fallback, scoped callbacks, **rate limiter/throttle wrappers**, **timeout/deadline** (configurable timeout behavior with fallback and default-value strategies), **configurable runnables** (runtime field overrides with type validation and enum constraints), and 30+ combinators |
 | `tools` | `BaseTool` trait, toolkit interface, structured tools, schema generation, and retriever adapter |
 | `prompts` | Chat prompt templates, few-shot selectors, structured prompts, image prompts |
 | `output_parsers` | JSON, string, list, XML, and tool-call parsers |
@@ -109,15 +110,16 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | Module | Description |
 |---|---|
 | `chat_models` | **5 providers**: Anthropic Claude, OpenAI GPT, Google Gemini, Ollama, Azure OpenAI. **Factory**: `init_chat_model` for dynamic provider creation via `ChatModelFactory` and global `ModelRegistry`. **Wrappers**: cached, circuit breaker, rate limited, retrying, structured, token counting, graceful, interceptor, **load balancer** (health-tracked round-robin across multiple models) |
-| `chains` | **19 types**: LLM, sequential, conversation, conversation retrieval, retrieval QA, map-reduce, refine, router, structured output, summarize, SQL, API, streaming, extraction, **transform** (sync/async transforms with pipeline composition), **conditional/branch/switch** (routing chains with pluggable conditions), **stuff documents** (document combination with formatting strategies), **QA with citations** (retrieval QA with source citation tracking) |
-| `memory` | **9 types**: buffer, window, summary, vector, chat history, hybrid, entity (named entity tracking with regex extraction), token buffer (token-count-aware trimming with pluggable `TokenCounter`), **knowledge graph** (subject-predicate-object triple extraction and storage for relational knowledge in prompts) |
+| `chains` | **19 types**: LLM, sequential, conversation, conversation retrieval, retrieval QA, map-reduce, refine, router, structured output, summarize, SQL, API, streaming, extraction, **transform** (sync/async transforms with pipeline composition), **conditional/branch/switch** (routing chains with pluggable conditions), **stuff documents** (document combination with formatting strategies), **QA with citations** (retrieval QA with source citation tracking). **Chain callbacks**: lifecycle hooks (start, end, error, step) with logging, metrics, tracing, and filter callbacks |
+| `memory` | **10 types**: buffer, window, summary, vector, chat history, hybrid, entity (named entity tracking with regex extraction), token buffer (token-count-aware trimming with pluggable `TokenCounter`), **knowledge graph** (subject-predicate-object triple extraction and storage for relational knowledge in prompts), **summary buffer** (combines buffered messages with periodic summarization when token threshold is exceeded, with configurable strategies: first, oldest, sliding) |
 | `vectorstores` | **6 backends**: InMemory, Qdrant, Pinecone, Weaviate, ChromaDB, FAISS (with Flat/IVF/HNSW indexes) |
-| `retrievers` | **11 types**: contextual compression, compressor pipeline, docstore, ensemble, multi-vector, parent document, self-query, caching (TTL + LRU eviction), time-weighted (recency + relevance scoring), query translator (rule-based and LLM-powered structured filter generation), **multi-query** (query variation generation with reciprocal rank fusion) |
+| `retrievers` | **12 types**: contextual compression, compressor pipeline, docstore, ensemble, multi-vector, parent document, self-query, caching (TTL + LRU eviction), time-weighted (recency + relevance scoring), query translator (rule-based and LLM-powered structured filter generation), **multi-query** (query variation generation with reciprocal rank fusion), **reranking** (pluggable rerankers -- keyword overlap, TF-IDF, cross-encoder, length-based, metadata-based -- with cascade and pipeline composition) |
 | `document_loaders` | **10 types**: text, CSV, JSON, HTML, Markdown, PDF, web/crawler, YAML, TOML, directory |
 | `text_splitter` | **10 types**: character, recursive character (with language presets), Markdown, HTML, JSON, code, token, token-aware, sentence-aware (with abbreviation handling) |
 | `embeddings` | **8 providers/utilities**: OpenAI, Anthropic, Google, Ollama, cached wrapper, distance metrics, router, **batch processor** (concurrent embedding with rate limiting and chunked processing) |
 | `tools` | **14 types**: calculator, shell, web search, Wikipedia, JSON query, OpenAPI, cached, validation/auto-correction, Python REPL, retriever adapter, **human input** (interactive prompts with approval wrapper), **HTTP requests** (GET/POST with domain allowlisting and mock client), **file management** (read, write, copy, move, list, delete with path safety and toolkit grouping) |
 | `agents` | `AgentExecutor` with tool calling and structured output. **Plan-and-execute agent** (plan creation, step-by-step execution, replanning on failure). **Output parsers**: ReAct (`Thought/Action/Action Input`), JSON, XML, and tool-call format parsers. **18 middleware types**: retry, model retry, model fallback, tool retry, tool call limit, model call limit, human-in-the-loop, PII redaction, summarization, context editing, file search, shell tool, tool emulator, tool selection, todo, redaction, execution |
+| `output_parsers` | **Structured output parsers**: JSON (with code fence handling), markdown list, key-value, regex, CSV, boolean, enum, combining (try multiple parsers), schema-validated structured output. **LLM-based error correction**: `OutputFixingParser` (uses LLM to fix malformed output) and `RetryOutputParser` (iterative retry with error feedback) |
 | `chat_sessions` | `SessionManager` for managing multiple concurrent chat sessions with lifecycle states (Active, Archived, Deleted), pluggable persistence (`InMemorySessionStorage`, `FileSessionStorage`), and builder configuration |
 | `stores` | **4 KV store implementations**: `InMemoryStore` (with optional TTL), `FileStore` (filesystem-backed), `NamespacedStore` (key prefix isolation), `LayeredStore` (read-through cache across multiple stores) |
 | `prompts` | Prompt registry with versioning, built-in templates, **chat prompt templates** (message-level templates with variable extraction and placeholder support), and **few-shot selectors** (length-based and semantic similarity) |
@@ -153,8 +155,8 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | `graph::ui` | UI message types and reducer for rendering UI components |
 | `managed` | Shared managed values with versioning and history: `SharedValue`, `SharedCounter`, `SharedAccumulator`, `SharedMap`, plus `IsLastStepManager` and `RemainingStepsManager` for Pregel context |
 | `pregel` | Pregel-style superstep execution engine |
-| `channels` | **10 types**: LastValue, BinaryOp, Topic, AnyValue, NamedBarrier, EphemeralValue, Untracked, Broadcast (pub/sub with topic filtering), reducers, **state reducers** (schema-validated reducers with append, merge, last-value, and binary-op strategies) |
-| `checkpoint` | `CheckpointSaver` trait with **in-memory** (including lightweight in-memory store for testing), SQLite, and PostgreSQL backends. Serialization formats with diff support |
+| `channels` | **10 types**: LastValue, BinaryOp, **Topic** (extended pub/sub with `TopicMessage`, `TopicFilter` with glob/prefix matching, `TopicChannel`, `TopicRouter`, `DeadLetterQueue`, and unified `TopicBus`), AnyValue, NamedBarrier, EphemeralValue, Untracked, Broadcast (pub/sub with topic filtering), reducers, **state reducers** (schema-validated reducers with append, merge, last-value, and binary-op strategies) |
+| `checkpoint` | `CheckpointSaver` trait with **in-memory** (including lightweight in-memory store for testing), SQLite, and PostgreSQL backends. Serialization formats with diff support. **Checkpoint serializer** -- pluggable serializers (JSON, compact, pretty, versioned, compressed) with `CheckpointMetadata`, `CheckpointEntry`, and `CheckpointMigration` for version-to-version state migrations |
 | `prebuilt` | `create_react_agent`, `create_tool_agent`, and `ChatAgent` (prebuilt tool-calling agent with streaming) |
 | `utils` | Configuration utilities, execution profiler with bottleneck detection, and **node timeout/cancellation** (per-node timeouts, cancellation tokens, and execution budget management) |
 | `types` | StreamMode (Values, Updates, Debug), InterruptType, RetryPolicy, CachePolicy |
@@ -172,6 +174,9 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | `conversation` | **Conversation manager** with context windowing, message history management, and export/serialization support |
 | `presets` | **Agent presets** with a preset registry, customizer pattern, and ready-made configurations for common agent types |
 | `health` | **Health monitoring** -- `HealthMonitor` aggregating multiple `HealthCheck` implementations (disk space, connectivity, middleware status) into unified `HealthReport` with builder configuration |
+| `telemetry` | **Telemetry and observability** -- `TelemetryCollector` for recording metrics, span contexts, and token usage. Exporters: `JsonExporter`, `PrettyPrintExporter` for structured telemetry output |
+| `session` | **Session management** -- `SessionManager` for tracking agent execution sessions with lifecycle states (Active, Paused, Completed, Failed), event recording, metadata, and `SessionReplay` for timeline-based event replay |
+| `plugins` | **Plugin system** -- `PluginRegistry` for runtime agent extension with capabilities (tool provider, middleware, state transformer, event handler), lifecycle management (load, activate, deactivate, unload), and dependency resolution via topological sorting |
 | `workflow` | **Workflow engine** -- multi-step workflow orchestration with dependency resolution, conditional execution, retries, timeouts, and `WorkflowBuilder`/`WorkflowExecutor` API |
 
 ---
@@ -349,7 +354,7 @@ langgraph = { git = "https://github.com/0xvasanth/rustchain", features = ["sqlit
 
 ## Examples
 
-The `examples/` directory contains **27 runnable examples** -- all work without API keys using fake/mock models:
+The `examples/` directory contains **31 runnable examples** -- all work without API keys using fake/mock models:
 
 | Example | Description | Run Command |
 |---|---|---|
@@ -380,6 +385,10 @@ The `examples/` directory contains **27 runnable examples** -- all work without 
 | `conditional_chains` | Conditional, branch, and switch chain routing | `cargo run --example conditional_chains` |
 | `file_tools` | File management tools with path safety | `cargo run --example file_tools` |
 | `qa_chain` | QA chain with citation tracking | `cargo run --example qa_chain` |
+| `execution_hooks` | Graph execution hooks and lifecycle interception | `cargo run --example execution_hooks` |
+| `health_monitoring` | Agent health checks and monitoring | `cargo run --example health_monitoring` |
+| `knowledge_graph_memory` | Knowledge graph memory with triple extraction | `cargo run --example knowledge_graph_memory` |
+| `plan_and_execute` | Plan-and-execute agent with replanning | `cargo run --example plan_and_execute` |
 
 Try one now:
 
@@ -500,7 +509,7 @@ pub trait Embeddings: Send + Sync {
 ```
 rustchain/
   Cargo.toml                  # Workspace root
-  examples/                   # 27 runnable example programs
+  examples/                   # 31 runnable example programs
   crates/
     rustchain-core/           # Base traits and types (zero workspace deps)
     rustchain/                # Provider implementations and agent framework
@@ -544,7 +553,7 @@ cd rustchain
 # Build all crates
 cargo build --workspace
 
-# Run all tests (~4,579 tests)
+# Run all tests (~5,079 tests)
 cargo test --workspace
 
 # Run a specific example

@@ -33,9 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     graph.add_triple(KnowledgeTriple::new("Bob", "works at", "TechStart"));
     graph.add_triple(KnowledgeTriple::new("Alice", "knows", "Bob"));
     graph.add_triple(KnowledgeTriple::new("Alice", "lives in", "San Francisco"));
-    graph.add_triple(
-        KnowledgeTriple::new("Bob", "manages", "Project Alpha").with_confidence(0.9),
-    );
+    graph.add_triple(KnowledgeTriple::new("Bob", "manages", "Project Alpha").with_confidence(0.9));
     graph.add_triple(
         KnowledgeTriple::new("Charlie", "created", "RustChain")
             .with_confidence(0.95)
@@ -55,7 +53,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let alice_triples = graph.get_triples_for_entity("Alice");
     println!("Triples involving Alice ({} found):", alice_triples.len());
     for triple in &alice_triples {
-        println!("  {} {} {}", triple.subject, triple.predicate, triple.object);
+        println!(
+            "  {} {} {}",
+            triple.subject, triple.predicate, triple.object
+        );
     }
     println!();
 
@@ -131,10 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Graph B: {} triples", graph_b.len());
 
     graph_a.merge(&graph_b);
-    println!(
-        "After merge: {} triples (duplicate removed)",
-        graph_a.len()
-    );
+    println!("After merge: {} triples (duplicate removed)", graph_a.len());
     println!("  {}\n", graph_a.to_natural_language());
 
     // -----------------------------------------------------------------------

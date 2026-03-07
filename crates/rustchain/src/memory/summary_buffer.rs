@@ -12,20 +12,15 @@ use serde_json::{json, Value};
 // ─── SummaryStrategy ─────────────────────────────────────────────────────────
 
 /// Controls which messages get summarized when the token threshold is exceeded.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum SummaryStrategy {
     /// Summarize only the first (oldest) message in the buffer.
     First,
     /// Summarize the oldest half of the buffer.
+    #[default]
     Oldest,
     /// Summarize all messages except the most recent `n`.
     Sliding(usize),
-}
-
-impl Default for SummaryStrategy {
-    fn default() -> Self {
-        Self::Oldest
-    }
 }
 
 // ─── Summarizer trait ────────────────────────────────────────────────────────
@@ -146,7 +141,7 @@ fn estimate_message_tokens(msg: &Message) -> usize {
 }
 
 fn estimate_total_tokens(messages: &[Message], summary: &Option<String>) -> usize {
-    let msg_tokens: usize = messages.iter().map(|m| estimate_message_tokens(m)).sum();
+    let msg_tokens: usize = messages.iter().map(estimate_message_tokens).sum();
     let summary_tokens = summary.as_ref().map_or(0, |s| estimate_tokens(s));
     msg_tokens + summary_tokens
 }
@@ -501,8 +496,7 @@ mod tests {
 
     #[test]
     fn test_template_summarizer_with_existing_summary_placeholder() {
-        let summarizer =
-            TemplateSummarizer::new("Prior: {existing_summary}\nCurrent: {messages}");
+        let summarizer = TemplateSummarizer::new("Prior: {existing_summary}\nCurrent: {messages}");
         let messages = vec![Message::human("Question")];
         let result = summarizer
             .summarize(&messages, Some("talked about weather"))
@@ -513,8 +507,7 @@ mod tests {
 
     #[test]
     fn test_template_summarizer_no_existing_summary() {
-        let summarizer =
-            TemplateSummarizer::new("Summary: {existing_summary}\nNew: {messages}");
+        let summarizer = TemplateSummarizer::new("Summary: {existing_summary}\nNew: {messages}");
         let messages = vec![Message::ai("Response")];
         let result = summarizer.summarize(&messages, None).unwrap();
         assert!(result.contains("Summary: \n"));
@@ -524,10 +517,7 @@ mod tests {
     #[test]
     fn test_template_summarizer_custom_template() {
         let summarizer = TemplateSummarizer::new("## Conversation Log\n{messages}");
-        let messages = vec![
-            Message::human("Start"),
-            Message::ai("Acknowledged"),
-        ];
+        let messages = vec![Message::human("Start"), Message::ai("Acknowledged")];
         let result = summarizer.summarize(&messages, None).unwrap();
         assert!(result.starts_with("## Conversation Log\n"));
     }
@@ -546,10 +536,14 @@ mod tests {
     fn test_clear_resets_everything() {
         let mut mem = SummaryBufferMemory::new(10, SimpleSummarizer::new());
         // Add enough to trigger summarization
-        mem.add_message(Message::human("A very long message that should exceed the small token limit we set"))
-            .unwrap();
-        mem.add_message(Message::ai("Another long response that will definitely push us over the edge"))
-            .unwrap();
+        mem.add_message(Message::human(
+            "A very long message that should exceed the small token limit we set",
+        ))
+        .unwrap();
+        mem.add_message(Message::ai(
+            "Another long response that will definitely push us over the edge",
+        ))
+        .unwrap();
 
         mem.clear();
         assert_eq!(mem.message_count(), 0);
@@ -589,8 +583,10 @@ mod tests {
     fn test_auto_summarization_triggered() {
         // Very small threshold to force summarization
         let mut mem = SummaryBufferMemory::new(10, SimpleSummarizer::new());
-        mem.add_message(Message::human("This is a long message that exceeds the token limit"))
-            .unwrap();
+        mem.add_message(Message::human(
+            "This is a long message that exceeds the token limit",
+        ))
+        .unwrap();
         mem.add_message(Message::ai("This is also a long response with many words"))
             .unwrap();
 
@@ -613,10 +609,14 @@ mod tests {
     #[test]
     fn test_summary_content_includes_summarized_messages() {
         let mut mem = SummaryBufferMemory::new(10, SimpleSummarizer::new());
-        mem.add_message(Message::human("What is the meaning of life the universe and everything"))
-            .unwrap();
-        mem.add_message(Message::ai("The answer is forty two according to the guide"))
-            .unwrap();
+        mem.add_message(Message::human(
+            "What is the meaning of life the universe and everything",
+        ))
+        .unwrap();
+        mem.add_message(Message::ai(
+            "The answer is forty two according to the guide",
+        ))
+        .unwrap();
 
         if mem.has_summary() {
             let summary = mem.current_summary().unwrap();
@@ -628,10 +628,14 @@ mod tests {
     #[test]
     fn test_get_context_includes_summary() {
         let mut mem = SummaryBufferMemory::new(10, SimpleSummarizer::new());
-        mem.add_message(Message::human("A long message to trigger summarization in the buffer"))
-            .unwrap();
-        mem.add_message(Message::ai("Another long message that pushes over the threshold"))
-            .unwrap();
+        mem.add_message(Message::human(
+            "A long message to trigger summarization in the buffer",
+        ))
+        .unwrap();
+        mem.add_message(Message::ai(
+            "Another long message that pushes over the threshold",
+        ))
+        .unwrap();
 
         if mem.has_summary() {
             let ctx = mem.get_context();
@@ -702,8 +706,10 @@ mod tests {
         let mut mem = SummaryBufferMemory::new(30, SimpleSummarizer::new())
             .with_strategy(SummaryStrategy::First);
 
-        mem.add_message(Message::human("First message with enough words to exceed limit"))
-            .unwrap();
+        mem.add_message(Message::human(
+            "First message with enough words to exceed limit",
+        ))
+        .unwrap();
         mem.add_message(Message::ai("Second message also has many words in it"))
             .unwrap();
         mem.add_message(Message::human("Third message keeps going and going"))
@@ -720,10 +726,14 @@ mod tests {
         let mut mem = SummaryBufferMemory::new(10, SimpleSummarizer::new())
             .with_strategy(SummaryStrategy::Oldest);
 
-        mem.add_message(Message::human("Message one with enough words")).unwrap();
-        mem.add_message(Message::ai("Message two with more words")).unwrap();
-        mem.add_message(Message::human("Message three even more")).unwrap();
-        mem.add_message(Message::ai("Message four still going")).unwrap();
+        mem.add_message(Message::human("Message one with enough words"))
+            .unwrap();
+        mem.add_message(Message::ai("Message two with more words"))
+            .unwrap();
+        mem.add_message(Message::human("Message three even more"))
+            .unwrap();
+        mem.add_message(Message::ai("Message four still going"))
+            .unwrap();
 
         assert!(mem.has_summary());
     }
@@ -733,8 +743,10 @@ mod tests {
         let mut mem = SummaryBufferMemory::new(10, SimpleSummarizer::new())
             .with_strategy(SummaryStrategy::Sliding(2));
 
-        mem.add_message(Message::human("First message in the conversation with many words"))
-            .unwrap();
+        mem.add_message(Message::human(
+            "First message in the conversation with many words",
+        ))
+        .unwrap();
         mem.add_message(Message::ai("Second message response also with many words"))
             .unwrap();
         mem.add_message(Message::human("Third message question with extra words"))
@@ -757,8 +769,8 @@ mod tests {
 
     #[test]
     fn test_context_custom_memory_key() {
-        let mut mem = SummaryBufferMemory::new(10000, SimpleSummarizer::new())
-            .with_memory_key("chat_log");
+        let mut mem =
+            SummaryBufferMemory::new(10000, SimpleSummarizer::new()).with_memory_key("chat_log");
         mem.add_message(Message::human("Test")).unwrap();
 
         let ctx = mem.get_context();
@@ -828,10 +840,14 @@ mod tests {
         let had_summary_r1 = mem.has_summary();
 
         // Round 2: add more messages to trigger another summarization
-        mem.add_message(Message::human("What about tomorrow's forecast for the week"))
-            .unwrap();
-        mem.add_message(Message::ai("Tomorrow will be cloudy with some rain expected"))
-            .unwrap();
+        mem.add_message(Message::human(
+            "What about tomorrow's forecast for the week",
+        ))
+        .unwrap();
+        mem.add_message(Message::ai(
+            "Tomorrow will be cloudy with some rain expected",
+        ))
+        .unwrap();
 
         // If round 1 produced a summary, round 2 should incorporate it
         if had_summary_r1 && mem.has_summary() {
@@ -850,7 +866,8 @@ mod tests {
             .unwrap();
         mem.add_message(Message::ai("That is correct Paris is the capital"))
             .unwrap();
-        mem.add_message(Message::human("What about Germany")).unwrap();
+        mem.add_message(Message::human("What about Germany"))
+            .unwrap();
         mem.add_message(Message::ai("The capital of Germany is Berlin"))
             .unwrap();
 
@@ -865,8 +882,10 @@ mod tests {
     fn test_clear_after_summarization() {
         let mut mem = SummaryBufferMemory::new(10, SimpleSummarizer::new());
 
-        mem.add_message(Message::human("Long message that will trigger summarization eventually"))
-            .unwrap();
+        mem.add_message(Message::human(
+            "Long message that will trigger summarization eventually",
+        ))
+        .unwrap();
         mem.add_message(Message::ai("Another long response to push over the limit"))
             .unwrap();
 

@@ -67,7 +67,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let result = disk_check.check().await;
     println!("  Component: {}", result.name);
-    println!("  Status: {} ({})", result.status.label(), status_detail(&result.status));
+    println!(
+        "  Status: {} ({})",
+        result.status.label(),
+        status_detail(&result.status)
+    );
     if let Some(latency) = result.latency {
         println!("  Latency: {:?}", latency);
     }
@@ -83,7 +87,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let low_result = low_disk.check().await;
-    println!("  Low disk status: {} - {}", low_result.status.label(), status_detail(&low_result.status));
+    println!(
+        "  Low disk status: {} - {}",
+        low_result.status.label(),
+        status_detail(&low_result.status)
+    );
     println!();
 
     // -----------------------------------------------------------------------
@@ -140,7 +148,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tool_result = tool_check.check().await;
     println!("  Component: {}", tool_result.name);
-    println!("  Status: {} - {}", tool_result.status.label(), status_detail(&tool_result.status));
+    println!(
+        "  Status: {} - {}",
+        tool_result.status.label(),
+        status_detail(&tool_result.status)
+    );
     for (key, value) in &tool_result.details {
         println!("  {}: {}", key, value);
     }
@@ -159,7 +171,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fail_result = config_fail.check().await;
 
     println!("  Config loaded: {}", ok_result.status.label());
-    println!("  Config missing: {} - {}\n", fail_result.status.label(), status_detail(&fail_result.status));
+    println!(
+        "  Config missing: {} - {}\n",
+        fail_result.status.label(),
+        status_detail(&fail_result.status)
+    );
 
     // -----------------------------------------------------------------------
     // 6. HealthMonitor with builder
@@ -168,11 +184,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Aggregates multiple checks into a unified report.\n");
 
     let monitor = HealthMonitor::builder()
-        .with_check(Arc::new(DiskSpaceCheck::with_space_fn("/", 10_000_000_000, || {
-            Ok((80_000_000_000, 500_000_000_000))
-        })))
+        .with_check(Arc::new(DiskSpaceCheck::with_space_fn(
+            "/",
+            10_000_000_000,
+            || Ok((80_000_000_000, 500_000_000_000)),
+        )))
         .with_check(Arc::new(MemoryHealthCheck::always_healthy()))
-        .with_check(Arc::new(BackendHealthCheck::new("database", || async { Ok(()) })))
+        .with_check(Arc::new(BackendHealthCheck::new("database", || async {
+            Ok(())
+        })))
         .with_check(Arc::new(ConfigHealthCheck::new(true)))
         .with_timeout(Duration::from_secs(5))
         .build();
@@ -247,8 +267,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let unhealthy_report = unhealthy_monitor.check_all().await;
-    println!("  Overall: {} - {}", unhealthy_report.overall_status.label(), status_detail(&unhealthy_report.overall_status));
-    println!("  HTTP status: {}", HealthEndpoint::status_code(&unhealthy_report));
+    println!(
+        "  Overall: {} - {}",
+        unhealthy_report.overall_status.label(),
+        status_detail(&unhealthy_report.overall_status)
+    );
+    println!(
+        "  HTTP status: {}",
+        HealthEndpoint::status_code(&unhealthy_report)
+    );
 
     let unhealthy_components = unhealthy_report.unhealthy_components();
     println!("  Unhealthy components: {}", unhealthy_components.len());

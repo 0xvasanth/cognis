@@ -209,8 +209,10 @@ impl TokenUsage {
             }
             _ => (0.000001, 0.000002),
         };
-        self.cost_estimate =
-            Some(self.prompt_tokens as f64 * prompt_rate + self.completion_tokens as f64 * completion_rate);
+        self.cost_estimate = Some(
+            self.prompt_tokens as f64 * prompt_rate
+                + self.completion_tokens as f64 * completion_rate,
+        );
     }
 
     /// Convert this usage record to a [`Metric`].
@@ -516,7 +518,11 @@ impl TelemetryExporter for PrettyPrintExporter {
             let labels_str = if m.labels.is_empty() {
                 String::new()
             } else {
-                let pairs: Vec<String> = m.labels.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+                let pairs: Vec<String> = m
+                    .labels
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect();
                 format!(" [{}]", pairs.join(", "))
             };
             out.push_str(&format!(
@@ -649,9 +655,13 @@ mod tests {
 
     #[test]
     fn test_metric_with_labels() {
-        let m = Metric::new("latency", MetricType::Timer, MetricValue::Duration(Duration::from_millis(100)))
-            .with_label("endpoint", "/api/chat")
-            .with_label("method", "POST");
+        let m = Metric::new(
+            "latency",
+            MetricType::Timer,
+            MetricValue::Duration(Duration::from_millis(100)),
+        )
+        .with_label("endpoint", "/api/chat")
+        .with_label("method", "POST");
         assert_eq!(m.labels.len(), 2);
         assert_eq!(m.labels["endpoint"], "/api/chat");
         assert_eq!(m.labels["method"], "POST");
@@ -822,7 +832,11 @@ mod tests {
     #[test]
     fn test_collector_record_metric() {
         let mut c = TelemetryCollector::new();
-        c.record_metric(Metric::new("test", MetricType::Counter, MetricValue::Count(1)));
+        c.record_metric(Metric::new(
+            "test",
+            MetricType::Counter,
+            MetricValue::Count(1),
+        ));
         assert_eq!(c.get_metrics().len(), 1);
         assert_eq!(c.get_metrics()[0].name, "test");
     }
@@ -902,7 +916,11 @@ mod tests {
     #[test]
     fn test_collector_to_json() {
         let mut c = TelemetryCollector::new();
-        c.record_metric(Metric::new("req", MetricType::Counter, MetricValue::Count(5)));
+        c.record_metric(Metric::new(
+            "req",
+            MetricType::Counter,
+            MetricValue::Count(5),
+        ));
         c.record_token_usage(TokenUsage::new(50, 25, "test-model"));
 
         let json = c.to_json();

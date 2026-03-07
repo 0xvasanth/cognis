@@ -71,10 +71,8 @@ impl Reranker for KeywordReranker {
             .iter()
             .map(|doc| {
                 let doc_lower = doc.page_content.to_lowercase();
-                let doc_words: HashSet<String> = doc_lower
-                    .split_whitespace()
-                    .map(String::from)
-                    .collect();
+                let doc_words: HashSet<String> =
+                    doc_lower.split_whitespace().map(String::from).collect();
                 let overlap = query_set
                     .iter()
                     .filter(|qt| doc_words.contains(**qt))
@@ -165,9 +163,8 @@ impl Reranker for TfIdfReranker {
                 let score: f64 = query_terms
                     .iter()
                     .map(|qt| {
-                        let tf =
-                            tokens.iter().filter(|t| t.as_str() == qt.as_str()).count() as f64
-                                / doc_len;
+                        let tf = tokens.iter().filter(|t| t.as_str() == qt.as_str()).count() as f64
+                            / doc_len;
                         let doc_freq = *df.get(qt.as_str()).unwrap_or(&0);
                         if doc_freq == 0 {
                             0.0
@@ -191,19 +188,22 @@ impl Reranker for TfIdfReranker {
 // CrossEncoderReranker
 // ---------------------------------------------------------------------------
 
+/// Type alias for a cross-encoder scoring function: `(query, document) -> score`.
+type ScorerFn = Arc<dyn Fn(&str, &str) -> f64 + Send + Sync>;
+
 /// A pluggable reranker that accepts a custom scoring function.
 ///
 /// This is useful for integrating external cross-encoder models or any
 /// arbitrary relevance scoring logic.
 pub struct CrossEncoderReranker {
-    scorer: Arc<dyn Fn(&str, &str) -> f64 + Send + Sync>,
+    scorer: ScorerFn,
 }
 
 impl CrossEncoderReranker {
     /// Create a new cross-encoder reranker with the given scoring function.
     ///
     /// The function takes `(query, document_content)` and returns a score.
-    pub fn new(scorer: Arc<dyn Fn(&str, &str) -> f64 + Send + Sync>) -> Self {
+    pub fn new(scorer: ScorerFn) -> Self {
         Self { scorer }
     }
 }
@@ -248,7 +248,8 @@ impl Reranker for LengthReranker {
         let mut results: Vec<(Document, f64)> = documents
             .iter()
             .map(|doc| {
-                let diff = (doc.page_content.len() as isize - self.ideal_length as isize).unsigned_abs();
+                let diff =
+                    (doc.page_content.len() as isize - self.ideal_length as isize).unsigned_abs();
                 let score = 1.0 / (1.0 + diff as f64);
                 (doc.clone(), score)
             })
@@ -413,11 +414,7 @@ impl RerankingRetriever {
     }
 
     /// Retrieve the top-k documents after reranking, with scores.
-    pub fn retrieve_with_scores(
-        &self,
-        query: &str,
-        k: usize,
-    ) -> Result<Vec<(Document, f64)>> {
+    pub fn retrieve_with_scores(&self, query: &str, k: usize) -> Result<Vec<(Document, f64)>> {
         let mut scored = self.reranker.rerank(query, &self.documents)?;
 
         // Apply min_score filter.
@@ -581,11 +578,7 @@ mod tests {
     #[test]
     fn test_tfidf_reranker_rare_term_scores_higher() {
         let reranker = TfIdfReranker::new();
-        let docs = make_docs(&[
-            "common rare",
-            "common ordinary",
-            "common typical",
-        ]);
+        let docs = make_docs(&["common rare", "common ordinary", "common typical"]);
         // "rare" only appears in doc 0, "common" in all docs
         let results = reranker.rerank("rare common", &docs).unwrap();
 
@@ -658,13 +651,15 @@ mod tests {
     #[test]
     fn test_cross_encoder_query_dependent() {
         // Score based on whether doc contains query
-        let scorer = Arc::new(|query: &str, doc: &str| {
-            if doc.contains(query) {
-                1.0
-            } else {
-                0.0
-            }
-        });
+        let scorer = Arc::new(
+            |query: &str, doc: &str| {
+                if doc.contains(query) {
+                    1.0
+                } else {
+                    0.0
+                }
+            },
+        );
         let reranker = CrossEncoderReranker::new(scorer);
         let docs = make_docs(&["hello world", "goodbye world", "hello there"]);
 
@@ -798,9 +793,8 @@ mod tests {
 
     #[test]
     fn test_cascade_reranker_empty_docs() {
-        let rerankers: Vec<(Box<dyn Reranker>, f64)> = vec![
-            (Box::new(KeywordReranker::new()), 1.0),
-        ];
+        let rerankers: Vec<(Box<dyn Reranker>, f64)> =
+            vec![(Box::new(KeywordReranker::new()), 1.0)];
         let cascade = CascadeReranker::new(rerankers);
         let results = cascade.rerank("hello", &[]).unwrap();
         assert!(results.is_empty());
@@ -808,9 +802,8 @@ mod tests {
 
     #[test]
     fn test_cascade_reranker_single_reranker() {
-        let rerankers: Vec<(Box<dyn Reranker>, f64)> = vec![
-            (Box::new(KeywordReranker::new()), 1.0),
-        ];
+        let rerankers: Vec<(Box<dyn Reranker>, f64)> =
+            vec![(Box::new(KeywordReranker::new()), 1.0)];
         let cascade = CascadeReranker::new(rerankers);
         let docs = make_docs(&["hello world", "foo bar"]);
         let results = cascade.rerank("hello", &docs).unwrap();
@@ -850,8 +843,8 @@ mod tests {
     #[test]
     fn test_reranking_retriever_min_score() {
         let docs = make_docs(&["hello world", "foo bar", "hello foo"]);
-        let retriever = RerankingRetriever::new(docs, Box::new(KeywordReranker::new()))
-            .with_min_score(0.5);
+        let retriever =
+            RerankingRetriever::new(docs, Box::new(KeywordReranker::new())).with_min_score(0.5);
 
         let results = retriever.retrieve("hello", 10).unwrap();
         // Only docs with score >= 0.5 should be returned
@@ -884,8 +877,7 @@ mod tests {
 
     #[test]
     fn test_reranking_retriever_empty_docs() {
-        let retriever =
-            RerankingRetriever::new(vec![], Box::new(KeywordReranker::new()));
+        let retriever = RerankingRetriever::new(vec![], Box::new(KeywordReranker::new()));
 
         let results = retriever.retrieve("hello", 5).unwrap();
         assert!(results.is_empty());
@@ -915,9 +907,7 @@ mod tests {
 
     #[test]
     fn test_pipeline_empty_docs() {
-        let stages: Vec<(Box<dyn Reranker>, usize)> = vec![
-            (Box::new(KeywordReranker::new()), 5),
-        ];
+        let stages: Vec<(Box<dyn Reranker>, usize)> = vec![(Box::new(KeywordReranker::new()), 5)];
         let pipeline = RerankerPipeline::new(stages);
         let results = pipeline.run("hello", &[]).unwrap();
         assert!(results.is_empty());
@@ -925,9 +915,7 @@ mod tests {
 
     #[test]
     fn test_pipeline_single_stage() {
-        let stages: Vec<(Box<dyn Reranker>, usize)> = vec![
-            (Box::new(KeywordReranker::new()), 2),
-        ];
+        let stages: Vec<(Box<dyn Reranker>, usize)> = vec![(Box::new(KeywordReranker::new()), 2)];
         let pipeline = RerankerPipeline::new(stages);
 
         let docs = make_docs(&["hello world", "foo bar", "hello there"]);
@@ -963,8 +951,8 @@ mod tests {
     #[test]
     fn test_min_score_filters_all() {
         let docs = make_docs(&["foo bar", "baz qux"]);
-        let retriever = RerankingRetriever::new(docs, Box::new(KeywordReranker::new()))
-            .with_min_score(0.5);
+        let retriever =
+            RerankingRetriever::new(docs, Box::new(KeywordReranker::new())).with_min_score(0.5);
 
         // Query has no overlap with any doc
         let results = retriever.retrieve("xyz", 10).unwrap();

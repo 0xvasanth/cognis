@@ -383,9 +383,13 @@ impl SubgraphNode {
         let mut result = parent_state.clone();
         if self.config.namespace.is_some() {
             let mapped = self.apply_namespace_output(child_output);
-            self.config.output_mapping.apply_output(&mapped, &mut result);
+            self.config
+                .output_mapping
+                .apply_output(&mapped, &mut result);
         } else {
-            self.config.output_mapping.apply_output(child_output, &mut result);
+            self.config
+                .output_mapping
+                .apply_output(child_output, &mut result);
         }
         Ok(result)
     }
@@ -697,7 +701,9 @@ mod tests {
 
     #[test]
     fn test_state_mapping_apply_input_basic() {
-        let m = StateMapping::new().map("parent_a", "child_a").map("parent_b", "child_b");
+        let m = StateMapping::new()
+            .map("parent_a", "child_a")
+            .map("parent_b", "child_b");
         let parent = json!({"parent_a": 10, "parent_b": "hello", "extra": true});
         let child = m.apply_input(&parent);
         assert_eq!(child["child_a"], 10);
@@ -829,7 +835,9 @@ mod tests {
             .with_output_mapping(StateMapping::new().map("parent_result", "output"));
         let node = SubgraphNode::from_fn("adder", gfn, config);
 
-        let result = node.execute(&json!({"parent_val": 42, "other": "keep"})).unwrap();
+        let result = node
+            .execute(&json!({"parent_val": 42, "other": "keep"}))
+            .unwrap();
         assert_eq!(result["parent_result"], 142);
         assert_eq!(result["parent_val"], 42);
         assert_eq!(result["other"], "keep");
@@ -839,9 +847,8 @@ mod tests {
 
     #[test]
     fn test_subgraph_node_execute_error_propagation() {
-        let gfn = make_graph_fn(|_state: Value| {
-            Err(LangGraphError::Other("child error".to_string()))
-        });
+        let gfn =
+            make_graph_fn(|_state: Value| Err(LangGraphError::Other("child error".to_string())));
         let node = SubgraphNode::from_fn("fail", gfn, SubgraphConfig::new("fail"));
         let result = node.execute(&json!({"x": 1}));
         assert!(result.is_err());
@@ -912,8 +919,14 @@ mod tests {
     fn test_registry_remove() {
         let mut reg = SubgraphRegistry::new();
         let gfn = make_graph_fn(|s: Value| Ok(s));
-        reg.register("x", SubgraphNode::from_fn("x", gfn.clone(), SubgraphConfig::new("x")));
-        reg.register("y", SubgraphNode::from_fn("y", gfn, SubgraphConfig::new("y")));
+        reg.register(
+            "x",
+            SubgraphNode::from_fn("x", gfn.clone(), SubgraphConfig::new("x")),
+        );
+        reg.register(
+            "y",
+            SubgraphNode::from_fn("y", gfn, SubgraphConfig::new("y")),
+        );
         assert_eq!(reg.len(), 2);
         let removed = reg.remove("x");
         assert!(removed.is_some());
@@ -925,8 +938,14 @@ mod tests {
     fn test_registry_list() {
         let mut reg = SubgraphRegistry::new();
         let gfn = make_graph_fn(|s: Value| Ok(s));
-        reg.register("alpha", SubgraphNode::from_fn("alpha", gfn.clone(), SubgraphConfig::new("alpha")));
-        reg.register("beta", SubgraphNode::from_fn("beta", gfn, SubgraphConfig::new("beta")));
+        reg.register(
+            "alpha",
+            SubgraphNode::from_fn("alpha", gfn.clone(), SubgraphConfig::new("alpha")),
+        );
+        reg.register(
+            "beta",
+            SubgraphNode::from_fn("beta", gfn, SubgraphConfig::new("beta")),
+        );
         let mut names = reg.list();
         names.sort();
         assert_eq!(names, vec!["alpha", "beta"]);
@@ -937,8 +956,14 @@ mod tests {
         let mut reg = SubgraphRegistry::new();
         let gfn1 = make_graph_fn(|_s: Value| Ok(json!({"v": 1})));
         let gfn2 = make_graph_fn(|_s: Value| Ok(json!({"v": 2})));
-        reg.register("a", SubgraphNode::from_fn("a", gfn1, SubgraphConfig::new("a")));
-        reg.register("a", SubgraphNode::from_fn("a", gfn2, SubgraphConfig::new("a")));
+        reg.register(
+            "a",
+            SubgraphNode::from_fn("a", gfn1, SubgraphConfig::new("a")),
+        );
+        reg.register(
+            "a",
+            SubgraphNode::from_fn("a", gfn2, SubgraphConfig::new("a")),
+        );
         assert_eq!(reg.len(), 1);
         let node = reg.get("a").unwrap();
         let result = node.execute(&json!({})).unwrap();
@@ -981,7 +1006,10 @@ mod tests {
     #[test]
     fn test_builder_minimal() {
         let gfn = make_graph_fn(|s: Value| Ok(s));
-        let node = SubgraphBuilder::new("minimal").graph_fn(gfn).build().unwrap();
+        let node = SubgraphBuilder::new("minimal")
+            .graph_fn(gfn)
+            .build()
+            .unwrap();
         assert_eq!(node.name(), "minimal");
         assert!(node.config().input_mapping.is_empty());
         assert!(node.config().output_mapping.is_empty());
@@ -1003,12 +1031,16 @@ mod tests {
     #[test]
     fn test_nested_depth_two_levels() {
         let gfn = make_graph_fn(|s: Value| Ok(s));
-        let child = NestedSubgraph::new(
-            SubgraphNode::from_fn("child", gfn.clone(), SubgraphConfig::new("child")),
-        );
-        let parent = NestedSubgraph::new(
-            SubgraphNode::from_fn("parent", gfn, SubgraphConfig::new("parent")),
-        )
+        let child = NestedSubgraph::new(SubgraphNode::from_fn(
+            "child",
+            gfn.clone(),
+            SubgraphConfig::new("child"),
+        ));
+        let parent = NestedSubgraph::new(SubgraphNode::from_fn(
+            "parent",
+            gfn,
+            SubgraphConfig::new("parent"),
+        ))
         .add_child(child);
         assert_eq!(parent.depth(), 2);
     }
@@ -1016,16 +1048,22 @@ mod tests {
     #[test]
     fn test_nested_depth_three_levels() {
         let gfn = make_graph_fn(|s: Value| Ok(s));
-        let grandchild = NestedSubgraph::new(
-            SubgraphNode::from_fn("gc", gfn.clone(), SubgraphConfig::new("gc")),
-        );
-        let child = NestedSubgraph::new(
-            SubgraphNode::from_fn("child", gfn.clone(), SubgraphConfig::new("child")),
-        )
+        let grandchild = NestedSubgraph::new(SubgraphNode::from_fn(
+            "gc",
+            gfn.clone(),
+            SubgraphConfig::new("gc"),
+        ));
+        let child = NestedSubgraph::new(SubgraphNode::from_fn(
+            "child",
+            gfn.clone(),
+            SubgraphConfig::new("child"),
+        ))
         .add_child(grandchild);
-        let root = NestedSubgraph::new(
-            SubgraphNode::from_fn("root", gfn, SubgraphConfig::new("root")),
-        )
+        let root = NestedSubgraph::new(SubgraphNode::from_fn(
+            "root",
+            gfn,
+            SubgraphConfig::new("root"),
+        ))
         .add_child(child);
         assert_eq!(root.depth(), 3);
     }
@@ -1033,16 +1071,22 @@ mod tests {
     #[test]
     fn test_nested_flatten() {
         let gfn = make_graph_fn(|s: Value| Ok(s));
-        let gc = NestedSubgraph::new(
-            SubgraphNode::from_fn("gc", gfn.clone(), SubgraphConfig::new("gc")),
-        );
-        let child = NestedSubgraph::new(
-            SubgraphNode::from_fn("child", gfn.clone(), SubgraphConfig::new("child")),
-        )
+        let gc = NestedSubgraph::new(SubgraphNode::from_fn(
+            "gc",
+            gfn.clone(),
+            SubgraphConfig::new("gc"),
+        ));
+        let child = NestedSubgraph::new(SubgraphNode::from_fn(
+            "child",
+            gfn.clone(),
+            SubgraphConfig::new("child"),
+        ))
         .add_child(gc);
-        let root = NestedSubgraph::new(
-            SubgraphNode::from_fn("root", gfn, SubgraphConfig::new("root")),
-        )
+        let root = NestedSubgraph::new(SubgraphNode::from_fn(
+            "root",
+            gfn,
+            SubgraphConfig::new("root"),
+        ))
         .add_child(child);
 
         let flat = root.flatten();
@@ -1063,12 +1107,16 @@ mod tests {
             Ok(json!({"x": x * 2}))
         });
 
-        let child = NestedSubgraph::new(
-            SubgraphNode::from_fn("double", gfn_double, SubgraphConfig::new("double")),
-        );
-        let root = NestedSubgraph::new(
-            SubgraphNode::from_fn("add", gfn_add, SubgraphConfig::new("add")),
-        )
+        let child = NestedSubgraph::new(SubgraphNode::from_fn(
+            "double",
+            gfn_double,
+            SubgraphConfig::new("double"),
+        ));
+        let root = NestedSubgraph::new(SubgraphNode::from_fn(
+            "add",
+            gfn_add,
+            SubgraphConfig::new("add"),
+        ))
         .add_child(child);
 
         // x=5 -> add: 6 -> double: 12
@@ -1079,16 +1127,19 @@ mod tests {
     #[test]
     fn test_nested_error_propagation() {
         let gfn_ok = make_graph_fn(|s: Value| Ok(s));
-        let gfn_err = make_graph_fn(|_s: Value| {
-            Err(LangGraphError::Other("nested failure".to_string()))
-        });
+        let gfn_err =
+            make_graph_fn(|_s: Value| Err(LangGraphError::Other("nested failure".to_string())));
 
-        let child = NestedSubgraph::new(
-            SubgraphNode::from_fn("fail", gfn_err, SubgraphConfig::new("fail")),
-        );
-        let root = NestedSubgraph::new(
-            SubgraphNode::from_fn("ok", gfn_ok, SubgraphConfig::new("ok")),
-        )
+        let child = NestedSubgraph::new(SubgraphNode::from_fn(
+            "fail",
+            gfn_err,
+            SubgraphConfig::new("fail"),
+        ));
+        let root = NestedSubgraph::new(SubgraphNode::from_fn(
+            "ok",
+            gfn_ok,
+            SubgraphConfig::new("ok"),
+        ))
         .add_child(child);
 
         let result = root.execute(&json!({"x": 1}));
@@ -1106,17 +1157,23 @@ mod tests {
             Ok(state)
         });
 
-        let child1 = NestedSubgraph::new(
-            SubgraphNode::from_fn("add", gfn_add, SubgraphConfig::new("add")),
-        );
-        let child2 = NestedSubgraph::new(
-            SubgraphNode::from_fn("flag", gfn_set_flag, SubgraphConfig::new("flag")),
-        );
+        let child1 = NestedSubgraph::new(SubgraphNode::from_fn(
+            "add",
+            gfn_add,
+            SubgraphConfig::new("add"),
+        ));
+        let child2 = NestedSubgraph::new(SubgraphNode::from_fn(
+            "flag",
+            gfn_set_flag,
+            SubgraphConfig::new("flag"),
+        ));
 
         let gfn_id = make_graph_fn(|s: Value| Ok(s));
-        let root = NestedSubgraph::new(
-            SubgraphNode::from_fn("root", gfn_id, SubgraphConfig::new("root")),
-        )
+        let root = NestedSubgraph::new(SubgraphNode::from_fn(
+            "root",
+            gfn_id,
+            SubgraphConfig::new("root"),
+        ))
         .add_child(child1)
         .add_child(child2);
 

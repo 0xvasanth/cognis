@@ -346,10 +346,7 @@ impl SessionManager {
 
     /// Return references to all sessions with `Active` status.
     pub fn active_sessions(&self) -> Vec<&Session> {
-        self.sessions
-            .values()
-            .filter(|s| s.is_active())
-            .collect()
+        self.sessions.values().filter(|s| s.is_active()).collect()
     }
 
     /// Return references to all sessions with `Completed` status.
@@ -880,11 +877,9 @@ mod tests {
         let replay = SessionReplay::from_session(&session);
         assert!(replay.events().is_empty());
         assert!(replay.event_timeline().is_empty());
-        assert!(
-            replay
-                .events_in_range(Duration::ZERO, Duration::from_secs(1))
-                .is_empty()
-        );
+        assert!(replay
+            .events_in_range(Duration::ZERO, Duration::from_secs(1))
+            .is_empty());
     }
 
     #[test]

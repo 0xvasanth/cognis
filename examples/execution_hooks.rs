@@ -119,11 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // AfterGraph
     println!(">> Dispatching AfterGraph...");
-    let ctx = HookContext::new(
-        HookPhase::AfterGraph,
-        json!({"response": "Hi there!"}),
-        3,
-    );
+    let ctx = HookContext::new(HookPhase::AfterGraph, json!({"response": "Hi there!"}), 3);
     registry.dispatch(&ctx).await?;
     println!();
 
@@ -196,12 +192,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Valid state: {:?}", action);
 
     // Missing key
-    let ctx = HookContext::new(
-        HookPhase::BeforeNode,
-        json!({"input": "test"}),
-        0,
-    )
-    .with_node("my_node");
+    let ctx =
+        HookContext::new(HookPhase::BeforeNode, json!({"input": "test"}), 0).with_node("my_node");
     let action = validation_registry.dispatch(&ctx).await?;
     match &action {
         HookAction::Abort(reason) => println!("  Missing key: Abort - {}", reason),
@@ -209,8 +201,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Non-object state
-    let ctx = HookContext::new(HookPhase::BeforeNode, json!("not an object"), 0)
-        .with_node("my_node");
+    let ctx =
+        HookContext::new(HookPhase::BeforeNode, json!("not an object"), 0).with_node("my_node");
     let action = validation_registry.dispatch(&ctx).await?;
     match &action {
         HookAction::Abort(reason) => println!("  Non-object state: Abort - {}", reason),

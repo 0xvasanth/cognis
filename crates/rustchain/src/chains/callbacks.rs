@@ -1214,10 +1214,8 @@ mod tests {
     fn test_filter_callback_allows_all_with_true_predicate() {
         let recorder = Arc::new(RecordingCallback::new("rec"));
         let recorder_clone = recorder.clone();
-        let filter = FilterCallback::new(
-            Box::new(RecordingCallbackWrapper(recorder_clone)),
-            |_| true,
-        );
+        let filter =
+            FilterCallback::new(Box::new(RecordingCallbackWrapper(recorder_clone)), |_| true);
         filter.on_event(&ChainEvent::ChainStart {
             name: "a".into(),
             input: json!(null),
@@ -1310,12 +1308,8 @@ mod tests {
 
         let events = r.events();
         assert_eq!(events.len(), 2);
-        assert!(
-            matches!(&events[0], ChainEvent::ChainStart { name, .. } if name == "my_chain")
-        );
-        assert!(
-            matches!(&events[1], ChainEvent::ChainEnd { name, .. } if name == "my_chain")
-        );
+        assert!(matches!(&events[0], ChainEvent::ChainStart { name, .. } if name == "my_chain"));
+        assert!(matches!(&events[1], ChainEvent::ChainEnd { name, .. } if name == "my_chain"));
     }
 
     #[test]
@@ -1405,8 +1399,7 @@ mod tests {
             }
         }
 
-        let mgr =
-            CallbackManager::new().with_callback(Box::new(MetricsWrapper(metrics.clone())));
+        let mgr = CallbackManager::new().with_callback(Box::new(MetricsWrapper(metrics.clone())));
 
         let scope = CallbackScope::new(&mgr, "integrated", json!(null));
         scope.step(0, "s0");
@@ -1436,8 +1429,7 @@ mod tests {
             }
         }
 
-        let mgr =
-            CallbackManager::new().with_callback(Box::new(TracingWrapper(tracing.clone())));
+        let mgr = CallbackManager::new().with_callback(Box::new(TracingWrapper(tracing.clone())));
 
         let scope = CallbackScope::new(&mgr, "traced", json!({"input": 1}));
         scope.step(0, "prompt");

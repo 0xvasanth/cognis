@@ -376,17 +376,19 @@ impl PluginRegistry {
 
     /// Activate a registered plugin by name.
     pub fn activate(&mut self, name: &str) -> Result<()> {
-        let instance = self.plugins.get_mut(name).ok_or_else(|| {
-            DeepAgentError::Other(format!("plugin '{}' not found", name))
-        })?;
+        let instance = self
+            .plugins
+            .get_mut(name)
+            .ok_or_else(|| DeepAgentError::Other(format!("plugin '{}' not found", name)))?;
         instance.activate()
     }
 
     /// Deactivate a registered plugin by name.
     pub fn deactivate(&mut self, name: &str) -> Result<()> {
-        let instance = self.plugins.get_mut(name).ok_or_else(|| {
-            DeepAgentError::Other(format!("plugin '{}' not found", name))
-        })?;
+        let instance = self
+            .plugins
+            .get_mut(name)
+            .ok_or_else(|| DeepAgentError::Other(format!("plugin '{}' not found", name)))?;
         instance.deactivate()
     }
 
@@ -394,9 +396,10 @@ impl PluginRegistry {
     ///
     /// Active plugins must be deactivated before they can be unregistered.
     pub fn unregister(&mut self, name: &str) -> Result<()> {
-        let instance = self.plugins.get(name).ok_or_else(|| {
-            DeepAgentError::Other(format!("plugin '{}' not found", name))
-        })?;
+        let instance = self
+            .plugins
+            .get(name)
+            .ok_or_else(|| DeepAgentError::Other(format!("plugin '{}' not found", name)))?;
         if instance.status().is_active() {
             return Err(DeepAgentError::Other(format!(
                 "cannot unregister active plugin '{}'; deactivate it first",
@@ -468,10 +471,7 @@ impl PluginRegistry {
         }
 
         let instance = self.plugins.get(name).ok_or_else(|| {
-            DeepAgentError::Other(format!(
-                "dependency '{}' is not registered",
-                name
-            ))
+            DeepAgentError::Other(format!("dependency '{}' is not registered", name))
         })?;
 
         visited.insert(name.to_string(), false);
@@ -658,8 +658,14 @@ mod tests {
 
     #[test]
     fn test_capability_equality() {
-        assert_eq!(PluginCapability::ToolProvider, PluginCapability::ToolProvider);
-        assert_ne!(PluginCapability::ToolProvider, PluginCapability::EventHandler);
+        assert_eq!(
+            PluginCapability::ToolProvider,
+            PluginCapability::ToolProvider
+        );
+        assert_ne!(
+            PluginCapability::ToolProvider,
+            PluginCapability::EventHandler
+        );
         assert_eq!(
             PluginCapability::Custom("a".into()),
             PluginCapability::Custom("a".into())
@@ -699,8 +705,7 @@ mod tests {
 
     #[test]
     fn test_metadata_has_capability() {
-        let m = PluginMetadata::new("p", "1.0.0")
-            .with_capability(PluginCapability::ToolProvider);
+        let m = PluginMetadata::new("p", "1.0.0").with_capability(PluginCapability::ToolProvider);
         assert!(m.has_capability(&PluginCapability::ToolProvider));
         assert!(!m.has_capability(&PluginCapability::EventHandler));
     }
@@ -740,10 +745,7 @@ mod tests {
         assert_eq!(PluginStatus::Loaded.to_string(), "Loaded");
         assert_eq!(PluginStatus::Active.to_string(), "Active");
         assert_eq!(PluginStatus::Disabled.to_string(), "Disabled");
-        assert_eq!(
-            PluginStatus::Error("bad".into()).to_string(),
-            "Error(bad)"
-        );
+        assert_eq!(PluginStatus::Error("bad".into()).to_string(), "Error(bad)");
     }
 
     // -- Plugin trait lifecycle via PluginInstance --
@@ -943,13 +945,22 @@ mod tests {
     #[test]
     fn test_registry_plugins_with_capability() {
         let mut reg = PluginRegistry::new();
-        reg.register(simple_with_caps("tools1", vec![PluginCapability::ToolProvider]))
-            .unwrap();
-        reg.register(simple_with_caps("mw1", vec![PluginCapability::MiddlewareProvider]))
-            .unwrap();
+        reg.register(simple_with_caps(
+            "tools1",
+            vec![PluginCapability::ToolProvider],
+        ))
+        .unwrap();
+        reg.register(simple_with_caps(
+            "mw1",
+            vec![PluginCapability::MiddlewareProvider],
+        ))
+        .unwrap();
         reg.register(simple_with_caps(
             "both",
-            vec![PluginCapability::ToolProvider, PluginCapability::MiddlewareProvider],
+            vec![
+                PluginCapability::ToolProvider,
+                PluginCapability::MiddlewareProvider,
+            ],
         ))
         .unwrap();
 
@@ -987,8 +998,10 @@ mod tests {
     fn test_resolve_dependencies_diamond() {
         let mut reg = PluginRegistry::new();
         reg.register(simple("base")).unwrap();
-        reg.register(simple_with_deps("left", vec!["base"])).unwrap();
-        reg.register(simple_with_deps("right", vec!["base"])).unwrap();
+        reg.register(simple_with_deps("left", vec!["base"]))
+            .unwrap();
+        reg.register(simple_with_deps("right", vec!["base"]))
+            .unwrap();
         reg.register(simple_with_deps("top", vec!["left", "right"]))
             .unwrap();
         let order = reg.resolve_dependencies("top").unwrap();

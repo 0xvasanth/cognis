@@ -132,7 +132,7 @@ impl CompactJsonSerializer {
                 let filtered: Vec<Value> = arr
                     .iter()
                     .filter(|v| !v.is_null())
-                    .map(|v| Self::compact_value(v))
+                    .map(Self::compact_value)
                     .collect();
                 Value::Array(filtered)
             }
@@ -149,9 +149,8 @@ impl CheckpointSerializer for CompactJsonSerializer {
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<Value> {
-        serde_json::from_slice(data).map_err(|e| {
-            LangGraphError::Other(format!("Compact JSON deserialization failed: {e}"))
-        })
+        serde_json::from_slice(data)
+            .map_err(|e| LangGraphError::Other(format!("Compact JSON deserialization failed: {e}")))
     }
 }
 
@@ -177,9 +176,8 @@ impl CheckpointSerializer for PrettyJsonSerializer {
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<Value> {
-        serde_json::from_slice(data).map_err(|e| {
-            LangGraphError::Other(format!("Pretty JSON deserialization failed: {e}"))
-        })
+        serde_json::from_slice(data)
+            .map_err(|e| LangGraphError::Other(format!("Pretty JSON deserialization failed: {e}")))
     }
 }
 
@@ -238,9 +236,12 @@ impl CheckpointSerializer for VersionedSerializer {
         })?;
 
         // Extract the data field — accept any version (supports reading older versions).
-        let _version = envelope.get("version").and_then(|v| v.as_u64()).ok_or_else(|| {
-            LangGraphError::Other("VersionedSerializer: missing 'version' field".into())
-        })?;
+        let _version = envelope
+            .get("version")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| {
+                LangGraphError::Other("VersionedSerializer: missing 'version' field".into())
+            })?;
 
         let data_value = envelope.get("data").ok_or_else(|| {
             LangGraphError::Other("VersionedSerializer: missing 'data' field".into())
@@ -277,8 +278,9 @@ impl CheckpointSerializer for CompressedSerializer {
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<Value> {
-        let encoded = std::str::from_utf8(data)
-            .map_err(|e| LangGraphError::Other(format!("CompressedSerializer: invalid UTF-8: {e}")))?;
+        let encoded = std::str::from_utf8(data).map_err(|e| {
+            LangGraphError::Other(format!("CompressedSerializer: invalid UTF-8: {e}"))
+        })?;
         let decoded = BASE64.decode(encoded).map_err(|e| {
             LangGraphError::Other(format!("CompressedSerializer: base64 decode failed: {e}"))
         })?;
@@ -396,10 +398,7 @@ impl CheckpointEntry {
         })?;
         let metadata = CheckpointMetadata::from_json(metadata_value)?;
 
-        let state = combined
-            .get("state")
-            .cloned()
-            .unwrap_or(Value::Null);
+        let state = combined.get("state").cloned().unwrap_or(Value::Null);
 
         Ok(Self { metadata, state })
     }
@@ -409,13 +408,16 @@ impl CheckpointEntry {
 // CheckpointMigration
 // ---------------------------------------------------------------------------
 
+/// A single migration step: `(from_version, to_version, transform_fn)`.
+type MigrationStep = (u64, u64, fn(Value) -> Value);
+
 /// Handles version-to-version state migrations for checkpoint data.
 ///
 /// Migrations are registered as `(from_version, to_version, transform_fn)`
 /// triples and applied sequentially when upgrading from an old version to
 /// a new one.
 pub struct CheckpointMigration {
-    migrations: Vec<(u64, u64, fn(Value) -> Value)>,
+    migrations: Vec<MigrationStep>,
 }
 
 impl CheckpointMigration {
@@ -427,7 +429,12 @@ impl CheckpointMigration {
     }
 
     /// Register a migration from `from_version` to `to_version`.
-    pub fn add_migration(&mut self, from_version: u64, to_version: u64, transform: fn(Value) -> Value) {
+    pub fn add_migration(
+        &mut self,
+        from_version: u64,
+        to_version: u64,
+        transform: fn(Value) -> Value,
+    ) {
         self.migrations.push((from_version, to_version, transform));
     }
 

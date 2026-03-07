@@ -92,7 +92,7 @@ fn find_json_block(text: &str) -> Option<&str> {
     }
 
     // Find first `{` or `[` and match its closing bracket
-    for (open, close) in [( '{', '}'), ('[', ']')] {
+    for (open, close) in [('{', '}'), ('[', ']')] {
         if let Some(start) = stripped.find(open) {
             let mut depth = 0i32;
             let mut in_string = false;
@@ -387,7 +387,10 @@ impl OutputParser for CommaSeparatedListParser {
             .filter(|v| v.as_str().map(|s| !s.is_empty()).unwrap_or(false))
             .collect();
         if items.is_empty() {
-            return Err(parser_error("No items found after splitting by comma", text));
+            return Err(parser_error(
+                "No items found after splitting by comma",
+                text,
+            ));
         }
         Ok(Value::Array(items))
     }
@@ -1134,9 +1137,7 @@ mod tests {
                 "required": ["name", "age"]
             }))
             .build();
-        let result = parser
-            .parse(r#"{"name": "Alice", "age": 30}"#)
-            .unwrap();
+        let result = parser.parse(r#"{"name": "Alice", "age": 30}"#).unwrap();
         assert_eq!(result, json!({"name": "Alice", "age": 30}));
     }
 

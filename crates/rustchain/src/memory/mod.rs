@@ -37,8 +37,8 @@ pub use knowledge_graph::{
 };
 pub use summary::ConversationSummaryMemory;
 pub use summary_buffer::{
-    SimpleSummarizer, SummaryBufferMemory, SummaryBufferMemoryBuilder, SummaryStrategy,
-    Summarizer, TemplateSummarizer,
+    SimpleSummarizer, Summarizer, SummaryBufferMemory, SummaryBufferMemoryBuilder, SummaryStrategy,
+    TemplateSummarizer,
 };
 pub use token_buffer::{
     CharBasedTokenCounter, SimpleTokenCounter, TokenBufferMemory, TokenBufferMemoryBuilder,

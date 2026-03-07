@@ -67,10 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Goal: {}", simple_plan.goal);
     println!("Steps: {}", simple_plan.steps.len());
-    println!(
-        "  Step 0: {}\n",
-        simple_plan.steps[0].description
-    );
+    println!("  Step 0: {}\n", simple_plan.steps[0].description);
 
     // -----------------------------------------------------------------------
     // 3. TemplatePlanner: use a prompt template for plan generation
@@ -102,14 +99,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--- 4. TemplatePlanner with Generator ---");
     println!("A generator function can produce plan text dynamically.\n");
 
-    let gen_planner =
-        TemplatePlanner::new("Plan: {goal}").with_generator(|_prompt| {
-            Ok("1. Gather data from all sources\n\
+    let gen_planner = TemplatePlanner::new("Plan: {goal}").with_generator(|_prompt| {
+        Ok("1. Gather data from all sources\n\
                 2. Clean and preprocess data\n\
                 3. Train the model\n\
                 4. Evaluate results"
-                .to_string())
-        });
+            .to_string())
+    });
 
     let gen_plan = gen_planner.create_plan("train an ML model")?;
     println!("Generated plan with {} steps:", gen_plan.steps.len());
@@ -131,10 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     while let Some(step) = plan.next_step() {
-        println!(
-            "  Executing step {}: '{}'",
-            step.index, step.description
-        );
+        println!("  Executing step {}: '{}'", step.index, step.description);
         step.status = PlanStepStatus::Completed;
         step.result = Some(format!("Step {} done successfully", step.index));
     }

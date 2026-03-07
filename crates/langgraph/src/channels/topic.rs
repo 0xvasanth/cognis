@@ -853,10 +853,7 @@ mod tests {
         let consumed = ch.consume(TopicFilter::Exact("orders".to_string()));
         assert_eq!(consumed.len(), 2);
         assert_eq!(ch.message_count(), 1);
-        assert_eq!(
-            ch.subscribe(TopicFilter::All)[0].payload,
-            Value::from(2)
-        );
+        assert_eq!(ch.subscribe(TopicFilter::All)[0].payload, Value::from(2));
     }
 
     #[test]

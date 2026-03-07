@@ -49,6 +49,7 @@ pub use configurable::{
     RunnableConfigurableFields,
 };
 pub use each::RunnableEach;
+pub use events::{EventEmitter, EventFilter, EventTrace, RunEvent, RunEventType};
 pub use ext::RunnableExt;
 pub use fallbacks::{with_fallbacks, RunnableWithFallbacks};
 pub use graph::{Branch, Edge, Graph, Node, NodeData};
@@ -66,7 +67,6 @@ pub use scoped_callbacks::{
 };
 pub use sequence::RunnableSequence;
 pub use timeout::{RunnableDeadline, RunnableTimeout, TimeoutBehavior, TimeoutConfig};
-pub use events::{EventEmitter, EventFilter, EventTrace, RunEvent, RunEventType};
 
 /// Creates a `RunnableSequence` from a list of runnables.
 ///
