@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 
 use rustchain::stores::docstore::{
-    DocStore, DocStoreIndex, DocStoreQuery, DocStoreStats, IndexedDocStore, InMemoryDocStore,
+    DocStore, DocStoreIndex, DocStoreQuery, DocStoreStats, InMemoryDocStore, IndexedDocStore,
     MetadataCondition,
 };
 use rustchain_core::documents::Document;
@@ -47,8 +47,10 @@ fn main() {
     // Add a document with a custom ID
     let id2 = store
         .add(
-            Document::new("Python is a versatile language popular for data science and web development.")
-                .with_id("python-intro"),
+            Document::new(
+                "Python is a versatile language popular for data science and web development.",
+            )
+            .with_id("python-intro"),
         )
         .unwrap();
     println!("Added document with custom ID: {}", id2);
@@ -71,7 +73,9 @@ fn main() {
     let docs = vec![
         Document::new("JavaScript powers the modern web with event-driven programming."),
         Document::new("Go is a statically typed language designed for simplicity and concurrency."),
-        Document::new("Haskell is a purely functional programming language with strong static typing."),
+        Document::new(
+            "Haskell is a purely functional programming language with strong static typing.",
+        ),
     ];
     let batch_ids = store.add_batch(docs).unwrap();
     println!("Batch added {} documents", batch_ids.len());
@@ -90,7 +94,11 @@ fn main() {
         results.len()
     );
     for doc in &results {
-        println!("  [{}] {}", doc.id.as_deref().unwrap_or("?"), doc.page_content);
+        println!(
+            "  [{}] {}",
+            doc.id.as_deref().unwrap_or("?"),
+            doc.page_content
+        );
     }
 
     println!();
@@ -102,7 +110,11 @@ fn main() {
         results.len()
     );
     for doc in &results {
-        println!("  [{}] {}...", doc.id.as_deref().unwrap_or("?"), &doc.page_content[..50]);
+        println!(
+            "  [{}] {}...",
+            doc.id.as_deref().unwrap_or("?"),
+            &doc.page_content[..50]
+        );
     }
 
     println!();
@@ -124,11 +136,26 @@ fn main() {
     let mut store2 = InMemoryDocStore::new();
 
     let articles = vec![
-        ("Intro to Rust ownership", vec![("category", json!("tutorial")), ("level", json!(3.0))]),
-        ("Advanced Rust lifetimes", vec![("category", json!("tutorial")), ("level", json!(8.0))]),
-        ("Rust in production at scale", vec![("category", json!("case-study")), ("level", json!(5.0))]),
-        ("Building web APIs with Rust", vec![("category", json!("tutorial")), ("level", json!(4.5))]),
-        ("Comparing Rust and C++", vec![("category", json!("comparison")), ("level", json!(6.0))]),
+        (
+            "Intro to Rust ownership",
+            vec![("category", json!("tutorial")), ("level", json!(3.0))],
+        ),
+        (
+            "Advanced Rust lifetimes",
+            vec![("category", json!("tutorial")), ("level", json!(8.0))],
+        ),
+        (
+            "Rust in production at scale",
+            vec![("category", json!("case-study")), ("level", json!(5.0))],
+        ),
+        (
+            "Building web APIs with Rust",
+            vec![("category", json!("tutorial")), ("level", json!(4.5))],
+        ),
+        (
+            "Comparing Rust and C++",
+            vec![("category", json!("comparison")), ("level", json!(6.0))],
+        ),
     ];
 
     for (content, meta_pairs) in &articles {
@@ -144,7 +171,10 @@ fn main() {
     // Equals filter
     let query = DocStoreQuery::new().with_metadata("category", json!("tutorial"));
     let results = store2.search(&query).unwrap();
-    println!("Tutorials (category == 'tutorial'): {} found", results.len());
+    println!(
+        "Tutorials (category == 'tutorial'): {} found",
+        results.len()
+    );
     for doc in &results {
         println!("  - {}", doc.page_content);
     }
@@ -157,15 +187,20 @@ fn main() {
     let results = store2.search(&query).unwrap();
     println!("\nAdvanced articles (level > 5.0): {} found", results.len());
     for doc in &results {
-        let level = doc.metadata.get("level").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let level = doc
+            .metadata
+            .get("level")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         println!("  - {} (level: {})", doc.page_content, level);
     }
 
     // Contains filter
     let mut query = DocStoreQuery::new();
-    query
-        .metadata_filters
-        .push(MetadataCondition::Contains("category".to_string(), "study".to_string()));
+    query.metadata_filters.push(MetadataCondition::Contains(
+        "category".to_string(),
+        "study".to_string(),
+    ));
     let results = store2.search(&query).unwrap();
     println!(
         "\nCase studies (category contains 'study'): {} found",
@@ -195,10 +230,7 @@ fn main() {
         .metadata_filters
         .push(MetadataCondition::Exists("level".to_string()));
     let results = store2.search(&query).unwrap();
-    println!(
-        "\nDocuments with 'level' metadata: {} found",
-        results.len()
-    );
+    println!("\nDocuments with 'level' metadata: {} found", results.len());
 
     let mut query = DocStoreQuery::new();
     query
@@ -255,12 +287,22 @@ fn main() {
 
     let mut index = DocStoreIndex::new();
 
-    index.index_document("d1", "Rust provides memory safety without garbage collection");
-    index.index_document("d2", "Garbage collection in Java manages memory automatically");
+    index.index_document(
+        "d1",
+        "Rust provides memory safety without garbage collection",
+    );
+    index.index_document(
+        "d2",
+        "Garbage collection in Java manages memory automatically",
+    );
     index.index_document("d3", "Rust and C++ both offer fine-grained memory control");
     index.index_document("d4", "Python uses garbage collection for memory management");
 
-    println!("Indexed {} documents with {} distinct terms", index.document_count(), index.term_count());
+    println!(
+        "Indexed {} documents with {} distinct terms",
+        index.document_count(),
+        index.term_count()
+    );
 
     // Search by relevance
     let results = index.search("memory safety");
@@ -277,7 +319,10 @@ fn main() {
 
     // Remove a document from the index
     index.remove("d4");
-    println!("\nRemoved 'd4' from index. Documents remaining: {}", index.document_count());
+    println!(
+        "\nRemoved 'd4' from index. Documents remaining: {}",
+        index.document_count()
+    );
 
     let results = index.search("garbage");
     println!("Search for 'garbage' after removal:");
