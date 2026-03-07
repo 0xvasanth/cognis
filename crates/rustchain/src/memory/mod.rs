@@ -15,6 +15,7 @@
 
 pub mod buffer;
 pub mod chat_history;
+pub mod conversation;
 pub mod entity;
 pub mod hybrid;
 pub mod knowledge_graph;
