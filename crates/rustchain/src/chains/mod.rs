@@ -34,9 +34,9 @@ pub use api::{
 };
 pub mod transform;
 pub use transform::{
-    uppercase_transform, lowercase_transform, trim_transform, json_extract_transform,
-    regex_replace_transform, map_transform, AsyncTransformChain, AsyncTransformFn,
-    TransformChain, TransformChainBuilder, TransformFn, TransformPipeline,
+    json_extract_transform, lowercase_transform, map_transform, regex_replace_transform,
+    trim_transform, uppercase_transform, AsyncTransformChain, AsyncTransformFn, TransformChain,
+    TransformChainBuilder, TransformFn, TransformPipeline,
 };
 pub mod streaming;
 pub use streaming::{
@@ -53,4 +53,9 @@ pub mod extraction;
 pub use extraction::{
     ExtractionChain, ExtractionChainBuilder, ExtractionExample, ExtractionResult, ExtractionSchema,
     ExtractionSchemaBuilder, FieldType, OutputFormat, SchemaField, SchemaFieldBuilder,
+};
+pub mod documents;
+pub use documents::{
+    CollapseStrategy, DocumentCombineStrategy, DocumentFormatter, StuffDocumentsChain,
+    StuffDocumentsChainBuilder, StuffStrategy, create_stuff_documents_chain,
 };
