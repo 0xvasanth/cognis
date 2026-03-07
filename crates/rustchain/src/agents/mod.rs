@@ -12,6 +12,7 @@
 pub mod executor;
 pub mod middleware;
 pub mod output_parser;
+pub mod plan_and_execute;
 pub mod react;
 pub mod structured_output;
 pub mod tool_calling;
@@ -21,6 +22,10 @@ pub use executor::{
 };
 pub use middleware::types::{
     AgentMiddleware, AgentState, JumpTo, ModelCallResult, ModelRequest, ModelResponse,
+};
+pub use plan_and_execute::{
+    Plan, PlanAndExecuteAgent, PlanAndExecuteAgentBuilder, PlanAndExecuteResult, PlanStep,
+    PlanStepStatus, Planner, SimplePlanner, StepExecutor, TemplatePlanner, ToolStepExecutor,
 };
 pub use output_parser::{
     AgentOutputParser, JsonOutputParser, ReActOutputParser, ToolCallOutputParser, XmlOutputParser,
