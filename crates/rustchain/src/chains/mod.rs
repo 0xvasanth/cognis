@@ -59,3 +59,8 @@ pub use documents::{
     create_stuff_documents_chain, CollapseStrategy, DocumentCombineStrategy, DocumentFormatter,
     StuffDocumentsChain, StuffDocumentsChainBuilder, StuffStrategy,
 };
+pub mod qa;
+pub use qa::{
+    create_qa_chain, CitedAnswer, Citation, QAChain, QAChainType, QAConfig, QAConfigBuilder,
+    QAResult,
+};
