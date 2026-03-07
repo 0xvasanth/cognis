@@ -4,11 +4,15 @@
 //! [`PromptTemplate`] as a convenience wrapper around core prompt formatting
 //! with support for partial variables and `Runnable` composition.
 
+pub mod chat;
 pub mod few_shot;
 pub mod hub;
 pub mod registry;
 pub mod template;
 
+pub use chat::{
+    extract_template_variables, messages_placeholder, ChatPromptTemplate, MessagePromptTemplate,
+};
 pub use few_shot::{
     Example, ExampleSelector, FewShotPromptTemplate, FewShotPromptTemplateBuilder,
     LengthBasedSelector, LengthBasedSelectorBuilder, SemanticSimilaritySelector,
