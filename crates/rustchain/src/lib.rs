@@ -53,6 +53,7 @@ pub mod output_parsers;
 pub mod prompts;
 pub mod retrievers;
 pub mod text_splitter;
+pub mod stores;
 pub mod tools;
 pub mod vectorstores;
 
