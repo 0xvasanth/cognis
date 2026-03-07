@@ -73,6 +73,7 @@ pub mod health;
 pub mod middleware;
 pub mod plugins;
 pub mod presets;
+pub mod sandbox;
 pub mod session;
 pub mod telemetry;
 pub mod tool_registry;
