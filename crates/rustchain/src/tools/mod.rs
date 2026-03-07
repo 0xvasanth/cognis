@@ -1,6 +1,7 @@
 /// Concrete tool implementations for use with the agent executor.
 pub mod cached;
 pub mod calculator;
+pub mod human;
 pub mod json_query;
 pub mod openapi;
 pub mod python_repl;
