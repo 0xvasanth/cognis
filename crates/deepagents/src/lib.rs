@@ -72,6 +72,7 @@ pub mod events;
 pub mod health;
 pub mod middleware;
 pub mod presets;
+pub mod telemetry;
 pub mod tool_registry;
 pub mod workflow;
 
