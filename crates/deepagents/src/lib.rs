@@ -80,6 +80,7 @@ pub mod sandbox;
 pub mod session;
 pub mod telemetry;
 pub mod tool_registry;
+pub mod orchestrator;
 pub mod workflow;
 
 pub use agent::create_deep_agent;
