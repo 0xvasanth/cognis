@@ -14,6 +14,7 @@
 //! - [`reranking`] -- Reranking retrievers with keyword, TF-IDF, cross-encoder, and cascade support.
 
 pub mod caching;
+pub mod compression;
 pub mod compressor_pipeline;
 pub mod contextual_compression;
 pub mod docstore;
