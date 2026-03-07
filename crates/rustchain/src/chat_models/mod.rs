@@ -33,6 +33,7 @@ pub mod structured;
 pub mod token_counting;
 
 pub mod factory;
+pub mod registry;
 
 pub use base::*;
 pub use structured::*;
