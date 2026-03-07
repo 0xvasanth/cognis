@@ -1,1048 +1,1176 @@
-//! Core Pregel execution engine.
+//! Pregel-style execution engine with superstep processing.
 //!
-//! The [`PregelExecutor`] implements the Pregel-style step-based execution model:
+//! This module implements the core Pregel execution model where graph nodes are
+//! executed in discrete "supersteps". In each superstep, all nodes whose
+//! dependencies have been satisfied are executed, their outputs are collected as
+//! messages, and the process repeats until no more nodes are ready or the
+//! maximum number of supersteps is reached.
 //!
-//! 1. **Prepare tasks** — determine which nodes should run based on channel triggers
-//! 2. **Execute tasks** — run node actions concurrently, collecting channel writes
-//! 3. **Apply writes** — update channels with task outputs
-//! 4. **Check termination** — stop if no tasks remain, END is reached, or recursion limit hit
+//! # Key Types
 //!
-//! This is the heart of LangGraph's execution model, inspired by Google's Pregel
-//! and Apache Beam.
+//! - [`NodeFunction`] — the function signature for node computations
+//! - [`ExecutionNode`] — a named node with a function and dependency list
+//! - [`SuperStep`] — records the result of a single superstep
+//! - [`ExecutionResult`] — the final output of a complete execution run
+//! - [`ExecutionConfig`] — tuning knobs (max supersteps, retries, halt behavior)
+//! - [`PregelExecutor`] — the main executor that orchestrates superstep processing
+//! - [`ExecutionTrace`] — debug-friendly recording of the execution history
+//!
+//! # Example
+//!
+//! ```rust
+//! use langgraph::pregel::executor::{ExecutionConfig, ExecutionNode, PregelExecutor};
+//! use serde_json::json;
+//!
+//! let config = ExecutionConfig::new();
+//! let mut executor = PregelExecutor::new(config);
+//!
+//! executor.add_node(ExecutionNode::new("greet", |state| {
+//!     Ok(json!({"greeting": "hello"}))
+//! }));
+//!
+//! let result = executor.execute(json!({})).unwrap();
+//! assert!(result.final_state.get("greeting").is_some());
+//! ```
 
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 use serde_json::Value;
 
-use crate::channels::BaseChannel;
-use crate::constants::END;
-use crate::errors::{create_error_message, ErrorCode, LangGraphError};
-use crate::types::StreamMode;
+use crate::errors::LangGraphError;
 
-use super::types::{
-    ChannelWrite, PregelConfig, PregelNodeAction, PregelNodeSpec, PregelStatus,
-    PregelTaskDescription, StreamChunk, TaskResult,
-};
+/// Type alias for a node's computation function.
+///
+/// Accepts the current state as a [`Value`] and returns either an updated
+/// (partial) state or an error. The function must be `Send + Sync` so that it
+/// can be shared across threads.
+pub type NodeFunction = Box<dyn Fn(Value) -> Result<Value, LangGraphError> + Send + Sync>;
 
-/// The core Pregel execution engine.
+/// A node registered in the Pregel execution graph.
 ///
-/// Manages channels, nodes, and the step-based execution loop. Each "super-step"
-/// consists of: collecting triggered tasks, executing them, applying their writes
-/// to channels, and checking for termination.
+/// Each node has a unique name, a computation function, and a list of
+/// dependency names (other nodes that must complete before this node can run).
+pub struct ExecutionNode {
+    /// Unique name of this node.
+    pub name: String,
+    /// The computation to execute when this node runs.
+    pub function: NodeFunction,
+    /// Names of nodes that must complete before this node is eligible.
+    pub dependencies: Vec<String>,
+}
+
+impl ExecutionNode {
+    /// Create a new execution node with the given name and function.
+    ///
+    /// The node starts with no dependencies.
+    pub fn new<F>(name: impl Into<String>, function: F) -> Self
+    where
+        F: Fn(Value) -> Result<Value, LangGraphError> + Send + Sync + 'static,
+    {
+        Self {
+            name: name.into(),
+            function: Box::new(function),
+            dependencies: Vec::new(),
+        }
+    }
+
+    /// Add a dependency on another node.
+    ///
+    /// This node will not execute until the named dependency has completed.
+    pub fn with_dependency(mut self, dep: impl Into<String>) -> Self {
+        self.dependencies.push(dep.into());
+        self
+    }
+}
+
+impl std::fmt::Debug for ExecutionNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecutionNode")
+            .field("name", &self.name)
+            .field("dependencies", &self.dependencies)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Records the outcome of a single Pregel superstep.
 ///
-/// # Channel-Based State Management
+/// Each superstep executes all nodes whose dependencies have been satisfied and
+/// collects their output messages (partial state updates).
+#[derive(Debug, Clone)]
+pub struct SuperStep {
+    /// The zero-based index of this superstep within the execution.
+    pub step_number: usize,
+    /// Names of nodes that were executed in this superstep.
+    pub nodes_executed: Vec<String>,
+    /// Messages (partial state updates) produced by each node, keyed by node name.
+    pub messages: HashMap<String, Value>,
+    /// Wall-clock duration of this superstep in milliseconds.
+    pub duration_ms: u64,
+}
+
+impl SuperStep {
+    /// Serialize this superstep to a JSON value.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "step_number": self.step_number,
+            "nodes_executed": self.nodes_executed,
+            "messages": self.messages,
+            "duration_ms": self.duration_ms,
+        })
+    }
+}
+
+/// The result of a complete Pregel execution run.
+#[derive(Debug, Clone)]
+pub struct ExecutionResult {
+    /// The merged final state after all supersteps have completed.
+    pub final_state: Value,
+    /// The sequence of supersteps that were executed.
+    pub supersteps: Vec<SuperStep>,
+    /// Total number of supersteps executed.
+    pub total_steps: usize,
+    /// Total wall-clock duration of the entire execution in milliseconds.
+    pub total_duration_ms: u64,
+}
+
+impl ExecutionResult {
+    /// Serialize this result to a JSON value.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "final_state": self.final_state,
+            "supersteps": self.supersteps.iter().map(|s| s.to_json()).collect::<Vec<_>>(),
+            "total_steps": self.total_steps,
+            "total_duration_ms": self.total_duration_ms,
+        })
+    }
+}
+
+/// Configuration for the Pregel execution engine.
 ///
-/// State flows through channels (`Box<dyn BaseChannel>`). Nodes read from and
-/// write to channels. The channel type determines how concurrent writes are
-/// resolved (last-value, topic/append, binary-operator aggregation, etc.).
+/// Controls limits, retry behavior, and error handling strategy.
+#[derive(Debug, Clone)]
+pub struct ExecutionConfig {
+    /// Maximum number of supersteps before the executor halts.
+    /// Default: 100.
+    pub max_supersteps: usize,
+    /// Maximum number of retries for a failing node within a single superstep.
+    /// Default: 3.
+    pub max_node_retries: u32,
+    /// Whether to stop execution immediately when a node returns an error.
+    /// If `false`, execution continues and the error is recorded in the state.
+    /// Default: true.
+    pub halt_on_error: bool,
+}
+
+impl ExecutionConfig {
+    /// Create a new configuration with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the maximum number of supersteps.
+    pub fn with_max_supersteps(mut self, max: usize) -> Self {
+        self.max_supersteps = max;
+        self
+    }
+
+    /// Set the maximum number of retries per node.
+    pub fn with_max_node_retries(mut self, retries: u32) -> Self {
+        self.max_node_retries = retries;
+        self
+    }
+
+    /// Set the halt-on-error flag.
+    pub fn with_halt_on_error(mut self, halt: bool) -> Self {
+        self.halt_on_error = halt;
+        self
+    }
+}
+
+impl Default for ExecutionConfig {
+    fn default() -> Self {
+        Self {
+            max_supersteps: 100,
+            max_node_retries: 3,
+            halt_on_error: true,
+        }
+    }
+}
+
+/// The main Pregel-style execution engine.
 ///
-/// # Trigger Model
-///
-/// Nodes are triggered based on which channels were **updated** in the current
-/// step (not merely available). On the first step after `apply_input`, the input
-/// channels count as updated. On subsequent steps, only channels that received
-/// writes from the previous step's tasks are considered updated. This prevents
-/// infinite loops when using persistent channels like `LastValue`.
-///
-/// # Example
-///
-/// ```rust,no_run
-/// use langgraph::pregel::executor::PregelExecutor;
-/// use langgraph::pregel::types::{PregelNodeSpec, PregelConfig};
-/// use langgraph::channels::LastValue;
-///
-/// let mut executor = PregelExecutor::new(PregelConfig::default());
-/// // Add channels, nodes, then run
-/// ```
+/// Orchestrates graph node execution through a sequence of supersteps. In each
+/// superstep every node whose dependencies have already completed is executed.
+/// The process repeats until either no more nodes are eligible, all nodes have
+/// completed, or the maximum superstep limit is reached.
 pub struct PregelExecutor {
-    /// The channels that hold graph state between steps.
-    channels: HashMap<String, Box<dyn BaseChannel>>,
-    /// The nodes in the graph.
-    nodes: HashMap<String, PregelNodeSpec>,
+    /// Registered execution nodes, keyed by name.
+    nodes: HashMap<String, ExecutionNode>,
     /// Execution configuration.
-    config: PregelConfig,
-    /// Current step number (0-based).
-    step: usize,
-    /// Current execution status.
-    status: PregelStatus,
-    /// Stream chunks collected during execution.
-    stream_output: Vec<StreamChunk>,
-    /// Channels that were updated in the current step (used for triggering).
-    updated_channels: HashSet<String>,
+    config: ExecutionConfig,
+}
+
+impl PregelExecutor {
+    /// Create a new executor with the given configuration.
+    pub fn new(config: ExecutionConfig) -> Self {
+        Self {
+            nodes: HashMap::new(),
+            config,
+        }
+    }
+
+    /// Register an execution node.
+    ///
+    /// If a node with the same name already exists it will be replaced.
+    pub fn add_node(&mut self, node: ExecutionNode) {
+        self.nodes.insert(node.name.clone(), node);
+    }
+
+    /// Return the number of registered nodes.
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Return `true` if no nodes are registered.
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    /// Execute a single superstep.
+    ///
+    /// Runs all nodes whose dependencies are present in `completed`, merges
+    /// their output into `state`, adds the newly completed node names to
+    /// `completed`, and returns a [`SuperStep`] describing what happened.
+    pub fn execute_step(
+        &self,
+        state: &mut Value,
+        completed: &mut HashSet<String>,
+        step_number: usize,
+    ) -> Result<SuperStep, LangGraphError> {
+        let start = Instant::now();
+        let mut nodes_executed = Vec::new();
+        let mut messages: HashMap<String, Value> = HashMap::new();
+
+        // Collect ready nodes (those whose dependencies are all in `completed`).
+        let ready: Vec<&String> = self
+            .nodes
+            .keys()
+            .filter(|name| {
+                !completed.contains(*name)
+                    && self.nodes[*name]
+                        .dependencies
+                        .iter()
+                        .all(|dep| completed.contains(dep))
+            })
+            .collect();
+
+        for name in ready {
+            let node = &self.nodes[name];
+            let mut last_err: Option<LangGraphError> = None;
+            let mut succeeded = false;
+
+            for _attempt in 0..=self.config.max_node_retries {
+                match (node.function)(state.clone()) {
+                    Ok(output) => {
+                        // Merge the partial output into the state.
+                        if let Value::Object(map) = &output {
+                            if let Value::Object(ref mut state_map) = state {
+                                for (k, v) in map {
+                                    state_map.insert(k.clone(), v.clone());
+                                }
+                            }
+                        }
+                        messages.insert(name.clone(), output);
+                        nodes_executed.push(name.clone());
+                        completed.insert(name.clone());
+                        succeeded = true;
+                        last_err = None;
+                        break;
+                    }
+                    Err(e) => {
+                        last_err = Some(e);
+                    }
+                }
+            }
+
+            if !succeeded {
+                if self.config.halt_on_error {
+                    return Err(last_err.unwrap_or_else(|| {
+                        LangGraphError::Other(format!("Node '{}' failed", name))
+                    }));
+                }
+                // Record the error in state and mark node as completed so
+                // dependents can see it.
+                let err_msg = last_err
+                    .as_ref()
+                    .map(|e| e.to_string())
+                    .unwrap_or_else(|| "unknown error".to_string());
+                if let Value::Object(ref mut state_map) = state {
+                    state_map.insert(
+                        format!("{}_error", name),
+                        Value::String(err_msg.clone()),
+                    );
+                }
+                messages.insert(
+                    name.clone(),
+                    serde_json::json!({"error": err_msg}),
+                );
+                nodes_executed.push(name.clone());
+                completed.insert(name.clone());
+            }
+        }
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+
+        Ok(SuperStep {
+            step_number,
+            nodes_executed,
+            messages,
+            duration_ms,
+        })
+    }
+
+    /// Run the full Pregel execution loop starting from `initial_state`.
+    ///
+    /// Repeatedly executes supersteps until:
+    /// - All nodes have completed.
+    /// - No more nodes are ready (e.g., unsatisfied or circular dependencies).
+    /// - The maximum superstep limit is reached.
+    ///
+    /// Returns an [`ExecutionResult`] containing the final state and execution
+    /// history.
+    pub fn execute(&self, initial_state: Value) -> Result<ExecutionResult, LangGraphError> {
+        let overall_start = Instant::now();
+        let mut state = initial_state;
+        let mut completed: HashSet<String> = HashSet::new();
+        let mut supersteps: Vec<SuperStep> = Vec::new();
+
+        for step_number in 0..self.config.max_supersteps {
+            let superstep = self.execute_step(&mut state, &mut completed, step_number)?;
+
+            let made_progress = !superstep.nodes_executed.is_empty();
+            supersteps.push(superstep);
+
+            if !made_progress {
+                // No nodes could run — either all are done or remaining nodes
+                // have unsatisfiable dependencies (e.g., circular).
+                break;
+            }
+
+            if completed.len() == self.nodes.len() {
+                // All nodes have completed.
+                break;
+            }
+        }
+
+        let total_duration_ms = overall_start.elapsed().as_millis() as u64;
+        let total_steps = supersteps.len();
+
+        Ok(ExecutionResult {
+            final_state: state,
+            supersteps,
+            total_steps,
+            total_duration_ms,
+        })
+    }
 }
 
 impl std::fmt::Debug for PregelExecutor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PregelExecutor")
-            .field("channels", &self.channels.keys().collect::<Vec<_>>())
+            .field("node_count", &self.nodes.len())
             .field("nodes", &self.nodes.keys().collect::<Vec<_>>())
             .field("config", &self.config)
-            .field("step", &self.step)
-            .field("status", &self.status)
             .finish()
     }
 }
 
-impl PregelExecutor {
-    /// Create a new Pregel executor with the given configuration.
-    pub fn new(config: PregelConfig) -> Self {
-        Self {
-            channels: HashMap::new(),
-            nodes: HashMap::new(),
-            config,
-            step: 0,
-            status: PregelStatus::Pending,
-            stream_output: Vec::new(),
-            updated_channels: HashSet::new(),
-        }
-    }
-
-    /// Add a channel to the executor.
-    ///
-    /// Channels are the state containers that nodes read from and write to.
-    /// Each channel has a unique key name.
-    pub fn add_channel(&mut self, channel: Box<dyn BaseChannel>) {
-        self.channels.insert(channel.key().to_string(), channel);
-    }
-
-    /// Add a node to the executor.
-    ///
-    /// Nodes define the computation. Each node specifies which channels trigger
-    /// it, which channels it reads, and what action to perform.
-    pub fn add_node(&mut self, node: PregelNodeSpec) {
-        self.nodes.insert(node.name.clone(), node);
-    }
-
-    /// Get the current values of all available channels as a JSON object.
-    pub fn read_channels(&self) -> Value {
-        let mut state = serde_json::Map::new();
-        for (key, channel) in &self.channels {
-            if channel.is_available() {
-                if let Ok(value) = channel.get() {
-                    state.insert(key.clone(), value);
-                }
-            }
-        }
-        Value::Object(state)
-    }
-
-    /// Read a specific set of channels and return them as a JSON object.
-    pub fn read_channels_by_keys(&self, keys: &[String]) -> Value {
-        let mut state = serde_json::Map::new();
-        for key in keys {
-            if let Some(channel) = self.channels.get(key) {
-                if channel.is_available() {
-                    if let Ok(value) = channel.get() {
-                        state.insert(key.clone(), value);
-                    }
-                }
-            }
-        }
-        Value::Object(state)
-    }
-
-    /// Get the current execution step number.
-    pub fn step(&self) -> usize {
-        self.step
-    }
-
-    /// Get the current execution status.
-    pub fn status(&self) -> PregelStatus {
-        self.status
-    }
-
-    /// Get collected stream output.
-    pub fn stream_output(&self) -> &[StreamChunk] {
-        &self.stream_output
-    }
-
-    /// Apply input to the graph's input channels.
-    ///
-    /// This writes the input values to matching channels to kick off the
-    /// first super-step. Channels that receive input are marked as updated
-    /// so they can trigger nodes.
-    pub fn apply_input(&mut self, input: Value) -> Result<(), LangGraphError> {
-        match input {
-            Value::Object(map) => {
-                for (key, value) in map {
-                    if let Some(channel) = self.channels.get_mut(&key) {
-                        if channel.update(vec![value])? {
-                            self.updated_channels.insert(key);
-                        }
-                    }
-                    // Silently ignore keys without matching channels.
-                }
-            }
-            _other => {
-                // Non-object input: no channel mapping possible without a
-                // dedicated START channel, silently skip.
-            }
-        }
-        Ok(())
-    }
-
-    /// Prepare tasks for the current step by checking which nodes are triggered.
-    ///
-    /// A node is triggered when any of its trigger channels were updated in the
-    /// previous step (tracked in `updated_channels`). Returns a list of task
-    /// descriptions.
-    pub fn prepare_next_tasks(&self) -> Vec<PregelTaskDescription> {
-        let mut tasks = Vec::new();
-
-        for (name, node) in &self.nodes {
-            // Check if any of the node's triggers were updated this step.
-            let active_triggers: Vec<String> = node
-                .triggers
-                .iter()
-                .filter(|trigger| self.updated_channels.contains(trigger.as_str()))
-                .cloned()
-                .collect();
-
-            if !active_triggers.is_empty() {
-                // Gather input from the node's read channels.
-                let input = if node.channels.is_empty() {
-                    // Default: read all available channels.
-                    self.read_channels()
-                } else {
-                    self.read_channels_by_keys(&node.channels)
-                };
-
-                let task_id = format!("{}-step{}-{}", name, self.step, uuid::Uuid::new_v4());
-
-                tasks.push(PregelTaskDescription {
-                    name: name.clone(),
-                    input,
-                    triggers: active_triggers,
-                    id: task_id,
-                });
-            }
-        }
-
-        tasks
-    }
-
-    /// Execute a single task by running the node's action.
-    ///
-    /// Returns a `TaskResult` containing the writes produced by the node.
-    pub async fn execute_task(
-        &self,
-        task: &PregelTaskDescription,
-    ) -> Result<TaskResult, LangGraphError> {
-        let node = self.nodes.get(&task.name).ok_or_else(|| {
-            LangGraphError::TaskNotFound(format!("Node '{}' not found", task.name))
-        })?;
-
-        match (node.action)(task.input.clone()).await {
-            Ok(writes) => Ok(TaskResult {
-                task: task.clone(),
-                writes,
-                error: None,
-            }),
-            Err(e) => Ok(TaskResult {
-                task: task.clone(),
-                writes: Vec::new(),
-                error: Some(e.to_string()),
-            }),
-        }
-    }
-
-    /// Apply writes from task results to channels.
-    ///
-    /// For each (channel_name, value) pair, the corresponding channel is updated.
-    /// Returns the set of channel names that changed.
-    pub fn apply_writes(&mut self, writes: &[ChannelWrite]) -> Result<Vec<String>, LangGraphError> {
-        let mut changed = Vec::new();
-
-        for (channel_name, value) in writes {
-            if channel_name == END {
-                // Writes to END signal graph completion; don't update a channel.
-                continue;
-            }
-
-            if let Some(channel) = self.channels.get_mut(channel_name) {
-                let did_change = channel.update(vec![value.clone()])?;
-                if did_change {
-                    changed.push(channel_name.clone());
-                }
-            }
-            // Writes to non-existent channels are silently ignored,
-            // matching Python behavior.
-        }
-
-        Ok(changed)
-    }
-
-    /// Consume ephemeral channels after tasks have read from them.
-    ///
-    /// This calls `consume()` on all channels, which resets ephemeral channels
-    /// for the next step.
-    pub fn consume_channels(&mut self) {
-        for channel in self.channels.values_mut() {
-            channel.consume();
-        }
-    }
-
-    /// Emit a stream chunk if the given mode is enabled.
-    fn emit_stream(&mut self, mode: StreamMode, mode_str: &str, data: Value) {
-        if self.config.stream_modes.contains(&mode) {
-            self.stream_output.push(StreamChunk {
-                ns: Vec::new(),
-                mode: mode_str.to_string(),
-                data,
-            });
-        }
-    }
-
-    /// Run the Pregel execution loop to completion.
-    ///
-    /// This is the main entry point for executing a graph. It:
-    /// 1. Applies the input to channels
-    /// 2. Loops through super-steps until termination
-    /// 3. Returns the final state from all available channels
-    ///
-    /// # Errors
-    ///
-    /// Returns `LangGraphError::GraphRecursionError` if the recursion limit is
-    /// exceeded.
-    /// Returns `LangGraphError::GraphInterrupt` if an interrupt is triggered.
-    pub async fn run(&mut self, input: Value) -> Result<Value, LangGraphError> {
-        self.status = PregelStatus::Running;
-        self.step = 0;
-        self.stream_output.clear();
-        self.updated_channels.clear();
-
-        // Step 0: Apply input to channels.
-        self.apply_input(input)?;
-
-        // Emit initial state.
-        let initial_state = self.read_channels();
-        self.emit_stream(StreamMode::Values, "values", initial_state);
-
-        // Main execution loop.
-        loop {
-            // Check recursion limit.
-            if self.step >= self.config.recursion_limit {
-                self.status = PregelStatus::OutOfSteps;
-                return Err(LangGraphError::GraphRecursionError(create_error_message(
-                    &format!(
-                        "Recursion limit of {} reached without hitting a stop condition. \
-                         You can increase the limit by setting `recursion_limit` in the config.",
-                        self.config.recursion_limit
-                    ),
-                    ErrorCode::GraphRecursionLimit,
-                )));
-            }
-
-            // Prepare tasks for this step.
-            let tasks = self.prepare_next_tasks();
-
-            // No tasks means we're done.
-            if tasks.is_empty() {
-                self.status = PregelStatus::Done;
-                break;
-            }
-
-            // Check interrupt_before.
-            let interrupt_before_tasks: Vec<&PregelTaskDescription> = tasks
-                .iter()
-                .filter(|t| self.config.interrupt_before.should_interrupt(&t.name))
-                .collect();
-
-            if !interrupt_before_tasks.is_empty() {
-                self.status = PregelStatus::InterruptBefore;
-                let interrupts = interrupt_before_tasks
-                    .iter()
-                    .map(|t| crate::types::Interrupt {
-                        value: serde_json::json!({"node": t.name, "step": self.step}),
-                        id: t.id.clone(),
-                    })
-                    .collect();
-                return Err(LangGraphError::GraphInterrupt(interrupts));
-            }
-
-            // Execute all tasks for this step.
-            let mut all_writes: Vec<ChannelWrite> = Vec::new();
-            let mut step_updates = serde_json::Map::new();
-
-            for task in &tasks {
-                let result = self.execute_task(task).await?;
-
-                if let Some(ref error) = result.error {
-                    step_updates.insert(task.name.clone(), serde_json::json!({"error": error}));
-                } else {
-                    // Collect updates for streaming.
-                    let task_writes: serde_json::Map<String, Value> =
-                        result.writes.iter().cloned().collect();
-                    step_updates.insert(task.name.clone(), Value::Object(task_writes));
-
-                    all_writes.extend(result.writes);
-                }
-            }
-
-            // Emit updates stream chunk.
-            self.emit_stream(StreamMode::Updates, "updates", Value::Object(step_updates));
-
-            // Consume ephemeral channels from this step's reads.
-            self.consume_channels();
-
-            // Apply all writes from this step to channels.
-            // Track which channels changed for the next step's triggering.
-            let changed = self.apply_writes(&all_writes)?;
-            self.updated_channels = changed.into_iter().collect();
-
-            // Emit values stream chunk with updated state.
-            let current_state = self.read_channels();
-            self.emit_stream(StreamMode::Values, "values", current_state);
-
-            // Check interrupt_after.
-            let interrupt_after_tasks: Vec<&PregelTaskDescription> = tasks
-                .iter()
-                .filter(|t| self.config.interrupt_after.should_interrupt(&t.name))
-                .collect();
-
-            if !interrupt_after_tasks.is_empty() {
-                self.status = PregelStatus::InterruptAfter;
-                let interrupts = interrupt_after_tasks
-                    .iter()
-                    .map(|t| crate::types::Interrupt {
-                        value: serde_json::json!({"node": t.name, "step": self.step}),
-                        id: t.id.clone(),
-                    })
-                    .collect();
-                return Err(LangGraphError::GraphInterrupt(interrupts));
-            }
-
-            // Finish channels (for named barriers, etc.).
-            for channel in self.channels.values_mut() {
-                channel.finish();
-            }
-
-            self.step += 1;
-        }
-
-        Ok(self.read_channels())
-    }
-
-    /// Run the graph and return stream chunks along with the final state.
-    ///
-    /// This is similar to `run` but returns both the stream output and final value.
-    pub async fn run_with_stream(
-        &mut self,
-        input: Value,
-    ) -> Result<(Value, Vec<StreamChunk>), LangGraphError> {
-        let result = self.run(input).await?;
-        let chunks = std::mem::take(&mut self.stream_output);
-        Ok((result, chunks))
-    }
-
-    /// Create a checkpoint of all channel states.
-    ///
-    /// Returns a map of channel_name -> checkpoint_value for channels that
-    /// have state to persist.
-    pub fn checkpoint(&self) -> HashMap<String, Value> {
-        let mut ckpt = HashMap::new();
-        for (key, channel) in &self.channels {
-            if let Some(value) = channel.checkpoint() {
-                ckpt.insert(key.clone(), value);
-            }
-        }
-        ckpt
-    }
-
-    /// Restore channels from a checkpoint.
-    ///
-    /// For each channel, if the checkpoint contains a value for that channel's key,
-    /// the channel is restored from that checkpoint value.
-    pub fn restore_from_checkpoint(
-        &mut self,
-        checkpoint: &HashMap<String, Value>,
-    ) -> Result<(), LangGraphError> {
-        let mut restored_channels = HashMap::new();
-        for (key, channel) in &self.channels {
-            let ckpt_value = checkpoint.get(key).cloned();
-            let restored = channel.from_checkpoint(ckpt_value);
-            restored_channels.insert(key.clone(), restored);
-        }
-        self.channels = restored_channels;
-        Ok(())
-    }
-
-    /// Get a reference to the channels.
-    pub fn channels(&self) -> &HashMap<String, Box<dyn BaseChannel>> {
-        &self.channels
-    }
-
-    /// Get a mutable reference to the channels.
-    pub fn channels_mut(&mut self) -> &mut HashMap<String, Box<dyn BaseChannel>> {
-        &mut self.channels
-    }
-
-    /// Get a reference to the nodes.
-    pub fn nodes(&self) -> &HashMap<String, PregelNodeSpec> {
-        &self.nodes
-    }
-
-    /// Get the current config.
-    pub fn config(&self) -> &PregelConfig {
-        &self.config
-    }
+/// Records a trace of the execution for debugging and introspection.
+///
+/// Each superstep is recorded as it completes, and the full trace can be
+/// serialized to JSON.
+#[derive(Debug, Clone, Default)]
+pub struct ExecutionTrace {
+    /// Recorded supersteps.
+    steps: Vec<SuperStep>,
 }
 
-/// Helper to create a `PregelNodeAction` from an async closure that returns
-/// state updates (a JSON object). The updates are automatically converted to
-/// channel writes where each key becomes a channel write.
-pub fn state_update_action(action: crate::graph::state::AsyncNodeAction) -> PregelNodeAction {
-    std::sync::Arc::new(move |input: Value| {
-        let action = action.clone();
-        Box::pin(async move {
-            let update = action(input).await?;
-            // Convert state update (JSON object) to channel writes.
-            match update {
-                Value::Object(map) => {
-                    let writes: Vec<ChannelWrite> = map.into_iter().collect();
-                    Ok(writes)
-                }
-                other => {
-                    // Single value update goes to a default channel.
-                    Ok(vec![("__default__".to_string(), other)])
-                }
-            }
+impl ExecutionTrace {
+    /// Create a new empty trace.
+    pub fn new() -> Self {
+        Self { steps: Vec::new() }
+    }
+
+    /// Record a superstep in the trace.
+    pub fn add_step(&mut self, step: SuperStep) {
+        self.steps.push(step);
+    }
+
+    /// Return the number of recorded steps.
+    pub fn step_count(&self) -> usize {
+        self.steps.len()
+    }
+
+    /// Serialize the full trace to a JSON value.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "steps": self.steps.iter().map(|s| s.to_json()).collect::<Vec<_>>(),
+            "total_steps": self.steps.len(),
         })
-    })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::channels::LastValue;
-    use crate::pregel::types::InterruptConfig;
     use serde_json::json;
-    use std::sync::Arc;
 
-    /// Helper: create a PregelNodeAction that writes to specific channels.
-    fn make_write_action(writes: Vec<(String, Value)>) -> PregelNodeAction {
-        Arc::new(move |_input: Value| {
-            let writes = writes.clone();
-            Box::pin(async move { Ok(writes) })
-        })
+    // ── Single node execution ─────────────────────────────────────────
+
+    #[test]
+    fn test_single_node_execution() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("a", |_state| {
+            Ok(json!({"result": 42}))
+        }));
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.final_state["result"], 42);
+        assert_eq!(result.total_steps, 1);
     }
 
-    /// Helper: create a PregelNodeAction that reads input and transforms it.
-    fn make_transform_action<F>(f: F) -> PregelNodeAction
-    where
-        F: Fn(Value) -> Result<Vec<ChannelWrite>, LangGraphError> + Send + Sync + 'static,
-    {
-        Arc::new(move |input: Value| {
-            let result = f(input);
-            Box::pin(async move { result })
-        })
+    #[test]
+    fn test_single_node_reads_state() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("doubler", |state| {
+            let x = state.get("x").and_then(|v| v.as_i64()).unwrap_or(0);
+            Ok(json!({"doubled": x * 2}))
+        }));
+
+        let result = executor.execute(json!({"x": 5})).unwrap();
+        assert_eq!(result.final_state["doubled"], 10);
     }
 
-    /// Helper: build a simple PregelNodeSpec.
-    fn make_node(
-        name: &str,
-        triggers: Vec<&str>,
-        channels: Vec<&str>,
-        action: PregelNodeAction,
-    ) -> PregelNodeSpec {
-        PregelNodeSpec {
-            name: name.to_string(),
-            triggers: triggers.into_iter().map(|s| s.to_string()).collect(),
-            channels: channels.into_iter().map(|s| s.to_string()).collect(),
-            action,
-            writers: Vec::new(),
-            retry_policy: None,
-            cache_policy: None,
-            tags: Vec::new(),
-            metadata: HashMap::new(),
-        }
-    }
+    // ── Linear dependency chains ──────────────────────────────────────
 
-    #[tokio::test]
-    async fn test_simple_linear_execution() {
-        // Graph: input -> node_a -> node_b -> done
-        let mut executor = PregelExecutor::new(PregelConfig::default());
+    #[test]
+    fn test_linear_chain_a_b_c() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
 
-        executor.add_channel(Box::new(LastValue::new("input")));
-        executor.add_channel(Box::new(LastValue::new("a_output")));
-        executor.add_channel(Box::new(LastValue::new("result")));
-
-        executor.add_node(make_node(
-            "node_a",
-            vec!["input"],
-            vec!["input"],
-            make_write_action(vec![("a_output".to_string(), json!("from_a"))]),
-        ));
-
-        executor.add_node(make_node(
-            "node_b",
-            vec!["a_output"],
-            vec!["a_output"],
-            make_write_action(vec![("result".to_string(), json!("from_b"))]),
-        ));
-
-        let result = executor.run(json!({"input": "hello"})).await.unwrap();
-        assert_eq!(result["result"], json!("from_b"));
-        assert_eq!(result["a_output"], json!("from_a"));
-        assert_eq!(result["input"], json!("hello"));
-        assert_eq!(executor.status(), PregelStatus::Done);
-    }
-
-    #[tokio::test]
-    async fn test_no_tasks_completes_immediately() {
-        let mut executor = PregelExecutor::new(PregelConfig::default());
-        executor.add_channel(Box::new(LastValue::new("unused")));
-
-        let result = executor.run(json!({})).await.unwrap();
-        assert_eq!(result, json!({}));
-        assert_eq!(executor.status(), PregelStatus::Done);
-    }
-
-    #[tokio::test]
-    async fn test_recursion_limit() {
-        // A node that keeps triggering itself by writing to its own trigger channel.
-        let mut executor = PregelExecutor::new(PregelConfig {
-            recursion_limit: 3,
-            ..Default::default()
-        });
-
-        executor.add_channel(Box::new(LastValue::new("counter")));
-
-        executor.add_node(make_node(
-            "loop_node",
-            vec!["counter"],
-            vec!["counter"],
-            make_transform_action(|input| {
-                let count = input.get("counter").and_then(|v| v.as_i64()).unwrap_or(0);
-                Ok(vec![("counter".to_string(), json!(count + 1))])
-            }),
-        ));
-
-        let result = executor.run(json!({"counter": 0})).await;
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            LangGraphError::GraphRecursionError(msg) => {
-                assert!(msg.contains("Recursion limit of 3"));
-            }
-            other => panic!("Expected GraphRecursionError, got: {other:?}"),
-        }
-        assert_eq!(executor.status(), PregelStatus::OutOfSteps);
-    }
-
-    #[tokio::test]
-    async fn test_interrupt_before() {
-        let mut executor = PregelExecutor::new(PregelConfig {
-            interrupt_before: InterruptConfig::Nodes(vec!["critical_node".to_string()]),
-            ..Default::default()
-        });
-
-        executor.add_channel(Box::new(LastValue::new("input")));
-        executor.add_channel(Box::new(LastValue::new("output")));
-
-        executor.add_node(make_node(
-            "critical_node",
-            vec!["input"],
-            vec!["input"],
-            make_write_action(vec![("output".to_string(), json!("done"))]),
-        ));
-
-        let result = executor.run(json!({"input": "go"})).await;
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            LangGraphError::GraphInterrupt(interrupts) => {
-                assert_eq!(interrupts.len(), 1);
-                assert_eq!(interrupts[0].value["node"], json!("critical_node"));
-            }
-            other => panic!("Expected GraphInterrupt, got: {other:?}"),
-        }
-        assert_eq!(executor.status(), PregelStatus::InterruptBefore);
-    }
-
-    #[tokio::test]
-    async fn test_interrupt_after() {
-        let mut executor = PregelExecutor::new(PregelConfig {
-            interrupt_after: InterruptConfig::Nodes(vec!["tracked_node".to_string()]),
-            ..Default::default()
-        });
-
-        executor.add_channel(Box::new(LastValue::new("input")));
-        executor.add_channel(Box::new(LastValue::new("output")));
-
-        executor.add_node(make_node(
-            "tracked_node",
-            vec!["input"],
-            vec!["input"],
-            make_write_action(vec![("output".to_string(), json!("done"))]),
-        ));
-
-        let result = executor.run(json!({"input": "go"})).await;
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            LangGraphError::GraphInterrupt(interrupts) => {
-                assert_eq!(interrupts.len(), 1);
-                assert_eq!(interrupts[0].value["node"], json!("tracked_node"));
-            }
-            other => panic!("Expected GraphInterrupt, got: {other:?}"),
-        }
-        assert_eq!(executor.status(), PregelStatus::InterruptAfter);
-    }
-
-    #[tokio::test]
-    async fn test_interrupt_all() {
-        let mut executor = PregelExecutor::new(PregelConfig {
-            interrupt_before: InterruptConfig::All,
-            ..Default::default()
-        });
-
-        executor.add_channel(Box::new(LastValue::new("input")));
-        executor.add_node(make_node(
-            "any_node",
-            vec!["input"],
-            vec!["input"],
-            make_write_action(vec![]),
-        ));
-
-        let result = executor.run(json!({"input": "go"})).await;
-        assert!(matches!(result, Err(LangGraphError::GraphInterrupt(_))));
-    }
-
-    #[tokio::test]
-    async fn test_channel_checkpoint_and_restore() {
-        let mut executor = PregelExecutor::new(PregelConfig::default());
-        executor.add_channel(Box::new(LastValue::new("state")));
-
-        executor.apply_input(json!({"state": "hello"})).unwrap();
-
-        let ckpt = executor.checkpoint();
-        assert!(ckpt.contains_key("state"));
-        assert_eq!(ckpt["state"], json!("hello"));
-
-        let mut executor2 = PregelExecutor::new(PregelConfig::default());
-        executor2.add_channel(Box::new(LastValue::new("state")));
-        executor2.restore_from_checkpoint(&ckpt).unwrap();
-
-        let state = executor2.read_channels();
-        assert_eq!(state["state"], json!("hello"));
-    }
-
-    #[tokio::test]
-    async fn test_multi_channel_execution() {
-        let mut executor = PregelExecutor::new(PregelConfig::default());
-
-        executor.add_channel(Box::new(LastValue::new("name")));
-        executor.add_channel(Box::new(LastValue::new("age")));
-        executor.add_channel(Box::new(LastValue::new("greeting")));
-
-        executor.add_node(make_node(
-            "greeter",
-            vec!["name"],
-            vec!["name", "age"],
-            make_transform_action(|input| {
-                let name = input
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                let age = input.get("age").and_then(|v| v.as_i64()).unwrap_or(0);
-                Ok(vec![(
-                    "greeting".to_string(),
-                    json!(format!("Hello {name}, you are {age}!")),
-                )])
-            }),
-        ));
-
-        let result = executor
-            .run(json!({"name": "Alice", "age": 30}))
-            .await
-            .unwrap();
-
-        assert_eq!(result["greeting"], json!("Hello Alice, you are 30!"));
-    }
-
-    #[tokio::test]
-    async fn test_prepare_next_tasks_no_triggers() {
-        let executor = PregelExecutor::new(PregelConfig::default());
-        let tasks = executor.prepare_next_tasks();
-        assert!(tasks.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_apply_writes_to_end() {
-        let mut executor = PregelExecutor::new(PregelConfig::default());
-        executor.add_channel(Box::new(LastValue::new("state")));
-
-        let changed = executor
-            .apply_writes(&[(END.to_string(), json!("done"))])
-            .unwrap();
-        assert!(changed.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_apply_writes_to_nonexistent_channel() {
-        let mut executor = PregelExecutor::new(PregelConfig::default());
-
-        let changed = executor
-            .apply_writes(&[("nonexistent".to_string(), json!("value"))])
-            .unwrap();
-        assert!(changed.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_stream_output_collected() {
-        let mut executor = PregelExecutor::new(PregelConfig {
-            stream_modes: vec![StreamMode::Values, StreamMode::Updates],
-            ..Default::default()
-        });
-
-        executor.add_channel(Box::new(LastValue::new("input")));
-        executor.add_channel(Box::new(LastValue::new("output")));
-
-        executor.add_node(make_node(
-            "worker",
-            vec!["input"],
-            vec!["input"],
-            make_write_action(vec![("output".to_string(), json!("result"))]),
-        ));
-
-        let (_result, chunks) = executor
-            .run_with_stream(json!({"input": "go"}))
-            .await
-            .unwrap();
-
-        let value_chunks: Vec<_> = chunks.iter().filter(|c| c.mode == "values").collect();
-        let update_chunks: Vec<_> = chunks.iter().filter(|c| c.mode == "updates").collect();
-
-        assert!(
-            !value_chunks.is_empty(),
-            "Should have at least one values chunk"
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a_done": true}))));
+        executor.add_node(
+            ExecutionNode::new("b", |state| {
+                assert!(state.get("a_done").is_some());
+                Ok(json!({"b_done": true}))
+            })
+            .with_dependency("a"),
         );
-        assert!(
-            !update_chunks.is_empty(),
-            "Should have at least one updates chunk"
+        executor.add_node(
+            ExecutionNode::new("c", |state| {
+                assert!(state.get("b_done").is_some());
+                Ok(json!({"c_done": true}))
+            })
+            .with_dependency("b"),
         );
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.final_state["a_done"], true);
+        assert_eq!(result.final_state["b_done"], true);
+        assert_eq!(result.final_state["c_done"], true);
+        // 3 supersteps (one node per step) + 1 final empty step to detect completion
+        // Actually: a runs in step 0, b in step 1, c in step 2, then step 3 is empty -> breaks
+        // But we break when completed.len() == nodes.len() after step 2.
+        assert!(result.total_steps >= 3);
     }
 
-    #[tokio::test]
-    async fn test_node_error_handling() {
-        let mut executor = PregelExecutor::new(PregelConfig::default());
+    #[test]
+    fn test_linear_chain_order() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
 
-        executor.add_channel(Box::new(LastValue::new("input")));
-        executor.add_channel(Box::new(LastValue::new("output")));
+        executor.add_node(ExecutionNode::new("first", |_| {
+            Ok(json!({"order": [1]}))
+        }));
+        executor.add_node(
+            ExecutionNode::new("second", |state| {
+                let mut order = state
+                    .get("order")
+                    .and_then(|v| v.as_array().cloned())
+                    .unwrap_or_default();
+                order.push(json!(2));
+                Ok(json!({"order": order}))
+            })
+            .with_dependency("first"),
+        );
+        executor.add_node(
+            ExecutionNode::new("third", |state| {
+                let mut order = state
+                    .get("order")
+                    .and_then(|v| v.as_array().cloned())
+                    .unwrap_or_default();
+                order.push(json!(3));
+                Ok(json!({"order": order}))
+            })
+            .with_dependency("second"),
+        );
 
-        let error_action: PregelNodeAction = Arc::new(|_input: Value| {
-            Box::pin(async { Err(LangGraphError::Other("node failed".to_string())) })
+        let result = executor.execute(json!({})).unwrap();
+        let order = result.final_state["order"].as_array().unwrap();
+        assert_eq!(order, &[json!(1), json!(2), json!(3)]);
+    }
+
+    // ── Parallel execution ────────────────────────────────────────────
+
+    #[test]
+    fn test_parallel_independent_nodes() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+
+        executor.add_node(ExecutionNode::new("x", |_| Ok(json!({"x": 1}))));
+        executor.add_node(ExecutionNode::new("y", |_| Ok(json!({"y": 2}))));
+        executor.add_node(ExecutionNode::new("z", |_| Ok(json!({"z": 3}))));
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.final_state["x"], 1);
+        assert_eq!(result.final_state["y"], 2);
+        assert_eq!(result.final_state["z"], 3);
+        // All three should execute in the first superstep.
+        assert_eq!(result.supersteps[0].nodes_executed.len(), 3);
+    }
+
+    #[test]
+    fn test_parallel_nodes_same_superstep() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+
+        executor.add_node(ExecutionNode::new("p1", |_| Ok(json!({"p1": true}))));
+        executor.add_node(ExecutionNode::new("p2", |_| Ok(json!({"p2": true}))));
+
+        let result = executor.execute(json!({})).unwrap();
+        let step0 = &result.supersteps[0];
+        assert!(step0.nodes_executed.contains(&"p1".to_string()));
+        assert!(step0.nodes_executed.contains(&"p2".to_string()));
+    }
+
+    // ── Diamond dependencies ──────────────────────────────────────────
+
+    #[test]
+    fn test_diamond_a_bc_d() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": 1}))));
+        executor.add_node(
+            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
+        );
+        executor.add_node(
+            ExecutionNode::new("c", |_| Ok(json!({"c": 3}))).with_dependency("a"),
+        );
+        executor.add_node(
+            ExecutionNode::new("d", |state| {
+                let b = state.get("b").and_then(|v| v.as_i64()).unwrap_or(0);
+                let c = state.get("c").and_then(|v| v.as_i64()).unwrap_or(0);
+                Ok(json!({"d": b + c}))
+            })
+            .with_dependency("b")
+            .with_dependency("c"),
+        );
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.final_state["a"], 1);
+        assert_eq!(result.final_state["b"], 2);
+        assert_eq!(result.final_state["c"], 3);
+        assert_eq!(result.final_state["d"], 5);
+    }
+
+    #[test]
+    fn test_diamond_superstep_structure() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": 1}))));
+        executor.add_node(
+            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
+        );
+        executor.add_node(
+            ExecutionNode::new("c", |_| Ok(json!({"c": 3}))).with_dependency("a"),
+        );
+        executor.add_node(
+            ExecutionNode::new("d", |_| Ok(json!({"d": 4})))
+                .with_dependency("b")
+                .with_dependency("c"),
+        );
+
+        let result = executor.execute(json!({})).unwrap();
+
+        // Step 0: a
+        assert_eq!(result.supersteps[0].nodes_executed, vec!["a".to_string()]);
+        // Step 1: b and c (parallel)
+        let step1_names: HashSet<String> =
+            result.supersteps[1].nodes_executed.iter().cloned().collect();
+        assert!(step1_names.contains("b"));
+        assert!(step1_names.contains("c"));
+        assert_eq!(step1_names.len(), 2);
+        // Step 2: d
+        assert_eq!(result.supersteps[2].nodes_executed, vec!["d".to_string()]);
+    }
+
+    // ── Max supersteps limit ──────────────────────────────────────────
+
+    #[test]
+    fn test_max_supersteps_limit() {
+        let config = ExecutionConfig::new().with_max_supersteps(2);
+        let mut executor = PregelExecutor::new(config);
+
+        // Chain of 5 nodes — needs 5 supersteps but limit is 2.
+        executor.add_node(ExecutionNode::new("n1", |_| Ok(json!({"n1": true}))));
+        executor.add_node(
+            ExecutionNode::new("n2", |_| Ok(json!({"n2": true}))).with_dependency("n1"),
+        );
+        executor.add_node(
+            ExecutionNode::new("n3", |_| Ok(json!({"n3": true}))).with_dependency("n2"),
+        );
+        executor.add_node(
+            ExecutionNode::new("n4", |_| Ok(json!({"n4": true}))).with_dependency("n3"),
+        );
+        executor.add_node(
+            ExecutionNode::new("n5", |_| Ok(json!({"n5": true}))).with_dependency("n4"),
+        );
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.total_steps, 2);
+        // Only n1 and n2 should have completed.
+        assert_eq!(result.final_state.get("n1"), Some(&json!(true)));
+        assert_eq!(result.final_state.get("n2"), Some(&json!(true)));
+        assert!(result.final_state.get("n3").is_none());
+    }
+
+    #[test]
+    fn test_max_supersteps_zero() {
+        let config = ExecutionConfig::new().with_max_supersteps(0);
+        let mut executor = PregelExecutor::new(config);
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": 1}))));
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.total_steps, 0);
+        assert!(result.final_state.get("a").is_none());
+    }
+
+    // ── Halt on error behavior ────────────────────────────────────────
+
+    #[test]
+    fn test_halt_on_error_true() {
+        let config = ExecutionConfig::new()
+            .with_halt_on_error(true)
+            .with_max_node_retries(0);
+        let mut executor = PregelExecutor::new(config);
+
+        executor.add_node(ExecutionNode::new("fail", |_| {
+            Err(LangGraphError::Other("boom".to_string()))
+        }));
+
+        let result = executor.execute(json!({}));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_halt_on_error_false_continues() {
+        let config = ExecutionConfig::new()
+            .with_halt_on_error(false)
+            .with_max_node_retries(0);
+        let mut executor = PregelExecutor::new(config);
+
+        executor.add_node(ExecutionNode::new("fail", |_| {
+            Err(LangGraphError::Other("boom".to_string()))
+        }));
+        executor.add_node(ExecutionNode::new("ok", |_| Ok(json!({"ok": true}))));
+
+        let result = executor.execute(json!({})).unwrap();
+        // The error node records an error in state.
+        assert!(result.final_state.get("fail_error").is_some());
+        assert_eq!(result.final_state["ok"], true);
+    }
+
+    #[test]
+    fn test_halt_on_error_false_dependent_sees_error() {
+        let config = ExecutionConfig::new()
+            .with_halt_on_error(false)
+            .with_max_node_retries(0);
+        let mut executor = PregelExecutor::new(config);
+
+        executor.add_node(ExecutionNode::new("fail", |_| {
+            Err(LangGraphError::Other("boom".to_string()))
+        }));
+        executor.add_node(
+            ExecutionNode::new("after_fail", |state| {
+                let has_err = state.get("fail_error").is_some();
+                Ok(json!({"saw_error": has_err}))
+            })
+            .with_dependency("fail"),
+        );
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.final_state["saw_error"], true);
+    }
+
+    // ── Node retry on failure ─────────────────────────────────────────
+
+    #[test]
+    fn test_node_retry_succeeds_on_second_attempt() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        let attempts = Arc::new(AtomicU32::new(0));
+        let attempts_clone = attempts.clone();
+
+        let config = ExecutionConfig::new().with_max_node_retries(3);
+        let mut executor = PregelExecutor::new(config);
+
+        executor.add_node(ExecutionNode::new("flaky", move |_| {
+            let n = attempts_clone.fetch_add(1, Ordering::SeqCst);
+            if n < 1 {
+                Err(LangGraphError::Other("transient".to_string()))
+            } else {
+                Ok(json!({"flaky": "ok"}))
+            }
+        }));
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.final_state["flaky"], "ok");
+        assert!(attempts.load(Ordering::SeqCst) >= 2);
+    }
+
+    #[test]
+    fn test_node_retry_exhausted() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        let attempts = Arc::new(AtomicU32::new(0));
+        let attempts_clone = attempts.clone();
+
+        let config = ExecutionConfig::new()
+            .with_max_node_retries(2)
+            .with_halt_on_error(true);
+        let mut executor = PregelExecutor::new(config);
+
+        executor.add_node(ExecutionNode::new("always_fail", move |_| {
+            attempts_clone.fetch_add(1, Ordering::SeqCst);
+            Err(LangGraphError::Other("persistent".to_string()))
+        }));
+
+        let result = executor.execute(json!({}));
+        assert!(result.is_err());
+        // 1 initial attempt + 2 retries = 3 total
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn test_retry_zero_means_single_attempt() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        let attempts = Arc::new(AtomicU32::new(0));
+        let attempts_clone = attempts.clone();
+
+        let config = ExecutionConfig::new()
+            .with_max_node_retries(0)
+            .with_halt_on_error(true);
+        let mut executor = PregelExecutor::new(config);
+
+        executor.add_node(ExecutionNode::new("once", move |_| {
+            attempts_clone.fetch_add(1, Ordering::SeqCst);
+            Err(LangGraphError::Other("fail".to_string()))
+        }));
+
+        let _ = executor.execute(json!({}));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+
+    // ── ExecutionConfig defaults and customization ────────────────────
+
+    #[test]
+    fn test_execution_config_defaults() {
+        let config = ExecutionConfig::new();
+        assert_eq!(config.max_supersteps, 100);
+        assert_eq!(config.max_node_retries, 3);
+        assert!(config.halt_on_error);
+    }
+
+    #[test]
+    fn test_execution_config_default_trait() {
+        let config = ExecutionConfig::default();
+        assert_eq!(config.max_supersteps, 100);
+        assert_eq!(config.max_node_retries, 3);
+        assert!(config.halt_on_error);
+    }
+
+    #[test]
+    fn test_execution_config_builder() {
+        let config = ExecutionConfig::new()
+            .with_max_supersteps(50)
+            .with_max_node_retries(5)
+            .with_halt_on_error(false);
+
+        assert_eq!(config.max_supersteps, 50);
+        assert_eq!(config.max_node_retries, 5);
+        assert!(!config.halt_on_error);
+    }
+
+    // ── ExecutionResult and SuperStep serialization ───────────────────
+
+    #[test]
+    fn test_superstep_to_json() {
+        let step = SuperStep {
+            step_number: 0,
+            nodes_executed: vec!["a".to_string(), "b".to_string()],
+            messages: {
+                let mut m = HashMap::new();
+                m.insert("a".to_string(), json!({"x": 1}));
+                m.insert("b".to_string(), json!({"y": 2}));
+                m
+            },
+            duration_ms: 42,
+        };
+
+        let j = step.to_json();
+        assert_eq!(j["step_number"], 0);
+        assert_eq!(j["duration_ms"], 42);
+        let executed = j["nodes_executed"].as_array().unwrap();
+        assert_eq!(executed.len(), 2);
+    }
+
+    #[test]
+    fn test_execution_result_to_json() {
+        let result = ExecutionResult {
+            final_state: json!({"done": true}),
+            supersteps: vec![SuperStep {
+                step_number: 0,
+                nodes_executed: vec!["a".to_string()],
+                messages: HashMap::new(),
+                duration_ms: 10,
+            }],
+            total_steps: 1,
+            total_duration_ms: 10,
+        };
+
+        let j = result.to_json();
+        assert_eq!(j["total_steps"], 1);
+        assert_eq!(j["total_duration_ms"], 10);
+        assert_eq!(j["final_state"]["done"], true);
+        let steps = j["supersteps"].as_array().unwrap();
+        assert_eq!(steps.len(), 1);
+    }
+
+    #[test]
+    fn test_execution_result_from_run() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"v": 1}))));
+
+        let result = executor.execute(json!({})).unwrap();
+        let j = result.to_json();
+        assert!(j.get("final_state").is_some());
+        assert!(j.get("supersteps").is_some());
+        assert!(j.get("total_steps").is_some());
+        assert!(j.get("total_duration_ms").is_some());
+    }
+
+    // ── ExecutionTrace recording ──────────────────────────────────────
+
+    #[test]
+    fn test_execution_trace_new() {
+        let trace = ExecutionTrace::new();
+        assert_eq!(trace.step_count(), 0);
+    }
+
+    #[test]
+    fn test_execution_trace_add_step() {
+        let mut trace = ExecutionTrace::new();
+        trace.add_step(SuperStep {
+            step_number: 0,
+            nodes_executed: vec!["a".to_string()],
+            messages: HashMap::new(),
+            duration_ms: 5,
+        });
+        trace.add_step(SuperStep {
+            step_number: 1,
+            nodes_executed: vec!["b".to_string()],
+            messages: HashMap::new(),
+            duration_ms: 3,
         });
 
-        executor.add_node(make_node(
-            "failing_node",
-            vec!["input"],
-            vec!["input"],
-            error_action,
-        ));
-
-        // The failing node produces no writes, so no channels are updated
-        // and the loop terminates on the next step.
-        let result = executor.run(json!({"input": "go"})).await.unwrap();
-        assert!(result.get("output").is_none());
+        assert_eq!(trace.step_count(), 2);
     }
 
-    #[tokio::test]
-    async fn test_state_update_action_helper() {
-        let action: crate::graph::state::AsyncNodeAction =
-            Arc::new(|_state: Value| Box::pin(async { Ok(json!({"key": "value"})) }));
-
-        let pregel_action = state_update_action(action);
-        let writes = pregel_action(json!({})).await.unwrap();
-
-        assert_eq!(writes.len(), 1);
-        assert_eq!(writes[0].0, "key");
-        assert_eq!(writes[0].1, json!("value"));
-    }
-
-    #[tokio::test]
-    async fn test_two_step_chain() {
-        let mut executor = PregelExecutor::new(PregelConfig::default());
-
-        executor.add_channel(Box::new(LastValue::new("input")));
-        executor.add_channel(Box::new(LastValue::new("middle")));
-        executor.add_channel(Box::new(LastValue::new("final_out")));
-
-        executor.add_node(make_node(
-            "node_a",
-            vec!["input"],
-            vec!["input"],
-            make_transform_action(|input| {
-                let val = input.get("input").cloned().unwrap_or(json!(null));
-                Ok(vec![("middle".to_string(), json!({"processed": val}))])
-            }),
-        ));
-
-        executor.add_node(make_node(
-            "node_b",
-            vec!["middle"],
-            vec!["middle"],
-            make_transform_action(|input| {
-                let val = input.get("middle").cloned().unwrap_or(json!(null));
-                Ok(vec![("final_out".to_string(), json!({"result": val}))])
-            }),
-        ));
-
-        let result = executor.run(json!({"input": "start"})).await.unwrap();
-
-        assert!(result.get("final_out").is_some());
-        assert_eq!(result["final_out"]["result"]["processed"], json!("start"));
-        assert_eq!(executor.step(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_consume_clears_ephemeral() {
-        use crate::channels::EphemeralValue;
-
-        let mut executor = PregelExecutor::new(PregelConfig::default());
-
-        executor.add_channel(Box::new(EphemeralValue::new("trigger")));
-        executor.add_channel(Box::new(LastValue::new("output")));
-
-        executor.add_node(make_node(
-            "worker",
-            vec!["trigger"],
-            vec!["trigger"],
-            make_write_action(vec![("output".to_string(), json!("done"))]),
-        ));
-
-        let result = executor.run(json!({"trigger": true})).await.unwrap();
-        assert_eq!(result["output"], json!("done"));
-        assert!(!executor.channels().get("trigger").unwrap().is_available());
-    }
-
-    #[tokio::test]
-    async fn test_read_channels_empty() {
-        let executor = PregelExecutor::new(PregelConfig::default());
-        let state = executor.read_channels();
-        assert_eq!(state, json!({}));
-    }
-
-    #[tokio::test]
-    async fn test_step_counter_increments() {
-        let mut executor = PregelExecutor::new(PregelConfig::default());
-
-        executor.add_channel(Box::new(LastValue::new("input")));
-        executor.add_channel(Box::new(LastValue::new("output")));
-
-        executor.add_node(make_node(
-            "node",
-            vec!["input"],
-            vec!["input"],
-            make_write_action(vec![("output".to_string(), json!("done"))]),
-        ));
-
-        assert_eq!(executor.step(), 0);
-        executor.run(json!({"input": "go"})).await.unwrap();
-        assert!(executor.step() >= 1);
-    }
-
-    #[tokio::test]
-    async fn test_self_loop_terminates_on_recursion_limit() {
-        let mut executor = PregelExecutor::new(PregelConfig {
-            recursion_limit: 5,
-            ..Default::default()
+    #[test]
+    fn test_execution_trace_to_json() {
+        let mut trace = ExecutionTrace::new();
+        trace.add_step(SuperStep {
+            step_number: 0,
+            nodes_executed: vec!["x".to_string()],
+            messages: HashMap::new(),
+            duration_ms: 7,
         });
 
-        executor.add_channel(Box::new(LastValue::new("state")));
-
-        executor.add_node(make_node(
-            "self_loop",
-            vec!["state"],
-            vec!["state"],
-            make_write_action(vec![("state".to_string(), json!("same"))]),
-        ));
-
-        let result = executor.run(json!({"state": "init"})).await;
-        assert!(matches!(
-            result,
-            Err(LangGraphError::GraphRecursionError(_))
-        ));
+        let j = trace.to_json();
+        assert_eq!(j["total_steps"], 1);
+        let steps = j["steps"].as_array().unwrap();
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0]["step_number"], 0);
     }
 
-    #[tokio::test]
-    async fn test_no_writes_terminates() {
-        let mut executor = PregelExecutor::new(PregelConfig::default());
+    #[test]
+    fn test_execution_trace_from_execution() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": 1}))));
+        executor.add_node(
+            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
+        );
 
-        executor.add_channel(Box::new(LastValue::new("input")));
+        let result = executor.execute(json!({})).unwrap();
 
-        executor.add_node(make_node(
-            "sink",
-            vec!["input"],
-            vec!["input"],
-            make_write_action(vec![]),
-        ));
+        let mut trace = ExecutionTrace::new();
+        for step in &result.supersteps {
+            trace.add_step(step.clone());
+        }
 
-        let result = executor.run(json!({"input": "go"})).await.unwrap();
-        assert_eq!(result["input"], json!("go"));
-        assert_eq!(executor.status(), PregelStatus::Done);
+        assert!(trace.step_count() >= 2);
     }
 
-    #[tokio::test]
-    async fn test_diamond_graph() {
-        let mut executor = PregelExecutor::new(PregelConfig::default());
+    // ── Empty executor ────────────────────────────────────────────────
 
-        executor.add_channel(Box::new(LastValue::new("input")));
-        executor.add_channel(Box::new(LastValue::new("a_out")));
-        executor.add_channel(Box::new(LastValue::new("b_out")));
-        executor.add_channel(Box::new(LastValue::new("merged")));
-
-        executor.add_node(make_node(
-            "node_a",
-            vec!["input"],
-            vec!["input"],
-            make_write_action(vec![("a_out".to_string(), json!("from_a"))]),
-        ));
-
-        executor.add_node(make_node(
-            "node_b",
-            vec!["input"],
-            vec!["input"],
-            make_write_action(vec![("b_out".to_string(), json!("from_b"))]),
-        ));
-
-        executor.add_node(make_node(
-            "merge",
-            vec!["a_out", "b_out"],
-            vec!["a_out", "b_out"],
-            make_transform_action(|input| {
-                let a = input.get("a_out").cloned().unwrap_or(json!(null));
-                let b = input.get("b_out").cloned().unwrap_or(json!(null));
-                Ok(vec![("merged".to_string(), json!({"a": a, "b": b}))])
-            }),
-        ));
-
-        let result = executor.run(json!({"input": "start"})).await.unwrap();
-        assert_eq!(result["merged"]["a"], json!("from_a"));
-        assert_eq!(result["merged"]["b"], json!("from_b"));
+    #[test]
+    fn test_empty_executor() {
+        let executor = PregelExecutor::new(ExecutionConfig::new());
+        assert!(executor.is_empty());
+        assert_eq!(executor.node_count(), 0);
     }
 
-    #[tokio::test]
-    async fn test_topic_channel_accumulation() {
-        use crate::channels::Topic;
+    #[test]
+    fn test_empty_executor_execute() {
+        let executor = PregelExecutor::new(ExecutionConfig::new());
+        let result = executor.execute(json!({"x": 1})).unwrap();
+        // State passes through unchanged.
+        assert_eq!(result.final_state["x"], 1);
+        // One superstep that finds nothing to do.
+        assert_eq!(result.total_steps, 1);
+        assert!(result.supersteps[0].nodes_executed.is_empty());
+    }
 
-        let mut executor = PregelExecutor::new(PregelConfig::default());
+    #[test]
+    fn test_executor_is_not_empty_after_add() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({}))));
+        assert!(!executor.is_empty());
+        assert_eq!(executor.node_count(), 1);
+    }
 
-        executor.add_channel(Box::new(LastValue::new("trigger")));
-        executor.add_channel(Box::new(Topic::new("messages").with_accumulate(true)));
-        executor.add_channel(Box::new(LastValue::new("done")));
+    // ── Circular dependency handling ──────────────────────────────────
 
-        executor.add_node(make_node(
-            "writer",
-            vec!["trigger"],
-            vec!["trigger"],
-            make_write_action(vec![
-                ("messages".to_string(), json!("hello")),
-                ("done".to_string(), json!(true)),
-            ]),
-        ));
+    #[test]
+    fn test_circular_dependency_does_not_hang() {
+        let config = ExecutionConfig::new().with_max_supersteps(10);
+        let mut executor = PregelExecutor::new(config);
 
-        let result = executor.run(json!({"trigger": "go"})).await.unwrap();
-        let messages = result["messages"].as_array().unwrap();
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0], json!("hello"));
+        executor.add_node(
+            ExecutionNode::new("a", |_| Ok(json!({"a": 1}))).with_dependency("b"),
+        );
+        executor.add_node(
+            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
+        );
+
+        let result = executor.execute(json!({})).unwrap();
+        // Neither node should have executed.
+        assert!(result.final_state.get("a").is_none());
+        assert!(result.final_state.get("b").is_none());
+        // Should terminate quickly (first superstep finds nothing to do).
+        assert_eq!(result.total_steps, 1);
+    }
+
+    #[test]
+    fn test_three_node_cycle() {
+        let config = ExecutionConfig::new().with_max_supersteps(5);
+        let mut executor = PregelExecutor::new(config);
+
+        executor.add_node(
+            ExecutionNode::new("a", |_| Ok(json!({"a": 1}))).with_dependency("c"),
+        );
+        executor.add_node(
+            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
+        );
+        executor.add_node(
+            ExecutionNode::new("c", |_| Ok(json!({"c": 3}))).with_dependency("b"),
+        );
+
+        let result = executor.execute(json!({})).unwrap();
+        assert!(result.final_state.get("a").is_none());
+        assert!(result.final_state.get("b").is_none());
+        assert!(result.final_state.get("c").is_none());
+        assert_eq!(result.total_steps, 1);
+    }
+
+    #[test]
+    fn test_partial_cycle_with_valid_nodes() {
+        let config = ExecutionConfig::new().with_max_supersteps(10);
+        let mut executor = PregelExecutor::new(config);
+
+        // "ok" has no deps and should execute.
+        executor.add_node(ExecutionNode::new("ok", |_| Ok(json!({"ok": true}))));
+        // "a" and "b" form a cycle.
+        executor.add_node(
+            ExecutionNode::new("a", |_| Ok(json!({"a": 1}))).with_dependency("b"),
+        );
+        executor.add_node(
+            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
+        );
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.final_state["ok"], true);
+        assert!(result.final_state.get("a").is_none());
+        assert!(result.final_state.get("b").is_none());
+    }
+
+    // ── ExecutionNode builder ─────────────────────────────────────────
+
+    #[test]
+    fn test_execution_node_builder() {
+        let node = ExecutionNode::new("test", |_| Ok(json!({})))
+            .with_dependency("dep1")
+            .with_dependency("dep2");
+
+        assert_eq!(node.name, "test");
+        assert_eq!(node.dependencies, vec!["dep1", "dep2"]);
+    }
+
+    #[test]
+    fn test_execution_node_no_deps() {
+        let node = ExecutionNode::new("solo", |_| Ok(json!({})));
+        assert!(node.dependencies.is_empty());
+    }
+
+    // ── Additional edge cases ─────────────────────────────────────────
+
+    #[test]
+    fn test_node_overwrites_state_key() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("writer", |_| {
+            Ok(json!({"key": "new_value"}))
+        }));
+
+        let result = executor.execute(json!({"key": "old_value"})).unwrap();
+        assert_eq!(result.final_state["key"], "new_value");
+    }
+
+    #[test]
+    fn test_multiple_nodes_write_different_keys() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("w1", |_| Ok(json!({"k1": 1}))));
+        executor.add_node(ExecutionNode::new("w2", |_| Ok(json!({"k2": 2}))));
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.final_state["k1"], 1);
+        assert_eq!(result.final_state["k2"], 2);
+    }
+
+    #[test]
+    fn test_node_returns_non_object() {
+        // A node returning a non-object value should not crash — it just
+        // doesn't merge anything into the state.
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("scalar", |_| Ok(json!(42))));
+
+        let result = executor.execute(json!({"existing": true})).unwrap();
+        assert_eq!(result.final_state["existing"], true);
+    }
+
+    #[test]
+    fn test_superstep_messages_populated() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"v": 1}))));
+
+        let result = executor.execute(json!({})).unwrap();
+        let step = &result.supersteps[0];
+        assert!(step.messages.contains_key("a"));
+        assert_eq!(step.messages["a"]["v"], 1);
+    }
+
+    #[test]
+    fn test_execution_node_debug() {
+        let node = ExecutionNode::new("dbg_node", |_| Ok(json!({})))
+            .with_dependency("x");
+        let debug_str = format!("{:?}", node);
+        assert!(debug_str.contains("dbg_node"));
+        assert!(debug_str.contains("x"));
+    }
+
+    #[test]
+    fn test_pregel_executor_debug() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({}))));
+        let debug_str = format!("{:?}", executor);
+        assert!(debug_str.contains("PregelExecutor"));
+        assert!(debug_str.contains("node_count"));
+    }
+
+    #[test]
+    fn test_deep_chain_10_nodes() {
+        let config = ExecutionConfig::new().with_max_supersteps(20);
+        let mut executor = PregelExecutor::new(config);
+
+        executor.add_node(ExecutionNode::new("n0", |_| Ok(json!({"n0": true}))));
+        for i in 1..10 {
+            let prev = format!("n{}", i - 1);
+            let name = format!("n{}", i);
+            let key = name.clone();
+            executor.add_node(
+                ExecutionNode::new(name, move |_| Ok(json!({ key.clone(): true })))
+                    .with_dependency(prev),
+            );
+        }
+
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.final_state.get("n9").unwrap(), &json!(true));
+        assert!(result.total_steps >= 10);
+    }
+
+    #[test]
+    fn test_wide_fan_out() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+
+        executor.add_node(ExecutionNode::new("root", |_| Ok(json!({"root": true}))));
+        for i in 0..10 {
+            let name = format!("leaf_{}", i);
+            let key = name.clone();
+            executor.add_node(
+                ExecutionNode::new(name, move |_| Ok(json!({ key.clone(): true })))
+                    .with_dependency("root"),
+            );
+        }
+
+        let result = executor.execute(json!({})).unwrap();
+        // Root in step 0, all 10 leaves in step 1.
+        assert_eq!(result.supersteps[0].nodes_executed.len(), 1);
+        assert_eq!(result.supersteps[1].nodes_executed.len(), 10);
+    }
+
+    #[test]
+    fn test_replace_node_with_same_name() {
+        let mut executor = PregelExecutor::new(ExecutionConfig::new());
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": "first"}))));
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": "second"}))));
+
+        assert_eq!(executor.node_count(), 1);
+        let result = executor.execute(json!({})).unwrap();
+        assert_eq!(result.final_state["a"], "second");
+    }
+
+    #[test]
+    fn test_dependency_on_nonexistent_node() {
+        let config = ExecutionConfig::new().with_max_supersteps(5);
+        let mut executor = PregelExecutor::new(config);
+
+        executor.add_node(
+            ExecutionNode::new("blocked", |_| Ok(json!({"b": 1})))
+                .with_dependency("nonexistent"),
+        );
+
+        let result = executor.execute(json!({})).unwrap();
+        // The node never runs because its dependency never completes.
+        assert!(result.final_state.get("b").is_none());
     }
 }

@@ -23,7 +23,10 @@ pub mod utils;
 pub mod validate;
 pub mod write;
 
-pub use executor::PregelExecutor;
+pub use executor::{
+    ExecutionConfig, ExecutionNode, ExecutionResult, ExecutionTrace, NodeFunction, PregelExecutor,
+    SuperStep,
+};
 pub use protocol::PregelProtocol;
 pub use types::{
     All, ChannelWrite, InterruptConfig, PregelConfig, PregelNodeAction, PregelNodeSpec,
