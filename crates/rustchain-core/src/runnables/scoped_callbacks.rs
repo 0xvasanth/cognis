@@ -1,845 +1,1170 @@
-use std::collections::HashMap;
+//! Scoped callback dispatching for runnables.
+//!
+//! This module provides a callback system that mirrors LangChain's callback
+//! manager, enabling observation and instrumentation of runnable execution.
+//! Callbacks are dispatched within scopes that track parent/child relationships,
+//! and [`ScopeGuard`] provides RAII-based automatic start/end event dispatching.
+
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::callbacks::CallbackHandler;
-use crate::error::Result;
+// ---------------------------------------------------------------------------
+// CallbackEvent
+// ---------------------------------------------------------------------------
 
-use super::base::Runnable;
-use super::config::RunnableConfig;
+/// An event that can be dispatched to callback handlers during runnable
+/// execution.
+#[derive(Debug, Clone)]
+pub enum CallbackEvent {
+    /// The runnable has started executing.
+    OnStart {
+        /// The input value passed to the runnable.
+        input: Value,
+    },
+    /// The runnable has finished executing successfully.
+    OnEnd {
+        /// The output value produced by the runnable.
+        output: Value,
+    },
+    /// The runnable encountered an error.
+    OnError {
+        /// A description of the error that occurred.
+        error: String,
+    },
+    /// The runnable produced a text chunk (e.g. streaming).
+    OnText {
+        /// The text content emitted.
+        text: String,
+    },
+    /// The runnable is retrying after a failure.
+    OnRetry {
+        /// The retry attempt number.
+        attempt: u32,
+    },
+    /// A custom, user-defined event.
+    Custom {
+        /// The name of the custom event.
+        name: String,
+        /// Arbitrary data associated with the event.
+        data: Value,
+    },
+}
 
-/// Configuration for a scoped callback context.
+impl CallbackEvent {
+    /// Returns a string label identifying the type of this event.
+    pub fn event_type(&self) -> &str {
+        match self {
+            CallbackEvent::OnStart { .. } => "on_start",
+            CallbackEvent::OnEnd { .. } => "on_end",
+            CallbackEvent::OnError { .. } => "on_error",
+            CallbackEvent::OnText { .. } => "on_text",
+            CallbackEvent::OnRetry { .. } => "on_retry",
+            CallbackEvent::Custom { .. } => "custom",
+        }
+    }
+
+    /// Serialize this event to a JSON [`Value`].
+    pub fn to_json(&self) -> Value {
+        match self {
+            CallbackEvent::OnStart { input } => {
+                serde_json::json!({ "event_type": "on_start", "input": input })
+            }
+            CallbackEvent::OnEnd { output } => {
+                serde_json::json!({ "event_type": "on_end", "output": output })
+            }
+            CallbackEvent::OnError { error } => {
+                serde_json::json!({ "event_type": "on_error", "error": error })
+            }
+            CallbackEvent::OnText { text } => {
+                serde_json::json!({ "event_type": "on_text", "text": text })
+            }
+            CallbackEvent::OnRetry { attempt } => {
+                serde_json::json!({ "event_type": "on_retry", "attempt": attempt })
+            }
+            CallbackEvent::Custom { name, data } => {
+                serde_json::json!({ "event_type": "custom", "name": name, "data": data })
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CallbackScope
+// ---------------------------------------------------------------------------
+
+/// Identifies the scope in which callback events are dispatched.
 ///
-/// Manages both local callbacks (specific to this scope) and inherited callbacks
-/// (propagated from a parent scope). The `propagate` flag controls whether local
-/// callbacks are passed down to child scopes.
-#[derive(Clone)]
+/// Scopes form a tree: each scope has a unique `run_id` and an optional
+/// `parent_run_id` linking it to its parent scope.
+#[derive(Debug, Clone)]
+pub struct CallbackScope {
+    /// Unique identifier for this run.
+    pub run_id: String,
+    /// Identifier of the parent run, if any.
+    pub parent_run_id: Option<String>,
+    /// Human-readable name of this scope (e.g. the runnable name).
+    pub name: String,
+    /// The type of run (e.g. "chain", "tool", "llm").
+    pub run_type: String,
+}
+
+impl CallbackScope {
+    /// Create a new root scope with an auto-generated `run_id`.
+    pub fn new(name: impl Into<String>, run_type: impl Into<String>) -> Self {
+        Self {
+            run_id: Uuid::new_v4().to_string(),
+            parent_run_id: None,
+            name: name.into(),
+            run_type: run_type.into(),
+        }
+    }
+
+    /// Create a child scope whose `parent_run_id` points to this scope's
+    /// `run_id`.
+    pub fn child(&self, name: impl Into<String>, run_type: impl Into<String>) -> Self {
+        Self {
+            run_id: Uuid::new_v4().to_string(),
+            parent_run_id: Some(self.run_id.clone()),
+            name: name.into(),
+            run_type: run_type.into(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handler type alias
+// ---------------------------------------------------------------------------
+
+/// A callback handler function that receives a scope and an event.
+pub type CallbackHandlerFn = Box<dyn Fn(&CallbackScope, &CallbackEvent) + Send + Sync>;
+
+// ---------------------------------------------------------------------------
+// ScopedCallbackConfig
+// ---------------------------------------------------------------------------
+
+/// Configuration holding a list of callback handler functions.
+///
+/// Built using the builder pattern via [`ScopedCallbackConfig::new`] and
+/// [`ScopedCallbackConfig::with_handler`].
 pub struct ScopedCallbackConfig {
-    /// Callbacks only for this scope.
-    pub local_callbacks: Vec<Arc<dyn CallbackHandler>>,
-    /// Inherited from parent scope.
-    pub inherited_callbacks: Vec<Arc<dyn CallbackHandler>>,
-    /// Whether local callbacks propagate to children (default true).
-    pub propagate: bool,
-    /// Scope tags for filtering.
-    pub tags: Vec<String>,
-    /// Scope metadata.
-    pub metadata: HashMap<String, Value>,
+    handlers: Vec<Arc<CallbackHandlerFn>>,
+}
+
+impl ScopedCallbackConfig {
+    /// Create a new, empty callback configuration.
+    pub fn new() -> Self {
+        Self {
+            handlers: Vec::new(),
+        }
+    }
+
+    /// Add a handler to this configuration, returning `self` for chaining.
+    pub fn with_handler<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&CallbackScope, &CallbackEvent) + Send + Sync + 'static,
+    {
+        self.handlers.push(Arc::new(Box::new(handler)));
+        self
+    }
+
+    /// Returns the number of handlers in this configuration.
+    pub fn handler_count(&self) -> usize {
+        self.handlers.len()
+    }
+
+    /// Returns a slice of the handler references.
+    pub fn handlers(&self) -> &[Arc<CallbackHandlerFn>] {
+        &self.handlers
+    }
 }
 
 impl Default for ScopedCallbackConfig {
     fn default() -> Self {
-        Self {
-            local_callbacks: Vec::new(),
-            inherited_callbacks: Vec::new(),
-            propagate: true,
-            tags: Vec::new(),
-            metadata: HashMap::new(),
-        }
+        Self::new()
     }
 }
 
 impl std::fmt::Debug for ScopedCallbackConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ScopedCallbackConfig")
-            .field(
-                "local_callbacks",
-                &format!("[{} handlers]", self.local_callbacks.len()),
-            )
-            .field(
-                "inherited_callbacks",
-                &format!("[{} handlers]", self.inherited_callbacks.len()),
-            )
-            .field("propagate", &self.propagate)
-            .field("tags", &self.tags)
-            .field("metadata", &self.metadata)
+            .field("handler_count", &self.handlers.len())
             .finish()
     }
 }
 
-/// RAII guard returned by `CallbackScope::enter()`.
-///
-/// While this guard exists, the scope is considered "active". Dropping the guard
-/// exits the scope. This follows the RAII pattern for scope lifetime management.
-pub struct ScopeGuard {
-    _scope_id: Uuid,
-}
+// ---------------------------------------------------------------------------
+// CallbackDispatcher
+// ---------------------------------------------------------------------------
 
-impl ScopeGuard {
-    fn new(scope_id: Uuid) -> Self {
-        Self {
-            _scope_id: scope_id,
-        }
-    }
-
-    /// Returns the scope ID associated with this guard.
-    pub fn scope_id(&self) -> Uuid {
-        self._scope_id
-    }
-}
-
-/// Manages the lifetime of a callback scope.
-///
-/// A `CallbackScope` holds a `ScopedCallbackConfig` and provides methods to
-/// create child scopes that inherit callbacks, add or remove callbacks, and
-/// enter the scope with RAII-based lifetime management.
-pub struct CallbackScope {
-    id: Uuid,
-    config: ScopedCallbackConfig,
-}
-
-impl CallbackScope {
-    /// Create a new scope with the given configuration.
-    pub fn new(config: ScopedCallbackConfig) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            config,
-        }
-    }
-
-    /// Returns the unique ID of this scope.
-    pub fn id(&self) -> Uuid {
-        self.id
-    }
-
-    /// Returns a reference to this scope's configuration.
-    pub fn config(&self) -> &ScopedCallbackConfig {
-        &self.config
-    }
-
-    /// Enter this scope, returning an RAII guard.
-    ///
-    /// The scope is considered active while the guard exists.
-    pub fn enter(&self) -> ScopeGuard {
-        ScopeGuard::new(self.id)
-    }
-
-    /// Create a child scope that inherits callbacks from this scope.
-    ///
-    /// Inherited callbacks in the child are: this scope's inherited callbacks,
-    /// plus this scope's local callbacks if `propagate` is true.
-    /// The child starts with no local callbacks of its own.
-    /// Tags and metadata are also inherited.
-    pub fn child_scope(&self) -> CallbackScope {
-        let child_config = merge_callback_configs(&self.config, &ScopedCallbackConfig::default());
-        CallbackScope::new(child_config)
-    }
-
-    /// Returns all callbacks: inherited first, then local.
-    pub fn all_callbacks(&self) -> Vec<Arc<dyn CallbackHandler>> {
-        let mut all = self.config.inherited_callbacks.clone();
-        all.extend(self.config.local_callbacks.iter().cloned());
-        all
-    }
-
-    /// Add a callback to this scope's local callbacks.
-    pub fn with_callback(&mut self, handler: Arc<dyn CallbackHandler>) {
-        self.config.local_callbacks.push(handler);
-    }
-
-    /// Filter out callbacks whose `name()` matches the type name of `T`.
-    ///
-    /// This removes matching callbacks from both local and inherited lists.
-    pub fn without_callback_type<T: CallbackHandler + 'static>(&mut self) {
-        let type_name = std::any::type_name::<T>();
-        self.config
-            .local_callbacks
-            .retain(|h| !handler_is_type(h.as_ref(), type_name));
-        self.config
-            .inherited_callbacks
-            .retain(|h| !handler_is_type(h.as_ref(), type_name));
-    }
-}
-
-/// Check if a handler matches the given type name.
-///
-/// Uses the `name()` method on `CallbackHandler` and also checks `type_name`.
-fn handler_is_type(handler: &dyn CallbackHandler, type_name: &str) -> bool {
-    // Check if the handler's name contains the type name (for custom names)
-    // or if the full type name matches
-    let handler_name = handler.name();
-    // Try exact match on the short type name
-    let short_name = type_name.rsplit("::").next().unwrap_or(type_name);
-    handler_name == short_name || handler_name == type_name
-}
-
-/// A wrapper around a `Runnable` that injects scoped callbacks during execution.
-///
-/// When `invoke()` is called, the scoped callbacks are merged into the
-/// `RunnableConfig` before delegating to the inner runnable. This allows
-/// callbacks to be attached to specific runnables without affecting siblings.
-pub struct RunnableWithCallbacks {
-    inner: Arc<dyn Runnable>,
-    scoped_config: ScopedCallbackConfig,
-}
-
-impl RunnableWithCallbacks {
-    /// Create a new wrapper with scoped callbacks around the given runnable.
-    pub fn new(inner: Arc<dyn Runnable>, scoped_config: ScopedCallbackConfig) -> Self {
-        Self {
-            inner,
-            scoped_config,
-        }
-    }
-
-    /// Returns a reference to the inner runnable.
-    pub fn inner(&self) -> &Arc<dyn Runnable> {
-        &self.inner
-    }
-
-    /// Returns a reference to the scoped callback configuration.
-    pub fn scoped_config(&self) -> &ScopedCallbackConfig {
-        &self.scoped_config
-    }
-}
-
-#[async_trait]
-impl Runnable for RunnableWithCallbacks {
-    fn name(&self) -> &str {
-        self.inner.name()
-    }
-
-    async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
-        let base_config = config.cloned().unwrap_or_default();
-
-        // Merge scoped callbacks into the config
-        let mut merged_callbacks = base_config.callbacks.clone();
-        merged_callbacks.extend(self.scoped_config.inherited_callbacks.iter().cloned());
-        merged_callbacks.extend(self.scoped_config.local_callbacks.iter().cloned());
-
-        let mut merged_tags = base_config.tags.clone();
-        merged_tags.extend(self.scoped_config.tags.iter().cloned());
-
-        let mut merged_metadata = base_config.metadata.clone();
-        merged_metadata.extend(
-            self.scoped_config
-                .metadata
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone())),
-        );
-
-        let merged_config = RunnableConfig {
-            callbacks: merged_callbacks,
-            tags: merged_tags,
-            metadata: merged_metadata,
-            ..base_config
-        };
-
-        self.inner.invoke(input, Some(&merged_config)).await
-    }
-}
-
-/// Dispatches callback events to multiple handlers.
-///
-/// Handles errors gracefully: if one handler fails, the error is logged
-/// and dispatch continues to remaining handlers. Supports tag-based filtering.
-pub struct CallbackDispatcher;
-
-/// A callback event that can be dispatched to handlers.
-#[derive(Debug, Clone)]
-pub struct CallbackEvent {
-    /// Event name (e.g., "on_chain_start", "on_llm_end").
-    pub name: String,
-    /// Event data payload.
-    pub data: Value,
-    /// Run ID for this event.
-    pub run_id: Uuid,
-    /// Optional parent run ID.
-    pub parent_run_id: Option<Uuid>,
-    /// Tags associated with this event for filtering.
-    pub tags: Vec<String>,
-}
-
-impl CallbackEvent {
-    /// Create a new callback event.
-    pub fn new(name: impl Into<String>, data: Value, run_id: Uuid) -> Self {
-        Self {
-            name: name.into(),
-            data,
-            run_id,
-            parent_run_id: None,
-            tags: Vec::new(),
-        }
-    }
-
-    /// Set tags on this event.
-    pub fn with_tags(mut self, tags: Vec<String>) -> Self {
-        self.tags = tags;
-        self
-    }
-
-    /// Set parent run ID on this event.
-    pub fn with_parent_run_id(mut self, parent_run_id: Uuid) -> Self {
-        self.parent_run_id = Some(parent_run_id);
-        self
-    }
+/// Dispatches [`CallbackEvent`]s to all registered handlers within a
+/// [`CallbackScope`].
+pub struct CallbackDispatcher {
+    handlers: Vec<Arc<CallbackHandlerFn>>,
 }
 
 impl CallbackDispatcher {
-    /// Dispatch an event to all callbacks, handling errors gracefully.
-    ///
-    /// If a handler returns an error and `raise_error()` is false (the default),
-    /// the error is logged via `eprintln!` and dispatch continues.
-    /// If `raise_error()` is true, the error is returned immediately.
-    pub async fn dispatch_to_all(
-        callbacks: &[Arc<dyn CallbackHandler>],
-        event: &CallbackEvent,
-    ) -> Result<()> {
-        for handler in callbacks {
-            let result = handler
-                .on_custom_event(&event.name, &event.data, event.run_id, event.parent_run_id)
-                .await;
-
-            if let Err(e) = result {
-                if handler.raise_error() {
-                    return Err(e);
-                }
-                eprintln!(
-                    "Callback handler '{}' error (ignored): {}",
-                    handler.name(),
-                    e
-                );
-            }
+    /// Create a new dispatcher with no handlers.
+    pub fn new() -> Self {
+        Self {
+            handlers: Vec::new(),
         }
-        Ok(())
     }
 
-    /// Dispatch an event to callbacks, filtering by tags.
-    ///
-    /// Only dispatches to handlers whose `name()` is contained in the event's
-    /// tags, or dispatches to all if the event has no tags.
-    pub async fn dispatch_with_tag_filter(
-        callbacks: &[Arc<dyn CallbackHandler>],
-        event: &CallbackEvent,
-        filter_tags: &[String],
-    ) -> Result<()> {
-        if filter_tags.is_empty() {
-            return Self::dispatch_to_all(callbacks, event).await;
+    /// Create a dispatcher from a [`ScopedCallbackConfig`].
+    pub fn from_config(config: &ScopedCallbackConfig) -> Self {
+        Self {
+            handlers: config.handlers.clone(),
         }
+    }
 
-        for handler in callbacks {
-            // If filter tags are specified, only dispatch to handlers whose name
-            // appears in the filter tags list.
-            if !filter_tags.contains(&handler.name().to_string()) {
-                continue;
-            }
+    /// Add a handler to this dispatcher.
+    pub fn add_handler<F>(&mut self, handler: F)
+    where
+        F: Fn(&CallbackScope, &CallbackEvent) + Send + Sync + 'static,
+    {
+        self.handlers.push(Arc::new(Box::new(handler)));
+    }
 
-            let result = handler
-                .on_custom_event(&event.name, &event.data, event.run_id, event.parent_run_id)
-                .await;
-
-            if let Err(e) = result {
-                if handler.raise_error() {
-                    return Err(e);
-                }
-                eprintln!(
-                    "Callback handler '{}' error (ignored): {}",
-                    handler.name(),
-                    e
-                );
-            }
+    /// Dispatch an event to all registered handlers.
+    pub fn dispatch(&self, scope: &CallbackScope, event: &CallbackEvent) {
+        for handler in &self.handlers {
+            handler(scope, event);
         }
-        Ok(())
+    }
+
+    /// Returns the number of registered handlers.
+    pub fn handler_count(&self) -> usize {
+        self.handlers.len()
+    }
+
+    /// Enter a scope, returning a [`ScopeGuard`] that dispatches `OnStart`
+    /// immediately and `OnEnd` or `OnError` when dropped.
+    pub fn enter_scope(self: &Arc<Self>, scope: CallbackScope, input: Value) -> ScopeGuard {
+        // Dispatch OnStart immediately.
+        self.dispatch(
+            &scope,
+            &CallbackEvent::OnStart {
+                input: input.clone(),
+            },
+        );
+
+        ScopeGuard {
+            dispatcher: Arc::clone(self),
+            scope,
+            result: None,
+            _input: input,
+        }
     }
 }
 
-/// Wrap a runnable with scoped callbacks.
+impl Default for CallbackDispatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for CallbackDispatcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CallbackDispatcher")
+            .field("handler_count", &self.handlers.len())
+            .finish()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ScopeGuard
+// ---------------------------------------------------------------------------
+
+/// RAII guard that dispatches `OnStart` on creation and `OnEnd` or `OnError`
+/// on drop.
 ///
-/// This is a convenience function for creating a `RunnableWithCallbacks`.
+/// Created via [`CallbackDispatcher::enter_scope`]. Call [`ScopeGuard::complete`]
+/// to signal successful completion, or [`ScopeGuard::fail`] to signal an error.
+/// If neither is called before the guard is dropped, an `OnError` event with
+/// a message indicating an unfinished scope is dispatched.
+pub struct ScopeGuard {
+    dispatcher: Arc<CallbackDispatcher>,
+    scope: CallbackScope,
+    result: Option<ScopeResult>,
+    _input: Value,
+}
+
+enum ScopeResult {
+    Success(Value),
+    Error(String),
+}
+
+impl ScopeGuard {
+    /// Mark this scope as successfully completed with the given output.
+    pub fn complete(&mut self, output: Value) {
+        self.result = Some(ScopeResult::Success(output));
+    }
+
+    /// Mark this scope as having failed with the given error message.
+    pub fn fail(&mut self, error: String) {
+        self.result = Some(ScopeResult::Error(error));
+    }
+
+    /// Returns a reference to the scope associated with this guard.
+    pub fn scope(&self) -> &CallbackScope {
+        &self.scope
+    }
+}
+
+impl Drop for ScopeGuard {
+    fn drop(&mut self) {
+        match self.result.take() {
+            Some(ScopeResult::Success(output)) => {
+                self.dispatcher
+                    .dispatch(&self.scope, &CallbackEvent::OnEnd { output });
+            }
+            Some(ScopeResult::Error(error)) => {
+                self.dispatcher
+                    .dispatch(&self.scope, &CallbackEvent::OnError { error });
+            }
+            None => {
+                // Scope was neither completed nor failed -- emit an error.
+                self.dispatcher.dispatch(
+                    &self.scope,
+                    &CallbackEvent::OnError {
+                        error: "scope dropped without completion".to_string(),
+                    },
+                );
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RunnableWithCallbacks
+// ---------------------------------------------------------------------------
+
+/// Wraps a [`Runnable`](super::base::Runnable) and dispatches callback events
+/// around its execution.
+///
+/// This struct demonstrates the pattern for augmenting runnables with callback
+/// support. It does not implement the `Runnable` trait directly; instead it
+/// provides a convenience `invoke` method that dispatches events.
+pub struct RunnableWithCallbacks {
+    /// The inner runnable (trait object).
+    pub inner: Arc<dyn super::base::Runnable>,
+    /// The dispatcher used to send callback events.
+    pub dispatcher: Arc<CallbackDispatcher>,
+}
+
+impl RunnableWithCallbacks {
+    /// Create a new wrapper around the given runnable with the provided
+    /// dispatcher.
+    pub fn new(
+        inner: Arc<dyn super::base::Runnable>,
+        dispatcher: Arc<CallbackDispatcher>,
+    ) -> Self {
+        Self { inner, dispatcher }
+    }
+
+    /// Invoke the wrapped runnable, dispatching `OnStart`, `OnEnd`/`OnError`
+    /// callback events around the call.
+    pub async fn invoke(
+        &self,
+        input: Value,
+        config: Option<&super::config::RunnableConfig>,
+    ) -> crate::error::Result<Value> {
+        let scope = CallbackScope::new(self.inner.name(), "chain");
+        let mut guard = self.dispatcher.enter_scope(scope, input.clone());
+
+        match self.inner.invoke(input, config).await {
+            Ok(output) => {
+                guard.complete(output.clone());
+                Ok(output)
+            }
+            Err(e) => {
+                guard.fail(e.to_string());
+                Err(e)
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for RunnableWithCallbacks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunnableWithCallbacks")
+            .field("inner_name", &self.inner.name())
+            .field("dispatcher", &self.dispatcher)
+            .finish()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helper functions
+// ---------------------------------------------------------------------------
+
+/// Create a [`ScopedCallbackConfig`] from a list of handler functions.
 pub fn with_callbacks(
-    runnable: Arc<dyn Runnable>,
-    callbacks: Vec<Arc<dyn CallbackHandler>>,
-) -> RunnableWithCallbacks {
-    let config = ScopedCallbackConfig {
-        local_callbacks: callbacks,
-        ..ScopedCallbackConfig::default()
-    };
-    RunnableWithCallbacks::new(runnable, config)
-}
-
-/// Merge a parent scope config with a child scope config.
-///
-/// The result's inherited callbacks are: parent's inherited + parent's local
-/// (if parent propagates). The result's local callbacks are the child's local
-/// callbacks. Tags and metadata are merged (parent + child).
-pub fn merge_callback_configs(
-    parent: &ScopedCallbackConfig,
-    child: &ScopedCallbackConfig,
+    handlers: Vec<Box<dyn Fn(&CallbackScope, &CallbackEvent) + Send + Sync>>,
 ) -> ScopedCallbackConfig {
-    let mut inherited = parent.inherited_callbacks.clone();
-    if parent.propagate {
-        inherited.extend(parent.local_callbacks.iter().cloned());
+    let mut config = ScopedCallbackConfig::new();
+    for handler in handlers {
+        config.handlers.push(Arc::new(handler));
     }
-
-    let mut tags = parent.tags.clone();
-    tags.extend(child.tags.iter().cloned());
-
-    let mut metadata = parent.metadata.clone();
-    metadata.extend(child.metadata.iter().map(|(k, v)| (k.clone(), v.clone())));
-
-    ScopedCallbackConfig {
-        local_callbacks: child.local_callbacks.clone(),
-        inherited_callbacks: inherited,
-        propagate: child.propagate,
-        tags,
-        metadata,
-    }
+    config
 }
+
+/// Merge two [`ScopedCallbackConfig`]s into a single config containing
+/// all handlers from both, with `a`'s handlers appearing first.
+pub fn merge_callback_configs(
+    a: &ScopedCallbackConfig,
+    b: &ScopedCallbackConfig,
+) -> ScopedCallbackConfig {
+    let mut handlers = a.handlers.clone();
+    handlers.extend(b.handlers.iter().cloned());
+    ScopedCallbackConfig { handlers }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::callbacks::handlers::{LogLevel, LoggingCallbackHandler, MetricsCallbackHandler};
     use serde_json::json;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Mutex;
 
-    // ---------------------------------------------------------------
-    // Test helpers
-    // ---------------------------------------------------------------
-
-    /// A test callback handler that records calls.
-    struct TestCallbackHandler {
-        handler_name: String,
-        call_count: std::sync::atomic::AtomicUsize,
-    }
-
-    impl TestCallbackHandler {
-        fn new(name: &str) -> Self {
-            Self {
-                handler_name: name.to_string(),
-                call_count: std::sync::atomic::AtomicUsize::new(0),
-            }
-        }
-
-        fn calls(&self) -> usize {
-            self.call_count.load(std::sync::atomic::Ordering::Relaxed)
-        }
-    }
-
-    #[async_trait]
-    impl CallbackHandler for TestCallbackHandler {
-        fn name(&self) -> &str {
-            &self.handler_name
-        }
-
-        async fn on_custom_event(
-            &self,
-            _name: &str,
-            _data: &Value,
-            _run_id: Uuid,
-            _parent_run_id: Option<Uuid>,
-        ) -> Result<()> {
-            self.call_count
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            Ok(())
-        }
-    }
-
-    /// A callback handler that always fails.
-    struct FailingCallbackHandler {
-        should_raise: bool,
-    }
-
-    impl FailingCallbackHandler {
-        fn new(should_raise: bool) -> Self {
-            Self { should_raise }
-        }
-    }
-
-    #[async_trait]
-    impl CallbackHandler for FailingCallbackHandler {
-        fn name(&self) -> &str {
-            "FailingCallbackHandler"
-        }
-
-        fn raise_error(&self) -> bool {
-            self.should_raise
-        }
-
-        async fn on_custom_event(
-            &self,
-            _name: &str,
-            _data: &Value,
-            _run_id: Uuid,
-            _parent_run_id: Option<Uuid>,
-        ) -> Result<()> {
-            Err(crate::error::RustChainError::Other(
-                "handler failure".to_string(),
-            ))
-        }
-    }
-
-    /// Simple test runnable that returns its input.
-    struct EchoRunnable;
-
-    #[async_trait]
-    impl Runnable for EchoRunnable {
-        fn name(&self) -> &str {
-            "EchoRunnable"
-        }
-
-        async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
-            // Return the number of callbacks in the config as proof they were merged
-            let cb_count = config.map(|c| c.callbacks.len()).unwrap_or(0);
-            Ok(json!({
-                "input": input,
-                "callback_count": cb_count,
-            }))
-        }
-    }
-
-    // ---------------------------------------------------------------
-    // Tests
-    // ---------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // CallbackEvent -- variant event_type() tests
+    // -----------------------------------------------------------------------
 
     #[test]
-    fn test_scoped_callback_config_defaults() {
+    fn test_event_on_start_type() {
+        let event = CallbackEvent::OnStart { input: json!(1) };
+        assert_eq!(event.event_type(), "on_start");
+    }
+
+    #[test]
+    fn test_event_on_end_type() {
+        let event = CallbackEvent::OnEnd { output: json!(2) };
+        assert_eq!(event.event_type(), "on_end");
+    }
+
+    #[test]
+    fn test_event_on_error_type() {
+        let event = CallbackEvent::OnError {
+            error: "fail".into(),
+        };
+        assert_eq!(event.event_type(), "on_error");
+    }
+
+    #[test]
+    fn test_event_on_text_type() {
+        let event = CallbackEvent::OnText {
+            text: "hello".into(),
+        };
+        assert_eq!(event.event_type(), "on_text");
+    }
+
+    #[test]
+    fn test_event_on_retry_type() {
+        let event = CallbackEvent::OnRetry { attempt: 3 };
+        assert_eq!(event.event_type(), "on_retry");
+    }
+
+    #[test]
+    fn test_event_custom_type() {
+        let event = CallbackEvent::Custom {
+            name: "my_event".into(),
+            data: json!(null),
+        };
+        assert_eq!(event.event_type(), "custom");
+    }
+
+    // -----------------------------------------------------------------------
+    // CallbackEvent -- to_json() serialization tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_event_on_start_to_json() {
+        let event = CallbackEvent::OnStart {
+            input: json!({"key": "value"}),
+        };
+        let j = event.to_json();
+        assert_eq!(j["event_type"], "on_start");
+        assert_eq!(j["input"]["key"], "value");
+    }
+
+    #[test]
+    fn test_event_on_end_to_json() {
+        let event = CallbackEvent::OnEnd {
+            output: json!([1, 2, 3]),
+        };
+        let j = event.to_json();
+        assert_eq!(j["event_type"], "on_end");
+        assert_eq!(j["output"], json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn test_event_on_error_to_json() {
+        let event = CallbackEvent::OnError {
+            error: "oops".into(),
+        };
+        let j = event.to_json();
+        assert_eq!(j["event_type"], "on_error");
+        assert_eq!(j["error"], "oops");
+    }
+
+    #[test]
+    fn test_event_on_text_to_json() {
+        let event = CallbackEvent::OnText {
+            text: "chunk".into(),
+        };
+        let j = event.to_json();
+        assert_eq!(j["event_type"], "on_text");
+        assert_eq!(j["text"], "chunk");
+    }
+
+    #[test]
+    fn test_event_on_retry_to_json() {
+        let event = CallbackEvent::OnRetry { attempt: 5 };
+        let j = event.to_json();
+        assert_eq!(j["event_type"], "on_retry");
+        assert_eq!(j["attempt"], 5);
+    }
+
+    #[test]
+    fn test_event_custom_to_json() {
+        let event = CallbackEvent::Custom {
+            name: "ping".into(),
+            data: json!({"ts": 12345}),
+        };
+        let j = event.to_json();
+        assert_eq!(j["event_type"], "custom");
+        assert_eq!(j["name"], "ping");
+        assert_eq!(j["data"]["ts"], 12345);
+    }
+
+    #[test]
+    fn test_event_on_start_to_json_null_input() {
+        let event = CallbackEvent::OnStart { input: json!(null) };
+        let j = event.to_json();
+        assert_eq!(j["input"], Value::Null);
+    }
+
+    #[test]
+    fn test_event_clone() {
+        let event = CallbackEvent::OnStart { input: json!(42) };
+        let cloned = event.clone();
+        assert_eq!(cloned.event_type(), "on_start");
+        assert_eq!(cloned.to_json()["input"], 42);
+    }
+
+    #[test]
+    fn test_event_debug() {
+        let event = CallbackEvent::OnRetry { attempt: 7 };
+        let debug = format!("{:?}", event);
+        assert!(debug.contains("OnRetry"));
+        assert!(debug.contains("7"));
+    }
+
+    // -----------------------------------------------------------------------
+    // CallbackScope tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_scope_new_has_generated_run_id() {
+        let scope = CallbackScope::new("my_runnable", "chain");
+        assert!(!scope.run_id.is_empty());
+        assert_eq!(scope.name, "my_runnable");
+        assert_eq!(scope.run_type, "chain");
+        assert!(scope.parent_run_id.is_none());
+    }
+
+    #[test]
+    fn test_scope_new_run_ids_are_unique() {
+        let s1 = CallbackScope::new("a", "chain");
+        let s2 = CallbackScope::new("b", "chain");
+        assert_ne!(s1.run_id, s2.run_id);
+    }
+
+    #[test]
+    fn test_scope_child_has_parent() {
+        let parent = CallbackScope::new("parent", "chain");
+        let child = parent.child("child_tool", "tool");
+        assert_eq!(child.parent_run_id, Some(parent.run_id.clone()));
+        assert_eq!(child.name, "child_tool");
+        assert_eq!(child.run_type, "tool");
+        assert_ne!(child.run_id, parent.run_id);
+    }
+
+    #[test]
+    fn test_scope_child_chain() {
+        let root = CallbackScope::new("root", "chain");
+        let mid = root.child("mid", "tool");
+        let leaf = mid.child("leaf", "llm");
+        assert_eq!(mid.parent_run_id, Some(root.run_id.clone()));
+        assert_eq!(leaf.parent_run_id, Some(mid.run_id.clone()));
+    }
+
+    #[test]
+    fn test_scope_clone() {
+        let scope = CallbackScope::new("test", "chain");
+        let cloned = scope.clone();
+        assert_eq!(cloned.run_id, scope.run_id);
+        assert_eq!(cloned.name, scope.name);
+    }
+
+    #[test]
+    fn test_scope_debug() {
+        let scope = CallbackScope::new("my_debug_scope", "llm");
+        let debug = format!("{:?}", scope);
+        assert!(debug.contains("my_debug_scope"));
+        assert!(debug.contains("llm"));
+    }
+
+    // -----------------------------------------------------------------------
+    // ScopedCallbackConfig tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_config_new_is_empty() {
+        let config = ScopedCallbackConfig::new();
+        assert_eq!(config.handler_count(), 0);
+    }
+
+    #[test]
+    fn test_config_default_is_empty() {
         let config = ScopedCallbackConfig::default();
-        assert!(config.local_callbacks.is_empty());
-        assert!(config.inherited_callbacks.is_empty());
-        assert!(config.propagate);
-        assert!(config.tags.is_empty());
-        assert!(config.metadata.is_empty());
+        assert_eq!(config.handler_count(), 0);
     }
 
     #[test]
-    fn test_scoped_callback_config_creation_with_values() {
-        let handler = Arc::new(TestCallbackHandler::new("test"));
-        let config = ScopedCallbackConfig {
-            local_callbacks: vec![handler.clone()],
-            inherited_callbacks: vec![],
-            propagate: false,
-            tags: vec!["tag1".into()],
-            metadata: {
-                let mut m = HashMap::new();
-                m.insert("key".into(), json!("value"));
-                m
-            },
-        };
-        assert_eq!(config.local_callbacks.len(), 1);
-        assert!(!config.propagate);
-        assert_eq!(config.tags, vec!["tag1".to_string()]);
-        assert_eq!(config.metadata.get("key"), Some(&json!("value")));
+    fn test_config_with_handler_single() {
+        let config = ScopedCallbackConfig::new().with_handler(|_scope, _event| {});
+        assert_eq!(config.handler_count(), 1);
     }
 
     #[test]
-    fn test_callback_inheritance_parent_to_child() {
-        let parent_handler = Arc::new(TestCallbackHandler::new("parent"));
-        let local_handler = Arc::new(TestCallbackHandler::new("local"));
-
-        let parent_config = ScopedCallbackConfig {
-            local_callbacks: vec![local_handler.clone()],
-            inherited_callbacks: vec![parent_handler.clone()],
-            propagate: true,
-            tags: vec!["parent_tag".into()],
-            metadata: HashMap::new(),
-        };
-
-        let scope = CallbackScope::new(parent_config);
-        let child = scope.child_scope();
-
-        // Child should inherit: parent's inherited + parent's local (propagate=true)
-        assert_eq!(child.config().inherited_callbacks.len(), 2);
-        // Child has no local callbacks of its own
-        assert!(child.config().local_callbacks.is_empty());
-        // Child inherits tags
-        assert!(child.config().tags.contains(&"parent_tag".to_string()));
+    fn test_config_with_handler_chained() {
+        let config = ScopedCallbackConfig::new()
+            .with_handler(|_scope, _event| {})
+            .with_handler(|_scope, _event| {})
+            .with_handler(|_scope, _event| {});
+        assert_eq!(config.handler_count(), 3);
     }
 
     #[test]
-    fn test_propagation_flag_false_blocks_local() {
-        let parent_inherited = Arc::new(TestCallbackHandler::new("inherited"));
-        let parent_local = Arc::new(TestCallbackHandler::new("local_no_propagate"));
-
-        let parent_config = ScopedCallbackConfig {
-            local_callbacks: vec![parent_local.clone()],
-            inherited_callbacks: vec![parent_inherited.clone()],
-            propagate: false,
-            tags: vec![],
-            metadata: HashMap::new(),
-        };
-
-        let scope = CallbackScope::new(parent_config);
-        let child = scope.child_scope();
-
-        // With propagate=false, child only gets parent's inherited, not local
-        assert_eq!(child.config().inherited_callbacks.len(), 1);
-        assert_eq!(child.config().inherited_callbacks[0].name(), "inherited");
-    }
-
-    #[tokio::test]
-    async fn test_runnable_with_callbacks_invoke() {
-        let echo = Arc::new(EchoRunnable) as Arc<dyn Runnable>;
-        let handler1 = Arc::new(TestCallbackHandler::new("h1"));
-        let handler2 = Arc::new(TestCallbackHandler::new("h2"));
-
-        let scoped_config = ScopedCallbackConfig {
-            local_callbacks: vec![handler1, handler2],
-            inherited_callbacks: vec![],
-            propagate: true,
-            tags: vec!["scope_tag".into()],
-            metadata: HashMap::new(),
-        };
-
-        let wrapped = RunnableWithCallbacks::new(echo, scoped_config);
-        let result = wrapped.invoke(json!("hello"), None).await.unwrap();
-
-        // The EchoRunnable reports callback count from merged config
-        assert_eq!(result["callback_count"], 2);
-        assert_eq!(result["input"], "hello");
+    fn test_config_handlers_accessor() {
+        let config = ScopedCallbackConfig::new()
+            .with_handler(|_, _| {})
+            .with_handler(|_, _| {});
+        assert_eq!(config.handlers().len(), 2);
     }
 
     #[test]
-    fn test_merge_callback_configs_parent_child() {
-        let p_handler = Arc::new(TestCallbackHandler::new("parent_h"));
-        let p_local = Arc::new(TestCallbackHandler::new("parent_local"));
-        let c_handler = Arc::new(TestCallbackHandler::new("child_h"));
-
-        let parent = ScopedCallbackConfig {
-            local_callbacks: vec![p_local.clone()],
-            inherited_callbacks: vec![p_handler.clone()],
-            propagate: true,
-            tags: vec!["ptag".into()],
-            metadata: {
-                let mut m = HashMap::new();
-                m.insert("pk".into(), json!("pv"));
-                m
-            },
-        };
-
-        let child = ScopedCallbackConfig {
-            local_callbacks: vec![c_handler.clone()],
-            inherited_callbacks: vec![],
-            propagate: true,
-            tags: vec!["ctag".into()],
-            metadata: {
-                let mut m = HashMap::new();
-                m.insert("ck".into(), json!("cv"));
-                m
-            },
-        };
-
-        let merged = merge_callback_configs(&parent, &child);
-
-        // Inherited: parent's inherited + parent's local (propagate=true)
-        assert_eq!(merged.inherited_callbacks.len(), 2);
-        // Local: child's local
-        assert_eq!(merged.local_callbacks.len(), 1);
-        assert_eq!(merged.local_callbacks[0].name(), "child_h");
-        // Tags merged
-        assert!(merged.tags.contains(&"ptag".to_string()));
-        assert!(merged.tags.contains(&"ctag".to_string()));
-        // Metadata merged
-        assert_eq!(merged.metadata.get("pk"), Some(&json!("pv")));
-        assert_eq!(merged.metadata.get("ck"), Some(&json!("cv")));
+    fn test_config_debug() {
+        let config = ScopedCallbackConfig::new().with_handler(|_, _| {});
+        let debug = format!("{:?}", config);
+        assert!(debug.contains("handler_count: 1"));
     }
 
-    #[tokio::test]
-    async fn test_tag_based_filtering() {
-        let h1 = Arc::new(TestCallbackHandler::new("handler_a"));
-        let h2 = Arc::new(TestCallbackHandler::new("handler_b"));
-        let callbacks: Vec<Arc<dyn CallbackHandler>> = vec![h1.clone(), h2.clone()];
+    // -----------------------------------------------------------------------
+    // CallbackDispatcher tests
+    // -----------------------------------------------------------------------
 
-        let event = CallbackEvent::new("test_event", json!({}), Uuid::new_v4());
-
-        // Filter to only handler_a
-        CallbackDispatcher::dispatch_with_tag_filter(
-            &callbacks,
-            &event,
-            &["handler_a".to_string()],
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(h1.calls(), 1);
-        assert_eq!(h2.calls(), 0);
+    #[test]
+    fn test_dispatcher_new_empty() {
+        let dispatcher = CallbackDispatcher::new();
+        assert_eq!(dispatcher.handler_count(), 0);
     }
 
     #[test]
-    fn test_metadata_propagation_to_child() {
-        let parent = ScopedCallbackConfig {
-            local_callbacks: vec![],
-            inherited_callbacks: vec![],
-            propagate: true,
-            tags: vec!["parent_t".into()],
-            metadata: {
-                let mut m = HashMap::new();
-                m.insert("env".into(), json!("prod"));
-                m.insert("shared".into(), json!("parent_val"));
-                m
+    fn test_dispatcher_default_empty() {
+        let dispatcher = CallbackDispatcher::default();
+        assert_eq!(dispatcher.handler_count(), 0);
+    }
+
+    #[test]
+    fn test_dispatcher_add_handler() {
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(|_, _| {});
+        dispatcher.add_handler(|_, _| {});
+        assert_eq!(dispatcher.handler_count(), 2);
+    }
+
+    #[test]
+    fn test_dispatcher_dispatch_calls_all_handlers() {
+        let counter = Arc::new(AtomicU32::new(0));
+        let c1 = counter.clone();
+        let c2 = counter.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_, _| {
+            c1.fetch_add(1, Ordering::SeqCst);
+        });
+        dispatcher.add_handler(move |_, _| {
+            c2.fetch_add(10, Ordering::SeqCst);
+        });
+
+        let scope = CallbackScope::new("test", "chain");
+        let event = CallbackEvent::OnStart { input: json!(null) };
+        dispatcher.dispatch(&scope, &event);
+
+        assert_eq!(counter.load(Ordering::SeqCst), 11);
+    }
+
+    #[test]
+    fn test_dispatcher_dispatch_receives_correct_event() {
+        let received = Arc::new(Mutex::new(Vec::new()));
+        let r = received.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_scope, event| {
+            r.lock().unwrap().push(event.event_type().to_string());
+        });
+
+        let scope = CallbackScope::new("test", "chain");
+        dispatcher.dispatch(&scope, &CallbackEvent::OnStart { input: json!(1) });
+        dispatcher.dispatch(&scope, &CallbackEvent::OnEnd { output: json!(2) });
+        dispatcher.dispatch(
+            &scope,
+            &CallbackEvent::OnError {
+                error: "err".into(),
             },
-        };
+        );
 
-        let child = ScopedCallbackConfig {
-            local_callbacks: vec![],
-            inherited_callbacks: vec![],
-            propagate: true,
-            tags: vec!["child_t".into()],
-            metadata: {
-                let mut m = HashMap::new();
-                m.insert("shared".into(), json!("child_val"));
-                m.insert("child_only".into(), json!(true));
-                m
+        let types = received.lock().unwrap();
+        assert_eq!(*types, vec!["on_start", "on_end", "on_error"]);
+    }
+
+    #[test]
+    fn test_dispatcher_dispatch_receives_correct_scope() {
+        let received_name = Arc::new(Mutex::new(String::new()));
+        let rn = received_name.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |scope, _event| {
+            *rn.lock().unwrap() = scope.name.clone();
+        });
+
+        let scope = CallbackScope::new("my_scope", "chain");
+        dispatcher.dispatch(&scope, &CallbackEvent::OnStart { input: json!(null) });
+
+        assert_eq!(*received_name.lock().unwrap(), "my_scope");
+    }
+
+    #[test]
+    fn test_dispatcher_no_handlers_dispatch_does_nothing() {
+        let dispatcher = CallbackDispatcher::new();
+        let scope = CallbackScope::new("test", "chain");
+        // Should not panic.
+        dispatcher.dispatch(&scope, &CallbackEvent::OnStart { input: json!(null) });
+    }
+
+    #[test]
+    fn test_dispatcher_from_config() {
+        let counter = Arc::new(AtomicU32::new(0));
+        let c = counter.clone();
+
+        let config = ScopedCallbackConfig::new().with_handler(move |_, _| {
+            c.fetch_add(1, Ordering::SeqCst);
+        });
+
+        let dispatcher = CallbackDispatcher::from_config(&config);
+        assert_eq!(dispatcher.handler_count(), 1);
+
+        let scope = CallbackScope::new("test", "chain");
+        dispatcher.dispatch(&scope, &CallbackEvent::OnStart { input: json!(null) });
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_dispatcher_debug() {
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(|_, _| {});
+        let debug = format!("{:?}", dispatcher);
+        assert!(debug.contains("handler_count: 1"));
+    }
+
+    #[test]
+    fn test_dispatcher_dispatch_all_event_variants() {
+        let received = Arc::new(Mutex::new(Vec::new()));
+        let r = received.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_, event| {
+            r.lock().unwrap().push(event.event_type().to_string());
+        });
+
+        let scope = CallbackScope::new("test", "chain");
+        dispatcher.dispatch(&scope, &CallbackEvent::OnStart { input: json!(null) });
+        dispatcher.dispatch(&scope, &CallbackEvent::OnEnd { output: json!(null) });
+        dispatcher.dispatch(
+            &scope,
+            &CallbackEvent::OnError {
+                error: "e".into(),
             },
-        };
+        );
+        dispatcher.dispatch(
+            &scope,
+            &CallbackEvent::OnText {
+                text: "t".into(),
+            },
+        );
+        dispatcher.dispatch(&scope, &CallbackEvent::OnRetry { attempt: 1 });
+        dispatcher.dispatch(
+            &scope,
+            &CallbackEvent::Custom {
+                name: "c".into(),
+                data: json!(null),
+            },
+        );
 
-        let merged = merge_callback_configs(&parent, &child);
+        let types = received.lock().unwrap();
+        assert_eq!(
+            *types,
+            vec!["on_start", "on_end", "on_error", "on_text", "on_retry", "custom"]
+        );
+    }
 
-        // Parent metadata is present
-        assert_eq!(merged.metadata.get("env"), Some(&json!("prod")));
-        // Child overrides shared key
-        assert_eq!(merged.metadata.get("shared"), Some(&json!("child_val")));
-        // Child-only key is present
-        assert_eq!(merged.metadata.get("child_only"), Some(&json!(true)));
-        // Both tag sets merged
-        assert_eq!(merged.tags.len(), 2);
+    // -----------------------------------------------------------------------
+    // ScopeGuard tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_scope_guard_dispatches_on_start_and_on_end() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let e = events.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_scope, event| {
+            e.lock().unwrap().push(event.event_type().to_string());
+        });
+        let dispatcher = Arc::new(dispatcher);
+
+        let scope = CallbackScope::new("guarded", "chain");
+        {
+            let mut guard = dispatcher.enter_scope(scope, json!({"q": "hello"}));
+            guard.complete(json!({"a": "world"}));
+        } // guard dropped here
+
+        let types = events.lock().unwrap();
+        assert_eq!(*types, vec!["on_start", "on_end"]);
+    }
+
+    #[test]
+    fn test_scope_guard_dispatches_on_start_and_on_error() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let e = events.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_scope, event| {
+            e.lock().unwrap().push(event.event_type().to_string());
+        });
+        let dispatcher = Arc::new(dispatcher);
+
+        let scope = CallbackScope::new("guarded", "chain");
+        {
+            let mut guard = dispatcher.enter_scope(scope, json!(null));
+            guard.fail("something went wrong".into());
+        }
+
+        let types = events.lock().unwrap();
+        assert_eq!(*types, vec!["on_start", "on_error"]);
+    }
+
+    #[test]
+    fn test_scope_guard_dropped_without_result_emits_error() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let e = events.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_scope, event| {
+            e.lock().unwrap().push(event.event_type().to_string());
+        });
+        let dispatcher = Arc::new(dispatcher);
+
+        let scope = CallbackScope::new("abandoned", "chain");
+        {
+            let _guard = dispatcher.enter_scope(scope, json!(null));
+            // Intentionally not calling complete() or fail().
+        }
+
+        let types = events.lock().unwrap();
+        assert_eq!(*types, vec!["on_start", "on_error"]);
+    }
+
+    #[test]
+    fn test_scope_guard_dropped_without_result_error_message() {
+        let errors = Arc::new(Mutex::new(Vec::new()));
+        let er = errors.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_scope, event| {
+            if let CallbackEvent::OnError { error } = event {
+                er.lock().unwrap().push(error.clone());
+            }
+        });
+        let dispatcher = Arc::new(dispatcher);
+
+        {
+            let _guard =
+                dispatcher.enter_scope(CallbackScope::new("test", "chain"), json!(null));
+        }
+
+        let errs = errors.lock().unwrap();
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0], "scope dropped without completion");
+    }
+
+    #[test]
+    fn test_scope_guard_scope_accessor() {
+        let dispatcher = Arc::new(CallbackDispatcher::new());
+        let scope = CallbackScope::new("accessor_test", "tool");
+        let mut guard = dispatcher.enter_scope(scope, json!(null));
+        assert_eq!(guard.scope().name, "accessor_test");
+        assert_eq!(guard.scope().run_type, "tool");
+        guard.complete(json!(null));
+    }
+
+    #[test]
+    fn test_scope_guard_end_event_carries_output() {
+        let outputs = Arc::new(Mutex::new(Vec::new()));
+        let o = outputs.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_scope, event| {
+            if let CallbackEvent::OnEnd { output } = event {
+                o.lock().unwrap().push(output.clone());
+            }
+        });
+        let dispatcher = Arc::new(dispatcher);
+
+        {
+            let mut guard =
+                dispatcher.enter_scope(CallbackScope::new("test", "chain"), json!(null));
+            guard.complete(json!({"result": 42}));
+        }
+
+        let out = outputs.lock().unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], json!({"result": 42}));
+    }
+
+    #[test]
+    fn test_scope_guard_error_event_carries_message() {
+        let errors = Arc::new(Mutex::new(Vec::new()));
+        let er = errors.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_scope, event| {
+            if let CallbackEvent::OnError { error } = event {
+                er.lock().unwrap().push(error.clone());
+            }
+        });
+        let dispatcher = Arc::new(dispatcher);
+
+        {
+            let mut guard =
+                dispatcher.enter_scope(CallbackScope::new("test", "chain"), json!(null));
+            guard.fail("timeout".into());
+        }
+
+        let errs = errors.lock().unwrap();
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0], "timeout");
+    }
+
+    #[test]
+    fn test_scope_guard_start_event_carries_input() {
+        let inputs = Arc::new(Mutex::new(Vec::new()));
+        let i = inputs.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_scope, event| {
+            if let CallbackEvent::OnStart { input } = event {
+                i.lock().unwrap().push(input.clone());
+            }
+        });
+        let dispatcher = Arc::new(dispatcher);
+
+        {
+            let mut guard =
+                dispatcher.enter_scope(CallbackScope::new("test", "chain"), json!({"x": 99}));
+            guard.complete(json!(null));
+        }
+
+        let ins = inputs.lock().unwrap();
+        assert_eq!(ins.len(), 1);
+        assert_eq!(ins[0], json!({"x": 99}));
+    }
+
+    // -----------------------------------------------------------------------
+    // with_callbacks tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_with_callbacks_empty() {
+        let config = with_callbacks(vec![]);
+        assert_eq!(config.handler_count(), 0);
+    }
+
+    #[test]
+    fn test_with_callbacks_multiple() {
+        let config = with_callbacks(vec![
+            Box::new(|_, _| {}),
+            Box::new(|_, _| {}),
+            Box::new(|_, _| {}),
+        ]);
+        assert_eq!(config.handler_count(), 3);
+    }
+
+    #[test]
+    fn test_with_callbacks_handlers_are_called() {
+        let counter = Arc::new(AtomicU32::new(0));
+        let c = counter.clone();
+
+        let config = with_callbacks(vec![Box::new(move |_, _| {
+            c.fetch_add(1, Ordering::SeqCst);
+        })]);
+
+        let dispatcher = CallbackDispatcher::from_config(&config);
+        let scope = CallbackScope::new("test", "chain");
+        dispatcher.dispatch(&scope, &CallbackEvent::OnStart { input: json!(null) });
+
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // merge_callback_configs tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_merge_empty_configs() {
+        let a = ScopedCallbackConfig::new();
+        let b = ScopedCallbackConfig::new();
+        let merged = merge_callback_configs(&a, &b);
+        assert_eq!(merged.handler_count(), 0);
+    }
+
+    #[test]
+    fn test_merge_configs_combines_handlers() {
+        let a = ScopedCallbackConfig::new()
+            .with_handler(|_, _| {})
+            .with_handler(|_, _| {});
+        let b = ScopedCallbackConfig::new().with_handler(|_, _| {});
+        let merged = merge_callback_configs(&a, &b);
+        assert_eq!(merged.handler_count(), 3);
+    }
+
+    #[test]
+    fn test_merge_configs_preserves_order() {
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let o1 = order.clone();
+        let o2 = order.clone();
+
+        let a = ScopedCallbackConfig::new().with_handler(move |_, _| {
+            o1.lock().unwrap().push("a");
+        });
+        let b = ScopedCallbackConfig::new().with_handler(move |_, _| {
+            o2.lock().unwrap().push("b");
+        });
+
+        let merged = merge_callback_configs(&a, &b);
+        let dispatcher = CallbackDispatcher::from_config(&merged);
+        let scope = CallbackScope::new("test", "chain");
+        dispatcher.dispatch(&scope, &CallbackEvent::OnStart { input: json!(null) });
+
+        let calls = order.lock().unwrap();
+        assert_eq!(*calls, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn test_merge_one_empty_one_populated() {
+        let empty = ScopedCallbackConfig::new();
+        let populated = ScopedCallbackConfig::new()
+            .with_handler(|_, _| {})
+            .with_handler(|_, _| {});
+        let merged = merge_callback_configs(&empty, &populated);
+        assert_eq!(merged.handler_count(), 2);
+
+        let merged2 = merge_callback_configs(&populated, &empty);
+        assert_eq!(merged2.handler_count(), 2);
+    }
+
+    #[test]
+    fn test_merge_configs_does_not_affect_originals() {
+        let a = ScopedCallbackConfig::new().with_handler(|_, _| {});
+        let b = ScopedCallbackConfig::new().with_handler(|_, _| {});
+        let _merged = merge_callback_configs(&a, &b);
+        // Original configs should still have their original handler counts.
+        assert_eq!(a.handler_count(), 1);
+        assert_eq!(b.handler_count(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // RunnableWithCallbacks tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_runnable_with_callbacks_dispatches_events() {
+        use crate::runnables::RunnableLambda;
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let e = events.clone();
+
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_scope, event| {
+            e.lock().unwrap().push(event.event_type().to_string());
+        });
+
+        let inner = Arc::new(RunnableLambda::new("double", |v: Value| async move {
+            let n = v.as_i64().unwrap();
+            Ok(json!(n * 2))
+        })) as Arc<dyn super::super::base::Runnable>;
+
+        let wrapped = RunnableWithCallbacks::new(inner, Arc::new(dispatcher));
+        let result = wrapped.invoke(json!(5), None).await.unwrap();
+        assert_eq!(result, json!(10));
+
+        let types = events.lock().unwrap();
+        assert_eq!(*types, vec!["on_start", "on_end"]);
     }
 
     #[tokio::test]
-    async fn test_multiple_nested_scopes() {
-        let h_root = Arc::new(TestCallbackHandler::new("root"));
-        let h_mid = Arc::new(TestCallbackHandler::new("mid"));
-        let h_leaf = Arc::new(TestCallbackHandler::new("leaf"));
+    async fn test_runnable_with_callbacks_on_error() {
+        use crate::runnables::RunnableLambda;
 
-        // Root scope
-        let root_config = ScopedCallbackConfig {
-            local_callbacks: vec![h_root.clone()],
-            inherited_callbacks: vec![],
-            propagate: true,
-            tags: vec!["root".into()],
-            metadata: HashMap::new(),
-        };
-        let root_scope = CallbackScope::new(root_config);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let e = events.clone();
 
-        // Middle scope (child of root)
-        let mut mid_scope = root_scope.child_scope();
-        mid_scope.with_callback(h_mid.clone());
+        let mut dispatcher = CallbackDispatcher::new();
+        dispatcher.add_handler(move |_scope, event| {
+            e.lock().unwrap().push(event.event_type().to_string());
+        });
 
-        // Leaf scope (child of middle)
-        let mut leaf_scope = mid_scope.child_scope();
-        leaf_scope.with_callback(h_leaf.clone());
+        let inner = Arc::new(RunnableLambda::new("failing", |_v: Value| async move {
+            Err(crate::error::RustChainError::Other("boom".into()))
+        })) as Arc<dyn super::super::base::Runnable>;
 
-        let all = leaf_scope.all_callbacks();
-        // inherited from root (1) + mid's local propagated (1) + leaf's local (1)
-        assert_eq!(all.len(), 3);
-        // Order: inherited first, then local
-        assert_eq!(all[0].name(), "root");
-        assert_eq!(all[1].name(), "mid");
-        assert_eq!(all[2].name(), "leaf");
-    }
-
-    #[tokio::test]
-    async fn test_dispatcher_error_handling_continues() {
-        let failing = Arc::new(FailingCallbackHandler::new(false));
-        let good = Arc::new(TestCallbackHandler::new("good"));
-
-        let callbacks: Vec<Arc<dyn CallbackHandler>> =
-            vec![failing as Arc<dyn CallbackHandler>, good.clone()];
-
-        let event = CallbackEvent::new("test", json!({}), Uuid::new_v4());
-
-        // Should not fail even though first handler errors
-        let result = CallbackDispatcher::dispatch_to_all(&callbacks, &event).await;
-        assert!(result.is_ok());
-
-        // Good handler should still have been called
-        assert_eq!(good.calls(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_dispatcher_raise_error_stops_dispatch() {
-        let failing = Arc::new(FailingCallbackHandler::new(true));
-        let good = Arc::new(TestCallbackHandler::new("good"));
-
-        let callbacks: Vec<Arc<dyn CallbackHandler>> =
-            vec![failing as Arc<dyn CallbackHandler>, good.clone()];
-
-        let event = CallbackEvent::new("test", json!({}), Uuid::new_v4());
-
-        // Should fail because first handler has raise_error=true
-        let result = CallbackDispatcher::dispatch_to_all(&callbacks, &event).await;
+        let wrapped = RunnableWithCallbacks::new(inner, Arc::new(dispatcher));
+        let result = wrapped.invoke(json!(1), None).await;
         assert!(result.is_err());
 
-        // Good handler should NOT have been called
-        assert_eq!(good.calls(), 0);
+        let types = events.lock().unwrap();
+        assert_eq!(*types, vec!["on_start", "on_error"]);
     }
 
     #[test]
-    fn test_without_callback_type_filtering() {
-        let logging = Arc::new(LoggingCallbackHandler::new(LogLevel::Info));
-        let metrics = Arc::new(MetricsCallbackHandler::new());
+    fn test_runnable_with_callbacks_debug() {
+        use crate::runnables::RunnableLambda;
 
-        let config = ScopedCallbackConfig {
-            local_callbacks: vec![
-                logging as Arc<dyn CallbackHandler>,
-                metrics as Arc<dyn CallbackHandler>,
-            ],
-            inherited_callbacks: vec![],
-            propagate: true,
-            tags: vec![],
-            metadata: HashMap::new(),
-        };
+        let inner = Arc::new(RunnableLambda::new("test_fn", |v: Value| async move {
+            Ok(v)
+        })) as Arc<dyn super::super::base::Runnable>;
 
-        let mut scope = CallbackScope::new(config);
-        assert_eq!(scope.all_callbacks().len(), 2);
-
-        scope.without_callback_type::<LoggingCallbackHandler>();
-        let remaining = scope.all_callbacks();
-        assert_eq!(remaining.len(), 1);
-        assert_eq!(remaining[0].name(), "MetricsCallbackHandler");
-    }
-
-    #[test]
-    fn test_empty_scope_behavior() {
-        let config = ScopedCallbackConfig::default();
-        let scope = CallbackScope::new(config);
-
-        assert!(scope.all_callbacks().is_empty());
-
-        let child = scope.child_scope();
-        assert!(child.all_callbacks().is_empty());
-        assert!(child.config().tags.is_empty());
-        assert!(child.config().metadata.is_empty());
-    }
-
-    #[test]
-    fn test_all_callbacks_ordering_inherited_first() {
-        let inherited_h = Arc::new(TestCallbackHandler::new("inherited"));
-        let local_h = Arc::new(TestCallbackHandler::new("local"));
-
-        let config = ScopedCallbackConfig {
-            local_callbacks: vec![local_h],
-            inherited_callbacks: vec![inherited_h],
-            propagate: true,
-            tags: vec![],
-            metadata: HashMap::new(),
-        };
-
-        let scope = CallbackScope::new(config);
-        let all = scope.all_callbacks();
-
-        assert_eq!(all.len(), 2);
-        assert_eq!(all[0].name(), "inherited");
-        assert_eq!(all[1].name(), "local");
-    }
-
-    #[test]
-    fn test_with_callbacks_helper() {
-        let runnable = Arc::new(EchoRunnable) as Arc<dyn Runnable>;
-        let handler = Arc::new(TestCallbackHandler::new("helper_test"));
-
-        let wrapped = with_callbacks(runnable, vec![handler as Arc<dyn CallbackHandler>]);
-        assert_eq!(wrapped.scoped_config().local_callbacks.len(), 1);
-        assert_eq!(wrapped.name(), "EchoRunnable");
-    }
-
-    #[test]
-    fn test_scope_guard_returns_scope_id() {
-        let config = ScopedCallbackConfig::default();
-        let scope = CallbackScope::new(config);
-        let guard = scope.enter();
-        assert_eq!(guard.scope_id(), scope.id());
+        let wrapped = RunnableWithCallbacks::new(inner, Arc::new(CallbackDispatcher::new()));
+        let debug = format!("{:?}", wrapped);
+        assert!(debug.contains("test_fn"));
     }
 }
