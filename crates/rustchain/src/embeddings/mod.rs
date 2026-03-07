@@ -19,6 +19,7 @@
 pub mod anthropic;
 pub mod base;
 pub mod batch;
+pub mod cache;
 pub mod cached;
 pub mod distance;
 #[cfg(feature = "google")]
