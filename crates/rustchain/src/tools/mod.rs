@@ -3,6 +3,7 @@ pub mod cached;
 pub mod calculator;
 pub mod json_query;
 pub mod openapi;
+pub mod retriever;
 pub mod shell;
 pub mod validation;
 
@@ -40,6 +41,10 @@ pub use openapi::{
     feature = "azure"
 ))]
 pub use openapi::ReqwestExecutor;
+pub use retriever::{
+    create_retriever_tool, DocumentFormatter, MultiRetrieverTool, RetrieverTool,
+    RetrieverToolBuilder, RoutingStrategy,
+};
 pub use shell::ShellTool;
 pub use validation::{
     StrictnessMode, ToolCallCorrector, ToolCallValidator, ValidatedToolExecutor,
