@@ -11,6 +11,7 @@
 //! - [`EntityMemory`] — tracks named entities mentioned in conversation using regex extraction
 //! - [`KnowledgeGraphMemory`] — extracts and stores knowledge triples (subject-predicate-object) from conversation
 //! - [`TokenBufferMemory`] — token-count-aware buffer that trims oldest messages when a limit is exceeded, with a pluggable [`TokenCounter`] trait
+//! - [`SummaryBufferMemory`] — combines buffer memory with periodic summarization when token threshold is exceeded
 
 pub mod buffer;
 pub mod chat_history;
@@ -18,6 +19,7 @@ pub mod entity;
 pub mod hybrid;
 pub mod knowledge_graph;
 pub mod summary;
+pub mod summary_buffer;
 pub mod token_buffer;
 pub mod vector;
 pub mod window;
@@ -34,6 +36,10 @@ pub use knowledge_graph::{
     RegexTripleExtractor, TripleExtractor,
 };
 pub use summary::ConversationSummaryMemory;
+pub use summary_buffer::{
+    SimpleSummarizer, SummaryBufferMemory, SummaryBufferMemoryBuilder, SummaryStrategy,
+    Summarizer, TemplateSummarizer,
+};
 pub use token_buffer::{
     CharBasedTokenCounter, SimpleTokenCounter, TokenBufferMemory, TokenBufferMemoryBuilder,
     TokenCounter,
