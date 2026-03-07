@@ -4,7 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use rustchain_core::error::{Result, RustChainError};
+use rustchain_core::error::Result;
 use rustchain_core::runnables::base::Runnable;
 use rustchain_core::runnables::config::RunnableConfig;
 
@@ -24,6 +24,7 @@ pub trait Condition: Send + Sync {
 
 /// A [`Condition`] backed by a boxed closure.
 pub struct ClosureCondition {
+    #[allow(clippy::type_complexity)]
     func: Box<dyn Fn(&Value) -> Result<bool> + Send + Sync>,
 }
 
@@ -33,9 +34,7 @@ impl ClosureCondition {
     where
         F: Fn(&Value) -> Result<bool> + Send + Sync + 'static,
     {
-        Self {
-            func: Box::new(f),
-        }
+        Self { func: Box::new(f) }
     }
 }
 
@@ -152,7 +151,7 @@ pub struct ConditionalChainBuilder {
 
 impl ConditionalChain {
     /// Start building a `ConditionalChain` with the given condition.
-    pub fn new(condition: impl Condition + 'static) -> ConditionalChainBuilder {
+    pub fn builder(condition: impl Condition + 'static) -> ConditionalChainBuilder {
         ConditionalChainBuilder {
             condition: Box::new(condition),
             if_true: None,
@@ -308,7 +307,7 @@ pub struct SwitchChainBuilder {
 
 impl SwitchChain {
     /// Start building a `SwitchChain` that routes on the given key.
-    pub fn new(key: impl Into<String>) -> SwitchChainBuilder {
+    pub fn builder(key: impl Into<String>) -> SwitchChainBuilder {
         SwitchChainBuilder {
             key: key.into(),
             cases: HashMap::new(),
@@ -373,6 +372,7 @@ impl Runnable for SwitchChain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustchain_core::error::RustChainError;
     use rustchain_core::runnables::RunnableLambda;
     use serde_json::json;
 
@@ -380,20 +380,14 @@ mod tests {
 
     fn upper_lambda() -> Arc<dyn Runnable> {
         Arc::new(RunnableLambda::new("upper", |v: Value| async move {
-            let s = v
-                .get("text")
-                .and_then(|t| t.as_str())
-                .unwrap_or_default();
+            let s = v.get("text").and_then(|t| t.as_str()).unwrap_or_default();
             Ok(json!({ "text": s.to_uppercase() }))
         }))
     }
 
     fn lower_lambda() -> Arc<dyn Runnable> {
         Arc::new(RunnableLambda::new("lower", |v: Value| async move {
-            let s = v
-                .get("text")
-                .and_then(|t| t.as_str())
-                .unwrap_or_default();
+            let s = v.get("text").and_then(|t| t.as_str()).unwrap_or_default();
             Ok(json!({ "text": s.to_lowercase() }))
         }))
     }
@@ -408,20 +402,14 @@ mod tests {
 
     fn double_lambda() -> Arc<dyn Runnable> {
         Arc::new(RunnableLambda::new("double", |v: Value| async move {
-            let n = v
-                .get("value")
-                .and_then(|x| x.as_i64())
-                .unwrap_or(0);
+            let n = v.get("value").and_then(|x| x.as_i64()).unwrap_or(0);
             Ok(json!({ "value": n * 2 }))
         }))
     }
 
     fn negate_lambda() -> Arc<dyn Runnable> {
         Arc::new(RunnableLambda::new("negate", |v: Value| async move {
-            let n = v
-                .get("value")
-                .and_then(|x| x.as_i64())
-                .unwrap_or(0);
+            let n = v.get("value").and_then(|x| x.as_i64()).unwrap_or(0);
             Ok(json!({ "value": -n }))
         }))
     }
@@ -448,9 +436,7 @@ mod tests {
 
     #[test]
     fn test_closure_condition_error() {
-        let cond = ClosureCondition::new(|_v: &Value| {
-            Err(RustChainError::Other("boom".into()))
-        });
+        let cond = ClosureCondition::new(|_v: &Value| Err(RustChainError::Other("boom".into())));
         assert!(cond.evaluate(&json!({})).is_err());
     }
 
@@ -531,7 +517,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_conditional_true_branch() {
-        let chain = ConditionalChain::new(KeyEqualsCondition::new("mode", json!("upper")))
+        let chain = ConditionalChain::builder(KeyEqualsCondition::new("mode", json!("upper")))
             .then(upper_lambda())
             .build();
 
@@ -544,7 +530,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_conditional_false_with_otherwise() {
-        let chain = ConditionalChain::new(KeyEqualsCondition::new("mode", json!("upper")))
+        let chain = ConditionalChain::builder(KeyEqualsCondition::new("mode", json!("upper")))
             .then(upper_lambda())
             .otherwise(lower_lambda())
             .build();
@@ -558,7 +544,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_conditional_false_passthrough() {
-        let chain = ConditionalChain::new(KeyEqualsCondition::new("mode", json!("upper")))
+        let chain = ConditionalChain::builder(KeyEqualsCondition::new("mode", json!("upper")))
             .then(upper_lambda())
             .build();
 
@@ -569,7 +555,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_conditional_chain_name() {
-        let chain = ConditionalChain::new(KeyExistsCondition::new("x"))
+        let chain = ConditionalChain::builder(KeyExistsCondition::new("x"))
             .then(upper_lambda())
             .build();
         assert_eq!(chain.name(), "ConditionalChain");
@@ -577,7 +563,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_conditional_with_closure_condition() {
-        let chain = ConditionalChain::new(ClosureCondition::new(|v: &Value| {
+        let chain = ConditionalChain::builder(ClosureCondition::new(|v: &Value| {
             Ok(v.get("value").and_then(|x| x.as_i64()).unwrap_or(0) > 10)
         }))
         .then(double_lambda())
@@ -691,21 +677,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_switch_matching_case() {
-        let chain = SwitchChain::new("lang")
+        let chain = SwitchChain::builder("lang")
             .case("rust", add_tag_lambda("rust_branch"))
             .case("python", add_tag_lambda("python_branch"))
             .build();
 
-        let result = chain
-            .invoke(json!({ "lang": "rust" }), None)
-            .await
-            .unwrap();
+        let result = chain.invoke(json!({ "lang": "rust" }), None).await.unwrap();
         assert_eq!(result["tag"], "rust_branch");
     }
 
     #[tokio::test]
     async fn test_switch_second_case() {
-        let chain = SwitchChain::new("lang")
+        let chain = SwitchChain::builder("lang")
             .case("rust", add_tag_lambda("rust_branch"))
             .case("python", add_tag_lambda("python_branch"))
             .build();
@@ -719,21 +702,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_switch_no_match_with_default() {
-        let chain = SwitchChain::new("lang")
+        let chain = SwitchChain::builder("lang")
             .case("rust", add_tag_lambda("rust_branch"))
             .default(add_tag_lambda("unknown"))
             .build();
 
-        let result = chain
-            .invoke(json!({ "lang": "go" }), None)
-            .await
-            .unwrap();
+        let result = chain.invoke(json!({ "lang": "go" }), None).await.unwrap();
         assert_eq!(result["tag"], "unknown");
     }
 
     #[tokio::test]
     async fn test_switch_no_match_passthrough() {
-        let chain = SwitchChain::new("lang")
+        let chain = SwitchChain::builder("lang")
             .case("rust", add_tag_lambda("rust_branch"))
             .build();
 
@@ -744,7 +724,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_switch_missing_key_passthrough() {
-        let chain = SwitchChain::new("lang")
+        let chain = SwitchChain::builder("lang")
             .case("rust", add_tag_lambda("rust_branch"))
             .build();
 
@@ -755,7 +735,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_switch_missing_key_with_default() {
-        let chain = SwitchChain::new("lang")
+        let chain = SwitchChain::builder("lang")
             .case("rust", add_tag_lambda("rust_branch"))
             .default(add_tag_lambda("fallback"))
             .build();
@@ -769,14 +749,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_switch_chain_name() {
-        let chain = SwitchChain::new("x").case("a", upper_lambda()).build();
+        let chain = SwitchChain::builder("x").case("a", upper_lambda()).build();
         assert_eq!(chain.name(), "SwitchChain");
     }
 
     #[tokio::test]
     async fn test_switch_non_string_key_value() {
         // When the key exists but is not a string, treat it as no match
-        let chain = SwitchChain::new("code")
+        let chain = SwitchChain::builder("code")
             .case("42", add_tag_lambda("matched"))
             .default(add_tag_lambda("default"))
             .build();
@@ -791,7 +771,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_conditional_with_key_contains() {
-        let chain = ConditionalChain::new(KeyContainsCondition::new("text", "urgent"))
+        let chain = ConditionalChain::builder(KeyContainsCondition::new("text", "urgent"))
             .then(upper_lambda())
             .otherwise(lower_lambda())
             .build();
@@ -845,16 +825,13 @@ mod tests {
             .unwrap();
         assert_eq!(r["tag"], "debug_mode");
 
-        let r = chain
-            .invoke(json!({ "text": "ok" }), None)
-            .await
-            .unwrap();
+        let r = chain.invoke(json!({ "text": "ok" }), None).await.unwrap();
         assert_eq!(r["tag"], "normal");
     }
 
     #[tokio::test]
     async fn test_conditional_error_propagation() {
-        let chain = ConditionalChain::new(ClosureCondition::new(|_v: &Value| {
+        let chain = ConditionalChain::builder(ClosureCondition::new(|_v: &Value| {
             Err(RustChainError::Other("condition failed".into()))
         }))
         .then(upper_lambda())
