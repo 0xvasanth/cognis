@@ -44,7 +44,7 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 |  create_deep_agent(), middleware hooks, storage backends,  |
 |  tool registry, planning, presets, events, conversations,  |
 |  health monitoring, workflow engine, telemetry, sessions,  |
-|  plugin system                                             |
+|  plugin system, agent builder, error recovery, sandbox     |
 +--------------------------+--------------------------------+
                            | depends on
 +--------------------------v--------------------------------+
@@ -52,13 +52,14 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 |  StateGraph, Pregel engine, checkpoints, streaming,        |
 |  ReAct agent, human-in-the-loop, subgraph composition,     |
 |  runner, timeout/cancellation, state reducers, event bus,  |
-|  execution hooks, breakpoints, graph validator             |
+|  execution hooks, breakpoints, graph validator, interrupts,|
+|  checkpoint store, state snapshots                         |
 +--------------------------+--------------------------------+
                            | depends on
 +--------------------------v--------------------------------+
 |               rustchain  (Implementation Layer)            |
 |  Chat models (5 providers + factory + load balancer),       |
-|  chains (19 types), memory (10 types), retrievers (12),    |
+|  chains (19 types), memory (11 types), retrievers (14),    |
 |  tools (14), agents (plan-and-execute, ReAct, tool-calling),|
 |  output parsers, document transformers, vectorstore filters|
 +--------------------------+--------------------------------+
@@ -67,7 +68,7 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 |            rustchain-core  (Foundation Layer)               |
 |  Base traits: BaseChatModel, BaseTool, Runnable, Message   |
 |  Prompts, output parsers, callbacks, vector stores,        |
-|  runnables (timeout/deadline, rate limiter, 30+ combinators)|
+|  runnables (middleware, tracing, graph, rate limiter, 30+) |
 +-----------------------------------------------------------+
 ```
 
@@ -157,7 +158,7 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | `managed` | Shared managed values with versioning and history: `SharedValue`, `SharedCounter`, `SharedAccumulator`, `SharedMap`, plus `IsLastStepManager` and `RemainingStepsManager` for Pregel context |
 | `pregel` | Pregel-style superstep execution engine |
 | `channels` | **10 types**: LastValue, BinaryOp, **Topic** (extended pub/sub with `TopicMessage`, `TopicFilter` with glob/prefix matching, `TopicChannel`, `TopicRouter`, `DeadLetterQueue`, and unified `TopicBus`), AnyValue, NamedBarrier, EphemeralValue, Untracked, Broadcast (pub/sub with topic filtering), reducers, **state reducers** (schema-validated reducers with append, merge, last-value, and binary-op strategies) |
-| `checkpoint` | `CheckpointSaver` trait with **in-memory** (including lightweight in-memory store for testing), SQLite, and PostgreSQL backends. Serialization formats with diff support. **Checkpoint serializer** -- pluggable serializers (JSON, compact, pretty, versioned, compressed) with `CheckpointMetadata`, `CheckpointEntry`, and `CheckpointMigration` for version-to-version state migrations |
+| `checkpoint` | `CheckpointSaver` trait with **in-memory** (including lightweight in-memory store for testing), SQLite, and PostgreSQL backends. Serialization formats with diff support. **Checkpoint serializer** -- pluggable serializers (JSON, compact, pretty, versioned, compressed) with `CheckpointMetadata`, `CheckpointEntry`, and `CheckpointMigration` for version-to-version state migrations. **Checkpoint store** -- `Store` trait with `InMemoryStore`, `NamespacedStore` (key prefix isolation), and `BatchStore` (atomic multi-operation execution) for associating arbitrary key-value data with graph executions |
 | `prebuilt` | `create_react_agent`, `create_tool_agent`, and `ChatAgent` (prebuilt tool-calling agent with streaming) |
 | `utils` | Configuration utilities, execution profiler with bottleneck detection, and **node timeout/cancellation** (per-node timeouts, cancellation tokens, and execution budget management) |
 | `types` | StreamMode (Values, Updates, Debug), InterruptType, RetryPolicy, CachePolicy |
@@ -179,6 +180,9 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | `session` | **Session management** -- `SessionManager` for tracking agent execution sessions with lifecycle states (Active, Paused, Completed, Failed), event recording, metadata, and `SessionReplay` for timeline-based event replay |
 | `plugins` | **Plugin system** -- `PluginRegistry` for runtime agent extension with capabilities (tool provider, middleware, state transformer, event handler), lifecycle management (load, activate, deactivate, unload), and dependency resolution via topological sorting |
 | `workflow` | **Workflow engine** -- multi-step workflow orchestration with dependency resolution, conditional execution, retries, timeouts, and `WorkflowBuilder`/`WorkflowExecutor` API |
+| `builder` | **Agent builder** -- fluent API for assembling agents with `AgentCapability`, `AgentProfile`, `ToolSpec`, `MiddlewareSpec`, reusable `AgentTemplate` snapshots, and `AgentDirectory` registry |
+| `recovery` | **Error recovery** -- `RecoveryManager` with error classification (`ErrorCategory`), backoff strategies, `RecoveryPolicy`, and automatic retry for rate limits, timeouts, and model overload |
+| `sandbox` | **Sandbox execution** -- `Sandbox` with granular `SandboxPermission` flags, `ResourceLimits` (memory, CPU, file, network caps), `SandboxPolicy`, and `SandboxManager` for named sandbox lifecycle management |
 
 ---
 
@@ -355,7 +359,7 @@ langgraph = { git = "https://github.com/0xvasanth/rustchain", features = ["sqlit
 
 ## Examples
 
-The `examples/` directory contains **31 runnable examples** -- all work without API keys using fake/mock models:
+The `examples/` directory contains **35 runnable examples** -- all work without API keys using fake/mock models:
 
 | Example | Description | Run Command |
 |---|---|---|
@@ -390,6 +394,10 @@ The `examples/` directory contains **31 runnable examples** -- all work without 
 | `health_monitoring` | Agent health checks and monitoring | `cargo run --example health_monitoring` |
 | `knowledge_graph_memory` | Knowledge graph memory with triple extraction | `cargo run --example knowledge_graph_memory` |
 | `plan_and_execute` | Plan-and-execute agent with replanning | `cargo run --example plan_and_execute` |
+| `plugin_system` | Plugin registry with lifecycle and dependency resolution | `cargo run --example plugin_system` |
+| `reranking_retriever` | Reranking retriever with pluggable reranker pipeline | `cargo run --example reranking_retriever` |
+| `summary_buffer_memory` | Summary buffer memory with periodic summarization | `cargo run --example summary_buffer_memory` |
+| `topic_channels` | Topic channels with pub/sub, routing, and dead letter queue | `cargo run --example topic_channels` |
 
 Try one now:
 
@@ -471,6 +479,16 @@ This project migrates the Python LangChain ecosystem to Rust. Here is the mappin
 | `deepagents` (telemetry and observability) | `deepagents::telemetry` | Done |
 | `deepagents` (session management with replay) | `deepagents::session` | Done |
 | `deepagents` (plugin system with dependency resolution) | `deepagents::plugins` | Done |
+| `langchain.memory` (Conversation with branching) | `rustchain::memory::conversation` | Done |
+| `langchain.retrievers` (document compression) | `rustchain::retrievers::compression` | Done |
+| `langchain_core.runnables` (middleware hooks) | `rustchain_core::runnables::middleware` | Done |
+| `langchain_core.runnables` (tracing/observability) | `rustchain_core::runnables::tracing` | Done |
+| `langchain_core.runnables` (graph builder) | `rustchain_core::runnables::graph` | Done |
+| `langgraph.graph` (interrupt manager) | `langgraph::graph::interrupt` | Done |
+| `langgraph.checkpoint` (key-value store) | `langgraph::checkpoint::store` | Done |
+| `deepagents` (agent builder with templates) | `deepagents::builder` | Done |
+| `deepagents` (error recovery) | `deepagents::recovery` | Done |
+| `deepagents` (sandbox execution) | `deepagents::sandbox` | Done |
 
 ---
 
@@ -520,7 +538,7 @@ pub trait Embeddings: Send + Sync {
 ```
 rustchain/
   Cargo.toml                  # Workspace root
-  examples/                   # 31 runnable example programs
+  examples/                   # 35 runnable example programs
   crates/
     rustchain-core/           # Base traits and types (zero workspace deps)
     rustchain/                # Provider implementations and agent framework
@@ -564,7 +582,7 @@ cd rustchain
 # Build all crates
 cargo build --workspace
 
-# Run all tests (~5,079 tests)
+# Run all tests (~5,619 tests)
 cargo test --workspace
 
 # Run a specific example
