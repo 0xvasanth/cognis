@@ -174,3 +174,19 @@ path = "../../examples/state_snapshot.rs"
 [[example]]
 name = "error_recovery"
 path = "../../examples/error_recovery.rs"
+
+[[example]]
+name = "error_handling"
+path = "../../examples/error_handling.rs"
+
+[[example]]
+name = "document_store"
+path = "../../examples/document_store.rs"
+
+[[example]]
+name = "node_scheduler"
+path = "../../examples/node_scheduler.rs"
+
+[[example]]
+name = "agent_communication"
+path = "../../examples/agent_communication.rs"
