@@ -8,6 +8,7 @@
 //! - [`NamespacedStore`] — wraps any `Store` and prefixes keys for isolation
 //! - [`LayeredStore`] — read-through cache that checks a fast store first and falls back to a slower backing store
 
+pub mod docstore;
 pub mod file;
 pub mod in_memory;
 pub mod layered;
