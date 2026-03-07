@@ -12,6 +12,7 @@
 
 pub mod memory;
 pub mod serialization;
+pub mod serializer;
 
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
