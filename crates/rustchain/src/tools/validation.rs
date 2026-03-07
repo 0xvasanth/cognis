@@ -188,8 +188,7 @@ impl ToolCallValidator {
         // Check for unexpected fields.
         for key in args_obj.keys() {
             if !properties.contains_key(key)
-                && (self.mode == StrictnessMode::Strict
-                    || self.mode == StrictnessMode::AutoCorrect)
+                && (self.mode == StrictnessMode::Strict || self.mode == StrictnessMode::AutoCorrect)
             {
                 errors.push(ValidationError::UnexpectedField { field: key.clone() });
             }

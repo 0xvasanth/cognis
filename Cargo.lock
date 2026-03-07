@@ -261,6 +261,7 @@ dependencies = [
  "async-trait",
  "glob",
  "langgraph",
+ "regex",
  "rustchain",
  "rustchain-core",
  "serde",

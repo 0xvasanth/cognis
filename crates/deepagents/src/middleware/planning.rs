@@ -283,7 +283,9 @@ impl SimplePlanningStrategy {
             if is_step {
                 // Strip the prefix marker.
                 let content = trimmed
-                    .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == ')' || c == '-' || c == '*')
+                    .trim_start_matches(|c: char| {
+                        c.is_ascii_digit() || c == '.' || c == ')' || c == '-' || c == '*'
+                    })
                     .trim();
                 if !content.is_empty() {
                     steps.push(content.to_string());
@@ -492,7 +494,10 @@ impl Middleware for PlanningMiddleware {
 
         let summary = plan.status_summary();
         let next_step_info = if let Some(step) = plan.next_actionable_step() {
-            format!("\n\nNext step to execute: Step {} - {}", step.id, step.description)
+            format!(
+                "\n\nNext step to execute: Step {} - {}",
+                step.id, step.description
+            )
         } else if plan.is_complete() {
             "\n\nAll steps are complete.".to_string()
         } else {
@@ -822,7 +827,10 @@ mod tests {
         plan.add_step(PlanStep::new(0, "Step A"));
         plan.update_step_status(0, PlanStepStatus::Failed, Some("error".into()));
 
-        strategy.revise_plan(&mut plan, "- Fix the error\n- Retry").await.unwrap();
+        strategy
+            .revise_plan(&mut plan, "- Fix the error\n- Retry")
+            .await
+            .unwrap();
 
         // Failed step should be skipped.
         assert_eq!(plan.get_step(0).unwrap().status, PlanStepStatus::Skipped);
@@ -908,7 +916,10 @@ mod tests {
         plan.add_step(PlanStep::new(0, "A"));
         mw.set_plan(plan).await;
 
-        assert!(mw.update_step(0, PlanStepStatus::Completed, Some("ok".into())).await);
+        assert!(
+            mw.update_step(0, PlanStepStatus::Completed, Some("ok".into()))
+                .await
+        );
 
         let p = mw.get_plan().await.unwrap();
         assert_eq!(p.get_step(0).unwrap().status, PlanStepStatus::Completed);

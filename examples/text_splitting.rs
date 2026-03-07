@@ -168,10 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let doc = Document::new(SAMPLE_TEXT.trim());
     let doc_chunks = splitter.split_documents(&[doc]);
 
-    println!(
-        "Split 1 document into {} chunk documents",
-        doc_chunks.len()
-    );
+    println!("Split 1 document into {} chunk documents", doc_chunks.len());
     for (i, chunk) in doc_chunks.iter().enumerate() {
         println!(
             "  Doc chunk {}: {} chars, metadata keys: {:?}",

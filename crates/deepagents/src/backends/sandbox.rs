@@ -170,7 +170,9 @@ impl PermissionChecker {
         if self.config.read_only
             && matches!(operation, PathOperation::Write | PathOperation::Delete)
         {
-            return Err(SandboxViolation::ReadOnlyViolation { path: path.to_path_buf() });
+            return Err(SandboxViolation::ReadOnlyViolation {
+                path: path.to_path_buf(),
+            });
         }
 
         // Denied paths take precedence.

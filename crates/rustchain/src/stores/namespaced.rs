@@ -52,10 +52,7 @@ impl NamespacedStore {
         let all_keys = self.inner.keys()?;
         let mut namespaces: Vec<String> = all_keys
             .iter()
-            .filter_map(|k| {
-                k.find(&self.separator)
-                    .map(|idx| k[..idx].to_string())
-            })
+            .filter_map(|k| k.find(&self.separator).map(|idx| k[..idx].to_string()))
             .collect();
         namespaces.sort();
         namespaces.dedup();

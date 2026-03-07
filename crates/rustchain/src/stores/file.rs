@@ -35,7 +35,13 @@ impl FileStore {
     /// Sanitize a key into a safe filename component.
     fn key_to_filename(key: &str) -> String {
         key.chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>()
             + ".json"
     }
@@ -61,7 +67,9 @@ impl Store for FileStore {
                     .collect();
                 Ok(Some(bytes))
             }
-            _ => Err(RustChainError::Other("unexpected JSON format in file store".into())),
+            _ => Err(RustChainError::Other(
+                "unexpected JSON format in file store".into(),
+            )),
         }
     }
 

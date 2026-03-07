@@ -160,9 +160,8 @@ impl EntityMemory {
 
         // Common words that start sentences but are not entities
         let stop_words: std::collections::HashSet<&str> = [
-            "The", "This", "That", "These", "Those", "Here", "There",
-            "Where", "When", "What", "Which", "Who", "How", "Why",
-            "Yes", "No", "Not", "But", "And", "Or", "If", "So",
+            "The", "This", "That", "These", "Those", "Here", "There", "Where", "When", "What",
+            "Which", "Who", "How", "Why", "Yes", "No", "Not", "But", "And", "Or", "If", "So",
             "Just", "Also", "However", "Indeed", "Nice", "Great",
         ]
         .iter()
@@ -202,7 +201,7 @@ impl EntityMemory {
                 updated.mentions += 1;
                 inner.store.set(updated);
             } else {
-                let mut entity = Entity::new(&name, format!("Mentioned in conversation."));
+                let mut entity = Entity::new(&name, "Mentioned in conversation.".to_string());
                 entity.last_seen = message_index;
                 inner.store.set(entity);
             }
@@ -351,7 +350,9 @@ mod tests {
     #[test]
     fn test_entity_with_metadata() {
         let mut entity = Entity::new("Bob", "A manager");
-        entity.metadata.insert("role".to_string(), Value::String("CTO".to_string()));
+        entity
+            .metadata
+            .insert("role".to_string(), Value::String("CTO".to_string()));
         assert_eq!(entity.metadata.get("role").unwrap(), "CTO");
     }
 
@@ -441,8 +442,7 @@ mod tests {
 
     #[test]
     fn test_extract_deduplication() {
-        let entities =
-            EntityMemory::extract_entities("Alice went to the store. Alice came back.");
+        let entities = EntityMemory::extract_entities("Alice went to the store. Alice came back.");
         let alice_count = entities.iter().filter(|e| *e == "Alice").count();
         assert_eq!(alice_count, 1);
     }

@@ -7,10 +7,12 @@ pub mod annotations;
 pub mod ascii;
 pub mod audit;
 pub mod branch;
+pub mod breakpoint;
 pub mod human_in_loop;
 pub mod mermaid;
 pub mod message;
 pub mod persistent;
+pub mod runner;
 pub mod send;
 pub mod serialize;
 pub mod snapshot;
@@ -19,7 +21,6 @@ pub mod stream_events;
 pub mod stream_writer;
 pub mod subgraph;
 pub mod time_travel;
-pub mod runner;
 pub mod ui;
 
 pub use annotations::{
@@ -32,10 +33,15 @@ pub use audit::{
     AuditTrail,
 };
 pub use branch::{AsyncBranch, AsyncRouterFn, Branch, RouterFn, RouterResult};
+pub use breakpoint::{
+    AutoApproveHandler, BreakpointAction, BreakpointEvent, BreakpointHandler, BreakpointManager,
+    BreakpointState, BreakpointType, LoggingBreakpointHandler,
+};
 pub use human_in_loop::{ApprovalRequest, HumanAction, HumanInTheLoop, HumanInTheLoopResult};
 pub use mermaid::{to_mermaid, to_mermaid_url};
 pub use message::{add_messages, message_graph};
 pub use persistent::PersistentGraph;
+pub use runner::{GraphRunner, LoggingHook, MetricsHook, RunConfig, StepEvent, StepHook};
 pub use send::{deep_merge_values, fan_in, fan_out, send_to, MapReduceGraph, SendCommand};
 pub use serialize::{ConditionalEdgeDef, GraphDefinition, GraphRegistry};
 pub use snapshot::{
@@ -47,5 +53,4 @@ pub use stream_events::{stream_graph_events, GraphEventCollector, GraphStreamEve
 pub use stream_writer::{FilteredStream, StreamChunk, StreamCollector, StreamReader, StreamWriter};
 pub use subgraph::SubgraphNode;
 pub use time_travel::TimeTravelEngine;
-pub use runner::{GraphRunner, LoggingHook, MetricsHook, RunConfig, StepEvent, StepHook};
 pub use ui::{ui_message_reducer, AnyUIMessage, RemoveUIMessage, UIMessage};

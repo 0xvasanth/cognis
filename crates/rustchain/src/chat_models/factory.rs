@@ -32,7 +32,7 @@ use rustchain_core::language_models::chat_model::BaseChatModel;
 ///
 /// Contains all the parameters needed to construct a provider-specific chat model,
 /// including the provider name, model identifier, credentials, and tuning parameters.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModelConfig {
     /// Provider identifier (e.g., "anthropic", "openai", "ollama").
     pub provider: String,
@@ -96,8 +96,9 @@ impl ModelConfig {
     }
 }
 
-impl Default for ModelConfig {
-    fn default() -> Self {
+impl ModelConfig {
+    /// Returns the default configuration (all fields empty/None).
+    pub fn default_config() -> Self {
         Self {
             provider: String::new(),
             model_name: String::new(),
@@ -173,11 +174,7 @@ impl ChatModelFactory {
     ///
     /// Constructs a minimal [`ModelConfig`] with only the provider and model name set,
     /// relying on environment variables for credentials.
-    pub fn create_from_str(
-        &self,
-        provider: &str,
-        model: &str,
-    ) -> Result<Box<dyn BaseChatModel>> {
+    pub fn create_from_str(&self, provider: &str, model: &str) -> Result<Box<dyn BaseChatModel>> {
         let config = ModelConfig::new(provider, model);
         self.create(&config)
     }
@@ -306,14 +303,11 @@ impl Default for ChatModelFactory {
                 if let Some(max) = config.max_tokens {
                     builder = builder.max_tokens(max);
                 }
-                if let Some(endpoint) =
-                    config.extra.get("azure_endpoint").and_then(|v| v.as_str())
+                if let Some(endpoint) = config.extra.get("azure_endpoint").and_then(|v| v.as_str())
                 {
                     builder = builder.azure_endpoint(endpoint);
                 }
-                if let Some(token) =
-                    config.extra.get("azure_ad_token").and_then(|v| v.as_str())
-                {
+                if let Some(token) = config.extra.get("azure_ad_token").and_then(|v| v.as_str()) {
                     builder = builder.azure_ad_token(token);
                 }
                 if let Some(version) = config.extra.get("api_version").and_then(|v| v.as_str()) {

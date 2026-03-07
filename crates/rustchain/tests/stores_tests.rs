@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
-use rustchain::stores::in_memory::InMemoryStore;
 use rustchain::stores::file::FileStore;
+use rustchain::stores::in_memory::InMemoryStore;
 use rustchain::stores::layered::LayeredStore;
 use rustchain::stores::namespaced::NamespacedStore;
 use rustchain::stores::Store;
@@ -83,7 +83,9 @@ fn in_memory_ttl_expiration() {
 #[test]
 fn in_memory_set_with_explicit_ttl() {
     let store = InMemoryStore::new();
-    store.set_with_ttl("k", b"v", Duration::from_millis(50)).unwrap();
+    store
+        .set_with_ttl("k", b"v", Duration::from_millis(50))
+        .unwrap();
     assert_eq!(store.get("k").unwrap(), Some(b"v".to_vec()));
 
     std::thread::sleep(Duration::from_millis(80));
@@ -192,12 +194,7 @@ fn file_store_atomic_write_no_tmp_leftover() {
     let tmp_files: Vec<_> = std::fs::read_dir(dir.path())
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                == Some("tmp")
-        })
+        .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("tmp"))
         .collect();
     assert!(tmp_files.is_empty(), "no .tmp files should remain");
 }

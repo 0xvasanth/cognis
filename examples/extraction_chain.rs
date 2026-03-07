@@ -79,10 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     // Step 3: Build the ExtractionChain
     // -------------------------------------------------------------------------
-    let chain = ExtractionChain::builder()
-        .llm(model)
-        .schema(schema)
-        .build();
+    let chain = ExtractionChain::builder().llm(model).schema(schema).build();
 
     println!("Step 3: Built ExtractionChain\n");
 
@@ -122,10 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("      Occupation: {}", occupation);
             println!("      Location:   {}", location);
         }
-        println!(
-            "  Raw JSON: {}",
-            serde_json::to_string(&result.entities)?
-        );
+        println!("  Raw JSON: {}", serde_json::to_string(&result.entities)?);
         println!();
     }
 

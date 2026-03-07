@@ -94,8 +94,8 @@ impl AgentOutputParser for ReActOutputParser {
             .unwrap_or_default();
 
         // Try to parse as JSON; fall back to a plain string value.
-        let tool_input = serde_json::from_str::<Value>(&raw_input)
-            .unwrap_or_else(|_| Value::String(raw_input));
+        let tool_input =
+            serde_json::from_str::<Value>(&raw_input).unwrap_or(Value::String(raw_input));
 
         Ok(AgentOutput::Action(AgentAction::new(
             tool,
@@ -170,11 +170,12 @@ impl JsonOutputParser {
 
 impl AgentOutputParser for JsonOutputParser {
     fn parse(&self, text: &str) -> Result<AgentOutput> {
-        let json_str = Self::extract_json(text).ok_or_else(|| RustChainError::OutputParserError {
-            message: "Could not find a JSON object in the LLM output".to_string(),
-            observation: None,
-            llm_output: Some(text.to_string()),
-        })?;
+        let json_str =
+            Self::extract_json(text).ok_or_else(|| RustChainError::OutputParserError {
+                message: "Could not find a JSON object in the LLM output".to_string(),
+                observation: None,
+                llm_output: Some(text.to_string()),
+            })?;
 
         let parsed: Value =
             serde_json::from_str(json_str).map_err(|e| RustChainError::OutputParserError {
@@ -192,13 +193,11 @@ impl AgentOutputParser for JsonOutputParser {
                 llm_output: Some(text.to_string()),
             })?;
 
-        let action_input = parsed
-            .get("action_input")
-            .cloned()
-            .unwrap_or(Value::Null);
+        let action_input = parsed.get("action_input").cloned().unwrap_or(Value::Null);
 
         // "Final Answer" is the conventional finish signal.
-        if action.eq_ignore_ascii_case("final answer") || action.eq_ignore_ascii_case("final_answer")
+        if action.eq_ignore_ascii_case("final answer")
+            || action.eq_ignore_ascii_case("final_answer")
         {
             let output = match &action_input {
                 Value::String(s) => s.clone(),
@@ -256,18 +255,17 @@ impl XmlOutputParser {
 
 impl AgentOutputParser for XmlOutputParser {
     fn parse(&self, text: &str) -> Result<AgentOutput> {
-        let tool = Self::extract_tag(text, "tool").ok_or_else(|| {
-            RustChainError::OutputParserError {
+        let tool =
+            Self::extract_tag(text, "tool").ok_or_else(|| RustChainError::OutputParserError {
                 message: "Could not find <tool>...</tool> in the LLM output".to_string(),
                 observation: None,
                 llm_output: Some(text.to_string()),
-            }
-        })?;
+            })?;
 
         let raw_input = Self::extract_tag(text, "tool_input").unwrap_or_default();
 
-        let tool_input = serde_json::from_str::<Value>(&raw_input)
-            .unwrap_or_else(|_| Value::String(raw_input));
+        let tool_input =
+            serde_json::from_str::<Value>(&raw_input).unwrap_or(Value::String(raw_input));
 
         if tool.eq_ignore_ascii_case("final_answer") || tool.eq_ignore_ascii_case("final answer") {
             let output = match &tool_input {
@@ -327,10 +325,7 @@ impl ToolCallOutputParser {
             let mut return_values = HashMap::new();
             let log = content.clone();
             return_values.insert("output".to_string(), Value::String(content));
-            return Ok(AgentOutput::Finish(AgentFinish::new(
-                return_values,
-                log,
-            )));
+            return Ok(AgentOutput::Finish(AgentFinish::new(return_values, log)));
         }
 
         // Take the first tool call for the single-action output.
@@ -486,7 +481,8 @@ mod tests {
     #[test]
     fn json_parse_code_block() {
         let parser = JsonOutputParser::new();
-        let text = "Here is my response:\n```json\n{\"action\": \"calc\", \"action_input\": \"2+2\"}\n```";
+        let text =
+            "Here is my response:\n```json\n{\"action\": \"calc\", \"action_input\": \"2+2\"}\n```";
         let result = parser.parse(text).unwrap();
         match result {
             AgentOutput::Action(a) => {
@@ -632,7 +628,8 @@ mod tests {
     #[test]
     fn toolcall_parse_from_text() {
         let parser = ToolCallOutputParser::new();
-        let text = r#"{"content": "hi", "tool_calls": [{"name": "calc", "args": {"x": 1}, "id": "c1"}]}"#;
+        let text =
+            r#"{"content": "hi", "tool_calls": [{"name": "calc", "args": {"x": 1}, "id": "c1"}]}"#;
         let result = parser.parse(text).unwrap();
         match result {
             AgentOutput::Action(a) => {
@@ -664,7 +661,8 @@ mod tests {
     #[test]
     fn react_parse_with_extra_whitespace() {
         let parser = ReActOutputParser::new();
-        let text = "  Thought:  thinking hard  \n  Action:   search  \n  Action Input:   query text  ";
+        let text =
+            "  Thought:  thinking hard  \n  Action:   search  \n  Action Input:   query text  ";
         let result = parser.parse(text).unwrap();
         match result {
             AgentOutput::Action(a) => {

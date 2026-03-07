@@ -106,9 +106,10 @@ impl StreamWriter {
                 "stream writer is closed".into(),
             ));
         }
-        self.tx.send(chunk).await.map_err(|_| {
-            crate::errors::LangGraphError::Other("stream receiver dropped".into())
-        })
+        self.tx
+            .send(chunk)
+            .await
+            .map_err(|_| crate::errors::LangGraphError::Other("stream receiver dropped".into()))
     }
 
     /// Convenience: write a chunk with [`StreamMode::Values`].
@@ -262,9 +263,7 @@ pub struct StreamCollector {
 impl StreamCollector {
     /// Create a new, empty collector.
     pub fn new() -> Self {
-        Self {
-            chunks: Vec::new(),
-        }
+        Self { chunks: Vec::new() }
     }
 
     /// Add a chunk to the collector.
@@ -357,7 +356,10 @@ mod tests {
     #[tokio::test]
     async fn test_write_value_convenience() {
         let (writer, reader) = StreamWriter::new(8);
-        writer.write_value("node1", 0, json!({"state": true})).await.unwrap();
+        writer
+            .write_value("node1", 0, json!({"state": true}))
+            .await
+            .unwrap();
         drop(writer);
         let collected = reader.collect_all().await;
         assert_eq!(collected.len(), 1);
@@ -369,7 +371,10 @@ mod tests {
     #[tokio::test]
     async fn test_write_update_convenience() {
         let (writer, reader) = StreamWriter::new(8);
-        writer.write_update("node2", 1, json!({"delta": 42})).await.unwrap();
+        writer
+            .write_update("node2", 1, json!({"delta": 42}))
+            .await
+            .unwrap();
         drop(writer);
         let collected = reader.collect_all().await;
         assert_eq!(collected.len(), 1);
@@ -390,7 +395,9 @@ mod tests {
     async fn test_write_after_close_errors() {
         let (writer, _reader) = StreamWriter::new(8);
         writer.close();
-        let result = writer.write(make_chunk("A", 0, StreamMode::Values, json!(null))).await;
+        let result = writer
+            .write(make_chunk("A", 0, StreamMode::Values, json!(null)))
+            .await;
         assert!(result.is_err());
     }
 
@@ -472,7 +479,12 @@ mod tests {
     async fn test_collector_get_final_state() {
         let mut collector = StreamCollector::new();
         collector.add_chunk(make_chunk("A", 0, StreamMode::Values, json!({"x": 1})));
-        collector.add_chunk(make_chunk("A", 1, StreamMode::Updates, json!({"delta": true})));
+        collector.add_chunk(make_chunk(
+            "A",
+            1,
+            StreamMode::Updates,
+            json!({"delta": true}),
+        ));
         collector.add_chunk(make_chunk("B", 2, StreamMode::Values, json!({"x": 2})));
 
         let final_state = collector.get_final_state().unwrap();
@@ -587,11 +599,26 @@ mod tests {
         let (writer, reader) = StreamWriter::new(32);
         let mut collector = StreamCollector::new();
 
-        writer.write_value("A", 0, json!({"state": "a"})).await.unwrap();
-        writer.write_update("A", 0, json!({"delta": "a"})).await.unwrap();
-        writer.write_value("B", 1, json!({"state": "b"})).await.unwrap();
-        writer.write_update("B", 1, json!({"delta": "b"})).await.unwrap();
-        writer.write_value("C", 2, json!({"state": "c"})).await.unwrap();
+        writer
+            .write_value("A", 0, json!({"state": "a"}))
+            .await
+            .unwrap();
+        writer
+            .write_update("A", 0, json!({"delta": "a"}))
+            .await
+            .unwrap();
+        writer
+            .write_value("B", 1, json!({"state": "b"}))
+            .await
+            .unwrap();
+        writer
+            .write_update("B", 1, json!({"delta": "b"}))
+            .await
+            .unwrap();
+        writer
+            .write_value("C", 2, json!({"state": "c"}))
+            .await
+            .unwrap();
         drop(writer);
 
         let chunks = reader.collect_all().await;

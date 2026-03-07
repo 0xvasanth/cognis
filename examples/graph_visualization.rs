@@ -92,8 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     router_map.insert("billing".to_string(), "billing_agent".to_string());
     router_map.insert("general".to_string(), "general_agent".to_string());
 
-    let classify_router =
-        Arc::new(|_state: &Value| RouterResult::Single("technical".to_string()));
+    let classify_router = Arc::new(|_state: &Value| RouterResult::Single("technical".to_string()));
 
     let router_graph = StateGraph::new()
         .add_node("classifier", noop_action())

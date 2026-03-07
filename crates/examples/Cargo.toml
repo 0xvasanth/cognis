@@ -94,3 +94,19 @@ path = "../../examples/extraction_chain.rs"
 [[example]]
 name = "graph_visualization"
 path = "../../examples/graph_visualization.rs"
+
+[[example]]
+name = "agent_output_parsing"
+path = "../../examples/agent_output_parsing.rs"
+
+[[example]]
+name = "memory_types"
+path = "../../examples/memory_types.rs"
+
+[[example]]
+name = "caching_retriever"
+path = "../../examples/caching_retriever.rs"
+
+[[example]]
+name = "planning_middleware"
+path = "../../examples/planning_middleware.rs"

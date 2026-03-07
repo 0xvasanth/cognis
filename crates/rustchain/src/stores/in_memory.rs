@@ -17,7 +17,7 @@ struct Entry {
 
 impl Entry {
     fn is_expired(&self) -> bool {
-        self.expires_at.map_or(false, |t| Instant::now() >= t)
+        self.expires_at.is_some_and(|t| Instant::now() >= t)
     }
 }
 
@@ -54,14 +54,20 @@ impl InMemoryStore {
             value: value.to_vec(),
             expires_at: Some(Instant::now() + ttl),
         };
-        let mut data = self.data.write().map_err(|e| RustChainError::Other(e.to_string()))?;
+        let mut data = self
+            .data
+            .write()
+            .map_err(|e| RustChainError::Other(e.to_string()))?;
         data.insert(key.to_string(), entry);
         Ok(())
     }
 
     /// Remove all expired entries from the store.
     pub fn evict_expired(&self) -> Result<()> {
-        let mut data = self.data.write().map_err(|e| RustChainError::Other(e.to_string()))?;
+        let mut data = self
+            .data
+            .write()
+            .map_err(|e| RustChainError::Other(e.to_string()))?;
         data.retain(|_, entry| !entry.is_expired());
         Ok(())
     }
@@ -75,7 +81,10 @@ impl Default for InMemoryStore {
 
 impl Store for InMemoryStore {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        let data = self.data.read().map_err(|e| RustChainError::Other(e.to_string()))?;
+        let data = self
+            .data
+            .read()
+            .map_err(|e| RustChainError::Other(e.to_string()))?;
         match data.get(key) {
             Some(entry) if !entry.is_expired() => Ok(Some(entry.value.clone())),
             _ => Ok(None),
@@ -87,13 +96,19 @@ impl Store for InMemoryStore {
             value: value.to_vec(),
             expires_at: self.default_ttl.map(|d| Instant::now() + d),
         };
-        let mut data = self.data.write().map_err(|e| RustChainError::Other(e.to_string()))?;
+        let mut data = self
+            .data
+            .write()
+            .map_err(|e| RustChainError::Other(e.to_string()))?;
         data.insert(key.to_string(), entry);
         Ok(())
     }
 
     fn delete(&self, key: &str) -> Result<bool> {
-        let mut data = self.data.write().map_err(|e| RustChainError::Other(e.to_string()))?;
+        let mut data = self
+            .data
+            .write()
+            .map_err(|e| RustChainError::Other(e.to_string()))?;
         Ok(data.remove(key).is_some())
     }
 
@@ -109,7 +124,10 @@ impl Store for InMemoryStore {
     }
 
     fn keys(&self) -> Result<Vec<String>> {
-        let data = self.data.read().map_err(|e| RustChainError::Other(e.to_string()))?;
+        let data = self
+            .data
+            .read()
+            .map_err(|e| RustChainError::Other(e.to_string()))?;
         Ok(data
             .iter()
             .filter(|(_, entry)| !entry.is_expired())
@@ -118,7 +136,10 @@ impl Store for InMemoryStore {
     }
 
     fn clear(&self) -> Result<()> {
-        let mut data = self.data.write().map_err(|e| RustChainError::Other(e.to_string()))?;
+        let mut data = self
+            .data
+            .write()
+            .map_err(|e| RustChainError::Other(e.to_string()))?;
         data.clear();
         Ok(())
     }

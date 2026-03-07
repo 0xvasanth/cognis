@@ -146,9 +146,21 @@ impl TimeWeightedRetriever {
             return 0.0;
         }
 
-        let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| *x as f64 * *y as f64).sum();
-        let norm_a: f64 = a.iter().map(|x| (*x as f64) * (*x as f64)).sum::<f64>().sqrt();
-        let norm_b: f64 = b.iter().map(|x| (*x as f64) * (*x as f64)).sum::<f64>().sqrt();
+        let dot: f64 = a
+            .iter()
+            .zip(b.iter())
+            .map(|(x, y)| *x as f64 * *y as f64)
+            .sum();
+        let norm_a: f64 = a
+            .iter()
+            .map(|x| (*x as f64) * (*x as f64))
+            .sum::<f64>()
+            .sqrt();
+        let norm_b: f64 = b
+            .iter()
+            .map(|x| (*x as f64) * (*x as f64))
+            .sum::<f64>()
+            .sqrt();
 
         if norm_a == 0.0 || norm_b == 0.0 {
             return 0.0;
@@ -246,7 +258,12 @@ mod tests {
     fn text_to_embedding(text: &str) -> Vec<f32> {
         let bytes = text.as_bytes();
         let dim0: f32 = bytes.iter().map(|b| *b as f32).sum::<f32>() / 1000.0;
-        let dim1: f32 = bytes.iter().enumerate().map(|(i, b)| (i as f32 + 1.0) * (*b as f32)).sum::<f32>() / 10000.0;
+        let dim1: f32 = bytes
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (i as f32 + 1.0) * (*b as f32))
+            .sum::<f32>()
+            / 10000.0;
         let dim2: f32 = bytes.len() as f32 / 100.0;
         vec![dim0, dim1, dim2]
     }
@@ -296,7 +313,9 @@ mod tests {
         let embeddings = Arc::new(MockEmbeddings);
         let retriever = TimeWeightedRetriever::new(embeddings).with_k(10);
 
-        retriever.add_documents(vec![Document::new("only_one")]).await;
+        retriever
+            .add_documents(vec![Document::new("only_one")])
+            .await;
 
         let docs = retriever.get_relevant_documents("test").await.unwrap();
         assert_eq!(docs.len(), 1);
@@ -390,7 +409,9 @@ mod tests {
     #[tokio::test]
     async fn test_older_documents_scored_lower() {
         let embeddings = Arc::new(MockEmbeddings);
-        let retriever = TimeWeightedRetriever::new(embeddings).with_k(2).with_decay_rate(0.99);
+        let retriever = TimeWeightedRetriever::new(embeddings)
+            .with_k(2)
+            .with_decay_rate(0.99);
 
         // Add a document with an old timestamp.
         let old_doc = TimedDocument::with_timestamps(
@@ -401,7 +422,9 @@ mod tests {
         retriever.add_timed_document(old_doc).await;
 
         // Add a recent document with similar content.
-        retriever.add_documents(vec![Document::new("new_doc")]).await;
+        retriever
+            .add_documents(vec![Document::new("new_doc")])
+            .await;
 
         let docs = retriever.get_relevant_documents("doc").await.unwrap();
         // The new doc should be ranked first due to less time decay.

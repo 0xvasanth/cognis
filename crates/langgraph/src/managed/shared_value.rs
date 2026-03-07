@@ -102,8 +102,11 @@ pub struct SharedValueConfig<T> {
     /// Maximum number of previous values to retain in history.
     pub max_history: Option<usize>,
     /// Optional callback invoked on value change, receiving `(old, new)`.
-    pub on_change: Option<Arc<dyn Fn(&T, &T) + Send + Sync>>,
+    pub on_change: Option<ChangeCallback<T>>,
 }
+
+/// Type alias for the on-change callback to reduce type complexity.
+type ChangeCallback<T> = Arc<dyn Fn(&T, &T) + Send + Sync>;
 
 impl<T: Default> Default for SharedValueConfig<T> {
     fn default() -> Self {
@@ -122,7 +125,7 @@ struct SharedValueInner<T> {
     version: u64,
     read_only: bool,
     history: ValueHistory<T>,
-    on_change: Option<Arc<dyn Fn(&T, &T) + Send + Sync>>,
+    on_change: Option<ChangeCallback<T>>,
 }
 
 /// A thread-safe shared value with versioning, history, and change notifications.
@@ -177,7 +180,10 @@ impl<T: Clone + Send + Sync + 'static> SharedValue<T> {
 
     /// Write a new value, incrementing the version.
     pub fn set(&self, value: T) -> Result<(), SharedValueError> {
-        let mut inner = self.inner.write().map_err(|_| SharedValueError::LockPoisoned)?;
+        let mut inner = self
+            .inner
+            .write()
+            .map_err(|_| SharedValueError::LockPoisoned)?;
         if inner.read_only {
             return Err(SharedValueError::ReadOnly);
         }
@@ -195,7 +201,10 @@ impl<T: Clone + Send + Sync + 'static> SharedValue<T> {
 
     /// Modify the value in place using a closure, incrementing the version.
     pub fn update(&self, f: impl FnOnce(&mut T)) -> Result<(), SharedValueError> {
-        let mut inner = self.inner.write().map_err(|_| SharedValueError::LockPoisoned)?;
+        let mut inner = self
+            .inner
+            .write()
+            .map_err(|_| SharedValueError::LockPoisoned)?;
         if inner.read_only {
             return Err(SharedValueError::ReadOnly);
         }
@@ -617,7 +626,10 @@ mod tests {
         acc.push("hello".to_string());
         acc.push("world".to_string());
         assert_eq!(acc.len(), 2);
-        assert_eq!(acc.get_all(), vec!["hello".to_string(), "world".to_string()]);
+        assert_eq!(
+            acc.get_all(),
+            vec!["hello".to_string(), "world".to_string()]
+        );
     }
 
     // --- SharedAccumulator drain ---

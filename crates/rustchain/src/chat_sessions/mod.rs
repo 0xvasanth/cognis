@@ -88,7 +88,7 @@ fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
 }
 
 fn is_leap(y: u64) -> bool {
-    y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
+    y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400))
 }
 
 // ---------------------------------------------------------------------------
@@ -344,10 +344,7 @@ impl SessionStorage for FileSessionStorage {
         let path = self.session_path(id);
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| {
-                RustChainError::Other(format!(
-                    "Failed to delete session file {:?}: {}",
-                    path, e
-                ))
+                RustChainError::Other(format!("Failed to delete session file {:?}: {}", path, e))
             })?;
         }
         Ok(())
@@ -456,11 +453,8 @@ impl SessionManager {
 
     /// Add a message to a session.
     pub async fn add_message(&self, session_id: &str, message: Message) -> Result<()> {
-        let mut session = self
-            .storage
-            .load(session_id)
-            .await?
-            .ok_or_else(|| {
+        let mut session =
+            self.storage.load(session_id).await?.ok_or_else(|| {
                 RustChainError::Other(format!("Session not found: {}", session_id))
             })?;
         session.messages.push(message);
@@ -471,11 +465,8 @@ impl SessionManager {
 
     /// Get all messages in a session.
     pub async fn get_messages(&self, session_id: &str) -> Result<Vec<Message>> {
-        let session = self
-            .storage
-            .load(session_id)
-            .await?
-            .ok_or_else(|| {
+        let session =
+            self.storage.load(session_id).await?.ok_or_else(|| {
                 RustChainError::Other(format!("Session not found: {}", session_id))
             })?;
         Ok(session.messages)
@@ -497,11 +488,8 @@ impl SessionManager {
 
     /// Clear all messages in a session (session itself remains).
     pub async fn clear_messages(&self, session_id: &str) -> Result<()> {
-        let mut session = self
-            .storage
-            .load(session_id)
-            .await?
-            .ok_or_else(|| {
+        let mut session =
+            self.storage.load(session_id).await?.ok_or_else(|| {
                 RustChainError::Other(format!("Session not found: {}", session_id))
             })?;
         session.messages.clear();
@@ -755,10 +743,7 @@ mod tests {
     #[tokio::test]
     async fn test_export_import_roundtrip() {
         let mgr = make_manager();
-        let session = mgr
-            .create_session(Some("Roundtrip".into()))
-            .await
-            .unwrap();
+        let session = mgr.create_session(Some("Roundtrip".into())).await.unwrap();
         mgr.add_message(&session.id, Message::human("Hello"))
             .await
             .unwrap();
@@ -803,9 +788,7 @@ mod tests {
     // 12. Max messages auto-trim
     #[tokio::test]
     async fn test_max_messages_auto_trim() {
-        let mgr = SessionManager::builder()
-            .default_max_messages(3)
-            .build();
+        let mgr = SessionManager::builder().default_max_messages(3).build();
         let session = mgr.create_session(None).await.unwrap();
         for i in 0..10 {
             mgr.add_message(&session.id, Message::human(format!("msg {}", i)))

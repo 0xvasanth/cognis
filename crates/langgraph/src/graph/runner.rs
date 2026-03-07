@@ -132,10 +132,7 @@ pub enum StepEvent {
         step: usize,
     },
     /// A checkpoint was saved.
-    CheckpointSaved {
-        step: usize,
-        checkpoint_id: String,
-    },
+    CheckpointSaved { step: usize, checkpoint_id: String },
     /// An error occurred during node execution.
     Error {
         node: String,
@@ -225,8 +222,7 @@ impl GraphRunner {
         let deadline = self.config.timeout.map(|d| Instant::now() + d);
 
         // Resolve initial nodes from START.
-        let mut current_nodes: Vec<String> =
-            graph.get_next_nodes_static_pub(START, &state)?;
+        let mut current_nodes: Vec<String> = graph.get_next_nodes_static_pub(START, &state)?;
 
         loop {
             if current_nodes.is_empty() {
@@ -234,10 +230,7 @@ impl GraphRunner {
             }
 
             // Filter out END markers.
-            let executable: Vec<String> = current_nodes
-                .into_iter()
-                .filter(|n| n != END)
-                .collect();
+            let executable: Vec<String> = current_nodes.into_iter().filter(|n| n != END).collect();
 
             if executable.is_empty() {
                 break;
@@ -453,15 +446,9 @@ impl Default for MetricsHook {
 #[async_trait]
 impl StepHook for MetricsHook {
     async fn on_event(&self, event: &StepEvent) -> Result<()> {
-        if let StepEvent::NodeEnd {
-            node, duration, ..
-        } = event
-        {
+        if let StepEvent::NodeEnd { node, duration, .. } = event {
             let mut durations = self.node_durations.lock().await;
-            durations
-                .entry(node.clone())
-                .or_default()
-                .push(*duration);
+            durations.entry(node.clone()).or_default().push(*duration);
         }
         Ok(())
     }
@@ -607,9 +594,7 @@ mod tests {
         let graph = build_loop_graph(200);
         let config = RunConfig::new().max_steps(3).recursion_limit(500);
         let mut runner = GraphRunner::new(config);
-        let err = runner
-            .run_with_events(&graph, json!({"count": 0}))
-            .await;
+        let err = runner.run_with_events(&graph, json!({"count": 0})).await;
         assert!(err.is_err());
     }
 
@@ -758,9 +743,8 @@ mod tests {
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn test_error_event() {
-        let action: NodeAction = Arc::new(|_state: Value| {
-            Err(LangGraphError::Other("intentional failure".into()))
-        });
+        let action: NodeAction =
+            Arc::new(|_state: Value| Err(LangGraphError::Other("intentional failure".into())));
         let graph = StateGraph::new()
             .add_node_sync("fail", action)
             .add_edge(START, "fail")
@@ -769,9 +753,7 @@ mod tests {
             .unwrap();
 
         let mut runner = GraphRunner::new(RunConfig::new());
-        let err = runner
-            .run_with_events(&graph, json!({}))
-            .await;
+        let err = runner.run_with_events(&graph, json!({})).await;
         assert!(err.is_err());
     }
 

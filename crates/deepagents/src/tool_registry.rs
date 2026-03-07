@@ -19,10 +19,7 @@ pub enum ToolPermission {
     /// Tool requires human approval before each call.
     RequiresApproval,
     /// Tool is rate-limited to a maximum number of calls within a time window.
-    RateLimited {
-        max_calls: usize,
-        window: Duration,
-    },
+    RateLimited { max_calls: usize, window: Duration },
 }
 
 /// A registered tool entry containing metadata, permission, and runtime counters.
@@ -63,7 +60,11 @@ impl std::fmt::Debug for ToolEntry {
 impl ToolEntry {
     /// Create a new tool entry with the given name, description, and schema.
     /// Defaults to `Allowed` permission, empty category/tags, zero calls, and enabled.
-    pub fn new(name: impl Into<String>, description: impl Into<String>, schema: ToolSchema) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        schema: ToolSchema,
+    ) -> Self {
         Self {
             name: name.into(),
             description: description.into(),
@@ -405,7 +406,8 @@ mod tests {
     #[test]
     fn test_check_permission_requires_approval() {
         let registry = ToolRegistry::new();
-        registry.register(make_entry("tool", "c").with_permission(ToolPermission::RequiresApproval));
+        registry
+            .register(make_entry("tool", "c").with_permission(ToolPermission::RequiresApproval));
         assert_eq!(
             registry.check_permission("tool"),
             ToolPermission::RequiresApproval
@@ -444,13 +446,25 @@ mod tests {
     fn test_enable_disable() {
         let registry = ToolRegistry::new();
         registry.register(make_entry("tool", "c"));
-        assert!(registry.get("tool").unwrap().enabled.load(Ordering::Relaxed));
+        assert!(registry
+            .get("tool")
+            .unwrap()
+            .enabled
+            .load(Ordering::Relaxed));
 
         registry.disable("tool");
-        assert!(!registry.get("tool").unwrap().enabled.load(Ordering::Relaxed));
+        assert!(!registry
+            .get("tool")
+            .unwrap()
+            .enabled
+            .load(Ordering::Relaxed));
 
         registry.enable("tool");
-        assert!(registry.get("tool").unwrap().enabled.load(Ordering::Relaxed));
+        assert!(registry
+            .get("tool")
+            .unwrap()
+            .enabled
+            .load(Ordering::Relaxed));
     }
 
     #[test]
@@ -471,9 +485,7 @@ mod tests {
         registry.register(
             make_entry("grep", "filesystem").with_tags(vec!["search".into(), "text".into()]),
         );
-        registry.register(
-            make_entry("web_search", "web").with_tags(vec!["search".into()]),
-        );
+        registry.register(make_entry("web_search", "web").with_tags(vec!["search".into()]));
         registry.register(make_entry("write_file", "filesystem"));
 
         let results = registry.search(&ToolFilter::new().tag("search"));
@@ -509,15 +521,9 @@ mod tests {
     #[test]
     fn test_search_combined_filters() {
         let registry = ToolRegistry::new();
-        registry.register(
-            make_entry("read_file", "filesystem").with_tags(vec!["io".into()]),
-        );
-        registry.register(
-            make_entry("write_file", "filesystem").with_tags(vec!["io".into()]),
-        );
-        registry.register(
-            make_entry("read_url", "web").with_tags(vec!["io".into()]),
-        );
+        registry.register(make_entry("read_file", "filesystem").with_tags(vec!["io".into()]));
+        registry.register(make_entry("write_file", "filesystem").with_tags(vec!["io".into()]));
+        registry.register(make_entry("read_url", "web").with_tags(vec!["io".into()]));
 
         let results = registry.search(
             &ToolFilter::new()

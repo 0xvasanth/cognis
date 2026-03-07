@@ -32,6 +32,12 @@ pub use api::{
     APIChain, APIChainBuilder, APISpec, APISpecBuilder, EndpointSpec, EndpointSpecBuilder,
     ParameterSpec, ParameterSpecBuilder, RequestValidator,
 };
+pub mod transform;
+pub use transform::{
+    uppercase_transform, lowercase_transform, trim_transform, json_extract_transform,
+    regex_replace_transform, map_transform, AsyncTransformChain, AsyncTransformFn,
+    TransformChain, TransformChainBuilder, TransformFn, TransformPipeline,
+};
 pub mod streaming;
 pub use streaming::{
     stream_chain, ConsoleStreamingCallback, StreamingCallback, StreamingCallbackAdapter,

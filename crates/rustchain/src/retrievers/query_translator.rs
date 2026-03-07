@@ -80,11 +80,7 @@ pub struct QueryFilter {
 
 impl QueryFilter {
     /// Create a new query filter.
-    pub fn new(
-        field: impl Into<String>,
-        operator: FilterOperator,
-        value: FilterValue,
-    ) -> Self {
+    pub fn new(field: impl Into<String>, operator: FilterOperator, value: FilterValue) -> Self {
         Self {
             field: field.into(),
             operator,
@@ -346,11 +342,7 @@ impl RuleBasedTranslator {
                 if let Some(val) = caps.get(rule.value_group) {
                     let value = Self::parse_value(val.as_str());
                     if self.schema.has_field(&rule.field) {
-                        filters.push(QueryFilter::new(
-                            rule.field.clone(),
-                            rule.operator,
-                            value,
-                        ));
+                        filters.push(QueryFilter::new(rule.field.clone(), rule.operator, value));
                     }
                 }
             }
@@ -475,10 +467,8 @@ impl RuleBasedTranslator {
             }
 
             // Pattern: "contains <value>" (for string fields)
-            let contains_pattern = format!(
-                r"(?:{}\s+)?contains\s+(\S+)",
-                regex::escape(&field_lower)
-            );
+            let contains_pattern =
+                format!(r"(?:{}\s+)?contains\s+(\S+)", regex::escape(&field_lower));
             if field_def.field_type == FieldType::String {
                 if let Ok(re) = Regex::new(&contains_pattern) {
                     if let Some(caps) = re.captures(&lower) {
@@ -531,8 +521,14 @@ impl RuleBasedTranslator {
         for field_def in &self.schema.fields {
             let field_lower = field_def.name.to_lowercase();
             let patterns = [
-                format!(r"(?i){}\s+between\s+[\d.]+\s+and\s+[\d.]+", regex::escape(&field_lower)),
-                format!(r"(?i){}\s*(?:>=|<=|>|<|=)\s*\S+", regex::escape(&field_lower)),
+                format!(
+                    r"(?i){}\s+between\s+[\d.]+\s+and\s+[\d.]+",
+                    regex::escape(&field_lower)
+                ),
+                format!(
+                    r"(?i){}\s*(?:>=|<=|>|<|=)\s*\S+",
+                    regex::escape(&field_lower)
+                ),
                 format!(r"(?i){}\s+is\s+\S+", regex::escape(&field_lower)),
                 format!(r"(?i)(?:{}\s+)?contains\s+\S+", regex::escape(&field_lower)),
             ];
@@ -610,11 +606,7 @@ impl TranslatorChain {
     /// Create a new translator chain.
     pub fn new(rules: RuleBasedTranslator, llm: Option<Arc<dyn BaseChatModel>>) -> Self {
         let schema = rules.schema.clone();
-        Self {
-            rules,
-            llm,
-            schema,
-        }
+        Self { rules, llm, schema }
     }
 
     /// Build a prompt for the LLM to parse the query.
@@ -723,7 +715,11 @@ mod tests {
             FieldDefinition::new("year", FieldType::Integer, "The release year"),
             FieldDefinition::new("price", FieldType::Float, "The price in dollars"),
             FieldDefinition::new("title", FieldType::String, "The title of the item"),
-            FieldDefinition::new("available", FieldType::Boolean, "Whether the item is available"),
+            FieldDefinition::new(
+                "available",
+                FieldType::Boolean,
+                "Whether the item is available",
+            ),
         ])
     }
 
@@ -771,7 +767,10 @@ mod tests {
     // 3. FilterValue types
     #[test]
     fn test_filter_value_types() {
-        assert_eq!(FilterValue::String("hello".into()), FilterValue::String("hello".into()));
+        assert_eq!(
+            FilterValue::String("hello".into()),
+            FilterValue::String("hello".into())
+        );
         assert_eq!(FilterValue::Integer(42), FilterValue::Integer(42));
         assert_eq!(FilterValue::Float(3.14), FilterValue::Float(3.14));
         assert_eq!(FilterValue::Boolean(true), FilterValue::Boolean(true));
@@ -795,7 +794,10 @@ mod tests {
         assert!(schema.has_field("category"));
         assert!(schema.has_field("year"));
         assert!(!schema.has_field("nonexistent"));
-        assert_eq!(schema.description.as_deref(), Some("A collection of movies"));
+        assert_eq!(
+            schema.description.as_deref(),
+            Some("A collection of movies")
+        );
     }
 
     // 5. RuleBasedTranslator: "category is X"
@@ -804,10 +806,17 @@ mod tests {
         let schema = movie_schema();
         let translator = RuleBasedTranslator::new(schema);
 
-        let result = translator.translate("find items where category is action").await.unwrap();
+        let result = translator
+            .translate("find items where category is action")
+            .await
+            .unwrap();
 
         assert!(!result.filters.is_empty());
-        let cat_filter = result.filters.iter().find(|f| f.field == "category").unwrap();
+        let cat_filter = result
+            .filters
+            .iter()
+            .find(|f| f.field == "category")
+            .unwrap();
         assert_eq!(cat_filter.operator, FilterOperator::Eq);
         assert_eq!(cat_filter.value, FilterValue::String("action".into()));
     }
@@ -818,7 +827,10 @@ mod tests {
         let schema = movie_schema();
         let translator = RuleBasedTranslator::new(schema);
 
-        let result = translator.translate("movies with year > 2020").await.unwrap();
+        let result = translator
+            .translate("movies with year > 2020")
+            .await
+            .unwrap();
 
         let year_filter = result.filters.iter().find(|f| f.field == "year").unwrap();
         assert_eq!(year_filter.operator, FilterOperator::Gt);
@@ -831,7 +843,10 @@ mod tests {
         let schema = movie_schema();
         let translator = RuleBasedTranslator::new(schema);
 
-        let result = translator.translate("items with price between 10 and 50").await.unwrap();
+        let result = translator
+            .translate("items with price between 10 and 50")
+            .await
+            .unwrap();
 
         let gte_filter = result
             .filters
@@ -854,7 +869,10 @@ mod tests {
         let schema = movie_schema();
         let translator = RuleBasedTranslator::new(schema);
 
-        let result = translator.translate("title contains adventure").await.unwrap();
+        let result = translator
+            .translate("title contains adventure")
+            .await
+            .unwrap();
 
         let title_filter = result.filters.iter().find(|f| f.field == "title").unwrap();
         assert_eq!(title_filter.operator, FilterOperator::Contains);
@@ -867,15 +885,18 @@ mod tests {
         let schema = movie_schema();
         let mut translator = RuleBasedTranslator::new(schema);
 
-        translator.add_rule(
-            r"rated\s+(\S+)",
-            "category",
-            FilterOperator::Eq,
-        );
+        translator.add_rule(r"rated\s+(\S+)", "category", FilterOperator::Eq);
 
-        let result = translator.translate("find items rated action").await.unwrap();
+        let result = translator
+            .translate("find items rated action")
+            .await
+            .unwrap();
 
-        let cat_filter = result.filters.iter().find(|f| f.field == "category").unwrap();
+        let cat_filter = result
+            .filters
+            .iter()
+            .find(|f| f.field == "category")
+            .unwrap();
         assert_eq!(cat_filter.operator, FilterOperator::Eq);
         assert_eq!(cat_filter.value, FilterValue::String("action".into()));
     }
@@ -888,7 +909,10 @@ mod tests {
 
         let chain = TranslatorChain::new(translator, None);
 
-        let result = chain.translate("category is drama year > 2019").await.unwrap();
+        let result = chain
+            .translate("category is drama year > 2019")
+            .await
+            .unwrap();
 
         // Rules should have found filters, so no LLM fallback needed.
         assert!(!result.filters.is_empty());
@@ -924,9 +948,18 @@ mod tests {
             .unwrap();
 
         assert!(result.filters.len() >= 3);
-        assert!(result.filters.iter().any(|f| f.field == "category" && f.operator == FilterOperator::Eq));
-        assert!(result.filters.iter().any(|f| f.field == "year" && f.operator == FilterOperator::Gt));
-        assert!(result.filters.iter().any(|f| f.field == "price" && f.operator == FilterOperator::Lt));
+        assert!(result
+            .filters
+            .iter()
+            .any(|f| f.field == "category" && f.operator == FilterOperator::Eq));
+        assert!(result
+            .filters
+            .iter()
+            .any(|f| f.field == "year" && f.operator == FilterOperator::Gt));
+        assert!(result
+            .filters
+            .iter()
+            .any(|f| f.field == "price" && f.operator == FilterOperator::Lt));
     }
 
     // 13. Sort specification
@@ -950,7 +983,10 @@ mod tests {
         let schema = movie_schema();
         let translator = RuleBasedTranslator::new(schema);
 
-        let result = translator.translate("top 5 results category is action").await.unwrap();
+        let result = translator
+            .translate("top 5 results category is action")
+            .await
+            .unwrap();
 
         assert_eq!(result.limit, Some(5));
         assert!(!result.filters.is_empty());
@@ -989,7 +1025,11 @@ mod tests {
     fn test_schema_validation_valid_filters() {
         let schema = movie_schema();
         let filters = vec![
-            QueryFilter::new("category", FilterOperator::Eq, FilterValue::String("action".into())),
+            QueryFilter::new(
+                "category",
+                FilterOperator::Eq,
+                FilterValue::String("action".into()),
+            ),
             QueryFilter::new("year", FilterOperator::Gt, FilterValue::Integer(2020)),
         ];
 
