@@ -4,6 +4,7 @@
 //! functionality used across the LangGraph crate.
 
 pub mod config;
+pub mod profiler;
 
 pub use config::{
     ensure_config, merge_configs, patch_configurable, RunnableConfig, CONFIG_KEY_RUNTIME,
