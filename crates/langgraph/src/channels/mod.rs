@@ -28,6 +28,7 @@
 pub mod any_value;
 pub mod base;
 pub mod binop;
+pub mod broadcast;
 pub mod ephemeral_value;
 pub mod last_value;
 pub mod named_barrier;
@@ -38,6 +39,9 @@ pub mod untracked;
 pub use any_value::AnyValue;
 pub use base::BaseChannel;
 pub use binop::{BinOp, BinaryOperatorAggregate};
+pub use broadcast::{
+    BroadcastChannel, BroadcastConfig, BroadcastFilter, BroadcastMessage, DeliveryGuarantee,
+};
 pub use ephemeral_value::EphemeralValue;
 pub use last_value::{LastValue, LastValueAfterFinish};
 pub use named_barrier::{NamedBarrierValue, NamedBarrierValueAfterFinish};
