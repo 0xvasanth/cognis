@@ -7,6 +7,7 @@
 pub mod anthropic;
 pub mod base;
 pub mod cached;
+pub mod distance;
 #[cfg(feature = "google")]
 pub mod google;
 #[cfg(feature = "ollama")]
