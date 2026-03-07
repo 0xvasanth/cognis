@@ -52,7 +52,10 @@ pub use each::RunnableEach;
 pub use events::{EventEmitter, EventFilter, EventTrace, RunEvent, RunEventType};
 pub use ext::RunnableExt;
 pub use fallbacks::{with_fallbacks, RunnableWithFallbacks};
-pub use graph::{Branch, Edge, Graph, Node, NodeData};
+pub use graph::{
+    AsciiExporter, Branch, DotExporter, DotOptions, Edge, Graph, GraphEdge, GraphNode,
+    MermaidExporter, Node, NodeData, NodeType, RunnableGraph,
+};
 pub use history::{ConfigurableFieldSpec, RunnableWithMessageHistory};
 pub use lambda::RunnableLambda;
 pub use parallel::RunnableParallel;
