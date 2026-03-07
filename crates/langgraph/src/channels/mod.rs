@@ -39,6 +39,7 @@ pub mod ephemeral_value;
 pub mod last_value;
 pub mod named_barrier;
 pub mod reducers;
+pub mod state;
 pub mod state_reducers;
 pub mod topic;
 pub mod untracked;
@@ -59,5 +60,9 @@ pub use reducers::{
 pub use topic::{
     DeadLetterQueue, Topic, TopicBus, TopicBusStats, TopicChannel, TopicFilter, TopicMessage,
     TopicRouter,
+};
+pub use state::{
+    BinaryChannel, ChannelManager, ChannelProtocol, ChannelReducer, ChannelValue, LastValueChannel,
+    StateChannel,
 };
 pub use untracked::UntrackedValue;
