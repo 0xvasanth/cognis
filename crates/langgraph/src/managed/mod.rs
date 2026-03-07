@@ -6,8 +6,13 @@
 
 pub mod base;
 pub mod is_last_step;
+pub mod shared_value;
 
 pub use base::{
     is_managed_value, ManagedValue, ManagedValueMapping, ManagedValueSpec, PregelScratchpad,
 };
 pub use is_last_step::{IsLastStepManager, RemainingStepsManager};
+pub use shared_value::{
+    SharedAccumulator, SharedCounter, SharedMap, SharedValue, SharedValueConfig, SharedValueError,
+    ValueHistory,
+};
