@@ -1,3 +1,16 @@
+//! Configurable runnables — runnables whose behavior can be adjusted at
+//! invocation time via key-value configuration fields.
+//!
+//! This module provides a schema-driven configuration system that lets callers
+//! override parameters (model name, temperature, prompt variants, etc.) without
+//! creating new runnable instances. Field definitions carry type information and
+//! are validated before the inner runnable executes.
+//!
+//! - [`ConfigurableFieldType`] — supported value types for configuration fields
+//! - [`ConfigurableField`] — a single named, typed, optionally-required field
+//! - [`ConfigurableSpec`] — a collection of field definitions forming a config schema
+//! - [`ConfigurableRunnable`] — wraps an inner [`Runnable`] with a [`ConfigurableSpec`]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -39,9 +52,9 @@ impl ConfigurableFieldType {
             Self::Integer => value.is_i64() || value.is_u64(),
             Self::Float => value.is_f64() || value.is_i64() || value.is_u64(),
             Self::Boolean => value.is_boolean(),
-            Self::Enum(variants) => {
-                value.as_str().map_or(false, |s| variants.contains(&s.to_owned()))
-            }
+            Self::Enum(variants) => value
+                .as_str()
+                .is_some_and(|s| variants.contains(&s.to_owned())),
             Self::Json => true, // anything goes
         }
     }
@@ -179,21 +192,19 @@ impl ConfigurableSpec {
     /// Checks that all required fields are present and that each provided
     /// value matches the expected type.
     pub fn validate(&self, config: &Value) -> Result<()> {
-        let obj = config.as_object().ok_or_else(|| {
-            RustChainError::TypeMismatch {
+        let obj = config
+            .as_object()
+            .ok_or_else(|| RustChainError::TypeMismatch {
                 expected: "object".into(),
                 got: format!("{}", config),
-            }
-        })?;
+            })?;
 
         for field in &self.fields {
-            if field.required {
-                if !obj.contains_key(&field.id) {
-                    return Err(RustChainError::InvalidKey(format!(
-                        "Required configurable field '{}' is missing",
-                        field.id
-                    )));
-                }
+            if field.required && !obj.contains_key(&field.id) {
+                return Err(RustChainError::InvalidKey(format!(
+                    "Required configurable field '{}' is missing",
+                    field.id
+                )));
             }
             if let Some(val) = obj.get(&field.id) {
                 field.validate_value(val)?;
@@ -319,16 +330,16 @@ impl RunnableConfigurableFields {
     }
 
     /// Build the effective config by merging pre_config into the provided config.
-    fn effective_config<'a>(
-        &self,
-        config: Option<&'a RunnableConfig>,
-    ) -> Option<RunnableConfig> {
+    fn effective_config(&self, config: Option<&RunnableConfig>) -> Option<RunnableConfig> {
         match (&self.pre_config, config) {
             (Some(pre), Some(cfg)) => {
                 let mut merged = cfg.clone();
                 if let Some(obj) = pre.as_object() {
                     for (k, v) in obj {
-                        merged.configurable.entry(k.clone()).or_insert_with(|| v.clone());
+                        merged
+                            .configurable
+                            .entry(k.clone())
+                            .or_insert_with(|| v.clone());
                     }
                 }
                 Some(merged)
@@ -407,7 +418,10 @@ impl ConfigurableAlternatives {
     /// Check whether an alternative with the given key exists, returning the
     /// key if found.
     pub fn select(&self, key: &str) -> Option<&str> {
-        self.alternatives.iter().find(|k| k.as_str() == key).map(|s| s.as_str())
+        self.alternatives
+            .iter()
+            .find(|k| k.as_str() == key)
+            .map(|s| s.as_str())
     }
 
     /// Return all registered keys.
@@ -594,8 +608,11 @@ mod tests {
 
     #[test]
     fn test_spec_add_and_get_field() {
-        let spec = ConfigurableSpec::new()
-            .add_field(ConfigurableField::new("model", "Model", ConfigurableFieldType::String));
+        let spec = ConfigurableSpec::new().add_field(ConfigurableField::new(
+            "model",
+            "Model",
+            ConfigurableFieldType::String,
+        ));
         assert_eq!(spec.fields().len(), 1);
         assert!(spec.get_field("model").is_some());
         assert!(spec.get_field("missing").is_none());
@@ -608,9 +625,11 @@ mod tests {
                 ConfigurableField::new("model", "Model", ConfigurableFieldType::String)
                     .required(true),
             )
-            .add_field(
-                ConfigurableField::new("temp", "Temperature", ConfigurableFieldType::Float),
-            );
+            .add_field(ConfigurableField::new(
+                "temp",
+                "Temperature",
+                ConfigurableFieldType::Float,
+            ));
         let required = spec.required_fields();
         assert_eq!(required.len(), 1);
         assert_eq!(required[0].id, "model");
@@ -627,9 +646,11 @@ mod tests {
 
     #[test]
     fn test_spec_validate_wrong_type() {
-        let spec = ConfigurableSpec::new().add_field(
-            ConfigurableField::new("count", "Count", ConfigurableFieldType::Integer),
-        );
+        let spec = ConfigurableSpec::new().add_field(ConfigurableField::new(
+            "count",
+            "Count",
+            ConfigurableFieldType::Integer,
+        ));
         let result = spec.validate(&json!({"count": "not_int"}));
         assert!(result.is_err());
     }
@@ -641,9 +662,11 @@ mod tests {
                 ConfigurableField::new("model", "Model", ConfigurableFieldType::String)
                     .required(true),
             )
-            .add_field(
-                ConfigurableField::new("temp", "Temperature", ConfigurableFieldType::Float),
-            );
+            .add_field(ConfigurableField::new(
+                "temp",
+                "Temperature",
+                ConfigurableFieldType::Float,
+            ));
         let result = spec.validate(&json!({"model": "gpt-4", "temp": 0.5}));
         assert!(result.is_ok());
     }
@@ -655,9 +678,11 @@ mod tests {
                 ConfigurableField::new("model", "Model", ConfigurableFieldType::String)
                     .required(true),
             )
-            .add_field(
-                ConfigurableField::new("temp", "Temperature", ConfigurableFieldType::Float),
-            );
+            .add_field(ConfigurableField::new(
+                "temp",
+                "Temperature",
+                ConfigurableFieldType::Float,
+            ));
         let result = spec.validate(&json!({"model": "gpt-4"}));
         assert!(result.is_ok());
     }
@@ -699,9 +724,11 @@ mod tests {
 
     #[test]
     fn test_spec_apply_defaults_no_default_leaves_absent() {
-        let spec = ConfigurableSpec::new().add_field(
-            ConfigurableField::new("model", "Model", ConfigurableFieldType::String),
-        );
+        let spec = ConfigurableSpec::new().add_field(ConfigurableField::new(
+            "model",
+            "Model",
+            ConfigurableFieldType::String,
+        ));
         let mut config = json!({});
         spec.apply_defaults(&mut config);
         assert!(config.get("model").is_none());
@@ -763,9 +790,11 @@ mod tests {
 
     #[test]
     fn test_rcf_get_spec() {
-        let spec = ConfigurableSpec::new().add_field(
-            ConfigurableField::new("model", "Model", ConfigurableFieldType::String),
-        );
+        let spec = ConfigurableSpec::new().add_field(ConfigurableField::new(
+            "model",
+            "Model",
+            ConfigurableFieldType::String,
+        ));
         let dummy = Arc::new(crate::runnables::RunnablePassthrough::new()) as Arc<dyn Runnable>;
         let rcf = RunnableConfigurableFields::with_spec(dummy, spec);
         assert!(rcf.get_spec().is_some());
