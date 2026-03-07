@@ -56,5 +56,8 @@ pub use reducers::{
     reduce_state, AppendReducer, BinaryOpReducer, FieldSpec, LastValueReducer, MergeReducer,
     Reducer, StateSchema, StateSchemaBuilder,
 };
-pub use topic::Topic;
+pub use topic::{
+    DeadLetterQueue, Topic, TopicBus, TopicBusStats, TopicChannel, TopicFilter, TopicMessage,
+    TopicRouter,
+};
 pub use untracked::UntrackedValue;
