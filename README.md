@@ -8,8 +8,8 @@
 [![Crate Version](https://img.shields.io/badge/crates.io-v0.1.0-blue)](https://crates.io/crates/rustchain)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-2%2C738-green)](.)
-[![Lines of Code](https://img.shields.io/badge/lines-112K-informational)](.)
+[![Tests](https://img.shields.io/badge/tests-3%2C650-green)](.)
+[![Lines of Code](https://img.shields.io/badge/lines-149K-informational)](.)
 
 [Getting Started](#getting-started) · [Examples](#examples) · [Architecture](#architecture) · [Feature Flags](#feature-flags) · [Contributing](#contributing)
 
@@ -21,7 +21,7 @@
 
 RustChain is a Rust-native LLM application framework that ports the Python [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), and [DeepAgents](https://github.com/langchain-ai/deepagents) ecosystem to Rust. It provides composable abstractions for building chains, agents, RAG pipelines, and stateful graph workflows — all with Rust's performance, type safety, and fearless concurrency.
 
-The project spans **4 crates**, **363 source files**, **~112K lines of Rust**, and **~2,738 tests**.
+The project spans **4 crates**, **402 source files**, **~149K lines of Rust**, and **~3,650 tests**.
 
 ### Why Rust?
 
@@ -41,19 +41,22 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 ```
 +-----------------------------------------------------------+
 |               deepagents  (Application Layer)              |
-|  create_deep_agent(), middleware hooks, storage backends   |
+|  create_deep_agent(), middleware hooks, storage backends,  |
+|  tool registry, planning middleware                        |
 +--------------------------+--------------------------------+
                            | depends on
 +--------------------------v--------------------------------+
 |               langgraph  (Orchestration Layer)             |
 |  StateGraph, Pregel engine, checkpoints, streaming,        |
-|  ReAct agent, human-in-the-loop, subgraph composition      |
+|  ReAct agent, human-in-the-loop, subgraph composition,     |
+|  graph runner, stream writer/reader, shared managed values |
 +--------------------------+--------------------------------+
                            | depends on
 +--------------------------v--------------------------------+
 |               rustchain  (Implementation Layer)            |
-|  Chat models (5 providers), chains (14 types), memory,     |
-|  document loaders, text splitters, vector stores, agents   |
+|  Chat models (5 providers + factory), chains (14 types),   |
+|  memory (8 types), retrievers (10 types), agents with      |
+|  output parsers, chat sessions, KV stores                  |
 +--------------------------+--------------------------------+
                            | depends on
 +--------------------------v--------------------------------+
@@ -101,16 +104,18 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 
 | Module | Description |
 |---|---|
-| `chat_models` | **5 providers**: Anthropic Claude, OpenAI GPT, Google Gemini, Ollama, Azure OpenAI. **Wrappers**: cached, circuit breaker, rate limited, retrying, structured, token counting, graceful, interceptor |
+| `chat_models` | **5 providers**: Anthropic Claude, OpenAI GPT, Google Gemini, Ollama, Azure OpenAI. **Factory**: `init_chat_model` for dynamic provider creation via `ChatModelFactory` and global `ModelRegistry`. **Wrappers**: cached, circuit breaker, rate limited, retrying, structured, token counting, graceful, interceptor |
 | `chains` | **14 types**: LLM, sequential, conversation, conversation retrieval, retrieval QA, map-reduce, refine, router, structured output, summarize, SQL, API, streaming, extraction |
-| `memory` | **6 types**: buffer, window, summary, vector, chat history, hybrid |
+| `memory` | **8 types**: buffer, window, summary, vector, chat history, hybrid, entity (named entity tracking with regex extraction), token buffer (token-count-aware trimming with pluggable `TokenCounter`) |
 | `vectorstores` | **6 backends**: InMemory, Qdrant, Pinecone, Weaviate, ChromaDB, FAISS (with Flat/IVF/HNSW indexes) |
-| `retrievers` | **7 types**: contextual compression, compressor pipeline, docstore, ensemble, multi-vector, parent document, self-query |
+| `retrievers` | **10 types**: contextual compression, compressor pipeline, docstore, ensemble, multi-vector, parent document, self-query, caching (TTL + LRU eviction), time-weighted (recency + relevance scoring), query translator (rule-based and LLM-powered structured filter generation) |
 | `document_loaders` | **10 types**: text, CSV, JSON, HTML, Markdown, PDF, web/crawler, YAML, TOML, directory |
 | `text_splitter` | **10 types**: character, recursive character (with language presets), Markdown, HTML, JSON, code, token, token-aware, sentence-aware (with abbreviation handling) |
 | `embeddings` | **7 providers/utilities**: OpenAI, Anthropic, Google, Ollama, cached wrapper, distance metrics, router |
 | `tools` | **10 types**: calculator, shell, web search, Wikipedia, JSON query, OpenAPI, cached, validation/auto-correction, Python REPL, retriever adapter |
-| `agents` | `AgentExecutor` with tool calling and structured output. **18 middleware types**: retry, model retry, model fallback, tool retry, tool call limit, model call limit, human-in-the-loop, PII redaction, summarization, context editing, file search, shell tool, tool emulator, tool selection, todo, redaction, execution |
+| `agents` | `AgentExecutor` with tool calling and structured output. **Output parsers**: ReAct (`Thought/Action/Action Input`), JSON, XML, and tool-call format parsers. **18 middleware types**: retry, model retry, model fallback, tool retry, tool call limit, model call limit, human-in-the-loop, PII redaction, summarization, context editing, file search, shell tool, tool emulator, tool selection, todo, redaction, execution |
+| `chat_sessions` | `SessionManager` for managing multiple concurrent chat sessions with lifecycle states (Active, Archived, Deleted), pluggable persistence (`InMemorySessionStorage`, `FileSessionStorage`), and builder configuration |
+| `stores` | **4 KV store implementations**: `InMemoryStore` (with optional TTL), `FileStore` (filesystem-backed), `NamespacedStore` (key prefix isolation), `LayeredStore` (read-through cache across multiple stores) |
 | `prompts` | Prompt registry with versioning and built-in templates |
 | `evaluation` | LLM output evaluation framework |
 | `indexing` | Document indexing pipeline |
@@ -126,6 +131,8 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | `graph::human_in_loop` | Human-in-the-loop interrupt and approval patterns |
 | `graph::time_travel` | State history navigation and replay |
 | `graph::send` | Send API for dynamic fan-out patterns |
+| `graph::runner` | `GraphRunner` with configurable step limits, timeouts, lifecycle hooks (`StepHook` trait), and event collection for step-level observability |
+| `graph::stream_writer` | `StreamWriter`/`StreamReader` for producing and consuming `StreamChunk` values through bounded async channels, with `StreamCollector` for aggregation and `FilteredStream` for selective consumption |
 | `graph::ascii` | ASCII art graph visualization for terminal display |
 | `graph::mermaid` | Export graphs as Mermaid diagrams |
 | `graph::snapshot` | Graph state snapshot and restore with pluggable storage |
@@ -133,6 +140,7 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | `graph::stream_events` | Streaming events from graph execution |
 | `graph::annotations` | State annotations for reducer functions |
 | `graph::message` | Message-based graph construction |
+| `managed` | Shared managed values with versioning and history: `SharedValue`, `SharedCounter`, `SharedAccumulator`, `SharedMap`, plus `IsLastStepManager` and `RemainingStepsManager` for Pregel context |
 | `pregel` | Pregel-style superstep execution engine |
 | `channels` | **9 types**: LastValue, BinaryOp, Topic, AnyValue, NamedBarrier, EphemeralValue, Untracked, Broadcast (pub/sub with topic filtering), reducers |
 | `checkpoint` | `CheckpointSaver` trait with in-memory, SQLite, and PostgreSQL backends. Serialization formats with diff support |
@@ -145,8 +153,9 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | Module | Description |
 |---|---|
 | `agent` | `create_deep_agent()` factory returning a compiled graph with middleware |
-| `middleware` | **9 types**: Filesystem (read, write, edit, ls, glob, grep), Memory, SubAgent, Summarization, Skills, PatchToolCalls, Rate Limiter (token bucket with cost tracking), Logging (structured with redaction), Context Manager (dynamic context injection) |
+| `middleware` | **10 types**: Filesystem (read, write, edit, ls, glob, grep), Memory, SubAgent, Summarization, Skills, PatchToolCalls, Rate Limiter (token bucket with cost tracking), Logging (structured with redaction), Context Manager (dynamic context injection), Planning (plan-then-execute with step tracking, dependencies, and status injection) |
 | `backends` | **3 types**: `StateBackend` (in-memory), `FilesystemBackend` (local disk), `SandboxBackend` (isolated execution with resource limits and permissions) |
+| `tool_registry` | `ToolRegistry` for centralized tool management with permission levels, call counting, enable/disable control, and filtering |
 | `config` | `DeepAgentConfig` for model, tools, middleware, and backend configuration |
 
 ---
@@ -324,32 +333,40 @@ langgraph = { git = "https://github.com/0xvasanth/rustchain", features = ["sqlit
 
 ## Examples
 
-The `examples/` directory contains **15 runnable examples** -- all work without API keys using fake/mock models:
+The `examples/` directory contains **23 runnable examples** -- all work without API keys using fake/mock models:
 
 | Example | Description | Run Command |
 |---|---|---|
-| `simple_chain` | LCEL chain composition (prompt -> model -> parser) | `cargo run -p rustchain-examples --example simple_chain` |
-| `tool_agent` | AgentExecutor with calculator tool calling | `cargo run -p rustchain-examples --example tool_agent` |
-| `tool_calling_agent` | Advanced tool calling with multiple tools | `cargo run -p rustchain-examples --example tool_calling_agent` |
-| `langgraph_agent` | ReAct agent with LangGraph state graph | `cargo run -p rustchain-examples --example langgraph_agent` |
-| `rag_pipeline` | Full RAG: load -> split -> embed -> retrieve | `cargo run -p rustchain-examples --example rag_pipeline` |
-| `rag_with_vectorstore` | Semantic similarity search | `cargo run -p rustchain-examples --example rag_with_vectorstore` |
-| `indexing_rag` | Document indexing with record management | `cargo run -p rustchain-examples --example indexing_rag` |
-| `conversational_agent` | Multi-turn conversation with memory | `cargo run -p rustchain-examples --example conversational_agent` |
-| `graph_with_checkpoints` | Persistent graph with checkpoint save/resume/fork | `cargo run -p rustchain-examples --example graph_with_checkpoints` |
-| `streaming` | Character-level and token-level streaming | `cargo run -p rustchain-examples --example streaming` |
-| `streaming_chat` | Interactive streaming chat session | `cargo run -p rustchain-examples --example streaming_chat` |
-| `semantic_router` | Dynamic routing based on semantic similarity | `cargo run -p rustchain-examples --example semantic_router` |
-| `multi_agent_collaboration` | Multiple agents collaborating on tasks | `cargo run -p rustchain-examples --example multi_agent_collaboration` |
-| `structured_extraction` | Structured data extraction from text | `cargo run -p rustchain-examples --example structured_extraction` |
-| `evaluation_pipeline` | LLM output evaluation and scoring | `cargo run -p rustchain-examples --example evaluation_pipeline` |
+| `simple_chain` | LCEL chain composition (prompt -> model -> parser) | `cargo run --example simple_chain` |
+| `tool_agent` | AgentExecutor with calculator tool calling | `cargo run --example tool_agent` |
+| `tool_calling_agent` | Advanced tool calling with multiple tools | `cargo run --example tool_calling_agent` |
+| `langgraph_agent` | ReAct agent with LangGraph state graph | `cargo run --example langgraph_agent` |
+| `rag_pipeline` | Full RAG: load -> split -> embed -> retrieve | `cargo run --example rag_pipeline` |
+| `rag_with_vectorstore` | Semantic similarity search | `cargo run --example rag_with_vectorstore` |
+| `indexing_rag` | Document indexing with record management | `cargo run --example indexing_rag` |
+| `conversational_agent` | Multi-turn conversation with memory | `cargo run --example conversational_agent` |
+| `graph_with_checkpoints` | Persistent graph with checkpoint save/resume/fork | `cargo run --example graph_with_checkpoints` |
+| `streaming` | Character-level and token-level streaming | `cargo run --example streaming` |
+| `streaming_chat` | Interactive streaming chat session | `cargo run --example streaming_chat` |
+| `semantic_router` | Dynamic routing based on semantic similarity | `cargo run --example semantic_router` |
+| `multi_agent_collaboration` | Multiple agents collaborating on tasks | `cargo run --example multi_agent_collaboration` |
+| `structured_extraction` | Structured data extraction from text | `cargo run --example structured_extraction` |
+| `evaluation_pipeline` | LLM output evaluation and scoring | `cargo run --example evaluation_pipeline` |
+| `vector_store_search` | Vector store similarity search operations | `cargo run --example vector_store_search` |
+| `text_splitting` | Text splitting strategies and language presets | `cargo run --example text_splitting` |
+| `extraction_chain` | Extraction chain for pulling structured data | `cargo run --example extraction_chain` |
+| `graph_visualization` | ASCII and Mermaid graph visualization | `cargo run --example graph_visualization` |
+| `memory_types` | Buffer, window, summary, entity, and token buffer memory | `cargo run --example memory_types` |
+| `agent_output_parsing` | ReAct, JSON, XML, and tool-call output parsing | `cargo run --example agent_output_parsing` |
+| `caching_retriever` | Caching retriever with TTL and LRU eviction | `cargo run --example caching_retriever` |
+| `planning_middleware` | Plan-then-execute with planning middleware | `cargo run --example planning_middleware` |
 
 Try one now:
 
 ```bash
 git clone https://github.com/0xvasanth/rustchain.git
 cd rustchain
-cargo run -p rustchain-examples --example simple_chain
+cargo run --example simple_chain
 ```
 
 ---
@@ -362,24 +379,31 @@ This project migrates the Python LangChain ecosystem to Rust. Here is the mappin
 |---|---|---|
 | `langchain-core` (BaseLLM, BaseTool, Runnable, Message) | `rustchain-core` | Done |
 | `langchain.chat_models` (OpenAI, Anthropic, Google, Ollama) | `rustchain::chat_models` | Done |
+| `langchain.chat_models` (init_chat_model factory) | `rustchain::chat_models::factory` | Done |
 | `langchain.chains` (LLM, Sequential, RetrievalQA, etc.) | `rustchain::chains` | Done |
 | `langchain.agents` (AgentExecutor, middleware) | `rustchain::agents` | Done |
-| `langchain.memory` (Buffer, Window, Summary, Vector) | `rustchain::memory` | Done |
+| `langchain.agents` (output parsers: ReAct, JSON, XML, ToolCall) | `rustchain::agents::output_parser` | Done |
+| `langchain.memory` (Buffer, Window, Summary, Vector, Entity, TokenBuffer) | `rustchain::memory` | Done |
 | `langchain.document_loaders` (Text, CSV, JSON, HTML, PDF, YAML, TOML) | `rustchain::document_loaders` | Done |
 | `langchain.text_splitter` (Recursive, Markdown, Code, Sentence) | `rustchain::text_splitter` | Done |
 | `langchain.embeddings` (OpenAI, Anthropic, Google, Router) | `rustchain::embeddings` | Done |
 | `langchain.tools` (Calculator, Shell, Search, Python REPL) | `rustchain::tools` | Done |
 | `langchain.vectorstores` (InMemory, Qdrant, Pinecone, Weaviate, Chroma, FAISS) | `rustchain::vectorstores` | Done |
-| `langchain.retrievers` (MultiVector, SelfQuery, Ensemble) | `rustchain::retrievers` | Done |
+| `langchain.retrievers` (MultiVector, SelfQuery, Ensemble, Caching, TimeWeighted, QueryTranslator) | `rustchain::retrievers` | Done |
 | `langchain.evaluation` | `rustchain::evaluation` | Done |
+| `langchain.stores` (KV stores) | `rustchain::stores` | Done |
+| `langchain.chat_sessions` (session management) | `rustchain::chat_sessions` | Done |
 | `langgraph.graph` (StateGraph, MessageGraph) | `langgraph::graph` | Done |
+| `langgraph.graph` (runner, stream writer/reader) | `langgraph::graph::runner`, `langgraph::graph::stream_writer` | Done |
 | `langgraph.pregel` (Execution engine) | `langgraph::pregel` | Done |
 | `langgraph.channels` (LastValue, Topic, BinaryOp, Broadcast) | `langgraph::channels` | Done |
 | `langgraph.checkpoint` (Memory, SQLite, Postgres, Serialization) | `langgraph::checkpoint` | Done |
 | `langgraph.prebuilt` (ReAct agent, Tool agent, ChatAgent) | `langgraph::prebuilt` | Done |
+| `langgraph.managed` (shared values, step managers) | `langgraph::managed` | Done |
 | `deepagents.graph` (create_deep_agent) | `deepagents::agent` | Done |
-| `deepagents.middleware` (Filesystem, Memory, SubAgent, RateLimiter, Logging, Context) | `deepagents::middleware` | Done |
+| `deepagents.middleware` (Filesystem, Memory, SubAgent, RateLimiter, Logging, Context, Planning) | `deepagents::middleware` | Done |
 | `deepagents.backends` (State, Filesystem, Sandbox) | `deepagents::backends` | Done |
+| `deepagents.tool_registry` (tool management with permissions) | `deepagents::tool_registry` | Done |
 
 ---
 
@@ -429,7 +453,7 @@ pub trait Embeddings: Send + Sync {
 ```
 rustchain/
   Cargo.toml                  # Workspace root
-  examples/                   # 15 runnable example programs
+  examples/                   # 23 runnable example programs
   crates/
     rustchain-core/           # Base traits and types (zero workspace deps)
     rustchain/                # Provider implementations and agent framework
@@ -473,11 +497,11 @@ cd rustchain
 # Build all crates
 cargo build --workspace
 
-# Run all tests (~2,738 tests)
+# Run all tests (~3,650 tests)
 cargo test --workspace
 
 # Run a specific example
-cargo run -p rustchain-examples --example simple_chain
+cargo run --example simple_chain
 
 # Build with all LLM providers enabled
 cargo build -p rustchain --features all-providers
