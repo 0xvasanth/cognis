@@ -164,7 +164,7 @@ pub trait RunnableExt: Runnable + Sized + 'static {
     /// # Arguments
     /// * `min_interval` - Minimum duration between consecutive invocations.
     fn with_throttle(self, min_interval: Duration) -> RunnableThrottle {
-        RunnableThrottle::new(Arc::new(self) as Arc<dyn Runnable>, min_interval)
+        RunnableThrottle::with_duration(Arc::new(self) as Arc<dyn Runnable>, min_interval)
     }
 
     /// Wrap this runnable with a caching layer that memoizes invoke results.

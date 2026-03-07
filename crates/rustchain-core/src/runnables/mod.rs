@@ -76,7 +76,10 @@ pub use pipe::{pipe as pipe_fn, PipeBuilder, RunnablePipe};
 pub use pipeline::{
     ParallelPipeline, Pipeline, PipelineBuilder, PipelineMetrics, PipelineResult, PipelineStage,
 };
-pub use rate_limit::{RateLimitConfig, RunnableRateLimit, RunnableThrottle};
+pub use rate_limit::{
+    ConcurrencyGuard, ConcurrencyLimiter, RateLimitConfig, RateLimiter, RunnableRateLimit,
+    RunnableThrottle, SlidingWindowCounter,
+};
 pub use retry::RunnableRetry;
 pub use router::{RouterRunnable, RunnableFnBranch, RunnableRouter};
 pub use schema::{

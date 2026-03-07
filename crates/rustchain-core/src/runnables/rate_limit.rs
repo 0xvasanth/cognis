@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use serde_json::Value;
-use tokio::sync::Mutex;
 
 use crate::error::{Result, RustChainError};
 
@@ -11,174 +11,285 @@ use super::base::Runnable;
 use super::config::RunnableConfig;
 use super::RunnableStream;
 
-/// Configuration for rate limiting a runnable.
-///
-/// Uses a token bucket algorithm to control the rate of invocations.
+// ---------------------------------------------------------------------------
+// RateLimitConfig
+// ---------------------------------------------------------------------------
+
+/// Configuration for token-bucket rate limiting.
 ///
 /// # Example
 /// ```ignore
 /// use rustchain_core::runnables::rate_limit::RateLimitConfig;
 ///
-/// let config = RateLimitConfig::new(10.0)  // 10 requests per second
-///     .with_max_burst(5)
-///     .with_wait_on_limit(true);
+/// let config = RateLimitConfig::new(10, 1000)   // 10 requests per 1 000 ms
+///     .with_burst_limit(15);
 /// ```
 #[derive(Debug, Clone)]
 pub struct RateLimitConfig {
-    /// Maximum number of requests allowed per second.
-    pub max_requests_per_second: f64,
-    /// Maximum burst size (number of tokens the bucket can hold).
-    pub max_burst: usize,
-    /// If true, wait until a token is available. If false, return an error immediately.
-    pub wait_on_limit: bool,
+    /// Maximum number of requests allowed within the time window.
+    pub max_requests: usize,
+    /// Duration of the time window in milliseconds.
+    pub window_duration_ms: u64,
+    /// Optional burst limit allowing temporary spikes above the steady rate.
+    /// When set, the token bucket capacity is `burst_limit` instead of
+    /// `max_requests`.
+    pub burst_limit: Option<usize>,
 }
 
 impl RateLimitConfig {
-    /// Create a new rate limit configuration with the given requests per second.
+    /// Create a new rate-limit configuration.
     ///
-    /// Defaults: max_burst=1, wait_on_limit=true.
-    pub fn new(max_requests_per_second: f64) -> Self {
+    /// # Arguments
+    /// * `max_requests` — maximum requests allowed per window.
+    /// * `window_duration_ms` — window duration in milliseconds.
+    pub fn new(max_requests: usize, window_duration_ms: u64) -> Self {
         Self {
-            max_requests_per_second,
-            max_burst: 1,
-            wait_on_limit: true,
+            max_requests,
+            window_duration_ms,
+            burst_limit: None,
         }
     }
 
-    /// Set the maximum burst size.
-    pub fn with_max_burst(mut self, max_burst: usize) -> Self {
-        self.max_burst = max_burst;
-        self
-    }
-
-    /// Set whether to wait when the rate limit is exceeded.
-    ///
-    /// If false, an error is returned immediately when no tokens are available.
-    pub fn with_wait_on_limit(mut self, wait_on_limit: bool) -> Self {
-        self.wait_on_limit = wait_on_limit;
+    /// Set an optional burst limit.  Must be >= `max_requests` to be useful.
+    pub fn with_burst_limit(mut self, burst_limit: usize) -> Self {
+        self.burst_limit = Some(burst_limit);
         self
     }
 }
 
-/// Internal token bucket implementation for rate limiting.
-///
-/// The bucket holds up to `max_tokens` tokens and refills at `refill_rate`
-/// tokens per second. Each invocation consumes one token.
-pub(crate) struct TokenBucket {
-    /// Current number of available tokens.
-    tokens: f64,
-    /// Maximum number of tokens the bucket can hold.
-    max_tokens: f64,
-    /// Rate at which tokens are added (tokens per second).
-    refill_rate: f64,
-    /// Time of the last token refill.
+// ---------------------------------------------------------------------------
+// RateLimiter (token bucket)
+// ---------------------------------------------------------------------------
+
+/// Internal mutable state of the token bucket.
+#[derive(Debug)]
+struct TokenBucketState {
+    tokens: usize,
     last_refill: Instant,
 }
 
-impl TokenBucket {
-    /// Create a new token bucket.
-    pub fn new(max_tokens: f64, refill_rate: f64) -> Self {
+/// A thread-safe, token-bucket rate limiter.
+///
+/// Tokens are refilled proportionally based on elapsed time since the last
+/// refill.  The bucket capacity equals `burst_limit` (if configured) or
+/// `max_requests`.
+#[derive(Debug)]
+pub struct RateLimiter {
+    config: RateLimitConfig,
+    state: Mutex<TokenBucketState>,
+}
+
+impl RateLimiter {
+    /// Create a new `RateLimiter` from the given configuration.
+    pub fn new(config: RateLimitConfig) -> Self {
+        let capacity = config.burst_limit.unwrap_or(config.max_requests);
         Self {
-            tokens: max_tokens,
-            max_tokens,
-            refill_rate,
-            last_refill: Instant::now(),
+            state: Mutex::new(TokenBucketState {
+                tokens: capacity,
+                last_refill: Instant::now(),
+            }),
+            config,
         }
     }
 
-    /// Refill tokens based on elapsed time since last refill.
-    fn refill(&mut self) {
-        let now = Instant::now();
-        let elapsed = now.duration_since(self.last_refill).as_secs_f64();
-        self.tokens = (self.tokens + elapsed * self.refill_rate).min(self.max_tokens);
-        self.last_refill = now;
+    /// The maximum capacity of the token bucket.
+    fn capacity(&self) -> usize {
+        self.config.burst_limit.unwrap_or(self.config.max_requests)
     }
 
-    /// Attempt to acquire a token. Returns true if successful.
-    pub fn try_acquire(&mut self) -> bool {
-        self.refill();
-        if self.tokens >= 1.0 {
-            self.tokens -= 1.0;
+    /// Attempt to acquire a single token.
+    ///
+    /// Returns `true` if a token was acquired, `false` if the bucket is empty.
+    pub fn try_acquire(&self) -> bool {
+        let mut state = self.state.lock().unwrap();
+        self.refill(&mut state);
+
+        if state.tokens > 0 {
+            state.tokens -= 1;
             true
         } else {
             false
         }
     }
 
-    /// Returns how long to wait before a token becomes available.
-    ///
-    /// If a token is already available, returns `Duration::ZERO`.
-    pub fn wait_for_token(&mut self) -> Duration {
-        self.refill();
-        if self.tokens >= 1.0 {
-            Duration::ZERO
-        } else {
-            let deficit = 1.0 - self.tokens;
-            Duration::from_secs_f64(deficit / self.refill_rate)
+    /// Returns the number of tokens currently available (after refill).
+    pub fn available_tokens(&self) -> usize {
+        let mut state = self.state.lock().unwrap();
+        self.refill(&mut state);
+        state.tokens
+    }
+
+    /// Reset the limiter to full capacity.
+    pub fn reset(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.tokens = self.capacity();
+        state.last_refill = Instant::now();
+    }
+
+    /// Returns a reference to the underlying configuration.
+    pub fn config(&self) -> &RateLimitConfig {
+        &self.config
+    }
+
+    /// Refill tokens based on elapsed time.
+    fn refill(&self, state: &mut TokenBucketState) {
+        if self.config.window_duration_ms == 0 || self.config.max_requests == 0 {
+            return;
+        }
+
+        let now = Instant::now();
+        let elapsed_ms = now.duration_since(state.last_refill).as_millis() as u64;
+
+        if elapsed_ms > 0 {
+            let tokens_to_add = (elapsed_ms as u128 * self.config.max_requests as u128
+                / self.config.window_duration_ms as u128) as usize;
+
+            if tokens_to_add > 0 {
+                let capacity = self.capacity();
+                state.tokens = (state.tokens + tokens_to_add).min(capacity);
+                state.last_refill = now;
+            }
         }
     }
 }
 
-/// A runnable wrapper that applies token-bucket rate limiting.
+// ---------------------------------------------------------------------------
+// SlidingWindowCounter
+// ---------------------------------------------------------------------------
+
+/// A sliding-window rate counter that tracks individual request timestamps.
 ///
-/// Wraps an inner `Runnable` and limits the rate of invocations using a
-/// configurable token bucket. Thread-safe via `Arc<Mutex<TokenBucket>>`.
+/// Unlike the token bucket, this gives a precise count of requests within the
+/// most recent window of duration `window_ms`.
+#[derive(Debug)]
+pub struct SlidingWindowCounter {
+    max_requests: usize,
+    window_ms: u64,
+    timestamps: Mutex<VecDeque<Instant>>,
+}
+
+impl SlidingWindowCounter {
+    /// Create a new sliding-window counter.
+    ///
+    /// # Arguments
+    /// * `max_requests` — maximum requests allowed within the window.
+    /// * `window_ms` — window duration in milliseconds.
+    pub fn new(max_requests: usize, window_ms: u64) -> Self {
+        Self {
+            max_requests,
+            window_ms,
+            timestamps: Mutex::new(VecDeque::new()),
+        }
+    }
+
+    /// Record a request.
+    ///
+    /// Returns `true` if the request is within the limit, `false` if the rate
+    /// limit has been exceeded (the request is **not** recorded in that case).
+    pub fn record(&self) -> bool {
+        let mut timestamps = self.timestamps.lock().unwrap();
+        let now = Instant::now();
+        let window = Duration::from_millis(self.window_ms);
+
+        // Evict expired entries.
+        while let Some(&front) = timestamps.front() {
+            if now.duration_since(front) > window {
+                timestamps.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        if timestamps.len() < self.max_requests {
+            timestamps.push_back(now);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns the number of requests recorded in the current window.
+    pub fn current_count(&self) -> usize {
+        let mut timestamps = self.timestamps.lock().unwrap();
+        let now = Instant::now();
+        let window = Duration::from_millis(self.window_ms);
+
+        while let Some(&front) = timestamps.front() {
+            if now.duration_since(front) > window {
+                timestamps.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        timestamps.len()
+    }
+
+    /// Reset the counter, clearing all recorded timestamps.
+    pub fn reset(&self) {
+        self.timestamps.lock().unwrap().clear();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RunnableRateLimit
+// ---------------------------------------------------------------------------
+
+/// A runnable wrapper that enforces rate limiting via a token bucket.
+///
+/// If the rate limit is exceeded the invocation returns an error immediately
+/// rather than waiting.
 ///
 /// # Example
 /// ```ignore
-/// use rustchain_core::runnables::{RunnableLambda, RunnableExt};
-/// use rustchain_core::runnables::rate_limit::RateLimitConfig;
+/// use rustchain_core::runnables::{RunnableRateLimit, RateLimitConfig};
 ///
-/// let config = RateLimitConfig::new(5.0).with_max_burst(2);
-/// let limited = my_runnable.with_rate_limit(config);
+/// let config = RateLimitConfig::new(10, 1000);
+/// let limited = RunnableRateLimit::new(inner_runnable, config);
 /// ```
 pub struct RunnableRateLimit {
-    /// The wrapped runnable.
     inner: Arc<dyn Runnable>,
-    /// Thread-safe token bucket.
-    bucket: Arc<Mutex<TokenBucket>>,
-    /// Whether to wait or error when rate limited.
-    wait_on_limit: bool,
+    limiter: RateLimiter,
 }
 
 impl RunnableRateLimit {
-    /// Create a new rate-limited runnable.
+    /// Create a new `RunnableRateLimit` wrapping the given runnable.
     pub fn new(inner: Arc<dyn Runnable>, config: RateLimitConfig) -> Self {
-        let bucket = TokenBucket::new(config.max_burst as f64, config.max_requests_per_second);
         Self {
             inner,
-            bucket: Arc::new(Mutex::new(bucket)),
-            wait_on_limit: config.wait_on_limit,
+            limiter: RateLimiter::new(config),
         }
     }
 
-    /// Acquire a token, waiting if configured to do so.
-    async fn acquire_token(&self) -> Result<()> {
-        loop {
-            let wait_duration = {
-                let mut bucket = self.bucket.lock().await;
-                if bucket.try_acquire() {
-                    return Ok(());
-                }
-                if !self.wait_on_limit {
-                    return Err(RustChainError::Other("Rate limit exceeded".to_string()));
-                }
-                bucket.wait_for_token()
-            };
-            tokio::time::sleep(wait_duration).await;
-        }
+    /// Returns a reference to the underlying rate limiter.
+    pub fn limiter(&self) -> &RateLimiter {
+        &self.limiter
     }
 }
 
 #[async_trait]
 impl Runnable for RunnableRateLimit {
     fn name(&self) -> &str {
-        self.inner.name()
+        "RunnableRateLimit"
     }
 
     async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
-        self.acquire_token().await?;
+        if !self.limiter.try_acquire() {
+            return Err(RustChainError::Other("Rate limit exceeded".to_string()));
+        }
         self.inner.invoke(input, config).await
+    }
+
+    async fn batch(
+        &self,
+        inputs: Vec<Value>,
+        config: Option<&RunnableConfig>,
+    ) -> Result<Vec<Value>> {
+        let mut results = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            results.push(self.invoke(input, config).await?);
+        }
+        Ok(results)
     }
 
     async fn stream(
@@ -186,61 +297,82 @@ impl Runnable for RunnableRateLimit {
         input: Value,
         config: Option<&RunnableConfig>,
     ) -> Result<RunnableStream> {
-        self.acquire_token().await?;
+        if !self.limiter.try_acquire() {
+            return Err(RustChainError::Other("Rate limit exceeded".to_string()));
+        }
         self.inner.stream(input, config).await
     }
 }
 
-/// A simpler throttle wrapper that enforces a minimum interval between invocations.
+// ---------------------------------------------------------------------------
+// RunnableThrottle
+// ---------------------------------------------------------------------------
+
+/// A runnable wrapper that enforces a minimum delay between invocations.
 ///
-/// Unlike `RunnableRateLimit` which uses a token bucket, `RunnableThrottle`
-/// simply ensures at least `min_interval` has elapsed since the last invocation.
+/// If invoked before `min_interval_ms` has elapsed since the last invocation
+/// it sleeps until the interval has passed.
 ///
 /// # Example
 /// ```ignore
-/// use std::time::Duration;
-/// use rustchain_core::runnables::{RunnableLambda, RunnableExt};
+/// use rustchain_core::runnables::RunnableThrottle;
 ///
-/// let throttled = my_runnable.with_throttle(Duration::from_millis(100));
+/// // At most one invocation per 100 ms
+/// let throttled = RunnableThrottle::new(inner, 100);
 /// ```
 pub struct RunnableThrottle {
-    /// The wrapped runnable.
     inner: Arc<dyn Runnable>,
-    /// Minimum interval between invocations.
     min_interval: Duration,
-    /// Timestamp of the last invocation.
-    last_invocation: Arc<Mutex<Instant>>,
+    last_invocation: Mutex<Option<Instant>>,
 }
 
 impl RunnableThrottle {
-    /// Create a new throttled runnable with the given minimum interval.
-    pub fn new(inner: Arc<dyn Runnable>, min_interval: Duration) -> Self {
-        // Initialize last_invocation far enough in the past so the first call goes through.
-        let past = Instant::now() - min_interval;
+    /// Create a new `RunnableThrottle`.
+    ///
+    /// # Arguments
+    /// * `inner` — the runnable to wrap.
+    /// * `min_interval_ms` — minimum milliseconds between invocations.
+    pub fn new(inner: Arc<dyn Runnable>, min_interval_ms: u64) -> Self {
         Self {
             inner,
-            min_interval,
-            last_invocation: Arc::new(Mutex::new(past)),
+            min_interval: Duration::from_millis(min_interval_ms),
+            last_invocation: Mutex::new(None),
         }
     }
 
-    /// Wait until enough time has passed since the last invocation, then
-    /// update the timestamp.
-    async fn wait_for_interval(&self) {
+    /// Alternative constructor accepting a `Duration` directly.
+    pub fn with_duration(inner: Arc<dyn Runnable>, min_interval: Duration) -> Self {
+        Self {
+            inner,
+            min_interval,
+            last_invocation: Mutex::new(None),
+        }
+    }
+
+    /// Waits if necessary to enforce the minimum interval, then records the
+    /// current time.
+    async fn wait_if_needed(&self) {
         let sleep_duration = {
-            let mut last = self.last_invocation.lock().await;
-            let elapsed = last.elapsed();
-            if elapsed >= self.min_interval {
-                *last = Instant::now();
-                Duration::ZERO
+            let mut last = self.last_invocation.lock().unwrap();
+            let now = Instant::now();
+
+            let duration = if let Some(last_time) = *last {
+                let elapsed = now.duration_since(last_time);
+                if elapsed < self.min_interval {
+                    Some(self.min_interval - elapsed)
+                } else {
+                    None
+                }
             } else {
-                let wait = self.min_interval - elapsed;
-                *last = Instant::now() + wait;
-                wait
-            }
+                None
+            };
+
+            *last = Some(now + duration.unwrap_or_default());
+            duration
         };
-        if sleep_duration > Duration::ZERO {
-            tokio::time::sleep(sleep_duration).await;
+
+        if let Some(d) = sleep_duration {
+            tokio::time::sleep(d).await;
         }
     }
 }
@@ -248,12 +380,24 @@ impl RunnableThrottle {
 #[async_trait]
 impl Runnable for RunnableThrottle {
     fn name(&self) -> &str {
-        self.inner.name()
+        "RunnableThrottle"
     }
 
     async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
-        self.wait_for_interval().await;
+        self.wait_if_needed().await;
         self.inner.invoke(input, config).await
+    }
+
+    async fn batch(
+        &self,
+        inputs: Vec<Value>,
+        config: Option<&RunnableConfig>,
+    ) -> Result<Vec<Value>> {
+        let mut results = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            results.push(self.invoke(input, config).await?);
+        }
+        Ok(results)
     }
 
     async fn stream(
@@ -261,324 +405,629 @@ impl Runnable for RunnableThrottle {
         input: Value,
         config: Option<&RunnableConfig>,
     ) -> Result<RunnableStream> {
-        self.wait_for_interval().await;
+        self.wait_if_needed().await;
         self.inner.stream(input, config).await
     }
 }
 
+// ---------------------------------------------------------------------------
+// ConcurrencyLimiter + ConcurrencyGuard
+// ---------------------------------------------------------------------------
+
+/// Internal mutable state for the concurrency limiter.
+#[derive(Debug)]
+struct ConcurrencyLimiterInner {
+    active: usize,
+}
+
+/// Limits the number of concurrent executions.
+///
+/// When the limit is reached, [`try_acquire`](ConcurrencyLimiter::try_acquire)
+/// returns `None`.  The returned [`ConcurrencyGuard`] is an RAII handle that
+/// releases the slot on drop.
+#[derive(Debug, Clone)]
+pub struct ConcurrencyLimiter {
+    inner: Arc<Mutex<ConcurrencyLimiterInner>>,
+    max_concurrent: usize,
+}
+
+impl ConcurrencyLimiter {
+    /// Create a new concurrency limiter.
+    ///
+    /// # Arguments
+    /// * `max_concurrent` — maximum number of concurrent executions allowed.
+    pub fn new(max_concurrent: usize) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(ConcurrencyLimiterInner { active: 0 })),
+            max_concurrent,
+        }
+    }
+
+    /// Try to acquire a concurrency slot.
+    ///
+    /// Returns `Some(ConcurrencyGuard)` if a slot is available, or `None` if
+    /// the concurrency limit has been reached.
+    pub fn try_acquire(&self) -> Option<ConcurrencyGuard> {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.active < self.max_concurrent {
+            inner.active += 1;
+            Some(ConcurrencyGuard {
+                inner: Arc::clone(&self.inner),
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Returns the number of currently active executions.
+    pub fn active_count(&self) -> usize {
+        self.inner.lock().unwrap().active
+    }
+
+    /// Returns the configured maximum number of concurrent executions.
+    pub fn max_concurrent(&self) -> usize {
+        self.max_concurrent
+    }
+}
+
+/// RAII guard that releases a concurrency slot when dropped.
+///
+/// Returned by [`ConcurrencyLimiter::try_acquire`].
+#[derive(Debug)]
+pub struct ConcurrencyGuard {
+    inner: Arc<Mutex<ConcurrencyLimiterInner>>,
+}
+
+impl Drop for ConcurrencyGuard {
+    fn drop(&mut self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.active -= 1;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runnables::lambda::RunnableLambda;
     use serde_json::json;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    fn identity_runnable() -> RunnableLambda {
-        RunnableLambda::new("identity", |v: Value| async move { Ok(v) })
+    // -- helpers --
+
+    /// A simple runnable that returns its input unchanged.
+    struct Echo;
+
+    #[async_trait]
+    impl Runnable for Echo {
+        fn name(&self) -> &str {
+            "Echo"
+        }
+        async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
+            Ok(input)
+        }
     }
 
-    fn doubler_runnable() -> RunnableLambda {
-        RunnableLambda::new("doubler", |v: Value| async move {
-            let n = v.as_i64().unwrap();
-            Ok(json!(n * 2))
-        })
+    /// A runnable that counts how many times it has been invoked.
+    struct Counter {
+        count: AtomicUsize,
     }
 
-    // ==================== RateLimitConfig tests ====================
+    impl Counter {
+        fn new() -> Self {
+            Self {
+                count: AtomicUsize::new(0),
+            }
+        }
+        fn count(&self) -> usize {
+            self.count.load(Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl Runnable for Counter {
+        fn name(&self) -> &str {
+            "Counter"
+        }
+        async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            Ok(input)
+        }
+    }
+
+    // ==================== RateLimitConfig ====================
 
     #[test]
-    fn test_rate_limit_config_defaults() {
-        let config = RateLimitConfig::new(10.0);
-        assert_eq!(config.max_requests_per_second, 10.0);
-        assert_eq!(config.max_burst, 1);
-        assert!(config.wait_on_limit);
+    fn test_config_new() {
+        let c = RateLimitConfig::new(10, 1000);
+        assert_eq!(c.max_requests, 10);
+        assert_eq!(c.window_duration_ms, 1000);
+        assert!(c.burst_limit.is_none());
     }
 
     #[test]
-    fn test_rate_limit_config_builder() {
-        let config = RateLimitConfig::new(5.0)
-            .with_max_burst(10)
-            .with_wait_on_limit(false);
-        assert_eq!(config.max_requests_per_second, 5.0);
-        assert_eq!(config.max_burst, 10);
-        assert!(!config.wait_on_limit);
-    }
-
-    // ==================== TokenBucket tests ====================
-
-    #[test]
-    fn test_token_bucket_initial_acquire() {
-        let mut bucket = TokenBucket::new(3.0, 10.0);
-        assert!(bucket.try_acquire());
-        assert!(bucket.try_acquire());
-        assert!(bucket.try_acquire());
-        // All 3 tokens consumed
-        assert!(!bucket.try_acquire());
+    fn test_config_with_burst_limit() {
+        let c = RateLimitConfig::new(10, 1000).with_burst_limit(20);
+        assert_eq!(c.burst_limit, Some(20));
     }
 
     #[test]
-    fn test_token_bucket_wait_for_token_when_available() {
-        let mut bucket = TokenBucket::new(1.0, 10.0);
-        let wait = bucket.wait_for_token();
-        assert_eq!(wait, Duration::ZERO);
+    fn test_config_builder_chain() {
+        let c = RateLimitConfig::new(5, 500).with_burst_limit(10);
+        assert_eq!(c.max_requests, 5);
+        assert_eq!(c.window_duration_ms, 500);
+        assert_eq!(c.burst_limit, Some(10));
     }
 
     #[test]
-    fn test_token_bucket_wait_for_token_when_empty() {
-        let mut bucket = TokenBucket::new(1.0, 10.0);
-        bucket.try_acquire(); // consume the token
-        let wait = bucket.wait_for_token();
-        // Should be approximately 0.1 seconds (1 token / 10 tokens per second)
-        assert!(wait > Duration::ZERO);
-        assert!(wait <= Duration::from_millis(150));
+    fn test_config_clone() {
+        let c = RateLimitConfig::new(10, 1000).with_burst_limit(15);
+        let c2 = c.clone();
+        assert_eq!(c2.max_requests, c.max_requests);
+        assert_eq!(c2.window_duration_ms, c.window_duration_ms);
+        assert_eq!(c2.burst_limit, c.burst_limit);
     }
 
-    // ==================== RunnableRateLimit tests ====================
+    #[test]
+    fn test_config_debug() {
+        let c = RateLimitConfig::new(10, 1000).with_burst_limit(15);
+        let s = format!("{:?}", c);
+        assert!(s.contains("10"));
+        assert!(s.contains("1000"));
+        assert!(s.contains("15"));
+    }
+
+    // ==================== RateLimiter ====================
+
+    #[test]
+    fn test_limiter_acquire_within_limit() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(5, 60_000));
+        for _ in 0..5 {
+            assert!(limiter.try_acquire());
+        }
+    }
+
+    #[test]
+    fn test_limiter_acquire_exhaustion() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(3, 60_000));
+        assert!(limiter.try_acquire());
+        assert!(limiter.try_acquire());
+        assert!(limiter.try_acquire());
+        assert!(!limiter.try_acquire());
+        assert!(!limiter.try_acquire());
+    }
+
+    #[test]
+    fn test_limiter_available_tokens() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(5, 60_000));
+        assert_eq!(limiter.available_tokens(), 5);
+        limiter.try_acquire();
+        assert_eq!(limiter.available_tokens(), 4);
+        limiter.try_acquire();
+        limiter.try_acquire();
+        assert_eq!(limiter.available_tokens(), 2);
+    }
+
+    #[test]
+    fn test_limiter_reset() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(3, 60_000));
+        limiter.try_acquire();
+        limiter.try_acquire();
+        limiter.try_acquire();
+        assert_eq!(limiter.available_tokens(), 0);
+        limiter.reset();
+        assert_eq!(limiter.available_tokens(), 3);
+    }
+
+    #[test]
+    fn test_limiter_config_accessor() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(10, 2000));
+        assert_eq!(limiter.config().max_requests, 10);
+        assert_eq!(limiter.config().window_duration_ms, 2000);
+    }
+
+    #[test]
+    fn test_limiter_burst_limit() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(3, 60_000).with_burst_limit(5));
+        assert_eq!(limiter.available_tokens(), 5);
+        for _ in 0..5 {
+            assert!(limiter.try_acquire());
+        }
+        assert!(!limiter.try_acquire());
+    }
 
     #[tokio::test]
-    async fn test_rate_limit_single_invoke() {
-        let inner = identity_runnable();
-        let config = RateLimitConfig::new(100.0).with_max_burst(1);
-        let limited = RunnableRateLimit::new(Arc::new(inner), config);
+    async fn test_limiter_refill_over_time() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(10, 100));
+        for _ in 0..10 {
+            limiter.try_acquire();
+        }
+        assert_eq!(limiter.available_tokens(), 0);
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        assert!(limiter.available_tokens() > 0);
+    }
 
-        let result = limited.invoke(json!(42), None).await.unwrap();
-        assert_eq!(result, json!(42));
+    #[test]
+    fn test_limiter_zero_max_requests() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(0, 1000));
+        assert_eq!(limiter.available_tokens(), 0);
+        assert!(!limiter.try_acquire());
+    }
+
+    #[test]
+    fn test_limiter_zero_window() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(5, 0));
+        assert_eq!(limiter.available_tokens(), 5);
+        for _ in 0..5 {
+            assert!(limiter.try_acquire());
+        }
+        assert!(!limiter.try_acquire());
+    }
+
+    #[test]
+    fn test_limiter_immediate_reset_and_reuse() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(2, 60_000));
+        limiter.try_acquire();
+        limiter.try_acquire();
+        assert!(!limiter.try_acquire());
+        limiter.reset();
+        assert!(limiter.try_acquire());
+        assert!(limiter.try_acquire());
+        assert!(!limiter.try_acquire());
+    }
+
+    #[test]
+    fn test_burst_limit_capacity() {
+        let limiter = RateLimiter::new(RateLimitConfig::new(5, 60_000).with_burst_limit(8));
+        assert_eq!(limiter.available_tokens(), 8);
+        for i in 0..8 {
+            assert!(limiter.try_acquire(), "Token {} should be available", i);
+        }
+        assert!(!limiter.try_acquire());
+    }
+
+    // ==================== SlidingWindowCounter ====================
+
+    #[test]
+    fn test_sliding_window_within_limit() {
+        let counter = SlidingWindowCounter::new(5, 60_000);
+        for _ in 0..5 {
+            assert!(counter.record());
+        }
+        assert_eq!(counter.current_count(), 5);
+    }
+
+    #[test]
+    fn test_sliding_window_exceeds_limit() {
+        let counter = SlidingWindowCounter::new(3, 60_000);
+        assert!(counter.record());
+        assert!(counter.record());
+        assert!(counter.record());
+        assert!(!counter.record());
+        assert_eq!(counter.current_count(), 3);
+    }
+
+    #[test]
+    fn test_sliding_window_reset() {
+        let counter = SlidingWindowCounter::new(3, 60_000);
+        counter.record();
+        counter.record();
+        counter.record();
+        assert_eq!(counter.current_count(), 3);
+        counter.reset();
+        assert_eq!(counter.current_count(), 0);
+        assert!(counter.record());
     }
 
     #[tokio::test]
-    async fn test_rate_limit_delegates_to_inner() {
-        let inner = doubler_runnable();
-        let config = RateLimitConfig::new(100.0).with_max_burst(5);
-        let limited = RunnableRateLimit::new(Arc::new(inner), config);
-
-        let result = limited.invoke(json!(7), None).await.unwrap();
-        assert_eq!(result, json!(14));
+    async fn test_sliding_window_expiry() {
+        let counter = SlidingWindowCounter::new(2, 50);
+        assert!(counter.record());
+        assert!(counter.record());
+        assert!(!counter.record());
+        tokio::time::sleep(Duration::from_millis(70)).await;
+        assert_eq!(counter.current_count(), 0);
+        assert!(counter.record());
     }
 
-    #[tokio::test]
-    async fn test_rate_limit_name_delegates() {
-        let inner = identity_runnable();
-        let config = RateLimitConfig::new(10.0);
-        let limited = RunnableRateLimit::new(Arc::new(inner), config);
-
-        assert_eq!(limited.name(), "identity");
+    #[test]
+    fn test_sliding_window_zero_limit() {
+        let counter = SlidingWindowCounter::new(0, 1000);
+        assert!(!counter.record());
+        assert_eq!(counter.current_count(), 0);
     }
 
-    #[tokio::test]
-    async fn test_rate_limit_burst_allows_multiple() {
-        let inner = identity_runnable();
-        let config = RateLimitConfig::new(1.0).with_max_burst(5);
-        let limited = RunnableRateLimit::new(Arc::new(inner), config);
+    #[test]
+    fn test_sliding_window_very_large_window() {
+        let counter = SlidingWindowCounter::new(100, 3_600_000);
+        for _ in 0..100 {
+            assert!(counter.record());
+        }
+        assert!(!counter.record());
+        assert_eq!(counter.current_count(), 100);
+    }
 
-        // Should allow 5 rapid invocations (burst size)
+    // ==================== RunnableRateLimit ====================
+
+    #[tokio::test]
+    async fn test_runnable_rate_limit_allows_within_limit() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let config = RateLimitConfig::new(5, 60_000);
+        let limited = RunnableRateLimit::new(inner, config);
+
         for i in 0..5 {
-            let result = limited.invoke(json!(i), None).await.unwrap();
-            assert_eq!(result, json!(i));
+            let r = limited.invoke(json!(i), None).await;
+            assert!(r.is_ok(), "Request {} should succeed", i);
+            assert_eq!(r.unwrap(), json!(i));
         }
     }
 
     #[tokio::test]
-    async fn test_rate_limit_error_when_no_wait() {
-        let inner = identity_runnable();
-        let config = RateLimitConfig::new(1.0)
-            .with_max_burst(1)
-            .with_wait_on_limit(false);
-        let limited = RunnableRateLimit::new(Arc::new(inner), config);
+    async fn test_runnable_rate_limit_rejects_over_limit() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let config = RateLimitConfig::new(2, 60_000);
+        let limited = RunnableRateLimit::new(inner, config);
 
-        // First call should succeed (uses the initial token).
-        let result = limited.invoke(json!(1), None).await;
-        assert!(result.is_ok());
+        assert!(limited.invoke(json!(1), None).await.is_ok());
+        assert!(limited.invoke(json!(2), None).await.is_ok());
 
-        // Second call should fail immediately (no waiting).
-        let result = limited.invoke(json!(2), None).await;
-        assert!(result.is_err());
-        let err_msg = format!("{}", result.unwrap_err());
-        assert!(err_msg.contains("Rate limit exceeded"));
+        let r = limited.invoke(json!(3), None).await;
+        assert!(r.is_err());
+        assert!(format!("{}", r.unwrap_err()).contains("Rate limit exceeded"));
     }
 
     #[tokio::test]
-    async fn test_rate_limit_waits_for_token() {
-        let inner = identity_runnable();
-        let config = RateLimitConfig::new(20.0) // 20 rps = 50ms per token
-            .with_max_burst(1)
-            .with_wait_on_limit(true);
-        let limited = RunnableRateLimit::new(Arc::new(inner), config);
+    async fn test_runnable_rate_limit_name() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let limited = RunnableRateLimit::new(inner, RateLimitConfig::new(5, 1000));
+        assert_eq!(limited.name(), "RunnableRateLimit");
+    }
 
-        // First call consumes the token.
-        limited.invoke(json!(1), None).await.unwrap();
-
-        // Second call must wait for a token refill.
-        let start = Instant::now();
-        let result = limited.invoke(json!(2), None).await.unwrap();
-        let elapsed = start.elapsed();
-
-        assert_eq!(result, json!(2));
-        // Should have waited roughly 50ms (1/20 seconds).
-        assert!(
-            elapsed >= Duration::from_millis(30),
-            "Expected to wait for token, elapsed: {:?}",
-            elapsed
+    #[tokio::test]
+    async fn test_runnable_rate_limit_batch_respects_limit() {
+        let counter = Arc::new(Counter::new());
+        let limited = RunnableRateLimit::new(
+            counter.clone() as Arc<dyn Runnable>,
+            RateLimitConfig::new(3, 60_000),
         );
+
+        let inputs = vec![json!(1), json!(2), json!(3), json!(4), json!(5)];
+        let r = limited.batch(inputs, None).await;
+        assert!(r.is_err());
+        assert_eq!(counter.count(), 3);
     }
 
     #[tokio::test]
-    async fn test_rate_limit_enforces_rate() {
-        let inner = identity_runnable();
-        // 10 rps with burst of 1 = one request per 100ms after the first.
-        let config = RateLimitConfig::new(10.0)
-            .with_max_burst(1)
-            .with_wait_on_limit(true);
-        let limited = RunnableRateLimit::new(Arc::new(inner), config);
-
-        let start = Instant::now();
-        for i in 0..4 {
-            limited.invoke(json!(i), None).await.unwrap();
-        }
-        let elapsed = start.elapsed();
-
-        // 4 calls at 10 rps with burst 1: first is free, then ~100ms each for 3 more = ~300ms.
-        assert!(
-            elapsed >= Duration::from_millis(250),
-            "Expected at least ~300ms for 4 calls at 10rps, got {:?}",
-            elapsed
-        );
+    async fn test_runnable_rate_limit_stream_rejects() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let limited = RunnableRateLimit::new(inner, RateLimitConfig::new(1, 60_000));
+        assert!(limited.stream(json!(1), None).await.is_ok());
+        assert!(limited.stream(json!(2), None).await.is_err());
     }
 
     #[tokio::test]
-    async fn test_rate_limit_stream() {
-        use futures::StreamExt;
-
-        let inner = identity_runnable();
-        let config = RateLimitConfig::new(100.0).with_max_burst(1);
-        let limited = RunnableRateLimit::new(Arc::new(inner), config);
-
-        let mut stream = limited.stream(json!("hello"), None).await.unwrap();
-        let item = stream.next().await.unwrap().unwrap();
-        assert_eq!(item, json!("hello"));
-    }
-
-    // ==================== RunnableThrottle tests ====================
-
-    #[tokio::test]
-    async fn test_throttle_single_invoke() {
-        let inner = identity_runnable();
-        let throttled = RunnableThrottle::new(Arc::new(inner), Duration::from_millis(10));
-
-        let result = throttled.invoke(json!("test"), None).await.unwrap();
-        assert_eq!(result, json!("test"));
+    async fn test_runnable_rate_limit_limiter_accessor() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let limited = RunnableRateLimit::new(inner, RateLimitConfig::new(10, 1000));
+        assert_eq!(limited.limiter().config().max_requests, 10);
     }
 
     #[tokio::test]
-    async fn test_throttle_name_delegates() {
-        let inner = doubler_runnable();
-        let throttled = RunnableThrottle::new(Arc::new(inner), Duration::from_millis(50));
+    async fn test_runnable_rate_limit_single_request() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let limited = RunnableRateLimit::new(inner, RateLimitConfig::new(1, 60_000));
 
-        assert_eq!(throttled.name(), "doubler");
+        let r = limited.invoke(json!("only one"), None).await;
+        assert!(r.is_ok());
+        assert_eq!(r.unwrap(), json!("only one"));
+        assert!(limited.invoke(json!("too many"), None).await.is_err());
     }
 
-    #[tokio::test]
-    async fn test_throttle_enforces_minimum_interval() {
-        let inner = identity_runnable();
-        let interval = Duration::from_millis(80);
-        let throttled = RunnableThrottle::new(Arc::new(inner), interval);
-
-        let start = Instant::now();
-        for i in 0..4 {
-            throttled.invoke(json!(i), None).await.unwrap();
-        }
-        let elapsed = start.elapsed();
-
-        // First call is immediate, then 3 waits of ~80ms each = ~240ms minimum.
-        assert!(
-            elapsed >= Duration::from_millis(200),
-            "Expected at least ~240ms for 4 throttled calls, got {:?}",
-            elapsed
-        );
-    }
+    // ==================== RunnableThrottle ====================
 
     #[tokio::test]
     async fn test_throttle_first_call_immediate() {
-        let inner = identity_runnable();
-        let throttled = RunnableThrottle::new(
-            Arc::new(inner),
-            Duration::from_millis(1000), // very long interval
-        );
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let throttled = RunnableThrottle::new(inner, 200);
 
         let start = Instant::now();
-        let result = throttled.invoke(json!(1), None).await.unwrap();
+        let r = throttled.invoke(json!("fast"), None).await;
         let elapsed = start.elapsed();
 
-        assert_eq!(result, json!(1));
-        // First call should be near-instant.
+        assert!(r.is_ok());
+        assert_eq!(r.unwrap(), json!("fast"));
         assert!(
             elapsed < Duration::from_millis(50),
-            "First call should be immediate, got {:?}",
+            "First call should be immediate, took {:?}",
             elapsed
         );
     }
 
     #[tokio::test]
-    async fn test_throttle_stream() {
-        use futures::StreamExt;
+    async fn test_throttle_enforces_min_interval() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let throttled = RunnableThrottle::new(inner, 80);
 
-        let inner = identity_runnable();
-        let throttled = RunnableThrottle::new(Arc::new(inner), Duration::from_millis(10));
+        throttled.invoke(json!(1), None).await.unwrap();
 
-        let mut stream = throttled.stream(json!(99), None).await.unwrap();
-        let item = stream.next().await.unwrap().unwrap();
-        assert_eq!(item, json!(99));
+        let start = Instant::now();
+        let r = throttled.invoke(json!(2), None).await;
+        let elapsed = start.elapsed();
+
+        assert!(r.is_ok());
+        assert!(
+            elapsed >= Duration::from_millis(60),
+            "Expected throttle delay of ~80ms, got {:?}",
+            elapsed
+        );
     }
 
     #[tokio::test]
-    async fn test_throttle_delegates_computation() {
-        let inner = doubler_runnable();
-        let throttled = RunnableThrottle::new(Arc::new(inner), Duration::from_millis(10));
+    async fn test_throttle_no_delay_after_interval() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let throttled = RunnableThrottle::new(inner, 30);
 
-        let result = throttled.invoke(json!(21), None).await.unwrap();
-        assert_eq!(result, json!(42));
+        throttled.invoke(json!(1), None).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let start = Instant::now();
+        let r = throttled.invoke(json!(2), None).await;
+        let elapsed = start.elapsed();
+
+        assert!(r.is_ok());
+        assert!(
+            elapsed < Duration::from_millis(20),
+            "Should not delay after interval has passed, took {:?}",
+            elapsed
+        );
     }
 
     #[tokio::test]
-    async fn test_rate_limit_thread_safety() {
-        let inner = identity_runnable();
-        let config = RateLimitConfig::new(100.0).with_max_burst(10);
-        let limited = Arc::new(RunnableRateLimit::new(Arc::new(inner), config));
-
-        let mut handles = vec![];
-        for i in 0..5 {
-            let limited = limited.clone();
-            handles.push(tokio::spawn(async move {
-                limited.invoke(json!(i), None).await.unwrap()
-            }));
-        }
-
-        let mut results: Vec<i64> = vec![];
-        for handle in handles {
-            let val = handle.await.unwrap();
-            results.push(val.as_i64().unwrap());
-        }
-        results.sort();
-        assert_eq!(results, vec![0, 1, 2, 3, 4]);
+    async fn test_throttle_name() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let throttled = RunnableThrottle::new(inner, 100);
+        assert_eq!(throttled.name(), "RunnableThrottle");
     }
 
     #[tokio::test]
-    async fn test_throttle_thread_safety() {
-        let inner = identity_runnable();
-        let throttled = Arc::new(RunnableThrottle::new(
-            Arc::new(inner),
-            Duration::from_millis(5),
-        ));
+    async fn test_throttle_zero_interval() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let throttled = RunnableThrottle::new(inner, 0);
 
-        let mut handles = vec![];
-        for i in 0..3 {
-            let throttled = throttled.clone();
-            handles.push(tokio::spawn(async move {
-                throttled.invoke(json!(i), None).await.unwrap()
-            }));
+        for i in 0..10 {
+            let r = throttled.invoke(json!(i), None).await;
+            assert!(r.is_ok());
         }
+    }
 
-        for handle in handles {
-            let val = handle.await.unwrap();
-            assert!(val.is_number());
+    #[tokio::test]
+    async fn test_throttle_batch() {
+        let counter = Arc::new(Counter::new());
+        let throttled = RunnableThrottle::new(counter.clone() as Arc<dyn Runnable>, 20);
+
+        let inputs = vec![json!(1), json!(2), json!(3)];
+        let start = Instant::now();
+        let results = throttled.batch(inputs, None).await;
+        let elapsed = start.elapsed();
+
+        assert!(results.is_ok());
+        assert_eq!(results.unwrap().len(), 3);
+        assert_eq!(counter.count(), 3);
+        assert!(
+            elapsed >= Duration::from_millis(30),
+            "Expected throttle delays, got {:?}",
+            elapsed
+        );
+    }
+
+    #[tokio::test]
+    async fn test_throttle_with_duration() {
+        let inner = Arc::new(Echo) as Arc<dyn Runnable>;
+        let throttled = RunnableThrottle::with_duration(inner, Duration::from_millis(50));
+
+        throttled.invoke(json!(1), None).await.unwrap();
+        let start = Instant::now();
+        throttled.invoke(json!(2), None).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed >= Duration::from_millis(30),
+            "Expected ~50ms delay, got {:?}",
+            elapsed
+        );
+    }
+
+    // ==================== ConcurrencyLimiter ====================
+
+    #[test]
+    fn test_concurrency_limiter_basic() {
+        let limiter = ConcurrencyLimiter::new(2);
+        assert_eq!(limiter.max_concurrent(), 2);
+        assert_eq!(limiter.active_count(), 0);
+
+        let _g1 = limiter.try_acquire().unwrap();
+        assert_eq!(limiter.active_count(), 1);
+
+        let _g2 = limiter.try_acquire().unwrap();
+        assert_eq!(limiter.active_count(), 2);
+
+        assert!(limiter.try_acquire().is_none());
+    }
+
+    #[test]
+    fn test_concurrency_limiter_release_on_drop() {
+        let limiter = ConcurrencyLimiter::new(1);
+
+        {
+            let _g = limiter.try_acquire().unwrap();
+            assert_eq!(limiter.active_count(), 1);
+            assert!(limiter.try_acquire().is_none());
         }
+        assert_eq!(limiter.active_count(), 0);
+        assert!(limiter.try_acquire().is_some());
+    }
+
+    #[test]
+    fn test_concurrency_guard_raii() {
+        let limiter = ConcurrencyLimiter::new(3);
+
+        let g1 = limiter.try_acquire().unwrap();
+        let g2 = limiter.try_acquire().unwrap();
+        let g3 = limiter.try_acquire().unwrap();
+        assert_eq!(limiter.active_count(), 3);
+        assert!(limiter.try_acquire().is_none());
+
+        drop(g2);
+        assert_eq!(limiter.active_count(), 2);
+        let _g4 = limiter.try_acquire().unwrap();
+        assert_eq!(limiter.active_count(), 3);
+
+        drop(g1);
+        drop(g3);
+        assert_eq!(limiter.active_count(), 1);
+    }
+
+    #[test]
+    fn test_concurrency_limiter_zero() {
+        let limiter = ConcurrencyLimiter::new(0);
+        assert!(limiter.try_acquire().is_none());
+        assert_eq!(limiter.active_count(), 0);
+    }
+
+    #[test]
+    fn test_concurrency_limiter_clone() {
+        let limiter = ConcurrencyLimiter::new(2);
+        let cloned = limiter.clone();
+
+        let _g = limiter.try_acquire().unwrap();
+        assert_eq!(cloned.active_count(), 1);
+    }
+
+    #[test]
+    fn test_concurrency_limiter_large_limit() {
+        let limiter = ConcurrencyLimiter::new(1000);
+        let mut guards = Vec::new();
+        for _ in 0..1000 {
+            guards.push(limiter.try_acquire().unwrap());
+        }
+        assert_eq!(limiter.active_count(), 1000);
+        assert!(limiter.try_acquire().is_none());
+
+        guards.clear();
+        assert_eq!(limiter.active_count(), 0);
+    }
+
+    #[test]
+    fn test_concurrency_guard_multiple_drop() {
+        let limiter = ConcurrencyLimiter::new(5);
+        let guards: Vec<_> = (0..5).map(|_| limiter.try_acquire().unwrap()).collect();
+        assert_eq!(limiter.active_count(), 5);
+        drop(guards);
+        assert_eq!(limiter.active_count(), 0);
+        // Can acquire again after all released.
+        let _g = limiter.try_acquire().unwrap();
+        assert_eq!(limiter.active_count(), 1);
     }
 }
