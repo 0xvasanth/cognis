@@ -135,7 +135,7 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 |---|---|
 | `graph::state` | `StateGraph` builder, `CompiledStateGraph`, conditional branching |
 | `graph::persistent` | `PersistentGraph` with automatic checkpoint save/restore and fork |
-| `graph::subgraph` | Subgraph composition for modular workflows |
+| `graph::subgraph` | **Subgraph composition** for modular workflows with nested state mapping and isolated execution |
 | `graph::human_in_loop` | Human-in-the-loop interrupt and approval patterns |
 | `graph::time_travel` | State history navigation and replay |
 | `graph::send` | Send API for dynamic fan-out patterns |
@@ -460,6 +460,16 @@ This project migrates the Python LangChain ecosystem to Rust. Here is the mappin
 | `deepagents` (conversation manager) | `deepagents::conversation` | Done |
 | `deepagents` (agent presets) | `deepagents::presets` | Done |
 | `deepagents.config` (expanded builder, loader, middleware config) | `deepagents::config` | Done |
+| `langchain.memory` (Summary Buffer) | `rustchain::memory::summary_buffer` | Done |
+| `langchain.output_parsers` (structured, fixing, retry) | `rustchain::output_parsers` | Done |
+| `langchain.retrievers` (reranking) | `rustchain::retrievers::reranking` | Done |
+| `langchain.chains` (callbacks, metrics, tracing) | `rustchain::chains::callbacks` | Done |
+| `langchain_core.runnables` (configurable fields) | `rustchain_core::runnables::configurable` | Done |
+| `langgraph.channels` (extended topic with routing and DLQ) | `langgraph::channels::topic` | Done |
+| `langgraph.checkpoint` (pluggable serializers, migrations) | `langgraph::checkpoint::serializer` | Done |
+| `deepagents` (telemetry and observability) | `deepagents::telemetry` | Done |
+| `deepagents` (session management with replay) | `deepagents::session` | Done |
+| `deepagents` (plugin system with dependency resolution) | `deepagents::plugins` | Done |
 
 ---
 
