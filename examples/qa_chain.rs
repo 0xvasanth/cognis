@@ -10,9 +10,7 @@ use std::collections::HashMap;
 
 use serde_json::json;
 
-use rustchain::chains::{
-    create_qa_chain, CitedAnswer, QAChain, QAChainType, QAConfig, QAResult,
-};
+use rustchain::chains::{create_qa_chain, CitedAnswer, QAChain, QAChainType, QAConfig, QAResult};
 use rustchain_core::documents::Document;
 use rustchain_core::runnables::Runnable;
 
@@ -79,7 +77,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let result = chain.answer("Tell me about Cargo", &documents)?;
     println!("  Question: Tell me about Cargo");
-    println!("  Source documents used: {} (limited to 2)", result.source_documents.len());
+    println!(
+        "  Source documents used: {} (limited to 2)",
+        result.source_documents.len()
+    );
     for (i, doc) in result.source_documents.iter().enumerate() {
         let source = doc
             .metadata
@@ -99,15 +100,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("\n--- 3. Hiding source documents in result ---\n");
 
-    let config = QAConfig::builder()
-        .return_source_documents(false)
-        .build();
+    let config = QAConfig::builder().return_source_documents(false).build();
     let chain = create_qa_chain(config);
 
     let result = chain.answer("What is the borrow checker?", &documents)?;
     println!("  return_source_documents=false");
-    println!("  Source docs in result: {} (empty as configured)", result.source_documents.len());
-    println!("  Answer still contains document content: {}", result.answer.contains("borrow checker"));
+    println!(
+        "  Source docs in result: {} (empty as configured)",
+        result.source_documents.len()
+    );
+    println!(
+        "  Answer still contains document content: {}",
+        result.answer.contains("borrow checker")
+    );
 
     // =========================================================================
     // 4. Custom prompt templates
@@ -163,7 +168,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("\n--- 6. Different chain type configurations ---\n");
 
-    for chain_type in [QAChainType::Stuff, QAChainType::MapReduce, QAChainType::Refine] {
+    for chain_type in [
+        QAChainType::Stuff,
+        QAChainType::MapReduce,
+        QAChainType::Refine,
+    ] {
         let config = QAConfig::builder().chain_type(chain_type).build();
         let chain = create_qa_chain(config);
         let result = chain.answer("What is Rust?", &documents)?;
@@ -192,9 +201,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let result = chain.invoke(input, None).await?;
     let qa_result: QAResult = serde_json::from_value(result)?;
     println!("  Question: What does Cargo do?");
-    println!("  Source docs in result: {}", qa_result.source_documents.len());
+    println!(
+        "  Source docs in result: {}",
+        qa_result.source_documents.len()
+    );
     println!("  Chain type: {}", qa_result.chain_type);
-    println!("  Answer contains 'Cargo': {}", qa_result.answer.contains("Cargo"));
+    println!(
+        "  Answer contains 'Cargo': {}",
+        qa_result.answer.contains("Cargo")
+    );
 
     // =========================================================================
     // 8. answer_with_context: pre-formatted context

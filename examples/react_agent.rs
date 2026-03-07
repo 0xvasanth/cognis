@@ -38,8 +38,13 @@ fn make_lookup_tool() -> Arc<dyn BaseTool> {
                 "Rust is a systems programming language focused on safety, speed, and concurrency."
                     .to_string(),
             ),
-            "ferris" => Ok("Ferris is the unofficial mascot of Rust. Ferris is a crab.".to_string()),
-            _ => Ok(format!("Information about '{}': it is an interesting topic.", topic)),
+            "ferris" => {
+                Ok("Ferris is the unofficial mascot of Rust. Ferris is a crab.".to_string())
+            }
+            _ => Ok(format!(
+                "Information about '{}': it is an interesting topic.",
+                topic
+            )),
         },
     ))
 }
@@ -96,7 +101,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let agent = create_react_agent(model_2, tools.clone());
 
-    let (output, trace) = agent.run_with_trace("Who is Ferris and what is 15 * 4?").await?;
+    let (output, trace) = agent
+        .run_with_trace("Who is Ferris and what is 15 * 4?")
+        .await?;
     println!("  Output: {}", output);
     println!("  Total steps: {}", trace.steps.len());
     println!("  Approximate tokens: {}", trace.total_tokens);

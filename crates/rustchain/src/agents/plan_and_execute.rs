@@ -18,6 +18,9 @@ use serde_json::Value;
 use rustchain_core::error::{Result, RustChainError};
 use rustchain_core::tools::base::BaseTool;
 
+/// A thread-safe function that generates plan text from a template string.
+type GeneratorFn = Box<dyn Fn(&str) -> Result<String> + Send + Sync>;
+
 // ---------------------------------------------------------------------------
 // PlanStepStatus
 // ---------------------------------------------------------------------------
@@ -199,7 +202,7 @@ pub struct TemplatePlanner {
     template: String,
     /// Optional function that generates plan text from the expanded template.
     /// If `None`, the expanded template itself is parsed for numbered steps.
-    generator: Option<Box<dyn Fn(&str) -> Result<String> + Send + Sync>>,
+    generator: Option<GeneratorFn>,
 }
 
 impl TemplatePlanner {
@@ -314,7 +317,10 @@ impl StepExecutor for ToolStepExecutor {
             }
         } else {
             // No matching tool — return description as a passthrough.
-            Ok(format!("No matching tool found. Step: {}", step.description))
+            Ok(format!(
+                "No matching tool found. Step: {}",
+                step.description
+            ))
         }
     }
 }
@@ -379,9 +385,9 @@ impl PlanAndExecuteAgentBuilder {
 
     /// Build the [`PlanAndExecuteAgent`].
     pub fn build(self) -> Result<PlanAndExecuteAgent> {
-        let planner = self
-            .planner
-            .ok_or_else(|| RustChainError::Other("PlanAndExecuteAgent requires a planner".into()))?;
+        let planner = self.planner.ok_or_else(|| {
+            RustChainError::Other("PlanAndExecuteAgent requires a planner".into())
+        })?;
         let executor = self.executor.ok_or_else(|| {
             RustChainError::Other("PlanAndExecuteAgent requires an executor".into())
         })?;
@@ -583,10 +589,7 @@ mod tests {
         async fn execute_step(&self, step: &PlanStep, _context: &Value) -> Result<String> {
             let call = self.call_count.fetch_add(1, Ordering::SeqCst);
             if self.fail_on_indices.contains(&call) {
-                Err(RustChainError::Other(format!(
-                    "Step {} failed",
-                    step.index
-                )))
+                Err(RustChainError::Other(format!("Step {} failed", step.index)))
             } else {
                 Ok(format!("Result for step {}", step.index))
             }
@@ -614,10 +617,7 @@ mod tests {
     #[async_trait]
     impl StepExecutor for RecordingExecutor {
         async fn execute_step(&self, step: &PlanStep, _context: &Value) -> Result<String> {
-            self.recorded
-                .lock()
-                .unwrap()
-                .push(step.description.clone());
+            self.recorded.lock().unwrap().push(step.description.clone());
             Ok(format!("Done: {}", step.description))
         }
     }
@@ -709,10 +709,7 @@ mod tests {
 
     #[test]
     fn plan_is_complete_all_completed() {
-        let mut plan = Plan::new(
-            "goal",
-            vec![PlanStep::new(0, "a"), PlanStep::new(1, "b")],
-        );
+        let mut plan = Plan::new("goal", vec![PlanStep::new(0, "a"), PlanStep::new(1, "b")]);
         plan.steps[0].status = PlanStepStatus::Completed;
         plan.steps[1].status = PlanStepStatus::Completed;
         assert!(plan.is_complete());
@@ -720,10 +717,7 @@ mod tests {
 
     #[test]
     fn plan_is_complete_with_skipped() {
-        let mut plan = Plan::new(
-            "goal",
-            vec![PlanStep::new(0, "a"), PlanStep::new(1, "b")],
-        );
+        let mut plan = Plan::new("goal", vec![PlanStep::new(0, "a"), PlanStep::new(1, "b")]);
         plan.steps[0].status = PlanStepStatus::Completed;
         plan.steps[1].status = PlanStepStatus::Skipped;
         assert!(plan.is_complete());
@@ -731,10 +725,7 @@ mod tests {
 
     #[test]
     fn plan_is_not_complete_with_pending() {
-        let mut plan = Plan::new(
-            "goal",
-            vec![PlanStep::new(0, "a"), PlanStep::new(1, "b")],
-        );
+        let mut plan = Plan::new("goal", vec![PlanStep::new(0, "a"), PlanStep::new(1, "b")]);
         plan.steps[0].status = PlanStepStatus::Completed;
         assert!(!plan.is_complete());
     }
@@ -749,7 +740,11 @@ mod tests {
     fn plan_progress_all_pending() {
         let plan = Plan::new(
             "goal",
-            vec![PlanStep::new(0, "a"), PlanStep::new(1, "b"), PlanStep::new(2, "c")],
+            vec![
+                PlanStep::new(0, "a"),
+                PlanStep::new(1, "b"),
+                PlanStep::new(2, "c"),
+            ],
         );
         assert_eq!(plan.progress(), (0, 3));
     }
@@ -758,7 +753,11 @@ mod tests {
     fn plan_progress_some_completed() {
         let mut plan = Plan::new(
             "goal",
-            vec![PlanStep::new(0, "a"), PlanStep::new(1, "b"), PlanStep::new(2, "c")],
+            vec![
+                PlanStep::new(0, "a"),
+                PlanStep::new(1, "b"),
+                PlanStep::new(2, "c"),
+            ],
         );
         plan.steps[0].status = PlanStepStatus::Completed;
         plan.steps[1].status = PlanStepStatus::Skipped;
@@ -772,7 +771,8 @@ mod tests {
     #[test]
     fn simple_planner_parses_numbered_steps_dot() {
         let planner = SimplePlanner::new();
-        let goal = "Do the following:\n1. Research the topic\n2. Write an outline\n3. Draft the article";
+        let goal =
+            "Do the following:\n1. Research the topic\n2. Write an outline\n3. Draft the article";
         let plan = planner.create_plan(goal).unwrap();
         assert_eq!(plan.steps.len(), 3);
         assert_eq!(plan.steps[0].description, "Research the topic");
@@ -828,9 +828,8 @@ mod tests {
 
     #[test]
     fn template_planner_with_generator() {
-        let planner = TemplatePlanner::new("Goal: {goal}").with_generator(|_prompt| {
-            Ok("1. Generated step A\n2. Generated step B".to_string())
-        });
+        let planner = TemplatePlanner::new("Goal: {goal}")
+            .with_generator(|_prompt| Ok("1. Generated step A\n2. Generated step B".to_string()));
         let plan = planner.create_plan("anything").unwrap();
         assert_eq!(plan.steps.len(), 2);
         assert_eq!(plan.steps[0].description, "Generated step A");
@@ -984,9 +983,18 @@ mod tests {
 
         let result = agent.run("goal").await.unwrap();
         assert_eq!(result.step_results.len(), 3);
-        assert_eq!(result.step_results[0], ("alpha".to_string(), "result".to_string()));
-        assert_eq!(result.step_results[1], ("beta".to_string(), "result".to_string()));
-        assert_eq!(result.step_results[2], ("gamma".to_string(), "result".to_string()));
+        assert_eq!(
+            result.step_results[0],
+            ("alpha".to_string(), "result".to_string())
+        );
+        assert_eq!(
+            result.step_results[1],
+            ("beta".to_string(), "result".to_string())
+        );
+        assert_eq!(
+            result.step_results[2],
+            ("gamma".to_string(), "result".to_string())
+        );
     }
 
     #[tokio::test]
@@ -1075,10 +1083,7 @@ mod tests {
         let executor = ToolStepExecutor::new(vec![tool]);
 
         let step = PlanStep::new(0, "search for rust documentation");
-        let result = executor
-            .execute_step(&step, &Value::Null)
-            .await
-            .unwrap();
+        let result = executor.execute_step(&step, &Value::Null).await.unwrap();
         assert!(result.contains("Found:"));
     }
 
@@ -1086,10 +1091,7 @@ mod tests {
     async fn tool_executor_no_match_passthrough() {
         let executor = ToolStepExecutor::new(vec![]);
         let step = PlanStep::new(0, "do something");
-        let result = executor
-            .execute_step(&step, &Value::Null)
-            .await
-            .unwrap();
+        let result = executor.execute_step(&step, &Value::Null).await.unwrap();
         assert!(result.contains("No matching tool found"));
     }
 
@@ -1097,11 +1099,9 @@ mod tests {
     async fn tool_executor_uses_context_when_provided() {
         use rustchain_core::tools::SimpleTool;
 
-        let tool: Arc<dyn BaseTool> = Arc::new(SimpleTool::new(
-            "calc",
-            "Calculator",
-            |q: &str| Ok(format!("Calculated: {}", q)),
-        ));
+        let tool: Arc<dyn BaseTool> = Arc::new(SimpleTool::new("calc", "Calculator", |q: &str| {
+            Ok(format!("Calculated: {}", q))
+        }));
         let executor = ToolStepExecutor::new(vec![tool]);
 
         let step = PlanStep::new(0, "calc something");

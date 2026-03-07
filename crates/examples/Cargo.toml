@@ -126,3 +126,19 @@ path = "../../examples/file_tools.rs"
 [[example]]
 name = "qa_chain"
 path = "../../examples/qa_chain.rs"
+
+[[example]]
+name = "plan_and_execute"
+path = "../../examples/plan_and_execute.rs"
+
+[[example]]
+name = "knowledge_graph_memory"
+path = "../../examples/knowledge_graph_memory.rs"
+
+[[example]]
+name = "execution_hooks"
+path = "../../examples/execution_hooks.rs"
+
+[[example]]
+name = "health_monitoring"
+path = "../../examples/health_monitoring.rs"

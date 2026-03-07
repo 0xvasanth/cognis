@@ -28,11 +28,11 @@ pub use chat_history::{
     InMemoryChatHistory,
 };
 pub use entity::{Entity, EntityMemory, EntityStore, InMemoryEntityStore};
+pub use hybrid::{ConversationTokenBufferMemory, HybridMemory, HybridMemoryBuilder};
 pub use knowledge_graph::{
     KnowledgeGraph, KnowledgeGraphMemory, KnowledgeGraphMemoryBuilder, KnowledgeTriple,
     RegexTripleExtractor, TripleExtractor,
 };
-pub use hybrid::{ConversationTokenBufferMemory, HybridMemory, HybridMemoryBuilder};
 pub use summary::ConversationSummaryMemory;
 pub use token_buffer::{
     CharBasedTokenCounter, SimpleTokenCounter, TokenBufferMemory, TokenBufferMemoryBuilder,

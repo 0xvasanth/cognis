@@ -27,6 +27,9 @@ use serde_json::Value;
 
 use crate::agent::DeepAgentError;
 
+/// A boxed condition function that evaluates workflow state to determine step execution.
+type ConditionFn = Box<dyn Fn(&Value) -> bool + Send + Sync>;
+
 /// Result type for workflow operations.
 pub type Result<T> = std::result::Result<T, DeepAgentError>;
 
@@ -109,7 +112,7 @@ pub struct WorkflowStep {
     pub dependencies: Vec<String>,
     /// Optional guard condition evaluated against the current state.
     /// If it returns `false`, the step is skipped.
-    pub condition: Option<Box<dyn Fn(&Value) -> bool + Send + Sync>>,
+    pub condition: Option<ConditionFn>,
     /// Optional timeout for step execution.
     pub timeout: Option<Duration>,
     /// Number of times to retry on failure (0 means no retries).
@@ -165,10 +168,7 @@ impl WorkflowStep {
     }
 
     /// Set a guard condition.
-    pub fn with_condition(
-        mut self,
-        cond: impl Fn(&Value) -> bool + Send + Sync + 'static,
-    ) -> Self {
+    pub fn with_condition(mut self, cond: impl Fn(&Value) -> bool + Send + Sync + 'static) -> Self {
         self.condition = Some(Box::new(cond));
         self
     }
@@ -316,10 +316,7 @@ impl Workflow {
             .iter()
             .filter(|step| {
                 !completed.contains(&step.id)
-                    && step
-                        .dependencies
-                        .iter()
-                        .all(|dep| completed.contains(dep))
+                    && step.dependencies.iter().all(|dep| completed.contains(dep))
             })
             .collect()
     }
@@ -469,33 +466,29 @@ impl WorkflowExecutor {
             }
 
             match &step.action {
-                StepAction::Transform(transform) => {
-                    match transform(state.clone()) {
-                        Ok(new_state) => {
-                            *state = new_state.clone();
-                            return StepResult {
-                                step_id: step.id.clone(),
-                                status: StepStatus::Completed,
-                                output: Some(new_state),
-                                duration: step_start.elapsed(),
-                                error: None,
-                            };
-                        }
-                        Err(e) => {
-                            last_error = Some(e);
-                        }
+                StepAction::Transform(transform) => match transform(state.clone()) {
+                    Ok(new_state) => {
+                        *state = new_state.clone();
+                        return StepResult {
+                            step_id: step.id.clone(),
+                            status: StepStatus::Completed,
+                            output: Some(new_state),
+                            duration: step_start.elapsed(),
+                            error: None,
+                        };
                     }
-                }
+                    Err(e) => {
+                        last_error = Some(e);
+                    }
+                },
                 StepAction::Message(msg) => {
                     // Store the message in state under "messages" array.
-                    let messages = state
-                        .as_object_mut()
-                        .and_then(|obj| {
-                            if !obj.contains_key("messages") {
-                                obj.insert("messages".to_string(), Value::Array(Vec::new()));
-                            }
-                            obj.get_mut("messages").and_then(|v| v.as_array_mut())
-                        });
+                    let messages = state.as_object_mut().and_then(|obj| {
+                        if !obj.contains_key("messages") {
+                            obj.insert("messages".to_string(), Value::Array(Vec::new()));
+                        }
+                        obj.get_mut("messages").and_then(|v| v.as_array_mut())
+                    });
 
                     if let Some(msgs) = messages {
                         msgs.push(serde_json::json!({
@@ -594,11 +587,7 @@ impl WorkflowBuilder {
     }
 
     /// Add a dependency from `step_id` on `dep_id`.
-    pub fn dependency(
-        mut self,
-        step_id: impl Into<String>,
-        dep_id: impl Into<String>,
-    ) -> Self {
+    pub fn dependency(mut self, step_id: impl Into<String>, dep_id: impl Into<String>) -> Self {
         self.deferred_deps.push((step_id.into(), dep_id.into()));
         self
     }
@@ -697,15 +686,14 @@ mod tests {
 
     #[test]
     fn test_workflow_step_with_description() {
-        let step = WorkflowStep::new("s1", "Step", StepAction::Checkpoint)
-            .with_description("Does things");
+        let step =
+            WorkflowStep::new("s1", "Step", StepAction::Checkpoint).with_description("Does things");
         assert_eq!(step.description.as_deref(), Some("Does things"));
     }
 
     #[test]
     fn test_workflow_step_with_dependency() {
-        let step = WorkflowStep::new("s2", "Step", StepAction::Checkpoint)
-            .with_dependency("s1");
+        let step = WorkflowStep::new("s2", "Step", StepAction::Checkpoint).with_dependency("s1");
         assert_eq!(step.dependencies, vec!["s1"]);
     }
 
@@ -732,8 +720,7 @@ mod tests {
 
     #[test]
     fn test_workflow_step_with_retry_count() {
-        let step = WorkflowStep::new("s1", "Step", StepAction::Checkpoint)
-            .with_retry_count(3);
+        let step = WorkflowStep::new("s1", "Step", StepAction::Checkpoint).with_retry_count(3);
         assert_eq!(step.retry_count, 3);
     }
 
@@ -771,7 +758,8 @@ mod tests {
     fn test_workflow_validate_missing_dependency() {
         let mut wf = Workflow::new("wf", "Test");
         wf.add_step(
-            WorkflowStep::new("s1", "Step 1", StepAction::Checkpoint).with_dependency("nonexistent"),
+            WorkflowStep::new("s1", "Step 1", StepAction::Checkpoint)
+                .with_dependency("nonexistent"),
         );
         let err = wf.validate().unwrap_err();
         let msg = err.to_string();
@@ -782,7 +770,11 @@ mod tests {
     fn test_workflow_validate_duplicate_ids() {
         let mut wf = Workflow::new("wf", "Test");
         wf.add_step(WorkflowStep::new("s1", "Step 1", StepAction::Checkpoint));
-        wf.add_step(WorkflowStep::new("s1", "Step 1 dup", StepAction::Checkpoint));
+        wf.add_step(WorkflowStep::new(
+            "s1",
+            "Step 1 dup",
+            StepAction::Checkpoint,
+        ));
         let err = wf.validate().unwrap_err();
         assert!(err.to_string().contains("duplicate"));
     }
@@ -800,12 +792,8 @@ mod tests {
     #[test]
     fn test_workflow_validate_cycle() {
         let mut wf = Workflow::new("wf", "Test");
-        wf.add_step(
-            WorkflowStep::new("a", "A", StepAction::Checkpoint).with_dependency("b"),
-        );
-        wf.add_step(
-            WorkflowStep::new("b", "B", StepAction::Checkpoint).with_dependency("a"),
-        );
+        wf.add_step(WorkflowStep::new("a", "A", StepAction::Checkpoint).with_dependency("b"));
+        wf.add_step(WorkflowStep::new("b", "B", StepAction::Checkpoint).with_dependency("a"));
         let err = wf.validate().unwrap_err();
         assert!(err.to_string().contains("cycle"));
     }
@@ -829,12 +817,8 @@ mod tests {
     fn test_get_ready_steps_with_deps() {
         let mut wf = Workflow::new("wf", "Test");
         wf.add_step(WorkflowStep::new("s1", "A", StepAction::Checkpoint));
-        wf.add_step(
-            WorkflowStep::new("s2", "B", StepAction::Checkpoint).with_dependency("s1"),
-        );
-        wf.add_step(
-            WorkflowStep::new("s3", "C", StepAction::Checkpoint).with_dependency("s2"),
-        );
+        wf.add_step(WorkflowStep::new("s2", "B", StepAction::Checkpoint).with_dependency("s1"));
+        wf.add_step(WorkflowStep::new("s3", "C", StepAction::Checkpoint).with_dependency("s2"));
 
         let completed = HashSet::new();
         let ready = wf.get_ready_steps(&completed);
@@ -940,9 +924,7 @@ mod tests {
         let mut wf = Workflow::new("wf", "Cond");
         wf.add_step(
             WorkflowStep::new("guarded", "Guarded step", StepAction::Message("hi".into()))
-                .with_condition(|v| {
-                    v.get("run_it").and_then(|r| r.as_bool()).unwrap_or(false)
-                }),
+                .with_condition(|v| v.get("run_it").and_then(|r| r.as_bool()).unwrap_or(false)),
         );
 
         let mut executor = WorkflowExecutor::new();
@@ -957,9 +939,7 @@ mod tests {
         let mut wf = Workflow::new("wf", "Cond");
         wf.add_step(
             WorkflowStep::new("guarded", "Guarded step", StepAction::Message("hi".into()))
-                .with_condition(|v| {
-                    v.get("run_it").and_then(|r| r.as_bool()).unwrap_or(false)
-                }),
+                .with_condition(|v| v.get("run_it").and_then(|r| r.as_bool()).unwrap_or(false)),
         );
 
         let mut executor = WorkflowExecutor::new();
@@ -998,12 +978,8 @@ mod tests {
         // Use a transform that succeeds (no retry needed).
         let mut wf = Workflow::new("wf", "Retry");
         wf.add_step(
-            WorkflowStep::new(
-                "ok",
-                "Succeeds",
-                StepAction::Transform(Box::new(|v| Ok(v))),
-            )
-            .with_retry_count(3),
+            WorkflowStep::new("ok", "Succeeds", StepAction::Transform(Box::new(|v| Ok(v))))
+                .with_retry_count(3),
         );
 
         let mut executor = WorkflowExecutor::new();
@@ -1054,7 +1030,10 @@ mod tests {
         let mut executor = WorkflowExecutor::new();
         let result = executor.execute(&wf, json!({"data": 42})).unwrap();
 
-        assert_eq!(result.results.get("chk").unwrap().status, StepStatus::Completed);
+        assert_eq!(
+            result.results.get("chk").unwrap().status,
+            StepStatus::Completed
+        );
         assert_eq!(executor.checkpoints.len(), 1);
         assert_eq!(executor.checkpoints[0]["data"], 42);
     }

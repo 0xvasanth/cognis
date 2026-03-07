@@ -18,8 +18,8 @@ pub mod annotations;
 pub mod ascii;
 pub mod audit;
 pub mod branch;
-pub mod hooks;
 pub mod breakpoint;
+pub mod hooks;
 pub mod human_in_loop;
 pub mod mermaid;
 pub mod message;
@@ -46,14 +46,14 @@ pub use audit::{
     AuditTrail,
 };
 pub use branch::{AsyncBranch, AsyncRouterFn, Branch, RouterFn, RouterResult};
-pub use hooks::{
-    ExecutionHook, HookAction, HookContext, HookPhase, HookRegistry,
-    LoggingHook as HooksLoggingHook, StateSnapshotHook, StateValidationHook, TimingHook,
-    StateSnapshot,
-};
 pub use breakpoint::{
     AutoApproveHandler, BreakpointAction, BreakpointEvent, BreakpointHandler, BreakpointManager,
     BreakpointState, BreakpointType, LoggingBreakpointHandler,
+};
+pub use hooks::{
+    ExecutionHook, HookAction, HookContext, HookPhase, HookRegistry,
+    LoggingHook as HooksLoggingHook, StateSnapshot, StateSnapshotHook, StateValidationHook,
+    TimingHook,
 };
 pub use human_in_loop::{ApprovalRequest, HumanAction, HumanInTheLoop, HumanInTheLoopResult};
 pub use mermaid::{to_mermaid, to_mermaid_url};

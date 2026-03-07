@@ -69,10 +69,10 @@ pub mod backends;
 pub mod config;
 pub mod conversation;
 pub mod events;
+pub mod health;
 pub mod middleware;
 pub mod presets;
 pub mod tool_registry;
-pub mod health;
 pub mod workflow;
 
 pub use agent::create_deep_agent;

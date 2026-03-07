@@ -1108,7 +1108,10 @@ mod tests {
         // We test the parsing logic directly instead of setting shared env vars.
         let bad_val = "not_a_number";
         let result: Result<f64, _> = bad_val.parse();
-        assert!(result.is_err(), "non-numeric string should fail to parse as f64");
+        assert!(
+            result.is_err(),
+            "non-numeric string should fail to parse as f64"
+        );
     }
 
     // -- DeepAgentConfig backwards compatibility --

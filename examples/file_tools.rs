@@ -63,7 +63,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 "#;
     let result = write_tool
-        ._run(structured_input(&[("path", "src/main.rs"), ("content", rust_code)]))
+        ._run(structured_input(&[
+            ("path", "src/main.rs"),
+            ("content", rust_code),
+        ]))
         .await?;
     println!("  {}", extract_content_str(&result));
 
@@ -96,11 +99,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  hello.txt content: \"{}\"", extract_content_str(&result));
 
     let result = read_tool._run(text_input("src/main.rs")).await?;
-    println!("  src/main.rs content:\n    {}", extract_content_str(&result).replace('\n', "\n    "));
+    println!(
+        "  src/main.rs content:\n    {}",
+        extract_content_str(&result).replace('\n', "\n    ")
+    );
 
     // Using run_json (the JSON-based interface)
-    let result = read_tool.run_json(&json!({"path": "config/settings.toml"})).await?;
-    println!("  config/settings.toml (via run_json): \"{}\"", result.as_str().unwrap_or(""));
+    let result = read_tool
+        .run_json(&json!({"path": "config/settings.toml"}))
+        .await?;
+    println!(
+        "  config/settings.toml (via run_json): \"{}\"",
+        result.as_str().unwrap_or("")
+    );
 
     // =========================================================================
     // 3. ListDirectoryTool: list directory contents
@@ -199,7 +210,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ro_config.read_only = true;
     let ro_write = WriteFileTool::new(ro_config);
     let result = ro_write
-        ._run(structured_input(&[("path", "test.txt"), ("content", "data")]))
+        ._run(structured_input(&[
+            ("path", "test.txt"),
+            ("content", "data"),
+        ]))
         .await;
     match result {
         Err(e) => println!("  Writing in read-only mode: Error - {}", e),

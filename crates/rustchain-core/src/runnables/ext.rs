@@ -12,9 +12,9 @@ use super::config::RunnableConfig;
 use super::each::RunnableEach;
 use super::fallbacks::RunnableWithFallbacks;
 use super::rate_limit::{RateLimitConfig, RunnableRateLimit, RunnableThrottle};
-use super::timeout::{RunnableTimeout, TimeoutConfig};
 use super::retry::RunnableRetry;
 use super::sequence::RunnableSequence;
+use super::timeout::{RunnableTimeout, TimeoutConfig};
 use serde_json::Value;
 
 /// Extension trait providing LCEL composition methods for any `Runnable`.

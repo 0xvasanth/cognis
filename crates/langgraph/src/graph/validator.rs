@@ -85,7 +85,11 @@ pub struct ValidationIssue {
 impl fmt::Display for ValidationIssue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(ref node) = self.node {
-            write!(f, "[{}] {} (node: {}): {}", self.severity, self.code, node, self.message)
+            write!(
+                f,
+                "[{}] {} (node: {}): {}",
+                self.severity, self.code, node, self.message
+            )
         } else {
             write!(f, "[{}] {}: {}", self.severity, self.code, self.message)
         }
@@ -107,22 +111,34 @@ impl ValidationResult {
 
     /// Returns `true` if no `Error`-level issues exist.
     pub fn is_valid(&self) -> bool {
-        !self.issues.iter().any(|i| i.severity == ValidationSeverity::Error)
+        !self
+            .issues
+            .iter()
+            .any(|i| i.severity == ValidationSeverity::Error)
     }
 
     /// Return all `Error`-level issues.
     pub fn errors(&self) -> Vec<&ValidationIssue> {
-        self.issues.iter().filter(|i| i.severity == ValidationSeverity::Error).collect()
+        self.issues
+            .iter()
+            .filter(|i| i.severity == ValidationSeverity::Error)
+            .collect()
     }
 
     /// Return all `Warning`-level issues.
     pub fn warnings(&self) -> Vec<&ValidationIssue> {
-        self.issues.iter().filter(|i| i.severity == ValidationSeverity::Warning).collect()
+        self.issues
+            .iter()
+            .filter(|i| i.severity == ValidationSeverity::Warning)
+            .collect()
     }
 
     /// Return all `Info`-level issues.
     pub fn infos(&self) -> Vec<&ValidationIssue> {
-        self.issues.iter().filter(|i| i.severity == ValidationSeverity::Info).collect()
+        self.issues
+            .iter()
+            .filter(|i| i.severity == ValidationSeverity::Info)
+            .collect()
     }
 
     /// Check whether any issue carries the given code.
@@ -240,7 +256,10 @@ pub struct ReachabilityAnalyzer;
 
 impl ReachabilityAnalyzer {
     /// Return the set of nodes reachable from `start` via the given adjacency map.
-    pub fn reachable_from(start: &str, adjacency: &HashMap<String, Vec<String>>) -> HashSet<String> {
+    pub fn reachable_from(
+        start: &str,
+        adjacency: &HashMap<String, Vec<String>>,
+    ) -> HashSet<String> {
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
         visited.insert(start.to_string());
@@ -289,7 +308,9 @@ impl ReachabilityAnalyzer {
         let can_reach_end = Self::reachable_from(target, &reverse);
         nodes
             .iter()
-            .filter(|n| n.as_str() != START && n.as_str() != END && !can_reach_end.contains(n.as_str()))
+            .filter(|n| {
+                n.as_str() != START && n.as_str() != END && !can_reach_end.contains(n.as_str())
+            })
             .cloned()
             .collect()
     }
@@ -315,7 +336,9 @@ impl GraphValidator {
         }
         for cond in &def.conditional_edges {
             for target in &cond.targets {
-                adj.entry(cond.from.clone()).or_default().push(target.clone());
+                adj.entry(cond.from.clone())
+                    .or_default()
+                    .push(target.clone());
             }
         }
         adj
@@ -479,10 +502,7 @@ impl GraphValidator {
                 result.push(ValidationIssue {
                     severity: ValidationSeverity::Warning,
                     code: "EMPTY_CONDITIONAL_TARGETS".into(),
-                    message: format!(
-                        "Conditional edge from '{}' has no targets",
-                        from
-                    ),
+                    message: format!("Conditional edge from '{}' has no targets", from),
                     node: Some(from.clone()),
                 });
             }
@@ -570,11 +590,7 @@ mod tests {
     use crate::graph::serialize::ConditionalEdgeDef;
 
     /// Helper to build a simple GraphDefinition.
-    fn make_def(
-        nodes: Vec<&str>,
-        edges: Vec<(&str, &str)>,
-        entry: &str,
-    ) -> GraphDefinition {
+    fn make_def(nodes: Vec<&str>, edges: Vec<(&str, &str)>, entry: &str) -> GraphDefinition {
         GraphDefinition {
             nodes: nodes.into_iter().map(String::from).collect(),
             edges: edges
@@ -594,36 +610,28 @@ mod tests {
 
     #[test]
     fn test_node_names_valid() {
-        let result = GraphValidator::validate_node_names(
-            &["agent".into(), "tools".into()],
-        );
+        let result = GraphValidator::validate_node_names(&["agent".into(), "tools".into()]);
         assert!(result.is_valid());
         assert!(result.errors().is_empty());
     }
 
     #[test]
     fn test_node_names_reserved() {
-        let result = GraphValidator::validate_node_names(
-            &["agent".into(), "__start__".into()],
-        );
+        let result = GraphValidator::validate_node_names(&["agent".into(), "__start__".into()]);
         assert!(!result.is_valid());
         assert!(result.has_error_code("RESERVED_NODE_NAME"));
     }
 
     #[test]
     fn test_node_names_duplicate() {
-        let result = GraphValidator::validate_node_names(
-            &["agent".into(), "agent".into()],
-        );
+        let result = GraphValidator::validate_node_names(&["agent".into(), "agent".into()]);
         assert!(!result.is_valid());
         assert!(result.has_error_code("DUPLICATE_NODE_NAME"));
     }
 
     #[test]
     fn test_node_names_empty() {
-        let result = GraphValidator::validate_node_names(
-            &["".into()],
-        );
+        let result = GraphValidator::validate_node_names(&["".into()]);
         assert!(!result.is_valid());
         assert!(result.has_error_code("EMPTY_NODE_NAME"));
     }
@@ -817,11 +825,7 @@ mod tests {
 
     #[test]
     fn test_validate_all_invalid_entry_point() {
-        let def = make_def(
-            vec!["a"],
-            vec![(START, "a"), ("a", END)],
-            "nonexistent",
-        );
+        let def = make_def(vec!["a"], vec![(START, "a"), ("a", END)], "nonexistent");
         let result = GraphValidator::validate_all(&def);
         assert!(!result.is_valid());
         assert!(result.has_error_code("INVALID_ENTRY_POINT"));

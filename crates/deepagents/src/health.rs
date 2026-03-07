@@ -24,6 +24,23 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
+/// A boxed async health-check function that takes no arguments.
+type AsyncHealthCheckFn = Box<
+    dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// A boxed async health-check function that takes a string reference (tool name).
+type AsyncToolCheckFn = Box<
+    dyn Fn(&str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// A boxed function that returns disk space info as (available, total) in bytes.
+type SpaceCheckFn = Box<dyn Fn() -> Result<(u64, u64), String> + Send + Sync>;
+
 // ---------------------------------------------------------------------------
 // HealthStatus
 // ---------------------------------------------------------------------------
@@ -125,12 +142,21 @@ impl ComponentHealth {
         map.insert("name".into(), Value::String(self.name.clone()));
         map.insert("status".into(), self.status.to_json());
         if let Some(lat) = self.latency {
-            map.insert("latency_ms".into(), Value::Number(serde_json::Number::from(lat.as_millis() as u64)));
+            map.insert(
+                "latency_ms".into(),
+                Value::Number(serde_json::Number::from(lat.as_millis() as u64)),
+            );
         }
         if !self.details.is_empty() {
-            map.insert("details".into(), Value::Object(
-                self.details.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-            ));
+            map.insert(
+                "details".into(),
+                Value::Object(
+                    self.details
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
+                ),
+            );
         }
         Value::Object(map)
     }
@@ -160,7 +186,7 @@ pub struct ModelHealthCheck {
     timeout: Duration,
     /// Closure that simulates or performs the actual reachability test.
     /// Returns `Ok(())` on success or `Err(message)` on failure.
-    checker: Box<dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>> + Send + Sync>,
+    checker: AsyncHealthCheckFn,
 }
 
 impl ModelHealthCheck {
@@ -203,7 +229,10 @@ impl HealthCheck for ModelHealthCheck {
         };
 
         let mut details = HashMap::new();
-        details.insert("timeout_ms".into(), Value::Number(serde_json::Number::from(self.timeout.as_millis() as u64)));
+        details.insert(
+            "timeout_ms".into(),
+            Value::Number(serde_json::Number::from(self.timeout.as_millis() as u64)),
+        );
 
         ComponentHealth {
             name: self.name.clone(),
@@ -223,7 +252,7 @@ impl HealthCheck for ModelHealthCheck {
 pub struct ToolHealthCheck {
     name: String,
     tool_names: Vec<String>,
-    checker: Box<dyn Fn(&str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>> + Send + Sync>,
+    checker: AsyncToolCheckFn,
 }
 
 impl ToolHealthCheck {
@@ -291,10 +320,14 @@ impl HealthCheck for ToolHealthCheck {
         };
 
         let mut details = HashMap::new();
-        details.insert("total_tools".into(), Value::Number(serde_json::Number::from(self.tool_names.len())));
-        details.insert("failed_tools".into(), Value::Array(
-            failed.iter().map(|f| Value::String(f.clone())).collect(),
-        ));
+        details.insert(
+            "total_tools".into(),
+            Value::Number(serde_json::Number::from(self.tool_names.len())),
+        );
+        details.insert(
+            "failed_tools".into(),
+            Value::Array(failed.iter().map(|f| Value::String(f.clone())).collect()),
+        );
 
         ComponentHealth {
             name: self.name.clone(),
@@ -313,7 +346,7 @@ impl HealthCheck for ToolHealthCheck {
 /// Checks that memory storage is readable and writable.
 pub struct MemoryHealthCheck {
     name: String,
-    checker: Box<dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>> + Send + Sync>,
+    checker: AsyncHealthCheckFn,
 }
 
 impl MemoryHealthCheck {
@@ -340,7 +373,9 @@ impl MemoryHealthCheck {
 
 impl std::fmt::Debug for MemoryHealthCheck {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MemoryHealthCheck").field("name", &self.name).finish()
+        f.debug_struct("MemoryHealthCheck")
+            .field("name", &self.name)
+            .finish()
     }
 }
 
@@ -373,7 +408,7 @@ impl HealthCheck for MemoryHealthCheck {
 /// Checks backend connectivity.
 pub struct BackendHealthCheck {
     name: String,
-    checker: Box<dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>> + Send + Sync>,
+    checker: AsyncHealthCheckFn,
 }
 
 impl BackendHealthCheck {
@@ -392,7 +427,9 @@ impl BackendHealthCheck {
 
 impl std::fmt::Debug for BackendHealthCheck {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BackendHealthCheck").field("name", &self.name).finish()
+        f.debug_struct("BackendHealthCheck")
+            .field("name", &self.name)
+            .finish()
     }
 }
 
@@ -428,7 +465,7 @@ pub struct DiskSpaceCheck {
     path: String,
     threshold_bytes: u64,
     /// Override for testing: returns (available, total) in bytes.
-    space_fn: Option<Box<dyn Fn() -> Result<(u64, u64), String> + Send + Sync>>,
+    space_fn: Option<SpaceCheckFn>,
 }
 
 impl DiskSpaceCheck {
@@ -489,9 +526,18 @@ impl HealthCheck for DiskSpaceCheck {
         let (status, details) = match result {
             Ok((available, total)) => {
                 let mut d = HashMap::new();
-                d.insert("available_bytes".into(), Value::Number(serde_json::Number::from(available)));
-                d.insert("total_bytes".into(), Value::Number(serde_json::Number::from(total)));
-                d.insert("threshold_bytes".into(), Value::Number(serde_json::Number::from(self.threshold_bytes)));
+                d.insert(
+                    "available_bytes".into(),
+                    Value::Number(serde_json::Number::from(available)),
+                );
+                d.insert(
+                    "total_bytes".into(),
+                    Value::Number(serde_json::Number::from(total)),
+                );
+                d.insert(
+                    "threshold_bytes".into(),
+                    Value::Number(serde_json::Number::from(self.threshold_bytes)),
+                );
                 d.insert("path".into(), Value::String(self.path.clone()));
 
                 let status = if available >= self.threshold_bytes {
@@ -511,7 +557,10 @@ impl HealthCheck for DiskSpaceCheck {
             }
             Err(e) => {
                 let d = HashMap::new();
-                (HealthStatus::Unhealthy(format!("failed to check disk space: {}", e)), d)
+                (
+                    HealthStatus::Unhealthy(format!("failed to check disk space: {}", e)),
+                    d,
+                )
             }
         };
 
@@ -593,7 +642,10 @@ impl HealthReport {
         for c in components {
             match &c.status {
                 HealthStatus::Unhealthy(msg) => {
-                    return HealthStatus::Unhealthy(format!("component '{}' unhealthy: {}", c.name, msg));
+                    return HealthStatus::Unhealthy(format!(
+                        "component '{}' unhealthy: {}",
+                        c.name, msg
+                    ));
                 }
                 HealthStatus::Degraded(_) => has_degraded = true,
                 HealthStatus::Healthy => {}
@@ -648,7 +700,10 @@ impl HealthMonitor {
                 Ok(h) => h,
                 Err(_) => ComponentHealth {
                     name: check.component_name().to_string(),
-                    status: HealthStatus::Unhealthy(format!("health check timed out after {:?}", self.timeout)),
+                    status: HealthStatus::Unhealthy(format!(
+                        "health check timed out after {:?}",
+                        self.timeout
+                    )),
                     latency: Some(self.timeout),
                     details: HashMap::new(),
                     last_checked: SystemTime::now(),
@@ -677,7 +732,10 @@ impl HealthMonitor {
                     Ok(h) => h,
                     Err(_) => ComponentHealth {
                         name: name.to_string(),
-                        status: HealthStatus::Unhealthy(format!("health check timed out after {:?}", self.timeout)),
+                        status: HealthStatus::Unhealthy(format!(
+                            "health check timed out after {:?}",
+                            self.timeout
+                        )),
                         latency: Some(self.timeout),
                         details: HashMap::new(),
                         last_checked: SystemTime::now(),
@@ -905,7 +963,10 @@ mod tests {
     fn test_health_status_message() {
         assert_eq!(HealthStatus::Healthy.message(), None);
         assert_eq!(HealthStatus::Degraded("low".into()).message(), Some("low"));
-        assert_eq!(HealthStatus::Unhealthy("down".into()).message(), Some("down"));
+        assert_eq!(
+            HealthStatus::Unhealthy("down".into()).message(),
+            Some("down")
+        );
     }
 
     #[test]
@@ -943,7 +1004,8 @@ mod tests {
     fn test_component_health_to_json() {
         let mut h = ComponentHealth::healthy("api");
         h.latency = Some(Duration::from_millis(42));
-        h.details.insert("version".into(), Value::String("1.0".into()));
+        h.details
+            .insert("version".into(), Value::String("1.0".into()));
         let json = h.to_json();
         assert_eq!(json["name"], "api");
         assert_eq!(json["latency_ms"], 42);
@@ -1235,27 +1297,23 @@ mod tests {
     async fn test_tool_health_check_partial_failure() {
         let flag = Arc::new(AtomicBool::new(false));
         let flag_clone = flag.clone();
-        let check = ToolHealthCheck::with_sync_checker(
-            vec!["a".into(), "b".into()],
-            move |name| {
-                // Alternate: first call fails, second succeeds
-                if !flag_clone.fetch_xor(true, Ordering::SeqCst) {
-                    Err(format!("{} unavailable", name))
-                } else {
-                    Ok(())
-                }
-            },
-        );
+        let check = ToolHealthCheck::with_sync_checker(vec!["a".into(), "b".into()], move |name| {
+            // Alternate: first call fails, second succeeds
+            if !flag_clone.fetch_xor(true, Ordering::SeqCst) {
+                Err(format!("{} unavailable", name))
+            } else {
+                Ok(())
+            }
+        });
         let health = check.check().await;
         assert!(matches!(health.status, HealthStatus::Degraded(_)));
     }
 
     #[tokio::test]
     async fn test_tool_health_check_all_failed() {
-        let check = ToolHealthCheck::with_sync_checker(
-            vec!["x".into(), "y".into()],
-            |name| Err(format!("{} broken", name)),
-        );
+        let check = ToolHealthCheck::with_sync_checker(vec!["x".into(), "y".into()], |name| {
+            Err(format!("{} broken", name))
+        });
         let health = check.check().await;
         assert!(health.status.is_unhealthy());
     }

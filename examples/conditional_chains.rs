@@ -72,21 +72,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let input_upper = json!({ "mode": "upper", "text": "Hello World" });
     let result = conditional.invoke(input_upper, None).await?;
-    println!("  Input mode=upper: {} -> {}", "Hello World", result["text"]);
+    println!(
+        "  Input mode=upper: {} -> {}",
+        "Hello World", result["text"]
+    );
 
     let input_lower = json!({ "mode": "lower", "text": "Hello World" });
     let result = conditional.invoke(input_lower, None).await?;
-    println!("  Input mode=lower: {} -> {}", "Hello World", result["text"]);
+    println!(
+        "  Input mode=lower: {} -> {}",
+        "Hello World", result["text"]
+    );
 
     // ConditionalChain with a closure condition (numeric threshold)
     println!("\n  Closure condition (value > 10):");
-    let numeric_conditional =
-        ConditionalChain::builder(ClosureCondition::new(|v: &Value| {
-            Ok(v.get("value").and_then(|x| x.as_i64()).unwrap_or(0) > 10)
-        }))
-        .then(double_lambda())
-        .otherwise(negate_lambda())
-        .build();
+    let numeric_conditional = ConditionalChain::builder(ClosureCondition::new(|v: &Value| {
+        Ok(v.get("value").and_then(|x| x.as_i64()).unwrap_or(0) > 10)
+    }))
+    .then(double_lambda())
+    .otherwise(negate_lambda())
+    .build();
 
     let result = numeric_conditional
         .invoke(json!({ "value": 20 }), None)
@@ -100,10 +105,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ConditionalChain with passthrough (no else branch)
     println!("\n  Passthrough (no else branch):");
-    let passthrough_chain =
-        ConditionalChain::builder(KeyExistsCondition::new("premium"))
-            .then(tag_lambda("premium_user"))
-            .build();
+    let passthrough_chain = ConditionalChain::builder(KeyExistsCondition::new("premium"))
+        .then(tag_lambda("premium_user"))
+        .build();
 
     let result = passthrough_chain
         .invoke(json!({ "premium": true, "name": "Alice" }), None)
@@ -130,10 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             KeyEqualsCondition::new("priority", json!("high")),
             tag_lambda("high_priority"),
         )
-        .branch(
-            KeyExistsCondition::new("debug"),
-            tag_lambda("debug_mode"),
-        )
+        .branch(KeyExistsCondition::new("debug"), tag_lambda("debug_mode"))
         .default(tag_lambda("normal"))
         .build();
 

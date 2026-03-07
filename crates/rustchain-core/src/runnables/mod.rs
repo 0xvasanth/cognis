@@ -38,9 +38,9 @@ pub type RunnableStream = Pin<Box<dyn Stream<Item = Result<Value>> + Send>>;
 pub use assign::{RunnableAssign, RunnablePick};
 pub use base::Runnable;
 pub use batch::{batch_invoke, RunnableBatch};
-pub use cache::{CacheConfig, CacheStats, RunnableCache};
 pub use binding::RunnableBinding;
 pub use branch::RunnableBranch;
+pub use cache::{CacheConfig, CacheStats, RunnableCache};
 pub use config::{
     ensure_config, get_config_list, merge_configs, patch_config, ConfigPatch, RunnableConfig,
 };

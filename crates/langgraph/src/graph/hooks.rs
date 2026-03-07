@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
-use crate::errors::{LangGraphError, Result};
+use crate::errors::Result;
 
 // ---------------------------------------------------------------------------
 // HookPhase
@@ -232,12 +232,18 @@ impl ExecutionHook for LoggingHook {
             }
             HookPhase::BeforeEdge => {
                 if let Some((from, to)) = &ctx.edge {
-                    eprintln!("[hooks] BeforeEdge '{}' -> '{}' (step {})", from, to, ctx.step);
+                    eprintln!(
+                        "[hooks] BeforeEdge '{}' -> '{}' (step {})",
+                        from, to, ctx.step
+                    );
                 }
             }
             HookPhase::AfterEdge => {
                 if let Some((from, to)) = &ctx.edge {
-                    eprintln!("[hooks] AfterEdge '{}' -> '{}' (step {})", from, to, ctx.step);
+                    eprintln!(
+                        "[hooks] AfterEdge '{}' -> '{}' (step {})",
+                        from, to, ctx.step
+                    );
                 }
             }
             HookPhase::OnError => {
@@ -509,8 +515,7 @@ mod tests {
 
     #[test]
     fn test_hook_context_with_edge() {
-        let ctx = HookContext::new(HookPhase::BeforeEdge, json!({}), 0)
-            .with_edge("a", "b");
+        let ctx = HookContext::new(HookPhase::BeforeEdge, json!({}), 0).with_edge("a", "b");
 
         assert_eq!(ctx.edge, Some(("a".to_string(), "b".to_string())));
         assert!(ctx.node.is_none());
@@ -653,8 +658,7 @@ mod tests {
         registry.register(Arc::new(AbortHook));
         registry.register(tracking.clone());
 
-        let ctx = HookContext::new(HookPhase::BeforeNode, json!({}), 0)
-            .with_node("test");
+        let ctx = HookContext::new(HookPhase::BeforeNode, json!({}), 0).with_node("test");
         let action = registry.dispatch(&ctx).await.unwrap();
         assert!(matches!(action, HookAction::Abort(_)));
         // The tracking hook should NOT have been called due to short-circuit.
@@ -704,8 +708,7 @@ mod tests {
         let mut registry = HookRegistry::new();
         registry.register(Arc::new(SkipHook));
 
-        let ctx = HookContext::new(HookPhase::BeforeNode, json!({}), 0)
-            .with_node("skip_me");
+        let ctx = HookContext::new(HookPhase::BeforeNode, json!({}), 0).with_node("skip_me");
         let action = registry.dispatch(&ctx).await.unwrap();
         assert!(matches!(action, HookAction::SkipNode));
     }
@@ -731,8 +734,7 @@ mod tests {
     #[tokio::test]
     async fn test_logging_hook_returns_continue() {
         let hook = LoggingHook;
-        let ctx = HookContext::new(HookPhase::BeforeNode, json!({}), 1)
-            .with_node("test_node");
+        let ctx = HookContext::new(HookPhase::BeforeNode, json!({}), 1).with_node("test_node");
         let action = hook.on_event(&ctx).await.unwrap();
         assert!(matches!(action, HookAction::Continue));
     }
@@ -740,8 +742,7 @@ mod tests {
     #[tokio::test]
     async fn test_logging_hook_edge_event() {
         let hook = LoggingHook;
-        let ctx = HookContext::new(HookPhase::BeforeEdge, json!({}), 2)
-            .with_edge("a", "b");
+        let ctx = HookContext::new(HookPhase::BeforeEdge, json!({}), 2).with_edge("a", "b");
         let action = hook.on_event(&ctx).await.unwrap();
         assert!(matches!(action, HookAction::Continue));
     }
@@ -808,16 +809,14 @@ mod tests {
         let hook = TimingHook::new();
 
         // Simulate BeforeNode
-        let ctx_before = HookContext::new(HookPhase::BeforeNode, json!({}), 1)
-            .with_node("node_a");
+        let ctx_before = HookContext::new(HookPhase::BeforeNode, json!({}), 1).with_node("node_a");
         hook.on_event(&ctx_before).await.unwrap();
 
         // Small delay to ensure measurable duration
         tokio::time::sleep(Duration::from_millis(5)).await;
 
         // Simulate AfterNode
-        let ctx_after = HookContext::new(HookPhase::AfterNode, json!({}), 1)
-            .with_node("node_a");
+        let ctx_after = HookContext::new(HookPhase::AfterNode, json!({}), 1).with_node("node_a");
         hook.on_event(&ctx_after).await.unwrap();
 
         let timings = hook.get_timings().await;
@@ -831,12 +830,10 @@ mod tests {
         let hook = TimingHook::new();
 
         for _ in 0..3 {
-            let before = HookContext::new(HookPhase::BeforeNode, json!({}), 1)
-                .with_node("counter");
+            let before = HookContext::new(HookPhase::BeforeNode, json!({}), 1).with_node("counter");
             hook.on_event(&before).await.unwrap();
 
-            let after = HookContext::new(HookPhase::AfterNode, json!({}), 1)
-                .with_node("counter");
+            let after = HookContext::new(HookPhase::AfterNode, json!({}), 1).with_node("counter");
             hook.on_event(&after).await.unwrap();
         }
 
@@ -849,11 +846,9 @@ mod tests {
         let hook = TimingHook::new();
 
         for _ in 0..2 {
-            let before = HookContext::new(HookPhase::BeforeNode, json!({}), 1)
-                .with_node("n");
+            let before = HookContext::new(HookPhase::BeforeNode, json!({}), 1).with_node("n");
             hook.on_event(&before).await.unwrap();
-            let after = HookContext::new(HookPhase::AfterNode, json!({}), 1)
-                .with_node("n");
+            let after = HookContext::new(HookPhase::AfterNode, json!({}), 1).with_node("n");
             hook.on_event(&after).await.unwrap();
         }
 
@@ -878,12 +873,10 @@ mod tests {
     async fn test_snapshot_hook_captures() {
         let hook = StateSnapshotHook::new();
 
-        let ctx = HookContext::new(HookPhase::BeforeNode, json!({"x": 1}), 1)
-            .with_node("my_node");
+        let ctx = HookContext::new(HookPhase::BeforeNode, json!({"x": 1}), 1).with_node("my_node");
         hook.on_event(&ctx).await.unwrap();
 
-        let ctx2 = HookContext::new(HookPhase::AfterNode, json!({"x": 2}), 1)
-            .with_node("my_node");
+        let ctx2 = HookContext::new(HookPhase::AfterNode, json!({"x": 2}), 1).with_node("my_node");
         hook.on_event(&ctx2).await.unwrap();
 
         let snapshots = hook.get_snapshots().await;
@@ -899,12 +892,10 @@ mod tests {
     async fn test_snapshot_hook_for_node() {
         let hook = StateSnapshotHook::new();
 
-        let ctx_a = HookContext::new(HookPhase::BeforeNode, json!({}), 1)
-            .with_node("a");
+        let ctx_a = HookContext::new(HookPhase::BeforeNode, json!({}), 1).with_node("a");
         hook.on_event(&ctx_a).await.unwrap();
 
-        let ctx_b = HookContext::new(HookPhase::BeforeNode, json!({}), 2)
-            .with_node("b");
+        let ctx_b = HookContext::new(HookPhase::BeforeNode, json!({}), 2).with_node("b");
         hook.on_event(&ctx_b).await.unwrap();
 
         let a_snaps = hook.snapshots_for_node("a").await;
@@ -917,8 +908,7 @@ mod tests {
     async fn test_snapshot_hook_clear() {
         let hook = StateSnapshotHook::new();
 
-        let ctx = HookContext::new(HookPhase::BeforeNode, json!({}), 1)
-            .with_node("a");
+        let ctx = HookContext::new(HookPhase::BeforeNode, json!({}), 1).with_node("a");
         hook.on_event(&ctx).await.unwrap();
         assert_eq!(hook.get_snapshots().await.len(), 1);
 
