@@ -9,9 +9,10 @@ use super::code::Language;
 use super::TextSplitter;
 
 /// How to measure the length of a text chunk.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum LengthFunction {
     /// Count Unicode characters (default).
+    #[default]
     Characters,
     /// Count whitespace-delimited words.
     Words,
@@ -29,12 +30,6 @@ impl LengthFunction {
     }
 }
 
-impl Default for LengthFunction {
-    fn default() -> Self {
-        LengthFunction::Characters
-    }
-}
-
 impl std::fmt::Debug for LengthFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -46,20 +41,15 @@ impl std::fmt::Debug for LengthFunction {
 }
 
 /// Where to attach the separator when splitting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum KeepSeparator {
     /// Discard the separator.
+    #[default]
     None,
     /// Prepend the separator to the start of the next chunk.
     Start,
     /// Append the separator to the end of the current chunk.
     End,
-}
-
-impl Default for KeepSeparator {
-    fn default() -> Self {
-        KeepSeparator::None
-    }
 }
 
 /// Recursively splits text trying each separator in order, falling back to
@@ -173,7 +163,7 @@ impl RecursiveCharacterTextSplitter {
 
     /// Split `text` by `separator`, optionally keeping the separator attached
     /// to the start or end of the resulting pieces.
-    fn split_by_separator<'a>(&self, text: &'a str, separator: &str) -> Vec<String> {
+    fn split_by_separator(&self, text: &str, separator: &str) -> Vec<String> {
         if separator.is_empty() {
             // Character-level split.
             return text.chars().map(|c| c.to_string()).collect();

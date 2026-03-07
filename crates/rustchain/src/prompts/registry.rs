@@ -233,7 +233,7 @@ impl PromptRegistry {
                     || current
                         .description
                         .as_deref()
-                        .map_or(false, |d| d.to_lowercase().contains(&q))
+                        .is_some_and(|d| d.to_lowercase().contains(&q))
                     || current.tags.iter().any(|t| t.to_lowercase().contains(&q))
             })
             .map(|(name, _)| name.clone())
@@ -253,7 +253,7 @@ impl PromptRegistry {
                 current
                     .category
                     .as_deref()
-                    .map_or(false, |c| c.to_lowercase() == cat)
+                    .is_some_and(|c| c.to_lowercase() == cat)
             })
             .map(|(name, _)| name.clone())
             .collect()

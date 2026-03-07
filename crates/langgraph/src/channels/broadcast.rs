@@ -14,21 +14,19 @@ use crate::errors::LangGraphError;
 
 use super::base::BaseChannel;
 
+/// A shared, thread-safe filter function for broadcast messages.
+type BroadcastMatchFn = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
+
 /// Delivery guarantee for broadcast messages when the buffer is full.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DeliveryGuarantee {
     /// Drop the message if the buffer is full.
     BestEffort,
     /// Block/wait until buffer has space (in sync context, acts like DropOldest).
     Guaranteed,
     /// Drop the oldest message when the buffer is full.
+    #[default]
     DropOldest,
-}
-
-impl Default for DeliveryGuarantee {
-    fn default() -> Self {
-        Self::DropOldest
-    }
 }
 
 /// Filter for broadcast subscriptions.
@@ -37,7 +35,7 @@ pub struct BroadcastFilter {
     /// Only receive messages matching these topics. Empty means all topics.
     pub topics: Vec<String>,
     /// Custom filter function applied to the message payload.
-    pub match_fn: Option<Arc<dyn Fn(&Value) -> bool + Send + Sync>>,
+    pub match_fn: Option<BroadcastMatchFn>,
 }
 
 impl std::fmt::Debug for BroadcastFilter {

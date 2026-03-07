@@ -7,10 +7,11 @@ use serde_json::Value;
 use super::TextSplitter;
 
 /// How to detect sentence boundaries.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum SentencePattern {
     /// Splits on `.!?` followed by whitespace, handling common abbreviations
     /// (Mr., Mrs., Dr., etc.), decimal numbers, and basic URL/email detection.
+    #[default]
     Default,
     /// Splits only on `.!?` followed by a space or newline. No abbreviation handling.
     Simple,
@@ -18,12 +19,6 @@ pub enum SentencePattern {
     Unicode,
     /// A user-supplied regex pattern. Each match is treated as a sentence boundary.
     Custom(String),
-}
-
-impl Default for SentencePattern {
-    fn default() -> Self {
-        SentencePattern::Default
-    }
 }
 
 /// A text splitter that splits on sentence boundaries while respecting chunk
@@ -464,20 +459,18 @@ impl SentenceTextSplitter {
             } else if accumulator.len() + 1 + chunk.len() <= self.chunk_size {
                 accumulator.push(' ');
                 accumulator.push_str(&chunk);
+            } else if accumulator.len() >= min_size {
+                merged.push(accumulator);
+                accumulator = chunk;
             } else {
-                if accumulator.len() >= min_size {
+                // Try to merge with current chunk
+                if accumulator.len() + 1 + chunk.len() <= self.chunk_size {
+                    accumulator.push(' ');
+                    accumulator.push_str(&chunk);
+                } else {
+                    // Push undersized chunk as-is, start fresh
                     merged.push(accumulator);
                     accumulator = chunk;
-                } else {
-                    // Try to merge with current chunk
-                    if accumulator.len() + 1 + chunk.len() <= self.chunk_size {
-                        accumulator.push(' ');
-                        accumulator.push_str(&chunk);
-                    } else {
-                        // Push undersized chunk as-is, start fresh
-                        merged.push(accumulator);
-                        accumulator = chunk;
-                    }
                 }
             }
         }

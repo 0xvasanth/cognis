@@ -147,17 +147,17 @@ impl CallbackScope {
         let type_name = std::any::type_name::<T>();
         self.config
             .local_callbacks
-            .retain(|h| !handler_is_type::<T>(h.as_ref(), type_name));
+            .retain(|h| !handler_is_type(h.as_ref(), type_name));
         self.config
             .inherited_callbacks
-            .retain(|h| !handler_is_type::<T>(h.as_ref(), type_name));
+            .retain(|h| !handler_is_type(h.as_ref(), type_name));
     }
 }
 
 /// Check if a handler matches the given type name.
 ///
 /// Uses the `name()` method on `CallbackHandler` and also checks `type_name`.
-fn handler_is_type<T: 'static>(handler: &dyn CallbackHandler, type_name: &str) -> bool {
+fn handler_is_type(handler: &dyn CallbackHandler, type_name: &str) -> bool {
     // Check if the handler's name contains the type name (for custom names)
     // or if the full type name matches
     let handler_name = handler.name();

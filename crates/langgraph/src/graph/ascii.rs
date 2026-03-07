@@ -8,23 +8,21 @@ use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use super::state::{CompiledStateGraph, Edge};
 use crate::constants::{END, START};
 
+/// A labeled edge between two nodes: (from, to, optional label).
+type LabeledEdge = (String, String, Option<String>);
+
 // ── Options & Style ────────────────────────────────────────────────
 
 /// Style for rendering graph nodes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NodeStyle {
     /// Nodes drawn with box-drawing corners: `┌─┐ │ │ └─┘`
+    #[default]
     Box,
     /// Nodes drawn with rounded corners: `╭─╮ │ │ ╰─╯`
     Round,
     /// Nodes drawn as plain text without borders.
     Minimal,
-}
-
-impl Default for NodeStyle {
-    fn default() -> Self {
-        NodeStyle::Box
-    }
 }
 
 /// Options controlling ASCII graph rendering.
@@ -217,11 +215,9 @@ impl GraphLayout {
 
 // ── Extraction from CompiledStateGraph ─────────────────────────────
 
-fn extract_graph_data(
-    graph: &CompiledStateGraph,
-) -> (Vec<String>, Vec<(String, String, Option<String>)>) {
+fn extract_graph_data(graph: &CompiledStateGraph) -> (Vec<String>, Vec<LabeledEdge>) {
     let mut nodes: BTreeSet<String> = BTreeSet::new();
-    let mut edges: Vec<(String, String, Option<String>)> = Vec::new();
+    let mut edges: Vec<LabeledEdge> = Vec::new();
 
     for edge in &graph.edges {
         match edge {
@@ -440,8 +436,8 @@ fn render_vertical(layout: &GraphLayout, options: &AsciiRenderOptions) -> String
 
                         // Draw horizontal branch line.
                         let mut branch_line: Vec<char> = vec![' '; max_x + 1];
-                        for x in min_x..=max_x {
-                            branch_line[x] = '─';
+                        for ch in &mut branch_line[min_x..=max_x] {
+                            *ch = '─';
                         }
                         // Place junctions.
                         for &cx in &target_centers {
@@ -552,7 +548,7 @@ fn render_vertical(layout: &GraphLayout, options: &AsciiRenderOptions) -> String
     }
 
     // Clean up trailing empty lines.
-    while output_lines.last().map_or(false, |l| l.is_empty()) {
+    while output_lines.last().is_some_and(|l| l.is_empty()) {
         output_lines.pop();
     }
 

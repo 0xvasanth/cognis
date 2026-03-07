@@ -230,7 +230,7 @@ impl GraphProfiler {
         let mut state = self.state.lock().unwrap();
         state.sample_counter += 1;
         let threshold = (1.0 / self.options.sample_rate) as u64;
-        state.sample_counter % threshold == 0
+        state.sample_counter.is_multiple_of(threshold)
     }
 
     /// Record the start of a node execution.

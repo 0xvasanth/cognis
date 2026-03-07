@@ -17,11 +17,12 @@ use crate::middleware::{AgentState, Middleware, Result};
 // ---------------------------------------------------------------------------
 
 /// Where in the message list context should be injected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ContextPosition {
     /// Insert a system message before the first system message.
     BeforeSystem,
     /// Insert a system message after the first system message.
+    #[default]
     AfterSystem,
     /// Insert a system message before the first user/human message.
     BeforeUser,
@@ -29,27 +30,16 @@ pub enum ContextPosition {
     AfterUser,
 }
 
-impl Default for ContextPosition {
-    fn default() -> Self {
-        Self::AfterSystem
-    }
-}
-
 /// Strategy for handling context overflow when the token budget is exceeded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PriorityMode {
     /// Drop entries with the lowest priority first.
+    #[default]
     DropLowest,
     /// Truncate all entries proportionally.
     TruncateAll,
     /// Drop the oldest entries first (by creation time).
     DropOldest,
-}
-
-impl Default for PriorityMode {
-    fn default() -> Self {
-        Self::DropLowest
-    }
 }
 
 /// Configuration for the [`ContextMiddleware`].
@@ -121,7 +111,7 @@ impl ContextEntry {
 
     /// Approximate token count (rough estimate: 1 token per 4 chars).
     pub fn estimated_tokens(&self) -> usize {
-        (self.content.len() + 3) / 4
+        self.content.len().div_ceil(4)
     }
 }
 

@@ -5,7 +5,7 @@
 //! before delegating to the underlying backend.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -163,21 +163,21 @@ impl PermissionChecker {
     /// must be equal to or a subdirectory of an entry in `allowed_paths`.
     pub fn check_path_access(
         &self,
-        path: &PathBuf,
+        path: &Path,
         operation: PathOperation,
     ) -> std::result::Result<(), SandboxViolation> {
         // Read-only mode blocks mutating operations.
         if self.config.read_only
             && matches!(operation, PathOperation::Write | PathOperation::Delete)
         {
-            return Err(SandboxViolation::ReadOnlyViolation { path: path.clone() });
+            return Err(SandboxViolation::ReadOnlyViolation { path: path.to_path_buf() });
         }
 
         // Denied paths take precedence.
         for denied in &self.config.denied_paths {
             if path.starts_with(denied) {
                 return Err(SandboxViolation::PathAccessDenied {
-                    path: path.clone(),
+                    path: path.to_path_buf(),
                     operation,
                 });
             }
@@ -186,7 +186,7 @@ impl PermissionChecker {
         // Must be under at least one allowed path.
         if self.config.allowed_paths.is_empty() {
             return Err(SandboxViolation::PathAccessDenied {
-                path: path.clone(),
+                path: path.to_path_buf(),
                 operation,
             });
         }
@@ -199,7 +199,7 @@ impl PermissionChecker {
 
         if !allowed {
             return Err(SandboxViolation::PathAccessDenied {
-                path: path.clone(),
+                path: path.to_path_buf(),
                 operation,
             });
         }

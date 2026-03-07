@@ -21,20 +21,15 @@ use rustchain_core::tools::types::{ToolInput, ToolOutput};
 // ---------------------------------------------------------------------------
 
 /// Controls how strict validation and correction behave.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum StrictnessMode {
     /// Every deviation is an error.
+    #[default]
     Strict,
     /// Unexpected fields are silently ignored (but other errors still reported).
     Lenient,
     /// Attempt to fix problems automatically and populate `corrected_args`.
     AutoCorrect,
-}
-
-impl Default for StrictnessMode {
-    fn default() -> Self {
-        Self::Strict
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -192,14 +187,13 @@ impl ToolCallValidator {
 
         // Check for unexpected fields.
         for key in args_obj.keys() {
-            if !properties.contains_key(key) {
-                if self.mode == StrictnessMode::Strict {
-                    errors.push(ValidationError::UnexpectedField { field: key.clone() });
-                } else if self.mode == StrictnessMode::AutoCorrect {
-                    errors.push(ValidationError::UnexpectedField { field: key.clone() });
-                }
-                // In Lenient mode we silently skip unexpected fields.
+            if !properties.contains_key(key)
+                && (self.mode == StrictnessMode::Strict
+                    || self.mode == StrictnessMode::AutoCorrect)
+            {
+                errors.push(ValidationError::UnexpectedField { field: key.clone() });
             }
+            // In Lenient mode we silently skip unexpected fields.
         }
 
         // Type-check each present field.
@@ -501,6 +495,7 @@ impl BaseTool for ValidatedToolExecutor {
 ///
 /// This delegates to `rustchain_core::tools::schema_gen::ToolSchemaBuilder`
 /// but adds the `.required_param()` / `.optional_param()` shorthand API.
+#[derive(Default)]
 pub struct ValidationSchemaBuilder {
     name: String,
     description: String,
@@ -510,12 +505,7 @@ pub struct ValidationSchemaBuilder {
 
 impl ValidationSchemaBuilder {
     pub fn new() -> Self {
-        Self {
-            name: String::new(),
-            description: String::new(),
-            properties: Vec::new(),
-            defaults: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// Set the tool name.

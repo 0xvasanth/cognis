@@ -81,9 +81,10 @@ impl std::error::Error for RateLimitError {}
 // ---------------------------------------------------------------------------
 
 /// Strategy to apply when a rate limit is hit.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum BackoffStrategy {
     /// Return an error immediately.
+    #[default]
     Reject,
     /// Wait until budget is available (may block indefinitely).
     Wait,
@@ -91,12 +92,6 @@ pub enum BackoffStrategy {
     WaitWithTimeout(Duration),
     /// Slow down requests to fit within the configured limits.
     Throttle,
-}
-
-impl Default for BackoffStrategy {
-    fn default() -> Self {
-        Self::Reject
-    }
 }
 
 // ---------------------------------------------------------------------------

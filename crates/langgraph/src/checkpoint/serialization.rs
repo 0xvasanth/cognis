@@ -181,11 +181,12 @@ impl CheckpointSerializer for BinarySerializer {
 // ---------------------------------------------------------------------------
 
 /// Compression level for [`CompressedSerializer`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum CompressionLevel {
     /// Fastest compression, larger output.
     Fast,
     /// Balanced speed/size.
+    #[default]
     Default,
     /// Best compression ratio, slower.
     Best,
@@ -198,12 +199,6 @@ impl CompressionLevel {
             Self::Default => flate2::Compression::default(),
             Self::Best => flate2::Compression::best(),
         }
-    }
-}
-
-impl Default for CompressionLevel {
-    fn default() -> Self {
-        Self::Default
     }
 }
 

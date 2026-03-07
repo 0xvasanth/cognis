@@ -10,20 +10,15 @@ use rustchain_core::language_models::chat_model::BaseChatModel;
 use rustchain_core::messages::{HumanMessage, Message, SystemMessage};
 
 /// Output format for the extraction result.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum OutputFormat {
     /// JSON output format.
+    #[default]
     Json,
     /// YAML output format.
     Yaml,
     /// Markdown table output format.
     Markdown,
-}
-
-impl Default for OutputFormat {
-    fn default() -> Self {
-        Self::Json
-    }
 }
 
 /// Type of a schema field.
@@ -494,7 +489,7 @@ impl ExtractionChain {
 
         // Few-shot examples
         for example in &self.examples {
-            messages.push(Message::Human(HumanMessage::new(&format!(
+            messages.push(Message::Human(HumanMessage::new(format!(
                 "Extract from this text:\n{}",
                 example.input
             ))));
@@ -504,12 +499,12 @@ impl ExtractionChain {
                 _ => example.output.to_string(),
             };
             messages.push(Message::Ai(rustchain_core::messages::AIMessage::new(
-                &example_output,
+                example_output,
             )));
         }
 
         // Actual input text
-        messages.push(Message::Human(HumanMessage::new(&format!(
+        messages.push(Message::Human(HumanMessage::new(format!(
             "Extract from this text:\n{}",
             text
         ))));

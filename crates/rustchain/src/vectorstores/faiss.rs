@@ -29,20 +29,15 @@ use rustchain_core::vectorstores::base::VectorStore;
 // ---------------------------------------------------------------------------
 
 /// Distance metric for vector similarity comparisons.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum FaissMetric {
     /// Euclidean (L2) distance — lower is more similar.
+    #[default]
     L2,
     /// Inner product (dot product) — higher is more similar.
     InnerProduct,
     /// Cosine similarity — higher is more similar. Vectors are normalized before comparison.
     Cosine,
-}
-
-impl Default for FaissMetric {
-    fn default() -> Self {
-        Self::L2
-    }
 }
 
 /// Compute the distance/similarity between two vectors using the given metric.
@@ -784,9 +779,10 @@ impl FaissIndex for HNSWIndex {
 // ---------------------------------------------------------------------------
 
 /// The type of index to use.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum FaissIndexType {
     /// Brute-force exact search.
+    #[default]
     Flat,
     /// Inverted file with flat quantizer.
     IVFFlat {
@@ -800,12 +796,6 @@ pub enum FaissIndexType {
         /// Size of the dynamic candidate list during construction.
         ef_construction: usize,
     },
-}
-
-impl Default for FaissIndexType {
-    fn default() -> Self {
-        Self::Flat
-    }
 }
 
 /// Configuration for the FAISS vector store.

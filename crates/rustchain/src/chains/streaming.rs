@@ -336,8 +336,10 @@ impl StreamingChainExecutor {
 
         // Build a RunnableConfig that carries the callbacks so the model
         // can fire on_llm_new_token through them.
-        let mut config = RunnableConfig::default();
-        config.callbacks = all_callbacks.iter().map(|cb| Arc::clone(cb)).collect();
+        let config = RunnableConfig {
+            callbacks: all_callbacks.iter().map(|cb| Arc::clone(cb)).collect(),
+            ..RunnableConfig::default()
+        };
 
         // Execute the inner chain
         let result = self.chain.invoke(input, Some(&config)).await;

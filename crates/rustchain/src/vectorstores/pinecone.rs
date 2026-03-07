@@ -23,20 +23,15 @@ use rustchain_core::vectorstores::base::VectorStore;
 // ---------------------------------------------------------------------------
 
 /// Distance metric used by a Pinecone index.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum PineconeMetric {
     /// Cosine similarity.
+    #[default]
     Cosine,
     /// Euclidean (L2) distance.
     Euclidean,
     /// Dot product (inner product).
     DotProduct,
-}
-
-impl Default for PineconeMetric {
-    fn default() -> Self {
-        Self::Cosine
-    }
 }
 
 // ---------------------------------------------------------------------------

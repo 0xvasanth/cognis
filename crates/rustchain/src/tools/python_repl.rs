@@ -275,7 +275,7 @@ impl CodeSanitizer {
             if let Some(rest) = trimmed.strip_prefix("import ") {
                 // `import foo, bar` or `import foo.bar`
                 for part in rest.split(',') {
-                    let module = part.trim().split_whitespace().next().unwrap_or("");
+                    let module = part.split_whitespace().next().unwrap_or("");
                     if !module.is_empty() {
                         imports.push(module.to_string());
                     }

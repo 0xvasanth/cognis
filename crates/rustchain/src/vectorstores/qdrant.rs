@@ -23,20 +23,15 @@ use rustchain_core::vectorstores::base::VectorStore;
 // ---------------------------------------------------------------------------
 
 /// Distance metric used for vector similarity comparisons.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DistanceMetric {
     /// Cosine similarity (normalized dot product).
+    #[default]
     Cosine,
     /// Euclidean (L2) distance.
     Euclidean,
     /// Dot product (inner product).
     DotProduct,
-}
-
-impl Default for DistanceMetric {
-    fn default() -> Self {
-        Self::Cosine
-    }
 }
 
 // ---------------------------------------------------------------------------

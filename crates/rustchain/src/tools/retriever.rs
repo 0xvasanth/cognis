@@ -15,13 +15,18 @@ use rustchain_core::retrievers::BaseRetriever;
 use rustchain_core::tools::base::BaseTool;
 use rustchain_core::tools::types::{ErrorHandler, ResponseFormat, ToolInput, ToolOutput};
 
+/// A shared, thread-safe document formatting function.
+type DocumentFormatFn = Arc<dyn Fn(&[Document]) -> String + Send + Sync>;
+
 // ---------------------------------------------------------------------------
 // DocumentFormatter
 // ---------------------------------------------------------------------------
 
 /// Controls how retrieved documents are rendered into a single text output.
+#[derive(Default)]
 pub enum DocumentFormatter {
     /// Just page_content, newline separated.
+    #[default]
     Plain,
     /// "1. content\n2. content\n..."
     Numbered,
@@ -32,7 +37,7 @@ pub enum DocumentFormatter {
     /// Markdown formatted sections.
     Markdown,
     /// User-supplied formatting function.
-    Custom(Arc<dyn Fn(&[Document]) -> String + Send + Sync>),
+    Custom(DocumentFormatFn),
 }
 
 impl DocumentFormatter {
@@ -103,12 +108,6 @@ impl DocumentFormatter {
                 .join("\n\n"),
             DocumentFormatter::Custom(f) => f(docs),
         }
-    }
-}
-
-impl Default for DocumentFormatter {
-    fn default() -> Self {
-        DocumentFormatter::Plain
     }
 }
 
