@@ -39,5 +39,6 @@ pub mod agent;
 pub mod backends;
 pub mod config;
 pub mod middleware;
+pub mod tool_registry;
 
 pub use agent::create_deep_agent;
