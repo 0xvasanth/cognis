@@ -8,8 +8,8 @@
 [![Crate Version](https://img.shields.io/badge/crates.io-v0.1.0-blue)](https://crates.io/crates/rustchain)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-5%2C079%2B-green)](.)
-[![Lines of Code](https://img.shields.io/badge/lines-190K-informational)](.)
+[![Tests](https://img.shields.io/badge/tests-5%2C619%2B-green)](.)
+[![Lines of Code](https://img.shields.io/badge/lines-201K-informational)](.)
 
 [Getting Started](#getting-started) · [Examples](#examples) · [Architecture](#architecture) · [Feature Flags](#feature-flags) · [Contributing](#contributing)
 
@@ -21,7 +21,7 @@
 
 RustChain is a Rust-native LLM application framework that ports the Python [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), and [DeepAgents](https://github.com/langchain-ai/deepagents) ecosystem to Rust. It provides composable abstractions for building chains, agents, RAG pipelines, and stateful graph workflows -- all with Rust's performance, type safety, and fearless concurrency.
 
-The project spans **4 crates**, **437 source files**, **~190K lines of Rust**, and **~5,079 tests**.
+The project spans **4 crates**, **446 source files**, **~201K lines of Rust**, and **~5,619 tests**.
 
 ### Why Rust?
 
@@ -90,7 +90,7 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 |---|---|
 | `messages` | `Message` enum (Human, AI, System, Tool, Function) with streaming chunks, merge, and trim utilities |
 | `language_models` | `BaseChatModel` and `BaseLLM` traits, plus fake/testing models |
-| `runnables` | `Runnable` trait with sequence, parallel, branch, lambda, retry, fallback, scoped callbacks, **rate limiter/throttle wrappers**, **timeout/deadline** (configurable timeout behavior with fallback and default-value strategies), **configurable runnables** (runtime field overrides with type validation and enum constraints), and 30+ combinators |
+| `runnables` | `Runnable` trait with sequence, parallel, branch, lambda, retry, fallback, scoped callbacks, **rate limiter/throttle wrappers**, **timeout/deadline** (configurable timeout behavior with fallback and default-value strategies), **configurable runnables** (runtime field overrides with type validation and enum constraints), **middleware** (pluggable pre/post hooks with `MiddlewareAction` for continue/short-circuit/error control flow), **tracing** (`TraceCollector` with structured span tracking, severity levels, and `TraceExporter` for observability), **graph** (runnable graph builder with `Node`, `Edge`, topological execution, and cycle detection), and 30+ combinators |
 | `tools` | `BaseTool` trait, toolkit interface, structured tools, schema generation, and retriever adapter |
 | `prompts` | Chat prompt templates, few-shot selectors, structured prompts, image prompts |
 | `output_parsers` | JSON, string, list, XML, and tool-call parsers |
@@ -111,13 +111,13 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 |---|---|
 | `chat_models` | **5 providers**: Anthropic Claude, OpenAI GPT, Google Gemini, Ollama, Azure OpenAI. **Factory**: `init_chat_model` for dynamic provider creation via `ChatModelFactory` and global `ModelRegistry`. **Wrappers**: cached, circuit breaker, rate limited, retrying, structured, token counting, graceful, interceptor, **load balancer** (health-tracked round-robin across multiple models) |
 | `chains` | **19 types**: LLM, sequential, conversation, conversation retrieval, retrieval QA, map-reduce, refine, router, structured output, summarize, SQL, API, streaming, extraction, **transform** (sync/async transforms with pipeline composition), **conditional/branch/switch** (routing chains with pluggable conditions), **stuff documents** (document combination with formatting strategies), **QA with citations** (retrieval QA with source citation tracking). **Chain callbacks**: lifecycle hooks (start, end, error, step) with logging, metrics, tracing, and filter callbacks |
-| `memory` | **10 types**: buffer, window, summary, vector, chat history, hybrid, entity (named entity tracking with regex extraction), token buffer (token-count-aware trimming with pluggable `TokenCounter`), **knowledge graph** (subject-predicate-object triple extraction and storage for relational knowledge in prompts), **summary buffer** (combines buffered messages with periodic summarization when token threshold is exceeded, with configurable strategies: first, oldest, sliding) |
+| `memory` | **11 types**: buffer, window, summary, vector, chat history, hybrid, entity (named entity tracking with regex extraction), token buffer (token-count-aware trimming with pluggable `TokenCounter`), **knowledge graph** (subject-predicate-object triple extraction and storage for relational knowledge in prompts), **summary buffer** (combines buffered messages with periodic summarization when token threshold is exceeded, with configurable strategies: first, oldest, sliding), **conversation** (turn-based memory with windowing by count/token/time, named branching for alternative paths, and keyword/metadata/time-range search) |
 | `vectorstores` | **6 backends**: InMemory, Qdrant, Pinecone, Weaviate, ChromaDB, FAISS (with Flat/IVF/HNSW indexes) |
-| `retrievers` | **12 types**: contextual compression, compressor pipeline, docstore, ensemble, multi-vector, parent document, self-query, caching (TTL + LRU eviction), time-weighted (recency + relevance scoring), query translator (rule-based and LLM-powered structured filter generation), **multi-query** (query variation generation with reciprocal rank fusion), **reranking** (pluggable rerankers -- keyword overlap, TF-IDF, cross-encoder, length-based, metadata-based -- with cascade and pipeline composition) |
+| `retrievers` | **14 types**: contextual compression, compressor pipeline, docstore, ensemble, multi-vector, parent document, self-query, caching (TTL + LRU eviction), time-weighted (recency + relevance scoring), query translator (rule-based and LLM-powered structured filter generation), **multi-query** (query variation generation with reciprocal rank fusion), **reranking** (pluggable rerankers -- keyword overlap, TF-IDF, cross-encoder, length-based, metadata-based -- with cascade and pipeline composition), **document compression** (`DocumentCompressor` trait with length truncation, sentence extraction, redundancy filtering via Jaccard similarity, relevance scoring, and metadata filtering), **compression pipeline** (chain multiple compressors in sequence with `ContextualCompressionRetriever`) |
 | `document_loaders` | **10 types**: text, CSV, JSON, HTML, Markdown, PDF, web/crawler, YAML, TOML, directory |
 | `text_splitter` | **10 types**: character, recursive character (with language presets), Markdown, HTML, JSON, code, token, token-aware, sentence-aware (with abbreviation handling) |
 | `embeddings` | **8 providers/utilities**: OpenAI, Anthropic, Google, Ollama, cached wrapper, distance metrics, router, **batch processor** (concurrent embedding with rate limiting and chunked processing) |
-| `tools` | **14 types**: calculator, shell, web search, Wikipedia, JSON query, OpenAPI, cached, validation/auto-correction, Python REPL, retriever adapter, **human input** (interactive prompts with approval wrapper), **HTTP requests** (GET/POST with domain allowlisting and mock client), **file management** (read, write, copy, move, list, delete with path safety and toolkit grouping) |
+| `tools` | **14 types**: calculator, shell, web search, Wikipedia, JSON query, OpenAPI, cached, **validation** (input/output schema validation with auto-correction and retry), Python REPL, retriever adapter, **human input** (interactive prompts with approval wrapper), **HTTP requests** (GET/POST with domain allowlisting and mock client), **file management** (read, write, copy, move, list, delete with path safety and toolkit grouping) |
 | `agents` | `AgentExecutor` with tool calling and structured output. **Plan-and-execute agent** (plan creation, step-by-step execution, replanning on failure). **Output parsers**: ReAct (`Thought/Action/Action Input`), JSON, XML, and tool-call format parsers. **18 middleware types**: retry, model retry, model fallback, tool retry, tool call limit, model call limit, human-in-the-loop, PII redaction, summarization, context editing, file search, shell tool, tool emulator, tool selection, todo, redaction, execution |
 | `output_parsers` | **Structured output parsers**: JSON (with code fence handling), markdown list, key-value, regex, CSV, boolean, enum, combining (try multiple parsers), schema-validated structured output. **LLM-based error correction**: `OutputFixingParser` (uses LLM to fix malformed output) and `RetryOutputParser` (iterative retry with error feedback) |
 | `chat_sessions` | `SessionManager` for managing multiple concurrent chat sessions with lifecycle states (Active, Archived, Deleted), pluggable persistence (`InMemorySessionStorage`, `FileSessionStorage`), and builder configuration |
@@ -147,7 +147,8 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | `graph::stream_writer` | `StreamWriter`/`StreamReader` for producing and consuming `StreamChunk` values through bounded async channels, with `StreamCollector` for aggregation and `FilteredStream` for selective consumption |
 | `graph::ascii` | ASCII art graph visualization for terminal display |
 | `graph::mermaid` | Export graphs as Mermaid diagrams |
-| `graph::snapshot` | Graph state snapshot and restore with pluggable storage |
+| `graph::interrupt` | **Interrupt manager** -- flexible human-in-the-loop interrupt system with `InterruptType` (before/after node), handler dispatch (`AutoResumeHandler`, `DefaultOptionHandler`, `TimeoutHandler`), `ResumeAction`, and `InterruptLog` history |
+| `graph::snapshot` | **State snapshots** -- graph state snapshot and restore with pluggable storage, diff tracking, and point-in-time rollback |
 | `graph::audit` | Execution audit log with trail tracing |
 | `graph::stream_events` | Streaming events from graph execution |
 | `graph::annotations` | State annotations for reducer functions |

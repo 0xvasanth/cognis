@@ -64,8 +64,7 @@ pub use runner::{GraphRunner, LoggingHook, MetricsHook, RunConfig, StepEvent, St
 pub use send::{deep_merge_values, fan_in, fan_out, send_to, MapReduceGraph, SendCommand};
 pub use serialize::{ConditionalEdgeDef, GraphDefinition, GraphRegistry};
 pub use snapshot::{
-    SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot,
-    TimeTravelDebugger,
+    SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot, TimeTravelDebugger,
 };
 pub use state::{AsyncNodeAction, CompiledStateGraph, NodeAction, NodeSpec, StateGraph};
 pub use stream_events::{stream_graph_events, GraphEventCollector, GraphStreamEvent};

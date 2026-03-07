@@ -241,10 +241,7 @@ impl BackoffStrategy {
     pub fn delay_for_attempt(&self, attempt: u32) -> Duration {
         match self {
             BackoffStrategy::Fixed(d) => *d,
-            BackoffStrategy::Linear {
-                initial,
-                increment,
-            } => *initial + *increment * attempt,
+            BackoffStrategy::Linear { initial, increment } => *initial + *increment * attempt,
             BackoffStrategy::Exponential {
                 initial,
                 multiplier,
@@ -359,9 +356,7 @@ impl RecoveryPolicy {
     /// Look up the strategy for the given error category.
     pub fn get_strategy(&self, category: &ErrorCategory) -> &RecoveryStrategy {
         let key = category_key(category);
-        self.strategies
-            .get(&key)
-            .unwrap_or(&self.default_strategy)
+        self.strategies.get(&key).unwrap_or(&self.default_strategy)
     }
 
     /// Build a policy where every retryable category uses exponential backoff.
@@ -602,7 +597,9 @@ impl RecoveryManager {
         let attempt = *counter;
 
         let delay = match &strategy {
-            RecoveryStrategy::Retry { backoff, .. } => backoff.delay_for_attempt(attempt.saturating_sub(1)),
+            RecoveryStrategy::Retry { backoff, .. } => {
+                backoff.delay_for_attempt(attempt.saturating_sub(1))
+            }
             _ => Duration::ZERO,
         };
 
@@ -724,7 +721,10 @@ mod tests {
     #[test]
     fn test_classify_auth() {
         let c = ErrorClassifier::new();
-        assert_eq!(c.classify("unauthorized access"), ErrorCategory::AuthFailure);
+        assert_eq!(
+            c.classify("unauthorized access"),
+            ErrorCategory::AuthFailure
+        );
         assert_eq!(c.classify("HTTP 401"), ErrorCategory::AuthFailure);
         assert_eq!(c.classify("Forbidden"), ErrorCategory::AuthFailure);
         assert_eq!(c.classify("invalid api key"), ErrorCategory::AuthFailure);
@@ -738,7 +738,10 @@ mod tests {
             c.classify("model is overloaded"),
             ErrorCategory::ModelOverloaded
         );
-        assert_eq!(c.classify("503 service unavailable"), ErrorCategory::ModelOverloaded);
+        assert_eq!(
+            c.classify("503 service unavailable"),
+            ErrorCategory::ModelOverloaded
+        );
         assert_eq!(c.classify("server busy"), ErrorCategory::ModelOverloaded);
     }
 
@@ -761,7 +764,10 @@ mod tests {
             c.classify("connection refused"),
             ErrorCategory::NetworkError
         );
-        assert_eq!(c.classify("dns resolution failed"), ErrorCategory::NetworkError);
+        assert_eq!(
+            c.classify("dns resolution failed"),
+            ErrorCategory::NetworkError
+        );
     }
 
     #[test]
@@ -777,7 +783,10 @@ mod tests {
     #[test]
     fn test_classify_parse_error() {
         let c = ErrorClassifier::new();
-        assert_eq!(c.classify("parse error at line 5"), ErrorCategory::ParseError);
+        assert_eq!(
+            c.classify("parse error at line 5"),
+            ErrorCategory::ParseError
+        );
         assert_eq!(c.classify("invalid json input"), ErrorCategory::ParseError);
     }
 

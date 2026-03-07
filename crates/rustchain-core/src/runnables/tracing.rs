@@ -128,7 +128,9 @@ impl TraceEntry {
         map.insert("source".into(), Value::String(self.source.clone()));
         map.insert(
             "elapsed_ns".into(),
-            Value::Number(serde_json::Number::from(self.timestamp.elapsed().as_nanos() as u64)),
+            Value::Number(serde_json::Number::from(
+                self.timestamp.elapsed().as_nanos() as u64,
+            )),
         );
         if let Some(ref data) = self.data {
             map.insert("data".into(), data.clone());
@@ -588,25 +590,16 @@ mod tests {
     fn test_span_result_display() {
         assert_eq!(SpanResult::Ok.to_string(), "OK");
         assert_eq!(SpanResult::Pending.to_string(), "PENDING");
-        assert_eq!(
-            SpanResult::Error("bad".into()).to_string(),
-            "ERROR: bad"
-        );
+        assert_eq!(SpanResult::Error("bad".into()).to_string(), "ERROR: bad");
     }
 
     #[test]
     fn test_span_result_equality() {
         assert_eq!(SpanResult::Ok, SpanResult::Ok);
         assert_eq!(SpanResult::Pending, SpanResult::Pending);
-        assert_eq!(
-            SpanResult::Error("x".into()),
-            SpanResult::Error("x".into())
-        );
+        assert_eq!(SpanResult::Error("x".into()), SpanResult::Error("x".into()));
         assert_ne!(SpanResult::Ok, SpanResult::Pending);
-        assert_ne!(
-            SpanResult::Error("a".into()),
-            SpanResult::Error("b".into())
-        );
+        assert_ne!(SpanResult::Error("a".into()), SpanResult::Error("b".into()));
     }
 
     // -----------------------------------------------------------------------
@@ -774,15 +767,9 @@ mod tests {
     fn test_collector_entries_for_span() {
         let collector = TraceCollector::new();
         collector.log(TraceEntry::new(TraceLevel::Info, "no span", "s"));
-        collector.log(
-            TraceEntry::new(TraceLevel::Info, "in span A", "s").with_span("span-A"),
-        );
-        collector.log(
-            TraceEntry::new(TraceLevel::Warn, "also span A", "s").with_span("span-A"),
-        );
-        collector.log(
-            TraceEntry::new(TraceLevel::Info, "in span B", "s").with_span("span-B"),
-        );
+        collector.log(TraceEntry::new(TraceLevel::Info, "in span A", "s").with_span("span-A"));
+        collector.log(TraceEntry::new(TraceLevel::Warn, "also span A", "s").with_span("span-A"));
+        collector.log(TraceEntry::new(TraceLevel::Info, "in span B", "s").with_span("span-B"));
 
         let span_a = collector.entries_for_span("span-A");
         assert_eq!(span_a.len(), 2);

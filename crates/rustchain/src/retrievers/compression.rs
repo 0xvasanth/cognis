@@ -55,7 +55,11 @@ impl DocumentCompressor for LengthCompressor {
             let mut compressed = doc.clone();
             if compressed.page_content.len() > self.max_length {
                 // Truncate at char boundary.
-                let truncated: String = compressed.page_content.chars().take(self.max_length).collect();
+                let truncated: String = compressed
+                    .page_content
+                    .chars()
+                    .take(self.max_length)
+                    .collect();
                 compressed.page_content = truncated;
             }
             result.push(compressed);
@@ -116,7 +120,11 @@ impl SentenceExtractor {
     fn extract_keywords(query: &str) -> HashSet<String> {
         query
             .split_whitespace()
-            .map(|w| w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+            .map(|w| {
+                w.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_string()
+            })
             .filter(|w| !w.is_empty())
             .collect()
     }
@@ -209,7 +217,11 @@ impl RedundancyFilter {
     /// Convert text to a set of lowercased words.
     fn word_set(text: &str) -> HashSet<String> {
         text.split_whitespace()
-            .map(|w| w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+            .map(|w| {
+                w.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_string()
+            })
             .filter(|w| !w.is_empty())
             .collect()
     }
@@ -271,7 +283,11 @@ impl DocumentCompressor for RelevanceScorer {
     fn compress(&self, documents: &[Document], query: &str) -> Result<Vec<Document>> {
         let keywords: Vec<String> = query
             .split_whitespace()
-            .map(|w| w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+            .map(|w| {
+                w.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_string()
+            })
             .filter(|w| !w.is_empty())
             .collect();
 
@@ -341,12 +357,8 @@ impl MetadataFilter {
     fn satisfies(&self, metadata: &HashMap<String, Value>) -> bool {
         self.conditions.iter().all(|cond| match cond {
             MetadataCondition::RequireField(field) => metadata.contains_key(field),
-            MetadataCondition::RequireValue(field, value) => {
-                metadata.get(field).map_or(false, |v| v == value)
-            }
-            MetadataCondition::ExcludeValue(field, value) => {
-                metadata.get(field).map_or(true, |v| v != value)
-            }
+            MetadataCondition::RequireValue(field, value) => metadata.get(field) == Some(value),
+            MetadataCondition::ExcludeValue(field, value) => metadata.get(field) != Some(value),
         })
     }
 }
@@ -388,6 +400,7 @@ impl CompressorPipeline {
     }
 
     /// Add a compressor to the end of the pipeline.
+    #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, compressor: Box<dyn DocumentCompressor>) -> Self {
         self.compressors.push(compressor);
         self
@@ -471,10 +484,8 @@ mod tests {
     }
 
     fn doc_with_meta(content: &str, meta: Vec<(&str, Value)>) -> Document {
-        let metadata: HashMap<String, Value> = meta
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect();
+        let metadata: HashMap<String, Value> =
+            meta.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
         Document::new(content).with_metadata(metadata)
     }
 
@@ -526,7 +537,10 @@ mod tests {
     #[test]
     fn test_length_compressor_preserves_metadata() {
         let compressor = LengthCompressor::new(5);
-        let docs = vec![doc_with_meta("Hello World", vec![("source", json!("test.pdf"))])];
+        let docs = vec![doc_with_meta(
+            "Hello World",
+            vec![("source", json!("test.pdf"))],
+        )];
         let result = compressor.compress(&docs, "query").unwrap();
         assert_eq!(result[0].metadata.get("source"), Some(&json!("test.pdf")));
     }
@@ -592,7 +606,7 @@ mod tests {
         let filter = RedundancyFilter::new(0.8);
         let docs = vec![
             doc("the quick brown fox jumps over the lazy dog"),
-            doc("the quick brown fox jumps over the lazy dog"),  // exact duplicate
+            doc("the quick brown fox jumps over the lazy dog"), // exact duplicate
             doc("completely different content about something else"),
         ];
         let result = filter.compress(&docs, "query").unwrap();
@@ -606,7 +620,7 @@ mod tests {
         let filter = RedundancyFilter::new(0.7);
         let docs = vec![
             doc("the quick brown fox jumps over the lazy dog"),
-            doc("the quick brown fox leaps over the lazy dog"),  // very similar
+            doc("the quick brown fox leaps over the lazy dog"), // very similar
         ];
         let result = filter.compress(&docs, "query").unwrap();
         // High Jaccard similarity — should filter the second one.
@@ -616,10 +630,7 @@ mod tests {
     #[test]
     fn test_redundancy_filter_low_threshold_keeps_all() {
         let filter = RedundancyFilter::new(1.0);
-        let docs = vec![
-            doc("the quick brown fox"),
-            doc("the quick brown fox jumps"),
-        ];
+        let docs = vec![doc("the quick brown fox"), doc("the quick brown fox jumps")];
         let result = filter.compress(&docs, "query").unwrap();
         // Threshold 1.0 means only exact Jaccard=1.0 is filtered.
         assert_eq!(result.len(), 2);
@@ -740,8 +751,14 @@ mod tests {
             .require_field("source")
             .exclude_value("status", json!("draft"));
         let docs = vec![
-            doc_with_meta("good", vec![("source", json!("a")), ("status", json!("published"))]),
-            doc_with_meta("draft", vec![("source", json!("b")), ("status", json!("draft"))]),
+            doc_with_meta(
+                "good",
+                vec![("source", json!("a")), ("status", json!("published"))],
+            ),
+            doc_with_meta(
+                "draft",
+                vec![("source", json!("b")), ("status", json!("draft"))],
+            ),
             doc_with_meta("no source", vec![("status", json!("published"))]),
             doc("nothing"),
         ];
@@ -863,8 +880,14 @@ mod tests {
     #[test]
     fn test_retriever_end_to_end_with_pipeline() {
         let docs = vec![
-            doc_with_meta("rust is a great programming language. It is fast.", vec![("source", json!("docs"))]),
-            doc_with_meta("cooking pasta is easy. Boil water first.", vec![("source", json!("recipes"))]),
+            doc_with_meta(
+                "rust is a great programming language. It is fast.",
+                vec![("source", json!("docs"))],
+            ),
+            doc_with_meta(
+                "cooking pasta is easy. Boil water first.",
+                vec![("source", json!("recipes"))],
+            ),
             doc("no metadata here"),
         ];
         let pipeline = CompressorPipeline::new()

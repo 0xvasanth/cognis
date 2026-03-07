@@ -31,10 +31,7 @@ pub enum InterruptType {
     /// Pause **after** executing the named node.
     AfterNode(String),
     /// Pause at the named node only when the named condition is met.
-    Conditional {
-        node: String,
-        condition: String,
-    },
+    Conditional { node: String, condition: String },
     /// A manually triggered interrupt (not tied to any node).
     Manual,
     /// An interrupt that fires after a specified duration has elapsed.
@@ -214,7 +211,9 @@ impl TimeoutHandler {
 impl InterruptHandler for TimeoutHandler {
     fn handle(&self, payload: &InterruptPayload) -> Result<ResumeAction> {
         if payload.timestamp.elapsed() > self.timeout {
-            Ok(ResumeAction::Abort("Interrupt timeout exceeded".to_string()))
+            Ok(ResumeAction::Abort(
+                "Interrupt timeout exceeded".to_string(),
+            ))
         } else {
             Ok(ResumeAction::Continue)
         }
@@ -495,7 +494,10 @@ mod tests {
             InterruptType::BeforeNode("step1".to_string()),
             json!({"count": 1}),
         );
-        assert!(matches!(payload.interrupt_type, InterruptType::BeforeNode(_)));
+        assert!(matches!(
+            payload.interrupt_type,
+            InterruptType::BeforeNode(_)
+        ));
         assert_eq!(payload.state, json!({"count": 1}));
         assert!(payload.message.is_none());
         assert!(payload.options.is_empty());
@@ -503,8 +505,8 @@ mod tests {
 
     #[test]
     fn test_payload_with_message() {
-        let payload = InterruptPayload::new(InterruptType::Manual, json!({}))
-            .with_message("Please review");
+        let payload =
+            InterruptPayload::new(InterruptType::Manual, json!({})).with_message("Please review");
         assert_eq!(payload.message, Some("Please review".to_string()));
     }
 
@@ -519,12 +521,10 @@ mod tests {
 
     #[test]
     fn test_payload_to_json() {
-        let payload = InterruptPayload::new(
-            InterruptType::BeforeNode("n".to_string()),
-            json!({"x": 42}),
-        )
-        .with_message("check this")
-        .with_options(vec!["yes".to_string(), "no".to_string()]);
+        let payload =
+            InterruptPayload::new(InterruptType::BeforeNode("n".to_string()), json!({"x": 42}))
+                .with_message("check this")
+                .with_options(vec!["yes".to_string(), "no".to_string()]);
 
         let j = payload.to_json();
         assert_eq!(j["interrupt_type"], "BeforeNode(n)");
@@ -757,18 +757,14 @@ mod tests {
         mgr.set_node_handler("critical", Box::new(AbortHandler));
 
         // For the "critical" node, the per-node handler should take precedence.
-        let payload = InterruptPayload::new(
-            InterruptType::BeforeNode("critical".to_string()),
-            json!({}),
-        );
+        let payload =
+            InterruptPayload::new(InterruptType::BeforeNode("critical".to_string()), json!({}));
         let action = mgr.trigger(payload).unwrap();
         assert!(matches!(action, ResumeAction::Abort(_)));
 
         // For a different node, the global handler should be used.
-        let payload2 = InterruptPayload::new(
-            InterruptType::BeforeNode("normal".to_string()),
-            json!({}),
-        );
+        let payload2 =
+            InterruptPayload::new(InterruptType::BeforeNode("normal".to_string()), json!({}));
         let action2 = mgr.trigger(payload2).unwrap();
         assert!(matches!(action2, ResumeAction::Continue));
     }
@@ -857,22 +853,13 @@ mod tests {
     fn test_log_entries_for_node() {
         let mut log = InterruptLog::new();
 
-        let p1 = InterruptPayload::new(
-            InterruptType::BeforeNode("nodeA".to_string()),
-            json!({}),
-        );
+        let p1 = InterruptPayload::new(InterruptType::BeforeNode("nodeA".to_string()), json!({}));
         log.record(&p1, &ResumeAction::Continue);
 
-        let p2 = InterruptPayload::new(
-            InterruptType::AfterNode("nodeB".to_string()),
-            json!({}),
-        );
+        let p2 = InterruptPayload::new(InterruptType::AfterNode("nodeB".to_string()), json!({}));
         log.record(&p2, &ResumeAction::Skip);
 
-        let p3 = InterruptPayload::new(
-            InterruptType::BeforeNode("nodeA".to_string()),
-            json!({}),
-        );
+        let p3 = InterruptPayload::new(InterruptType::BeforeNode("nodeA".to_string()), json!({}));
         log.record(&p3, &ResumeAction::Retry);
 
         assert_eq!(log.entries_for_node("nodeA").len(), 2);
@@ -919,10 +906,8 @@ mod tests {
         ];
 
         for action in &actions {
-            let payload = InterruptPayload::new(
-                InterruptType::BeforeNode("n".to_string()),
-                json!({}),
-            );
+            let payload =
+                InterruptPayload::new(InterruptType::BeforeNode("n".to_string()), json!({}));
             log.record(&payload, action);
         }
 

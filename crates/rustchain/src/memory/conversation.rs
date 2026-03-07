@@ -373,8 +373,7 @@ impl ConversationMemory {
         if let Some(branch_name) = &self.current_branch {
             if let Some(branch) = self.branches.get(branch_name) {
                 let bp = branch.branch_point();
-                let mut refs: Vec<&ConversationTurn> =
-                    self.turns.iter().take(bp).collect();
+                let mut refs: Vec<&ConversationTurn> = self.turns.iter().take(bp).collect();
                 refs.extend(branch.turns().iter());
                 return refs;
             }
@@ -471,8 +470,7 @@ mod tests {
 
     #[test]
     fn test_turn_to_json() {
-        let turn = ConversationTurn::new("hi", "hello")
-            .with_metadata("key", json!("val"));
+        let turn = ConversationTurn::new("hi", "hello").with_metadata("key", json!("val"));
         let j = turn.to_json();
         assert_eq!(j["human"], "hi");
         assert_eq!(j["ai"], "hello");
@@ -561,8 +559,12 @@ mod tests {
         let turns: Vec<ConversationTurn> = Vec::new();
         assert!(ConversationWindow::All.apply(&turns).is_empty());
         assert!(ConversationWindow::Last(5).apply(&turns).is_empty());
-        assert!(ConversationWindow::TokenBudget(100).apply(&turns).is_empty());
-        assert!(ConversationWindow::TimeBased(Duration::from_secs(10)).apply(&turns).is_empty());
+        assert!(ConversationWindow::TokenBudget(100)
+            .apply(&turns)
+            .is_empty());
+        assert!(ConversationWindow::TimeBased(Duration::from_secs(10))
+            .apply(&turns)
+            .is_empty());
     }
 
     // ── ConversationBranch ────────────────────────────────────────────

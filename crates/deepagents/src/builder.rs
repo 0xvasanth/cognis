@@ -382,7 +382,10 @@ impl AgentBuilder {
 
         // Add suggested tools as tool specs.
         for tool_name in &preset.suggested_tools {
-            builder.tools.push(ToolSpec::new(tool_name, format!("Tool from preset: {tool_name}")));
+            builder.tools.push(ToolSpec::new(
+                tool_name,
+                format!("Tool from preset: {tool_name}"),
+            ));
         }
 
         builder
@@ -417,16 +420,12 @@ impl AgentBuilder {
 
         // Warning: Memory capability but memory not enabled.
         if self.capabilities.contains(&AgentCapability::Memory) && !self.memory_enabled {
-            warnings.push(
-                "Memory capability declared but memory_enabled is false".to_string(),
-            );
+            warnings.push("Memory capability declared but memory_enabled is false".to_string());
         }
 
         // Warning: Planning capability but planning not enabled.
         if self.capabilities.contains(&AgentCapability::Planning) && !self.planning_enabled {
-            warnings.push(
-                "Planning capability declared but planning_enabled is false".to_string(),
-            );
+            warnings.push("Planning capability declared but planning_enabled is false".to_string());
         }
 
         // Warning: no capabilities at all.
@@ -753,7 +752,8 @@ mod tests {
 
     #[test]
     fn test_tool_spec_with_schema() {
-        let schema = serde_json::json!({"type": "object", "properties": {"query": {"type": "string"}}});
+        let schema =
+            serde_json::json!({"type": "object", "properties": {"query": {"type": "string"}}});
         let tool = ToolSpec::new("search", "Search").with_schema(schema.clone());
         assert_eq!(tool.parameters_schema, Some(schema));
     }
@@ -812,7 +812,10 @@ mod tests {
         assert_eq!(profile.system_prompt, Some("You are helpful.".to_string()));
         assert_eq!(profile.temperature, Some(0.3));
         assert_eq!(profile.max_iterations, 20);
-        assert_eq!(profile.description, Some("A fully configured agent".to_string()));
+        assert_eq!(
+            profile.description,
+            Some("A fully configured agent".to_string())
+        );
         assert!(profile.has_capability(&AgentCapability::Chat));
         assert!(profile.has_capability(&AgentCapability::ToolUse));
         assert!(profile.has_capability(&AgentCapability::Memory));
@@ -828,7 +831,9 @@ mod tests {
             .capability(AgentCapability::ToolUse)
             .validate()
             .unwrap();
-        assert!(warnings.iter().any(|w| w.contains("ToolUse") && w.contains("no tools")));
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("ToolUse") && w.contains("no tools")));
     }
 
     #[test]
@@ -839,7 +844,9 @@ mod tests {
             .tool(ToolSpec::new("search", "Search"))
             .validate()
             .unwrap();
-        assert!(warnings.iter().any(|w| w.contains("ToolUse capability not declared")));
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("ToolUse capability not declared")));
     }
 
     #[test]
@@ -868,7 +875,9 @@ mod tests {
             .tool(ToolSpec::new("search", "Search 2"))
             .validate()
             .unwrap();
-        assert!(warnings.iter().any(|w| w.contains("Duplicate tool name: search")));
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("Duplicate tool name: search")));
     }
 
     // -- Build failure on missing required fields --
@@ -904,9 +913,7 @@ mod tests {
 
     #[test]
     fn test_from_preset_task_planner() {
-        let profile = AgentBuilder::from_preset("task-planner")
-            .build()
-            .unwrap();
+        let profile = AgentBuilder::from_preset("task-planner").build().unwrap();
         assert!(profile.has_capability(&AgentCapability::Planning));
         assert!(profile.has_capability(&AgentCapability::Memory));
     }
@@ -1084,10 +1091,7 @@ mod tests {
 
     #[test]
     fn test_builder_default_max_iterations() {
-        let profile = AgentBuilder::new("agent")
-            .model("gpt-4")
-            .build()
-            .unwrap();
+        let profile = AgentBuilder::new("agent").model("gpt-4").build().unwrap();
         assert_eq!(profile.max_iterations, 50);
     }
 
@@ -1099,7 +1103,11 @@ mod tests {
             .capability(AgentCapability::Chat);
         // Should only have one Chat capability.
         assert_eq!(
-            builder.capabilities.iter().filter(|c| **c == AgentCapability::Chat).count(),
+            builder
+                .capabilities
+                .iter()
+                .filter(|c| **c == AgentCapability::Chat)
+                .count(),
             1
         );
     }

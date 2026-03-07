@@ -70,7 +70,7 @@ impl SandboxPermission {
 // ---------------------------------------------------------------------------
 
 /// Resource caps for a sandbox execution environment.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResourceLimits {
     /// Maximum memory in megabytes.
     pub max_memory_mb: Option<u64>,
@@ -82,18 +82,6 @@ pub struct ResourceLimits {
     pub max_open_files: Option<u32>,
     /// Maximum number of concurrent network connections.
     pub max_network_connections: Option<u32>,
-}
-
-impl Default for ResourceLimits {
-    fn default() -> Self {
-        Self {
-            max_memory_mb: None,
-            max_cpu_seconds: None,
-            max_file_size_mb: None,
-            max_open_files: None,
-            max_network_connections: None,
-        }
-    }
 }
 
 impl ResourceLimits {

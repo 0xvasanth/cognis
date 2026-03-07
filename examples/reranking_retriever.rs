@@ -18,8 +18,8 @@
 use std::collections::HashMap;
 
 use rustchain::retrievers::reranking::{
-    CascadeReranker, KeywordReranker, LengthReranker, MetadataReranker, RerankerPipeline,
-    RerankingRetriever, Reranker, TfIdfReranker,
+    CascadeReranker, KeywordReranker, LengthReranker, MetadataReranker, Reranker, RerankerPipeline,
+    RerankingRetriever, TfIdfReranker,
 };
 use rustchain_core::documents::Document;
 use serde_json::json;

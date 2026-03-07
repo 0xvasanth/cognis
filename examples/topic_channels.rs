@@ -32,11 +32,14 @@ fn main() {
     let msg1 = TopicMessage::new("orders.created", json!({"order_id": 1001, "amount": 59.99}))
         .with_sender("order_service");
 
-    let msg2 = TopicMessage::new("orders.shipped", json!({"order_id": 1001, "carrier": "FedEx"}))
-        .with_sender("shipping_service");
+    let msg2 = TopicMessage::new(
+        "orders.shipped",
+        json!({"order_id": 1001, "carrier": "FedEx"}),
+    )
+    .with_sender("shipping_service");
 
-    let msg3 = TopicMessage::new("logs.info", json!("System started successfully"))
-        .with_sender("system");
+    let msg3 =
+        TopicMessage::new("logs.info", json!("System started successfully")).with_sender("system");
 
     println!("Message 1: {}", msg1.to_json());
     println!("Message 2: {}", msg2.to_json());
@@ -93,16 +96,10 @@ fn main() {
     let mut channel = TopicChannel::new();
 
     // Publish messages
-    channel.publish(TopicMessage::new(
-        "orders.created",
-        json!({"id": 1}),
-    ));
+    channel.publish(TopicMessage::new("orders.created", json!({"id": 1})));
     channel.publish(TopicMessage::new("orders.shipped", json!({"id": 2})));
     channel.publish(TopicMessage::new("logs.info", json!("health check ok")));
-    channel.publish(TopicMessage::new(
-        "orders.created",
-        json!({"id": 3}),
-    ));
+    channel.publish(TopicMessage::new("orders.created", json!({"id": 3})));
 
     println!("Published 4 messages");
     println!("Total messages: {}", channel.message_count());
@@ -110,10 +107,7 @@ fn main() {
 
     // Subscribe to specific topics
     let order_msgs = channel.subscribe(TopicFilter::Prefix("orders.".to_string()));
-    println!(
-        "\nSubscribe to 'orders.*': {} messages",
-        order_msgs.len()
-    );
+    println!("\nSubscribe to 'orders.*': {} messages", order_msgs.len());
     for msg in &order_msgs {
         println!(
             "  [seq: {}] topic={}, payload={}",
@@ -144,10 +138,7 @@ fn main() {
     println!("Routes messages to named handlers based on filter rules.\n");
 
     let mut router = TopicRouter::new();
-    router.add_route(
-        TopicFilter::Prefix("orders.".to_string()),
-        "order_handler",
-    );
+    router.add_route(TopicFilter::Prefix("orders.".to_string()), "order_handler");
     router.add_route(TopicFilter::Prefix("logs.".to_string()), "log_handler");
     router.add_route(
         TopicFilter::Exact("metrics.cpu".to_string()),
@@ -155,7 +146,11 @@ fn main() {
     );
     router.add_route(TopicFilter::All, "audit_handler");
 
-    println!("Registered {} routes: {:?}\n", router.len(), router.routes());
+    println!(
+        "Registered {} routes: {:?}\n",
+        router.len(),
+        router.routes()
+    );
 
     let test_messages = vec![
         TopicMessage::new("orders.created", Value::Null),
@@ -166,10 +161,7 @@ fn main() {
 
     for msg in &test_messages {
         let handlers = router.route(msg);
-        println!(
-            "  topic='{}' -> handlers: {:?}",
-            msg.topic, handlers
-        );
+        println!("  topic='{}' -> handlers: {:?}", msg.topic, handlers);
     }
 
     // -----------------------------------------------------------------------
@@ -201,10 +193,7 @@ fn main() {
     let mut bus = TopicBus::new();
 
     // Register routes
-    bus.add_route(
-        TopicFilter::Prefix("orders.".to_string()),
-        "order_service",
-    );
+    bus.add_route(TopicFilter::Prefix("orders.".to_string()), "order_service");
     bus.add_route(TopicFilter::Prefix("logs.".to_string()), "log_service");
     bus.add_route(
         TopicFilter::Pattern("metrics.*".to_string()),
@@ -215,13 +204,9 @@ fn main() {
     println!("Publishing messages to the bus...\n");
 
     let handlers = bus.publish(
-        TopicMessage::new("orders.created", json!({"order_id": 101}))
-            .with_sender("api_gateway"),
+        TopicMessage::new("orders.created", json!({"order_id": 101})).with_sender("api_gateway"),
     );
-    println!(
-        "  'orders.created' -> routed to: {:?}",
-        handlers
-    );
+    println!("  'orders.created' -> routed to: {:?}", handlers);
 
     let handlers = bus.publish(
         TopicMessage::new("logs.error", json!("Database connection timeout"))
@@ -229,13 +214,9 @@ fn main() {
     );
     println!("  'logs.error' -> routed to: {:?}", handlers);
 
-    let handlers = bus.publish(
-        TopicMessage::new("metrics.cpu", json!({"usage": 78.5})).with_sender("monitor"),
-    );
-    println!(
-        "  'metrics.cpu' -> routed to: {:?}",
-        handlers
-    );
+    let handlers = bus
+        .publish(TopicMessage::new("metrics.cpu", json!({"usage": 78.5})).with_sender("monitor"));
+    println!("  'metrics.cpu' -> routed to: {:?}", handlers);
 
     let handlers = bus.publish(
         TopicMessage::new("notifications.email", json!({"to": "user@example.com"}))
@@ -269,9 +250,7 @@ fn main() {
     for msg in &order_msgs {
         println!(
             "  [seq: {}] sender={:?}, payload={}",
-            msg.sequence,
-            msg.sender,
-            msg.payload
+            msg.sequence, msg.sender, msg.payload
         );
     }
 

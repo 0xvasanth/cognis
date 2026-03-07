@@ -111,10 +111,7 @@ pub enum ValidationRule {
     /// String values must match this regex pattern.
     Pattern(String),
     /// Numeric values must fall within the given range.
-    Range {
-        min: Option<f64>,
-        max: Option<f64>,
-    },
+    Range { min: Option<f64>, max: Option<f64> },
     /// The value must be one of the specified values.
     OneOf(Vec<Value>),
     /// A custom validation function.
@@ -389,10 +386,7 @@ impl FieldValidator {
                         if !re.is_match(s) {
                             return Err(self.make_error(
                                 "pattern",
-                                format!(
-                                    "field '{}' does not match pattern '{}'",
-                                    self.field, pat
-                                ),
+                                format!("field '{}' does not match pattern '{}'", self.field, pat),
                             ));
                         }
                     }
@@ -918,8 +912,8 @@ impl ToolCallValidator {
                 if let Some(schema) = schemas.get(&tc.name) {
                     self.validate(tc, schema)
                 } else {
-                    let args_value = serde_json::to_value(&tc.args)
-                        .unwrap_or(Value::Object(Default::default()));
+                    let args_value =
+                        serde_json::to_value(&tc.args).unwrap_or(Value::Object(Default::default()));
                     ValidationResult {
                         is_valid: false,
                         errors: vec![ValidationError::InvalidValue {
@@ -1494,21 +1488,15 @@ mod tests {
 
     #[test]
     fn test_rule_one_of_valid() {
-        let fv = FieldValidator::new("color").one_of(vec![
-            json!("red"),
-            json!("green"),
-            json!("blue"),
-        ]);
+        let fv =
+            FieldValidator::new("color").one_of(vec![json!("red"), json!("green"), json!("blue")]);
         assert!(fv.validate(&json!({"color": "red"})).is_ok());
     }
 
     #[test]
     fn test_rule_one_of_invalid() {
-        let fv = FieldValidator::new("color").one_of(vec![
-            json!("red"),
-            json!("green"),
-            json!("blue"),
-        ]);
+        let fv =
+            FieldValidator::new("color").one_of(vec![json!("red"), json!("green"), json!("blue")]);
         assert!(fv.validate(&json!({"color": "yellow"})).is_err());
     }
 
@@ -1551,7 +1539,11 @@ mod tests {
     #[test]
     fn test_tool_validator_all_valid() {
         let mut tv = ToolValidator::new();
-        tv.add_field(FieldValidator::new("query").required().typed(JsonType::String));
+        tv.add_field(
+            FieldValidator::new("query")
+                .required()
+                .typed(JsonType::String),
+        );
         tv.add_field(FieldValidator::new("limit").typed(JsonType::Number));
 
         let result = tv.validate(&json!({"query": "test", "limit": 10}));
@@ -1562,8 +1554,16 @@ mod tests {
     #[test]
     fn test_tool_validator_multiple_errors() {
         let mut tv = ToolValidator::new();
-        tv.add_field(FieldValidator::new("query").required().typed(JsonType::String));
-        tv.add_field(FieldValidator::new("limit").required().typed(JsonType::Integer));
+        tv.add_field(
+            FieldValidator::new("query")
+                .required()
+                .typed(JsonType::String),
+        );
+        tv.add_field(
+            FieldValidator::new("limit")
+                .required()
+                .typed(JsonType::Integer),
+        );
 
         let result = tv.validate(&json!({}));
         assert!(!result.is_valid());
@@ -1706,7 +1706,11 @@ mod tests {
     #[test]
     fn test_validated_tool_input_valid() {
         let mut tv = ToolValidator::new();
-        tv.add_field(FieldValidator::new("query").required().typed(JsonType::String));
+        tv.add_field(
+            FieldValidator::new("query")
+                .required()
+                .typed(JsonType::String),
+        );
 
         let ov = OutputValidator::new().expect_type(JsonType::Object);
 
@@ -1763,7 +1767,11 @@ mod tests {
     #[test]
     fn test_validation_result_add_errors() {
         let mut result = InputValidationResult::new();
-        result.add_error(InputValidationError::new("field1", "required", "missing field1"));
+        result.add_error(InputValidationError::new(
+            "field1",
+            "required",
+            "missing field1",
+        ));
         result.add_error(InputValidationError::new("field2", "type", "wrong type"));
 
         assert!(!result.is_valid());
@@ -1774,7 +1782,11 @@ mod tests {
     #[test]
     fn test_validation_result_to_json() {
         let mut result = InputValidationResult::new();
-        result.add_error(InputValidationError::new("name", "required", "name is required"));
+        result.add_error(InputValidationError::new(
+            "name",
+            "required",
+            "name is required",
+        ));
 
         let j = result.to_json();
         assert_eq!(j["is_valid"], json!(false));

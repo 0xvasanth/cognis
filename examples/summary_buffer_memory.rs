@@ -41,11 +41,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Message::ai("The capital of Germany is Berlin."),
     ];
 
-    let summary = rustchain::memory::summary_buffer::Summarizer::summarize(
-        &summarizer,
-        &messages,
-        None,
-    )?;
+    let summary =
+        rustchain::memory::summary_buffer::Summarizer::summarize(&summarizer, &messages, None)?;
     println!("Summary (no prior context):");
     println!("{}\n", summary);
 
@@ -66,7 +63,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. TemplateSummarizer — custom template with placeholders
     // -----------------------------------------------------------------------
     println!("--- 2. TemplateSummarizer ---");
-    println!("Uses a configurable template with {{messages}} and {{existing_summary}} placeholders.\n");
+    println!(
+        "Uses a configurable template with {{messages}} and {{existing_summary}} placeholders.\n"
+    );
 
     let template_summarizer = TemplateSummarizer::new(
         "=== Conversation Summary ===\nPrior: {existing_summary}\n\nRecent:\n{messages}",
@@ -122,10 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nSummarization was triggered!");
         println!("Current summary:");
         println!("  {}", memory.current_summary().unwrap());
-        println!(
-            "Remaining messages in buffer: {}",
-            memory.message_count()
-        );
+        println!("Remaining messages in buffer: {}", memory.message_count());
     }
 
     println!("\nContext output (JSON):");
@@ -140,12 +136,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Strategy: First (summarize only the oldest message)
     println!("Strategy: First (summarize only the oldest message)");
-    let mut mem_first = SummaryBufferMemory::new(25, SimpleSummarizer::new())
-        .with_strategy(SummaryStrategy::First);
+    let mut mem_first =
+        SummaryBufferMemory::new(25, SimpleSummarizer::new()).with_strategy(SummaryStrategy::First);
 
-    mem_first.add_message(Message::human("First question about weather patterns around the world"))?;
-    mem_first.add_message(Message::ai("Weather patterns vary greatly by region and season"))?;
-    mem_first.add_message(Message::human("Tell me more about tropical storms and hurricanes"))?;
+    mem_first.add_message(Message::human(
+        "First question about weather patterns around the world",
+    ))?;
+    mem_first.add_message(Message::ai(
+        "Weather patterns vary greatly by region and season",
+    ))?;
+    mem_first.add_message(Message::human(
+        "Tell me more about tropical storms and hurricanes",
+    ))?;
 
     println!(
         "  Messages remaining: {}, Has summary: {}",
@@ -158,10 +160,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut mem_sliding = SummaryBufferMemory::new(15, SimpleSummarizer::new())
         .with_strategy(SummaryStrategy::Sliding(2));
 
-    mem_sliding.add_message(Message::human("Message one about artificial intelligence research"))?;
-    mem_sliding.add_message(Message::ai("AI research has made significant advances recently"))?;
+    mem_sliding.add_message(Message::human(
+        "Message one about artificial intelligence research",
+    ))?;
+    mem_sliding.add_message(Message::ai(
+        "AI research has made significant advances recently",
+    ))?;
     mem_sliding.add_message(Message::human("What about machine learning specifically"))?;
-    mem_sliding.add_message(Message::ai("Machine learning is a subset of AI focused on data"))?;
+    mem_sliding.add_message(Message::ai(
+        "Machine learning is a subset of AI focused on data",
+    ))?;
 
     println!(
         "  Messages remaining: {}, Has summary: {}",
@@ -188,8 +196,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     mem_built.add_message(Message::human("Hello, I need help with my Rust project"))?;
-    mem_built.add_message(Message::ai("Of course! I would be happy to help with your Rust project"))?;
-    mem_built.add_message(Message::human("How do I use traits effectively in Rust programming"))?;
+    mem_built.add_message(Message::ai(
+        "Of course! I would be happy to help with your Rust project",
+    ))?;
+    mem_built.add_message(Message::human(
+        "How do I use traits effectively in Rust programming",
+    ))?;
 
     let built_context = mem_built.get_context();
     println!("Custom-configured context (key='conversation', prefixes='User'/'Assistant'):");

@@ -31,6 +31,7 @@ impl SnapshotId {
     }
 
     /// Create a `SnapshotId` from a string slice.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         Self(s.to_string())
     }
@@ -247,10 +248,7 @@ impl<'a> TimeTravelDebugger<'a> {
 
     /// Find the first snapshot recorded at the given step number.
     pub fn goto_step(&self, step: usize) -> Option<&'a StateSnapshot> {
-        self.store
-            .snapshots
-            .iter()
-            .find(|s| s.step == step)
+        self.store.snapshots.iter().find(|s| s.step == step)
     }
 
     /// Find a snapshot by its ID.
@@ -490,8 +488,8 @@ mod tests {
 
     #[test]
     fn test_state_snapshot_to_json() {
-        let snap = StateSnapshot::new(json!({"x": 42}), "compute", 3)
-            .with_metadata("tag", json!("test"));
+        let snap =
+            StateSnapshot::new(json!({"x": 42}), "compute", 3).with_metadata("tag", json!("test"));
         let j = snap.to_json();
         assert_eq!(j["node_name"], "compute");
         assert_eq!(j["step"], 3);
@@ -906,9 +904,21 @@ mod tests {
     #[test]
     fn test_full_workflow_save_navigate_diff() {
         let mut store = SnapshotStore::new();
-        store.save(StateSnapshot::new(json!({"x": 0, "y": "hello"}), "start", 0));
-        store.save(StateSnapshot::new(json!({"x": 1, "y": "hello"}), "step1", 1));
-        store.save(StateSnapshot::new(json!({"x": 2, "y": "world", "z": true}), "step2", 2));
+        store.save(StateSnapshot::new(
+            json!({"x": 0, "y": "hello"}),
+            "start",
+            0,
+        ));
+        store.save(StateSnapshot::new(
+            json!({"x": 1, "y": "hello"}),
+            "step1",
+            1,
+        ));
+        store.save(StateSnapshot::new(
+            json!({"x": 2, "y": "world", "z": true}),
+            "step2",
+            2,
+        ));
 
         let dbg = TimeTravelDebugger::new(&store);
 

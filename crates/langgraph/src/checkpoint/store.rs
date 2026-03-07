@@ -152,9 +152,7 @@ mod optional_duration_serde {
         }
     }
 
-    pub fn deserialize<'de, D>(
-        deserializer: D,
-    ) -> std::result::Result<Option<Duration>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> std::result::Result<Option<Duration>, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -771,15 +769,9 @@ mod tests {
     #[test]
     fn test_in_memory_store_list_by_namespace() {
         let mut store = InMemoryStore::new();
-        store
-            .put(StoreKey::new("alpha", "a1"), json!("a"))
-            .unwrap();
-        store
-            .put(StoreKey::new("alpha", "a2"), json!("b"))
-            .unwrap();
-        store
-            .put(StoreKey::new("beta", "b1"), json!("c"))
-            .unwrap();
+        store.put(StoreKey::new("alpha", "a1"), json!("a")).unwrap();
+        store.put(StoreKey::new("alpha", "a2"), json!("b")).unwrap();
+        store.put(StoreKey::new("beta", "b1"), json!("c")).unwrap();
 
         let alpha = store.list("alpha").unwrap();
         assert_eq!(alpha.len(), 2);
@@ -799,15 +791,9 @@ mod tests {
     #[test]
     fn test_in_memory_store_clear_namespace() {
         let mut store = InMemoryStore::new();
-        store
-            .put(StoreKey::new("alpha", "a1"), json!(1))
-            .unwrap();
-        store
-            .put(StoreKey::new("alpha", "a2"), json!(2))
-            .unwrap();
-        store
-            .put(StoreKey::new("beta", "b1"), json!(3))
-            .unwrap();
+        store.put(StoreKey::new("alpha", "a1"), json!(1)).unwrap();
+        store.put(StoreKey::new("alpha", "a2"), json!(2)).unwrap();
+        store.put(StoreKey::new("beta", "b1"), json!(3)).unwrap();
 
         let removed = store.clear("alpha").unwrap();
         assert_eq!(removed, 2);
@@ -826,15 +812,9 @@ mod tests {
     #[test]
     fn test_in_memory_store_namespaces() {
         let mut store = InMemoryStore::new();
-        store
-            .put(StoreKey::new("beta", "b1"), json!(1))
-            .unwrap();
-        store
-            .put(StoreKey::new("alpha", "a1"), json!(2))
-            .unwrap();
-        store
-            .put(StoreKey::new("alpha", "a2"), json!(3))
-            .unwrap();
+        store.put(StoreKey::new("beta", "b1"), json!(1)).unwrap();
+        store.put(StoreKey::new("alpha", "a1"), json!(2)).unwrap();
+        store.put(StoreKey::new("alpha", "a2"), json!(3)).unwrap();
 
         let ns = store.namespaces();
         assert_eq!(ns, vec!["alpha", "beta"]);
@@ -876,21 +856,14 @@ mod tests {
         let cleaned = store.cleanup_expired();
         assert_eq!(cleaned, 1);
         assert_eq!(store.len(), 1);
-        assert!(store
-            .get(&StoreKey::new("ns", "keep"))
-            .unwrap()
-            .is_some());
+        assert!(store.get(&StoreKey::new("ns", "keep")).unwrap().is_some());
     }
 
     #[test]
     fn test_in_memory_store_list_excludes_expired() {
         let mut store = InMemoryStore::new();
-        store
-            .put(StoreKey::new("ns", "alive"), json!(1))
-            .unwrap();
-        store
-            .put(StoreKey::new("ns", "dead"), json!(2))
-            .unwrap();
+        store.put(StoreKey::new("ns", "alive"), json!(1)).unwrap();
+        store.put(StoreKey::new("ns", "dead"), json!(2)).unwrap();
 
         let expire_key = StoreKey::new("ns", "dead").full_key();
         if let Some((_, val)) = store.data.get_mut(&expire_key) {
@@ -947,12 +920,8 @@ mod tests {
         let inner = InMemoryStore::new();
         let mut ns_store = NamespacedStore::new(Box::new(inner), "pfx");
 
-        ns_store
-            .put(StoreKey::new("ns", "k1"), json!(1))
-            .unwrap();
-        ns_store
-            .put(StoreKey::new("ns", "k2"), json!(2))
-            .unwrap();
+        ns_store.put(StoreKey::new("ns", "k1"), json!(1)).unwrap();
+        ns_store.put(StoreKey::new("ns", "k2"), json!(2)).unwrap();
 
         let removed = ns_store.clear("ns").unwrap();
         assert_eq!(removed, 2);
@@ -968,10 +937,7 @@ mod tests {
         let mut batch = BatchStore::new(Box::new(store));
 
         assert_eq!(batch.operation_count(), 0);
-        batch.add_operation(StoreOperation::Put(
-            StoreKey::new("ns", "k1"),
-            json!(1),
-        ));
+        batch.add_operation(StoreOperation::Put(StoreKey::new("ns", "k1"), json!(1)));
         batch.add_operation(StoreOperation::Get(StoreKey::new("ns", "k1")));
         assert_eq!(batch.operation_count(), 2);
     }
@@ -981,10 +947,7 @@ mod tests {
         let store = InMemoryStore::new();
         let mut batch = BatchStore::new(Box::new(store));
 
-        batch.add_operation(StoreOperation::Put(
-            StoreKey::new("ns", "k1"),
-            json!(42),
-        ));
+        batch.add_operation(StoreOperation::Put(StoreKey::new("ns", "k1"), json!(42)));
         batch.add_operation(StoreOperation::Get(StoreKey::new("ns", "k1")));
 
         let results = batch.execute().unwrap();
@@ -1003,10 +966,7 @@ mod tests {
         let store = InMemoryStore::new();
         let mut batch = BatchStore::new(Box::new(store));
 
-        batch.add_operation(StoreOperation::Put(
-            StoreKey::new("ns", "k1"),
-            json!(1),
-        ));
+        batch.add_operation(StoreOperation::Put(StoreKey::new("ns", "k1"), json!(1)));
         batch.add_operation(StoreOperation::Delete(StoreKey::new("ns", "k1")));
         batch.add_operation(StoreOperation::Delete(StoreKey::new("ns", "k1")));
 
@@ -1020,14 +980,8 @@ mod tests {
         let store = InMemoryStore::new();
         let mut batch = BatchStore::new(Box::new(store));
 
-        batch.add_operation(StoreOperation::Put(
-            StoreKey::new("ns", "a"),
-            json!(1),
-        ));
-        batch.add_operation(StoreOperation::Put(
-            StoreKey::new("ns", "b"),
-            json!(2),
-        ));
+        batch.add_operation(StoreOperation::Put(StoreKey::new("ns", "a"), json!(1)));
+        batch.add_operation(StoreOperation::Put(StoreKey::new("ns", "b"), json!(2)));
         batch.add_operation(StoreOperation::List("ns".to_string()));
         batch.add_operation(StoreOperation::Clear("ns".to_string()));
         batch.add_operation(StoreOperation::List("ns".to_string()));
@@ -1050,10 +1004,7 @@ mod tests {
         let store = InMemoryStore::new();
         let mut batch = BatchStore::new(Box::new(store));
 
-        batch.add_operation(StoreOperation::Put(
-            StoreKey::new("ns", "k"),
-            json!(1),
-        ));
+        batch.add_operation(StoreOperation::Put(StoreKey::new("ns", "k"), json!(1)));
         batch.execute().unwrap();
         assert_eq!(batch.operation_count(), 0);
     }

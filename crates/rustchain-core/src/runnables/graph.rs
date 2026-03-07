@@ -1245,12 +1245,8 @@ mod tests {
         g.add_node(GraphNode::new("path_b", "PathB", NodeType::Runnable));
         g.add_node(GraphNode::new("end", "End", NodeType::Output));
         g.add_edge(GraphEdge::new("start", "check"));
-        g.add_edge(
-            GraphEdge::new("check", "path_a").with_condition("value > 10"),
-        );
-        g.add_edge(
-            GraphEdge::new("check", "path_b").with_condition("value <= 10"),
-        );
+        g.add_edge(GraphEdge::new("check", "path_a").with_condition("value > 10"));
+        g.add_edge(GraphEdge::new("check", "path_b").with_condition("value <= 10"));
         g.add_edge(GraphEdge::new("path_a", "end"));
         g.add_edge(GraphEdge::new("path_b", "end"));
 
@@ -1277,14 +1273,8 @@ mod tests {
     fn test_node_type_equality() {
         assert_eq!(NodeType::Runnable, NodeType::Runnable);
         assert_ne!(NodeType::Input, NodeType::Output);
-        assert_eq!(
-            NodeType::Custom("x".into()),
-            NodeType::Custom("x".into())
-        );
-        assert_ne!(
-            NodeType::Custom("x".into()),
-            NodeType::Custom("y".into())
-        );
+        assert_eq!(NodeType::Custom("x".into()), NodeType::Custom("x".into()));
+        assert_ne!(NodeType::Custom("x".into()), NodeType::Custom("y".into()));
     }
 
     #[test]

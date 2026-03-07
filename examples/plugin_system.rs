@@ -16,9 +16,7 @@
 //!
 //! Run with: `cargo run -p rustchain-examples --example plugin_system`
 
-use deepagents::plugins::{
-    Plugin, PluginCapability, PluginRegistry, SimplePlugin,
-};
+use deepagents::plugins::{Plugin, PluginCapability, PluginRegistry, SimplePlugin};
 
 fn main() {
     println!("=== Plugin System Example ===\n");
@@ -47,9 +45,21 @@ fn main() {
         .with_description("Observability plugin with tracing, metrics, and event logging");
 
     println!("Created plugins:");
-    println!("  - {} v{}", tool_plugin.metadata().name, tool_plugin.metadata().version);
-    println!("  - {} v{}", middleware_plugin.metadata().name, middleware_plugin.metadata().version);
-    println!("  - {} v{}", multi_plugin.metadata().name, multi_plugin.metadata().version);
+    println!(
+        "  - {} v{}",
+        tool_plugin.metadata().name,
+        tool_plugin.metadata().version
+    );
+    println!(
+        "  - {} v{}",
+        middleware_plugin.metadata().name,
+        middleware_plugin.metadata().version
+    );
+    println!(
+        "  - {} v{}",
+        multi_plugin.metadata().name,
+        multi_plugin.metadata().version
+    );
 
     // Show metadata JSON
     println!("\nPlugin metadata (JSON):");
@@ -71,10 +81,7 @@ fn main() {
     registry.register(Box::new(middleware_plugin)).unwrap();
     registry.register(Box::new(multi_plugin)).unwrap();
 
-    println!(
-        "Registered {} plugins in the registry",
-        registry.len()
-    );
+    println!("Registered {} plugins in the registry", registry.len());
 
     // Check initial status
     let web_search = registry.get("web-search").unwrap();
@@ -96,16 +103,9 @@ fn main() {
 
     // Check active plugins
     let active = registry.active_plugins();
-    println!(
-        "\nActive plugins ({}):",
-        active.len()
-    );
+    println!("\nActive plugins ({}):", active.len());
     for plugin in &active {
-        println!(
-            "  - {} (status: {})",
-            plugin.name(),
-            plugin.status()
-        );
+        println!("  - {} (status: {})", plugin.name(), plugin.status());
     }
 
     // rate-limiter is loaded but not active
@@ -123,7 +123,10 @@ fn main() {
 
     // Reactivate
     registry.activate("web-search").unwrap();
-    println!("  Reactivated 'web-search': {}", registry.get("web-search").unwrap().status());
+    println!(
+        "  Reactivated 'web-search': {}",
+        registry.get("web-search").unwrap().status()
+    );
 
     // -----------------------------------------------------------------------
     // 4. Capability Filtering
@@ -132,37 +135,26 @@ fn main() {
     println!("Find plugins that provide specific capabilities.\n");
 
     let tool_providers = registry.plugins_with_capability(&PluginCapability::ToolProvider);
-    println!(
-        "ToolProvider plugins ({}):",
-        tool_providers.len()
-    );
+    println!("ToolProvider plugins ({}):", tool_providers.len());
     for p in &tool_providers {
         println!("  - {}", p.name());
     }
 
     let mw_providers = registry.plugins_with_capability(&PluginCapability::MiddlewareProvider);
-    println!(
-        "\nMiddlewareProvider plugins ({}):",
-        mw_providers.len()
-    );
+    println!("\nMiddlewareProvider plugins ({}):", mw_providers.len());
     for p in &mw_providers {
         println!("  - {}", p.name());
     }
 
     let event_handlers = registry.plugins_with_capability(&PluginCapability::EventHandler);
-    println!(
-        "\nEventHandler plugins ({}):",
-        event_handlers.len()
-    );
+    println!("\nEventHandler plugins ({}):", event_handlers.len());
     for p in &event_handlers {
         println!("  - {}", p.name());
     }
 
-    let custom = registry.plugins_with_capability(&PluginCapability::Custom("telemetry".to_string()));
-    println!(
-        "\nCustom('telemetry') plugins ({}):",
-        custom.len()
-    );
+    let custom =
+        registry.plugins_with_capability(&PluginCapability::Custom("telemetry".to_string()));
+    println!("\nCustom('telemetry') plugins ({}):", custom.len());
     for p in &custom {
         println!("  - {}", p.name());
     }
@@ -244,10 +236,7 @@ fn main() {
     registry.deactivate("web-search").unwrap();
     registry.unregister("web-search").unwrap();
     println!("Unregistered 'web-search'");
-    println!(
-        "Registry now has {} plugins",
-        registry.len()
-    );
+    println!("Registry now has {} plugins", registry.len());
     println!(
         "'web-search' found: {}",
         registry.get("web-search").is_some()
