@@ -12,6 +12,7 @@ pub mod message;
 pub mod persistent;
 pub mod send;
 pub mod serialize;
+pub mod snapshot;
 pub mod state;
 pub mod stream_events;
 pub mod subgraph;
@@ -30,6 +31,10 @@ pub use message::{add_messages, message_graph};
 pub use persistent::PersistentGraph;
 pub use send::{deep_merge_values, fan_in, fan_out, send_to, MapReduceGraph, SendCommand};
 pub use serialize::{ConditionalEdgeDef, GraphDefinition, GraphRegistry};
+pub use snapshot::{
+    ExecutionStep, FileSnapshotStorage, GraphSnapshot, InMemorySnapshotStorage, SnapshotDiff,
+    SnapshotManager, SnapshotStorage, SnapshotSummary,
+};
 pub use state::{AsyncNodeAction, CompiledStateGraph, NodeAction, NodeSpec, StateGraph};
 pub use stream_events::{stream_graph_events, GraphEventCollector, GraphStreamEvent};
 pub use subgraph::SubgraphNode;

@@ -26,3 +26,4 @@ postgres = ["dep:sqlx"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"
