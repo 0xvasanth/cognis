@@ -13,6 +13,7 @@ pub mod fallbacks;
 pub mod graph;
 pub mod history;
 pub mod lambda;
+pub mod middleware;
 pub mod parallel;
 pub mod passthrough;
 pub mod pipe;
@@ -58,6 +59,10 @@ pub use graph::{
 };
 pub use history::{ConfigurableFieldSpec, RunnableWithMessageHistory};
 pub use lambda::RunnableLambda;
+pub use middleware::{
+    LoggingMiddleware, MiddlewareAction, MiddlewareChain, RetryMiddleware, RunnableMiddleware,
+    RunnableWithMiddleware, TimingMiddleware, TransformMiddleware, ValidationMiddleware,
+};
 pub use parallel::RunnableParallel;
 pub use passthrough::RunnablePassthrough;
 pub use pipe::{pipe as pipe_fn, PipeBuilder, RunnablePipe};
