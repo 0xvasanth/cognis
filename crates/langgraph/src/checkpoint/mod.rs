@@ -10,6 +10,8 @@
 //! - [`InMemoryCheckpointSaver`] (re-exported from pregel) — ephemeral, for testing
 //! - [`SqliteCheckpointSaver`] (behind the `sqlite` feature) — durable SQLite storage
 
+pub mod serialization;
+
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 

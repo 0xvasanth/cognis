@@ -15,6 +15,7 @@ thiserror.workspace = true
 uuid.workspace = true
 futures.workspace = true
 base64.workspace = true
+flate2 = "1"
 tokio-stream.workspace = true
 sqlx = { workspace = true, optional = true }
 
