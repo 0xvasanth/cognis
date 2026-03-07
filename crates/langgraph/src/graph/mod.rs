@@ -33,6 +33,7 @@ pub mod stream_writer;
 pub mod subgraph;
 pub mod time_travel;
 pub mod ui;
+pub mod validator;
 
 pub use annotations::{
     apply_annotations, AnnotatedState, AnnotatedStateBuilder, AnnotatedStateGraph,
@@ -65,3 +66,7 @@ pub use stream_writer::{FilteredStream, StreamChunk, StreamCollector, StreamRead
 pub use subgraph::SubgraphNode;
 pub use time_travel::TimeTravelEngine;
 pub use ui::{ui_message_reducer, AnyUIMessage, RemoveUIMessage, UIMessage};
+pub use validator::{
+    CycleDetector, GraphValidator, ReachabilityAnalyzer, ValidationIssue, ValidationResult,
+    ValidationSeverity,
+};
