@@ -300,7 +300,7 @@ fn main() {
     println!("  Total accesses: {}", stats.total_accesses);
     println!("  Categories:");
     let mut cats: Vec<_> = stats.categories.iter().collect();
-    cats.sort_by_key(|(k, _)| k.clone());
+    cats.sort_by_key(|(k, _)| (*k).clone());
     for (cat, count) in &cats {
         println!("    {}: {}", cat, count);
     }
