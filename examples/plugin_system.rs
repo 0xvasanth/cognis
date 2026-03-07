@@ -17,7 +17,7 @@
 //! Run with: `cargo run -p rustchain-examples --example plugin_system`
 
 use deepagents::plugins::{
-    PluginCapability, PluginRegistry, SimplePlugin,
+    Plugin, PluginCapability, PluginRegistry, SimplePlugin,
 };
 
 fn main() {
