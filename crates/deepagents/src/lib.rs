@@ -27,6 +27,19 @@
 //!
 //! - [`middleware::filesystem::FilesystemMiddleware`] -- file read, write, list, glob, grep
 //! - [`middleware::memory::MemoryMiddleware`] -- inject persistent memory into context
+//! - [`middleware::subagent::SubAgentMiddleware`] -- isolated sub-agent delegation
+//! - [`middleware::summarization::SummarizationMiddleware`] -- context window management
+//! - [`middleware::skills::SkillsMiddleware`] -- custom skill loading
+//! - [`middleware::patch_tool_calls::PatchToolCallsMiddleware`] -- tool call correction
+//! - [`middleware::rate_limiter::RateLimiterMiddleware`] -- token bucket rate limiting
+//! - [`middleware::logging::LoggingMiddleware`] -- structured logging with redaction
+//! - [`middleware::context::ContextMiddleware`] -- dynamic context injection
+//! - [`middleware::planning::PlanningMiddleware`] -- plan-then-execute with step tracking
+//!
+//! ## Tool Registry
+//!
+//! The [`tool_registry::ToolRegistry`] provides centralized tool management with
+//! permission levels, call counting, enable/disable control, and filtering.
 //!
 //! ## Backends
 //!
@@ -34,6 +47,7 @@
 //!
 //! - [`backends::StateBackend`] -- in-memory (default)
 //! - [`backends::FilesystemBackend`] -- local disk storage
+//! - [`backends::SandboxBackend`] -- isolated execution with resource limits
 
 pub mod agent;
 pub mod backends;

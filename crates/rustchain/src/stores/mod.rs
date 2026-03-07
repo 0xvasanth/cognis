@@ -1,9 +1,12 @@
 //! Key-value store implementations.
 //!
 //! This module provides several [`Store`] implementations for persisting
-//! arbitrary byte data, including an in-memory store with optional TTL,
-//! a filesystem-backed store, a namespaced wrapper, and a layered
-//! read-through cache.
+//! arbitrary byte data:
+//!
+//! - [`InMemoryStore`] — thread-safe in-memory store with optional TTL-based expiration
+//! - [`FileStore`] — filesystem-backed store that persists entries as individual files
+//! - [`NamespacedStore`] — wraps any `Store` and prefixes keys for isolation
+//! - [`LayeredStore`] — read-through cache that checks a fast store first and falls back to a slower backing store
 
 pub mod file;
 pub mod in_memory;

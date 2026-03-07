@@ -2,6 +2,17 @@
 //!
 //! This module provides the core graph construction and execution primitives
 //! for building stateful, multi-actor agent workflows.
+//!
+//! Key submodules:
+//! - [`state`] — `StateGraph` builder and `CompiledStateGraph` execution
+//! - [`runner`] — `GraphRunner` with configurable step limits, timeouts, and lifecycle hooks (`StepHook`)
+//! - [`stream_writer`] — `StreamWriter`/`StreamReader` for async chunk-based streaming, plus `StreamCollector` and `FilteredStream`
+//! - [`persistent`] — `PersistentGraph` with automatic checkpoint save/restore
+//! - [`subgraph`] — Subgraph composition for modular workflows
+//! - [`human_in_loop`] — Human-in-the-loop interrupt and approval patterns
+//! - [`snapshot`] — Graph state snapshots with pluggable storage
+//! - [`audit`] — Execution audit log and trail tracing
+//! - [`ascii`] / [`mermaid`] — Graph visualization (terminal and Mermaid diagrams)
 
 pub mod annotations;
 pub mod ascii;

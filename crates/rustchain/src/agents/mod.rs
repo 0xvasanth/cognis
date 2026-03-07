@@ -1,4 +1,11 @@
-//! Agent module providing middleware, tool-calling agents, and structured output support.
+//! Agent module providing middleware, tool-calling agents, structured output support,
+//! and output parsers for converting raw LLM text into structured agent actions.
+//!
+//! Output parsers for common formats:
+//! - [`ReActOutputParser`] — parses `Thought: / Action: / Action Input:` and `Final Answer:` blocks
+//! - [`JsonOutputParser`] — parses `{"action": "tool", "action_input": {...}}` JSON
+//! - [`XmlOutputParser`] — parses `<tool>name</tool><tool_input>input</tool_input>` XML
+//! - [`ToolCallOutputParser`] — converts structured tool-call objects from chat models
 //!
 //! Mirrors Python `langchain.agents`.
 

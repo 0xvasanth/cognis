@@ -5,6 +5,11 @@
 //! - [`ConversationBufferMemory`] — stores all messages in a buffer
 //! - [`ConversationWindowMemory`] — keeps only the last K conversation turns
 //! - [`ConversationSummaryMemory`] — summarizes older messages using an LLM
+//! - [`VectorStoreMemory`] — retrieves relevant past messages via vector similarity
+//! - [`ChatHistoryMemory`] — pluggable chat history with file and in-memory backends
+//! - [`HybridMemory`] — combines multiple memory strategies with a builder API
+//! - [`EntityMemory`] — tracks named entities mentioned in conversation using regex extraction
+//! - [`TokenBufferMemory`] — token-count-aware buffer that trims oldest messages when a limit is exceeded, with a pluggable [`TokenCounter`] trait
 
 pub mod buffer;
 pub mod chat_history;

@@ -1,7 +1,15 @@
-//! Chat model factory and provider registry.
+//! Chat model implementations, wrappers, and provider registry.
 //!
-//! Provides `init_chat_model` for creating chat models by provider name,
-//! and utilities for parsing model strings.
+//! Includes provider-specific implementations (Anthropic, OpenAI, Google, Ollama,
+//! Azure) gated behind feature flags, plus composable wrappers (cached, circuit
+//! breaker, rate limited, retrying, structured, token counting, graceful,
+//! interceptor).
+//!
+//! The [`factory`] module provides [`ChatModelFactory`](factory::ChatModelFactory)
+//! for dynamically creating chat model instances by provider name, and a global
+//! [`ModelRegistry`](factory::ModelRegistry) singleton for application-wide
+//! provider registration. Use [`init_chat_model`](factory::init_chat_model) for
+//! one-line model creation.
 
 #[cfg(feature = "anthropic")]
 pub mod anthropic;

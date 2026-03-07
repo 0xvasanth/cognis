@@ -3,6 +3,18 @@
 //! Middleware hooks run before/after model calls and tool executions,
 //! allowing pluggable behaviour such as filesystem access, memory
 //! injection, and context summarization.
+//!
+//! Built-in middleware:
+//! - [`filesystem::FilesystemMiddleware`] — file read, write, edit, ls, glob, grep
+//! - [`memory::MemoryMiddleware`] — inject persistent memory into context
+//! - [`subagent::SubAgentMiddleware`] — isolated sub-agent delegation
+//! - [`summarization::SummarizationMiddleware`] — context window management
+//! - [`skills::SkillsMiddleware`] — custom skill loading
+//! - [`patch_tool_calls::PatchToolCallsMiddleware`] — tool call correction
+//! - [`rate_limiter::RateLimiterMiddleware`] — token bucket rate limiting with cost tracking
+//! - [`logging::LoggingMiddleware`] — structured logging with redaction
+//! - [`context::ContextMiddleware`] — dynamic context injection
+//! - [`planning::PlanningMiddleware`] — plan-then-execute support with step tracking, dependencies, and status injection
 
 pub mod context;
 pub mod filesystem;
