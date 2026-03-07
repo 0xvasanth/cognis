@@ -11,6 +11,7 @@
 //! - [`caching`] -- Caching retriever that avoids redundant lookups with TTL and LRU eviction.
 //! - [`time_weighted`] -- Time-weighted retriever scoring documents by recency + relevance.
 //! - [`query_translator`] -- Structured query translator with rule-based (`RuleBasedTranslator`) and LLM-powered (`TranslatorChain`) strategies for vector store metadata filtering.
+//! - [`reranking`] -- Reranking retrievers with keyword, TF-IDF, cross-encoder, and cascade support.
 
 pub mod caching;
 pub mod compressor_pipeline;
@@ -21,5 +22,6 @@ pub mod multi_query;
 pub mod multi_vector;
 pub mod parent_document;
 pub mod query_translator;
+pub mod reranking;
 pub mod self_query;
 pub mod time_weighted;
