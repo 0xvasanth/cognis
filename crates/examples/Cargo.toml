@@ -110,3 +110,19 @@ path = "../../examples/caching_retriever.rs"
 [[example]]
 name = "planning_middleware"
 path = "../../examples/planning_middleware.rs"
+
+[[example]]
+name = "react_agent"
+path = "../../examples/react_agent.rs"
+
+[[example]]
+name = "conditional_chains"
+path = "../../examples/conditional_chains.rs"
+
+[[example]]
+name = "file_tools"
+path = "../../examples/file_tools.rs"
+
+[[example]]
+name = "qa_chain"
+path = "../../examples/qa_chain.rs"
