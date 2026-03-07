@@ -72,5 +72,6 @@ pub mod events;
 pub mod middleware;
 pub mod presets;
 pub mod tool_registry;
+pub mod workflow;
 
 pub use agent::create_deep_agent;
