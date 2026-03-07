@@ -70,6 +70,10 @@ pub use pipe::{pipe as pipe_fn, PipeBuilder, RunnablePipe};
 pub use rate_limit::{RateLimitConfig, RunnableRateLimit, RunnableThrottle};
 pub use retry::RunnableRetry;
 pub use router::{RouterRunnable, RunnableFnBranch, RunnableRouter};
+pub use schema::{
+    EventData, RunnableSchema, SchemaContract, SchemaError, SchemaField, SchemaInference,
+    SchemaType, SchemaValidationResult, StreamEvent,
+};
 pub use scoped_callbacks::{
     merge_callback_configs, with_callbacks, CallbackDispatcher, CallbackEvent, CallbackScope,
     RunnableWithCallbacks, ScopeGuard, ScopedCallbackConfig,
