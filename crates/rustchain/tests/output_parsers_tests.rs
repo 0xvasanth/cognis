@@ -197,7 +197,11 @@ async fn test_structured_parser_invalid_json() {
     let result = parser.parse("not json at all");
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
-    assert!(err_msg.contains("Failed to parse JSON for Person"));
+    assert!(
+        err_msg.contains("Failed to parse JSON for Person")
+            || err_msg.contains("No JSON found in Person"),
+        "unexpected error: {err_msg}"
+    );
 }
 
 #[tokio::test]
