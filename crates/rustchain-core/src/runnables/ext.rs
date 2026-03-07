@@ -7,6 +7,7 @@ use crate::error::Result;
 use super::assign::{RunnableAssign, RunnablePick};
 use super::base::Runnable;
 use super::binding::RunnableBinding;
+use super::cache::{CacheConfig, RunnableCache};
 use super::config::RunnableConfig;
 use super::each::RunnableEach;
 use super::fallbacks::RunnableWithFallbacks;
@@ -163,6 +164,17 @@ pub trait RunnableExt: Runnable + Sized + 'static {
     /// * `min_interval` - Minimum duration between consecutive invocations.
     fn with_throttle(self, min_interval: Duration) -> RunnableThrottle {
         RunnableThrottle::new(Arc::new(self) as Arc<dyn Runnable>, min_interval)
+    }
+
+    /// Wrap this runnable with a caching layer that memoizes invoke results.
+    ///
+    /// Cached entries are keyed by JSON serialization of the input (or a custom
+    /// key function). Supports TTL-based expiry and LRU eviction.
+    ///
+    /// # Arguments
+    /// * `config` - Cache configuration (max entries, TTL, custom key function).
+    fn with_cache(self, config: CacheConfig) -> RunnableCache {
+        RunnableCache::new(Arc::new(self) as Arc<dyn Runnable>, config)
     }
 
     fn pick(self, keys: Vec<String>) -> Result<RunnableSequence> {
