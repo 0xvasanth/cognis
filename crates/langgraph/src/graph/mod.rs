@@ -21,6 +21,7 @@ pub mod branch;
 pub mod breakpoint;
 pub mod hooks;
 pub mod human_in_loop;
+pub mod interrupt;
 pub mod mermaid;
 pub mod message;
 pub mod persistent;
