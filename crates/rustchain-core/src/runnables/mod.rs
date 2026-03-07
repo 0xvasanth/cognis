@@ -17,6 +17,7 @@ pub mod middleware;
 pub mod parallel;
 pub mod passthrough;
 pub mod pipe;
+pub mod pipeline;
 pub mod rate_limit;
 pub mod retry;
 pub mod router;
@@ -67,6 +68,9 @@ pub use middleware::{
 pub use parallel::RunnableParallel;
 pub use passthrough::RunnablePassthrough;
 pub use pipe::{pipe as pipe_fn, PipeBuilder, RunnablePipe};
+pub use pipeline::{
+    ParallelPipeline, Pipeline, PipelineBuilder, PipelineMetrics, PipelineResult, PipelineStage,
+};
 pub use rate_limit::{RateLimitConfig, RunnableRateLimit, RunnableThrottle};
 pub use retry::RunnableRetry;
 pub use router::{RouterRunnable, RunnableFnBranch, RunnableRouter};
