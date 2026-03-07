@@ -19,6 +19,7 @@ pub mod ascii;
 pub mod audit;
 pub mod branch;
 pub mod breakpoint;
+pub mod conditional;
 pub mod hooks;
 pub mod human_in_loop;
 pub mod interrupt;
