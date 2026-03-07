@@ -19,6 +19,7 @@ pub mod few_shot;
 pub mod hub;
 pub mod registry;
 pub mod template;
+pub mod template_engine;
 
 pub use chat::{
     extract_template_variables, messages_placeholder, ChatPromptTemplate, MessagePromptTemplate,
@@ -31,3 +32,6 @@ pub use few_shot::{
 pub use hub::{PromptEntry, PromptHub};
 pub use registry::{PromptComposer, PromptExporter, PromptRegistry, RegisteredPrompt};
 pub use template::PromptTemplate;
+pub use template_engine::{
+    AdvancedPromptTemplate, TemplateBlock, TemplateContext, TemplateEngine, TemplateVariable,
+};
