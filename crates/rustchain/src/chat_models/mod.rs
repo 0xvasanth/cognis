@@ -13,6 +13,7 @@ pub mod circuit_breaker;
 #[cfg(feature = "google")]
 pub mod google;
 pub mod graceful;
+pub mod interceptor;
 #[cfg(feature = "ollama")]
 pub mod ollama;
 #[cfg(feature = "openai")]
