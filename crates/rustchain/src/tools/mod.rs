@@ -3,6 +3,7 @@ pub mod cached;
 pub mod calculator;
 pub mod json_query;
 pub mod openapi;
+pub mod python_repl;
 pub mod retriever;
 pub mod shell;
 pub mod validation;
@@ -44,6 +45,10 @@ pub use openapi::ReqwestExecutor;
 pub use retriever::{
     create_retriever_tool, DocumentFormatter, MultiRetrieverTool, RetrieverTool,
     RetrieverToolBuilder, RoutingStrategy,
+};
+pub use python_repl::{
+    CodeSanitizer, MockPythonREPL, PythonREPLConfig, PythonREPLConfigBuilder, PythonREPLResult,
+    PythonREPLTool, SanitizationError,
 };
 pub use shell::ShellTool;
 pub use validation::{
