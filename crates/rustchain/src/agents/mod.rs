@@ -12,6 +12,7 @@
 pub mod executor;
 pub mod middleware;
 pub mod output_parser;
+pub mod react;
 pub mod structured_output;
 pub mod tool_calling;
 
@@ -23,6 +24,9 @@ pub use middleware::types::{
 };
 pub use output_parser::{
     AgentOutputParser, JsonOutputParser, ReActOutputParser, ToolCallOutputParser, XmlOutputParser,
+};
+pub use react::{
+    create_react_agent, ReActAgent, ReActAgentBuilder, ReActResult, ReActStep, ReActTrace,
 };
 pub use structured_output::{
     AutoStrategy, ErrorHandling, MultipleStructuredOutputsError, OutputToolBinding,
