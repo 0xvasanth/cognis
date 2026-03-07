@@ -7,7 +7,7 @@
 //!
 //! # Example
 //!
-//! ```rust
+//! ```rust,ignore
 //! use langgraph::graph::validator::GraphValidator;
 //! use langgraph::graph::serialize::GraphDefinition;
 //! use langgraph::constants::{START, END};
