@@ -48,6 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 page_content: "Rust is a systems programming language focused on safety, speed, and concurrency. It prevents segfaults and guarantees thread safety.".to_string(),
                 metadata: meta,
                 id: Some("doc_rust".to_string()),
+                doc_type: None,
             }
         },
         {
@@ -58,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 page_content: "Python is a high-level, interpreted programming language known for its readability and versatility. It supports multiple programming paradigms.".to_string(),
                 metadata: meta,
                 id: Some("doc_python".to_string()),
+                doc_type: None,
             }
         },
         {
@@ -68,6 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 page_content: "LangChain is a framework for developing applications powered by large language models. It provides tools for prompt management, chains, and agents.".to_string(),
                 metadata: meta,
                 id: Some("doc_langchain".to_string()),
+                doc_type: None,
             }
         },
         {
@@ -78,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 page_content: "Cargo is Rust's build system and package manager. It downloads dependencies, compiles packages, and runs tests.".to_string(),
                 metadata: meta,
                 id: Some("doc_cargo".to_string()),
+                doc_type: None,
             }
         },
         {
@@ -88,11 +92,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 page_content: "Vector databases store high-dimensional embeddings for efficient similarity search. They are essential for retrieval-augmented generation (RAG) pipelines.".to_string(),
                 metadata: meta,
                 id: Some("doc_vectordb".to_string()),
+                doc_type: None,
             }
         },
     ];
 
-    println!("Step 3: Prepared {} documents with metadata:", documents.len());
+    println!(
+        "Step 3: Prepared {} documents with metadata:",
+        documents.len()
+    );
     for doc in &documents {
         let preview = if doc.page_content.len() > 60 {
             format!("{}...", &doc.page_content[..60])
