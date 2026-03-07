@@ -9,12 +9,14 @@
 //! - [`ChatHistoryMemory`] — pluggable chat history with file and in-memory backends
 //! - [`HybridMemory`] — combines multiple memory strategies with a builder API
 //! - [`EntityMemory`] — tracks named entities mentioned in conversation using regex extraction
+//! - [`KnowledgeGraphMemory`] — extracts and stores knowledge triples (subject-predicate-object) from conversation
 //! - [`TokenBufferMemory`] — token-count-aware buffer that trims oldest messages when a limit is exceeded, with a pluggable [`TokenCounter`] trait
 
 pub mod buffer;
 pub mod chat_history;
 pub mod entity;
 pub mod hybrid;
+pub mod knowledge_graph;
 pub mod summary;
 pub mod token_buffer;
 pub mod vector;
@@ -26,6 +28,10 @@ pub use chat_history::{
     InMemoryChatHistory,
 };
 pub use entity::{Entity, EntityMemory, EntityStore, InMemoryEntityStore};
+pub use knowledge_graph::{
+    KnowledgeGraph, KnowledgeGraphMemory, KnowledgeGraphMemoryBuilder, KnowledgeTriple,
+    RegexTripleExtractor, TripleExtractor,
+};
 pub use hybrid::{ConversationTokenBufferMemory, HybridMemory, HybridMemoryBuilder};
 pub use summary::ConversationSummaryMemory;
 pub use token_buffer::{
