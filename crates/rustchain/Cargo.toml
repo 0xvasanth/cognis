@@ -47,6 +47,7 @@ azure = ["dep:reqwest", "dep:secrecy"]
 qdrant = []
 pinecone = []
 weaviate = []
+chroma = []
 all-providers = ["openai", "anthropic", "google", "ollama", "azure", "yaml", "toml-loader"]
 
 [dev-dependencies]

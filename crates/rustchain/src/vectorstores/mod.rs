@@ -8,3 +8,6 @@ pub mod pinecone;
 
 #[cfg(feature = "weaviate")]
 pub mod weaviate;
+
+#[cfg(feature = "chroma")]
+pub mod chroma;
