@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod profiler;
+pub mod timeout;
 
 pub use config::{
     ensure_config, merge_configs, patch_configurable, RunnableConfig, CONFIG_KEY_RUNTIME,
