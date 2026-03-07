@@ -172,28 +172,22 @@ impl MetadataCondition {
     /// Evaluate this condition against a document's metadata.
     pub fn evaluate(&self, metadata: &HashMap<String, Value>) -> bool {
         match self {
-            MetadataCondition::Equals(key, expected) => {
-                metadata.get(key).map_or(false, |v| v == expected)
-            }
+            MetadataCondition::Equals(key, expected) => metadata.get(key) == Some(expected),
             MetadataCondition::Contains(key, substring) => metadata
                 .get(key)
                 .and_then(|v| v.as_str())
-                .map_or(false, |s| s.contains(substring.as_str())),
+                .is_some_and(|s| s.contains(substring.as_str())),
             MetadataCondition::Exists(key) => metadata.contains_key(key),
             MetadataCondition::GreaterThan(key, threshold) => metadata
                 .get(key)
                 .and_then(|v| v.as_f64())
-                .map_or(false, |n| n > *threshold),
+                .is_some_and(|n| n > *threshold),
             MetadataCondition::LessThan(key, threshold) => metadata
                 .get(key)
                 .and_then(|v| v.as_f64())
-                .map_or(false, |n| n < *threshold),
-            MetadataCondition::And(conditions) => {
-                conditions.iter().all(|c| c.evaluate(metadata))
-            }
-            MetadataCondition::Or(conditions) => {
-                conditions.iter().any(|c| c.evaluate(metadata))
-            }
+                .is_some_and(|n| n < *threshold),
+            MetadataCondition::And(conditions) => conditions.iter().all(|c| c.evaluate(metadata)),
+            MetadataCondition::Or(conditions) => conditions.iter().any(|c| c.evaluate(metadata)),
         }
     }
 }
@@ -297,9 +291,7 @@ impl DocumentTransformer for MetadataExtractor {
                         .or_else(|| captures.get(0))
                         .map(|m| m.as_str().to_string())
                         .unwrap_or_default();
-                    new_doc
-                        .metadata
-                        .insert(key.clone(), Value::from(matched));
+                    new_doc.metadata.insert(key.clone(), Value::from(matched));
                 }
             }
             results.push(new_doc);
@@ -325,7 +317,10 @@ mod tests {
     }
 
     fn simple_meta(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
     }
 
     // ─── MetadataAdder tests ───
@@ -433,8 +428,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_filter_contains() {
-        let filter =
-            MetadataFilter::new(MetadataCondition::Contains("path".into(), "docs".into()));
+        let filter = MetadataFilter::new(MetadataCondition::Contains("path".into(), "docs".into()));
         let docs = vec![
             make_doc_with_metadata("a", simple_meta(&[("path", Value::from("/docs/file.md"))])),
             make_doc_with_metadata("b", simple_meta(&[("path", Value::from("/src/main.rs"))])),
@@ -489,15 +483,9 @@ mod tests {
         let docs = vec![
             make_doc_with_metadata(
                 "a",
-                simple_meta(&[
-                    ("source", Value::from("web")),
-                    ("score", Value::from(0.9)),
-                ]),
+                simple_meta(&[("source", Value::from("web")), ("score", Value::from(0.9))]),
             ),
-            make_doc_with_metadata(
-                "b",
-                simple_meta(&[("score", Value::from(0.9))]),
-            ),
+            make_doc_with_metadata("b", simple_meta(&[("score", Value::from(0.9))])),
         ];
         let result = filter.transform_documents(&docs).await.unwrap();
         assert_eq!(result.len(), 1);
@@ -523,8 +511,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_extractor_extracts_email() {
-        let extractor =
-            MetadataExtractor::new().with_pattern("email", r"[\w.+-]+@[\w-]+\.[\w.-]+");
+        let extractor = MetadataExtractor::new().with_pattern("email", r"[\w.+-]+@[\w-]+\.[\w.-]+");
         let docs = vec![make_doc("Contact us at hello@example.com for info.")];
         let result = extractor.transform_documents(&docs).await.unwrap();
         assert_eq!(
@@ -535,8 +522,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_extractor_with_capture_group() {
-        let extractor =
-            MetadataExtractor::new().with_pattern("year", r"Copyright (\d{4})");
+        let extractor = MetadataExtractor::new().with_pattern("year", r"Copyright (\d{4})");
         let docs = vec![make_doc("Copyright 2024 Acme Inc.")];
         let result = extractor.transform_documents(&docs).await.unwrap();
         assert_eq!(

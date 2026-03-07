@@ -256,8 +256,7 @@ impl LoadBalancedChatModel {
             }
             LoadBalancingStrategy::WeightedRoundRobin(weights) => {
                 // Build cumulative weights for healthy candidates only.
-                let candidate_weights: Vec<u32> =
-                    candidates.iter().map(|&i| weights[i]).collect();
+                let candidate_weights: Vec<u32> = candidates.iter().map(|&i| weights[i]).collect();
                 let total_weight: u32 = candidate_weights.iter().sum();
                 if total_weight == 0 {
                     return candidates[0];
@@ -274,7 +273,6 @@ impl LoadBalancedChatModel {
             }
         }
     }
-
 }
 
 #[async_trait]
@@ -301,9 +299,7 @@ impl BaseChatModel for LoadBalancedChatModel {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            RustChainError::Other("All models failed".into())
-        }))
+        Err(last_error.unwrap_or_else(|| RustChainError::Other("All models failed".into())))
     }
 
     fn llm_type(&self) -> &str {
@@ -332,9 +328,7 @@ impl BaseChatModel for LoadBalancedChatModel {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            RustChainError::Other("All models failed".into())
-        }))
+        Err(last_error.unwrap_or_else(|| RustChainError::Other("All models failed".into())))
     }
 
     fn bind_tools(
@@ -634,10 +628,7 @@ mod tests {
     #[tokio::test]
     async fn test_failover_to_next_model() {
         let lb = LoadBalancedChatModel::new(
-            vec![
-                Arc::new(FailModel),
-                Arc::new(SuccessModel::new("backup")),
-            ],
+            vec![Arc::new(FailModel), Arc::new(SuccessModel::new("backup"))],
             LoadBalancingStrategy::RoundRobin,
             3,
         )
@@ -757,11 +748,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_models_rejected() {
-        let result = LoadBalancedChatModel::new(
-            vec![],
-            LoadBalancingStrategy::RoundRobin,
-            3,
-        );
+        let result = LoadBalancedChatModel::new(vec![], LoadBalancingStrategy::RoundRobin, 3);
         assert!(result.is_err());
     }
 
@@ -841,10 +828,7 @@ mod tests {
         use futures::StreamExt;
 
         let lb = LoadBalancedChatModel::new(
-            vec![
-                Arc::new(FailModel),
-                Arc::new(SuccessModel::new("B")),
-            ],
+            vec![Arc::new(FailModel), Arc::new(SuccessModel::new("B"))],
             LoadBalancingStrategy::RoundRobin,
             3,
         )

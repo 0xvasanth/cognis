@@ -6,6 +6,7 @@
 #[cfg(feature = "anthropic")]
 pub mod anthropic;
 pub mod base;
+pub mod batch;
 pub mod cached;
 pub mod distance;
 #[cfg(feature = "google")]
@@ -14,7 +15,6 @@ pub mod google;
 pub mod ollama;
 #[cfg(feature = "openai")]
 pub mod openai;
-pub mod batch;
 pub mod router;
 
 pub use base::*;

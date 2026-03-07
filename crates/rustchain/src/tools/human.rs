@@ -40,7 +40,7 @@ impl InputProvider for StdinInputProvider {
         let mut buf = String::new();
         std::io::stdin()
             .read_line(&mut buf)
-            .map_err(|e| RustChainError::IoError(e))?;
+            .map_err(RustChainError::IoError)?;
         Ok(buf.trim().to_string())
     }
 }
@@ -181,10 +181,7 @@ impl HumanApprovalTool {
         Self {
             inner,
             provider,
-            approval_prompt: format!(
-                "Do you approve running tool '{}'? (yes/no)",
-                tool_name
-            ),
+            approval_prompt: format!("Do you approve running tool '{}'? (yes/no)", tool_name),
         }
     }
 
@@ -232,9 +229,7 @@ impl BaseTool for HumanApprovalTool {
         let input_desc = match &input {
             ToolInput::Text(s) => s.clone(),
             ToolInput::Structured(map) => serde_json::to_string_pretty(map).unwrap_or_default(),
-            ToolInput::ToolCall(tc) => {
-                serde_json::to_string_pretty(&tc.args).unwrap_or_default()
-            }
+            ToolInput::ToolCall(tc) => serde_json::to_string_pretty(&tc.args).unwrap_or_default(),
         };
 
         let full_prompt = format!("{}\nInput: {}", self.approval_prompt, input_desc);
@@ -546,11 +541,8 @@ mod tests {
     async fn test_approval_tool_custom_prompt() {
         let inner: Arc<dyn BaseTool> = Arc::new(CalculatorTool);
         let provider = mock_provider(vec!["yes"]);
-        let tool = HumanApprovalTool::with_prompt(
-            inner,
-            provider,
-            "Custom approval prompt?".into(),
-        );
+        let tool =
+            HumanApprovalTool::with_prompt(inner, provider, "Custom approval prompt?".into());
         assert_eq!(tool.approval_prompt(), "Custom approval prompt?");
     }
 
@@ -566,11 +558,7 @@ mod tests {
 
     #[test]
     fn test_toolkit_new() {
-        let toolkit = Toolkit::new(
-            "test".into(),
-            "A test toolkit".into(),
-            vec![],
-        );
+        let toolkit = Toolkit::new("test".into(), "A test toolkit".into(), vec![]);
         assert_eq!(toolkit.name, "test");
         assert_eq!(toolkit.description, "A test toolkit");
         assert!(toolkit.is_empty());

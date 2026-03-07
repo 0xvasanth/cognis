@@ -255,7 +255,9 @@ pub fn regex_replace_transform(pattern: &str, replacement: &str) -> TransformCha
     let re = Regex::new(pattern).expect("invalid regex pattern");
     let replacement = replacement.to_string();
     TransformChain::new("regex_replace", move |v| {
-        Ok(map_strings(v, &|s| re.replace_all(s, &*replacement).into_owned()))
+        Ok(map_strings(v, &|s| {
+            re.replace_all(s, &*replacement).into_owned()
+        }))
     })
 }
 
@@ -271,11 +273,9 @@ pub fn map_transform(
     TransformChain::new("map_key", move |v| match v {
         Value::Object(mut map) => {
             if let Some(val) = map.get(&key) {
-                let s = val
-                    .as_str()
-                    .ok_or_else(|| {
-                        RustChainError::Other(format!("value at key '{}' is not a string", key))
-                    })?;
+                let s = val.as_str().ok_or_else(|| {
+                    RustChainError::Other(format!("value at key '{}' is not a string", key))
+                })?;
                 map.insert(key.clone(), Value::String(f(s)));
             }
             Ok(Value::Object(map))
@@ -306,6 +306,7 @@ impl TransformPipeline {
     }
 
     /// Add a transform to the pipeline. Returns `self` for chaining.
+    #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, transform: TransformChain) -> Self {
         self.transforms.push(Arc::new(transform));
         self
@@ -407,7 +408,10 @@ mod tests {
     #[tokio::test]
     async fn test_uppercase_transform() {
         let chain = uppercase_transform();
-        let result = chain.invoke(json!({"text": "hello world"}), None).await.unwrap();
+        let result = chain
+            .invoke(json!({"text": "hello world"}), None)
+            .await
+            .unwrap();
         assert_eq!(result, json!({"text": "HELLO WORLD"}));
     }
 

@@ -29,7 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let step0_id = plan.add_step(PlanStep::new(0, "Design the page layout"));
     let step1_id = plan.add_step(PlanStep::new(0, "Write HTML and CSS").with_dependency(step0_id));
-    let step2_id = plan.add_step(PlanStep::new(0, "Add JavaScript interactivity").with_dependency(step1_id));
+    let step2_id =
+        plan.add_step(PlanStep::new(0, "Add JavaScript interactivity").with_dependency(step1_id));
     let _step3_id = plan.add_step(
         PlanStep::new(0, "Deploy to production").with_dependencies(vec![step1_id, step2_id]),
     );
@@ -58,7 +59,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     if let Some(next) = plan.next_actionable_step() {
-        println!("  Next actionable step: Step {} - {}\n", next.id, next.description);
+        println!(
+            "  Next actionable step: Step {} - {}\n",
+            next.id, next.description
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -75,13 +79,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("    Progress: {:.0}%", plan.progress_percentage());
     let ready = plan.get_ready_steps();
-    println!("    Newly ready steps: {:?}\n", ready.iter().map(|s| s.id).collect::<Vec<_>>());
+    println!(
+        "    Newly ready steps: {:?}\n",
+        ready.iter().map(|s| s.id).collect::<Vec<_>>()
+    );
 
     // Start step 1 (set to in-progress)
     println!("  Starting Step 1: \"Write HTML and CSS\"...");
     plan.update_step_status(step1_id, PlanStepStatus::InProgress, None);
-    println!("    Step 1 status: {}", plan.get_step(step1_id).unwrap().status);
-    println!("    Step 1 is terminal: {}\n", plan.get_step(step1_id).unwrap().is_terminal());
+    println!(
+        "    Step 1 status: {}",
+        plan.get_step(step1_id).unwrap().status
+    );
+    println!(
+        "    Step 1 is terminal: {}\n",
+        plan.get_step(step1_id).unwrap().is_terminal()
+    );
 
     // Complete step 1
     println!("  Completing Step 1...");
@@ -92,7 +105,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("    Progress: {:.0}%", plan.progress_percentage());
     let ready = plan.get_ready_steps();
-    println!("    Newly ready steps: {:?}\n", ready.iter().map(|s| s.id).collect::<Vec<_>>());
+    println!(
+        "    Newly ready steps: {:?}\n",
+        ready.iter().map(|s| s.id).collect::<Vec<_>>()
+    );
 
     // Fail step 2
     println!("  Failing Step 2: \"Add JavaScript interactivity\"...");
@@ -105,8 +121,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check if step 3 is ready (it depends on both step 1 and step 2)
     let ready = plan.get_ready_steps();
-    println!("    Ready steps: {:?} (step 3 blocked because step 2 failed, not completed)\n",
-        ready.iter().map(|s| s.id).collect::<Vec<_>>());
+    println!(
+        "    Ready steps: {:?} (step 3 blocked because step 2 failed, not completed)\n",
+        ready.iter().map(|s| s.id).collect::<Vec<_>>()
+    );
 
     // Skip step 3 since step 2 failed
     println!("  Skipping Step 3 since dependency failed...");
@@ -139,7 +157,9 @@ Build an API server:
     println!("  Goal:\n    {}\n", structured_goal.replace('\n', "\n    "));
 
     use deepagents::middleware::planning::PlanningStrategy;
-    let auto_plan = strategy.create_plan(structured_goal, &json!({})).await
+    let auto_plan = strategy
+        .create_plan(structured_goal, &json!({}))
+        .await
         .map_err(|e| format!("{e}"))?;
 
     println!("  Auto-generated plan ({} steps):", auto_plan.steps.len());
@@ -153,10 +173,16 @@ Build an API server:
 
     // Create a plan from an unstructured goal (single step)
     let simple_goal = "Fix the login bug on the homepage";
-    let simple_plan = strategy.create_plan(simple_goal, &json!({})).await
+    let simple_plan = strategy
+        .create_plan(simple_goal, &json!({}))
+        .await
         .map_err(|e| format!("{e}"))?;
     println!("  Unstructured goal: \"{simple_goal}\"");
-    println!("  Generated {} step(s): \"{}\"\n", simple_plan.steps.len(), simple_plan.steps[0].description);
+    println!(
+        "  Generated {} step(s): \"{}\"\n",
+        simple_plan.steps.len(),
+        simple_plan.steps[0].description
+    );
 
     // -----------------------------------------------------------------------
     // 5. Using PlanningMiddleware
@@ -166,15 +192,24 @@ Build an API server:
     let strategy = Arc::new(SimplePlanningStrategy::new());
     let middleware = PlanningMiddleware::new(strategy);
 
-    println!("  Middleware name: {}", deepagents::middleware::Middleware::name(&middleware));
-    println!("  Current plan: {:?}\n", middleware.get_plan().await.map(|p| p.id));
+    println!(
+        "  Middleware name: {}",
+        deepagents::middleware::Middleware::name(&middleware)
+    );
+    println!(
+        "  Current plan: {:?}\n",
+        middleware.get_plan().await.map(|p| p.id)
+    );
 
     // Create a plan through the middleware
     let mw_plan = middleware
         .create_plan("1. Research\n2. Prototype\n3. Test", &json!({}))
         .await
         .map_err(|e| format!("{e}"))?;
-    println!("  Created plan with {} steps via middleware", mw_plan.steps.len());
+    println!(
+        "  Created plan with {} steps via middleware",
+        mw_plan.steps.len()
+    );
     println!("  Plan stored: {}\n", middleware.get_plan().await.is_some());
 
     // Update steps through middleware
@@ -205,8 +240,16 @@ Build an API server:
     }
 
     let deserialized: Plan = serde_json::from_str(&json_str)?;
-    println!("\n  Deserialized: id={}, goal={}, steps={}", deserialized.id, deserialized.goal, deserialized.steps.len());
-    println!("  Step 0 status after roundtrip: {}\n", deserialized.get_step(0).unwrap().status);
+    println!(
+        "\n  Deserialized: id={}, goal={}, steps={}",
+        deserialized.id,
+        deserialized.goal,
+        deserialized.steps.len()
+    );
+    println!(
+        "  Step 0 status after roundtrip: {}\n",
+        deserialized.get_step(0).unwrap().status
+    );
 
     println!("=== Done ===");
     Ok(())

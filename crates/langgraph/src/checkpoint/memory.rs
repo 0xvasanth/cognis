@@ -185,7 +185,10 @@ impl MemoryCheckpointSaver {
 
         let parent_config = metadata.parent_id.as_ref().map(|pid| {
             let mut pc = HashMap::new();
-            pc.insert("thread_id".to_string(), Value::String(thread_id.to_string()));
+            pc.insert(
+                "thread_id".to_string(),
+                Value::String(thread_id.to_string()),
+            );
             pc.insert("checkpoint_id".to_string(), Value::String(pid.clone()));
             pc
         });
@@ -199,10 +202,7 @@ impl MemoryCheckpointSaver {
         };
 
         let mut storage = self.storage.write().await;
-        storage.insert(
-            (thread_id.to_string(), checkpoint_id.to_string()),
-            entry,
-        );
+        storage.insert((thread_id.to_string(), checkpoint_id.to_string()), entry);
 
         Ok(())
     }
@@ -215,7 +215,9 @@ impl MemoryCheckpointSaver {
     ) -> Result<Option<StoredCheckpoint>> {
         let storage = self.storage.read().await;
         let key = (thread_id.to_string(), checkpoint_id.to_string());
-        Ok(storage.get(&key).map(|entry| self.entry_to_stored(thread_id, entry)))
+        Ok(storage
+            .get(&key)
+            .map(|entry| self.entry_to_stored(thread_id, entry)))
     }
 
     /// Retrieve the latest checkpoint for a thread (by insertion order).
@@ -349,7 +351,9 @@ impl CheckpointSaver for MemoryCheckpointSaver {
 
         if let Some(cid) = checkpoint_id {
             let key = (thread_id.to_string(), cid.to_string());
-            return Ok(storage.get(&key).map(|entry| self.entry_to_tuple(thread_id, entry)));
+            return Ok(storage
+                .get(&key)
+                .map(|entry| self.entry_to_tuple(thread_id, entry)));
         }
 
         // No checkpoint_id: return the latest for this thread.

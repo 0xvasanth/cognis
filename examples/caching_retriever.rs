@@ -72,20 +72,31 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let result = caching.get_relevant_documents("What is Rust?").await?;
     println!("    Returned {} documents", result.len());
     let stats = caching.cache_stats().await;
-    println!("    Stats: hits={}, misses={}, size={}\n", stats.hits, stats.misses, stats.size);
+    println!(
+        "    Stats: hits={}, misses={}, size={}\n",
+        stats.hits, stats.misses, stats.size
+    );
 
     // Second call with same query: cache hit
     println!("  Query 2: \"What is Rust?\" (should be a cache hit)");
     let _result = caching.get_relevant_documents("What is Rust?").await?;
     let stats = caching.cache_stats().await;
-    println!("    Stats: hits={}, misses={}, size={}", stats.hits, stats.misses, stats.size);
+    println!(
+        "    Stats: hits={}, misses={}, size={}",
+        stats.hits, stats.misses, stats.size
+    );
     println!("    Inner retriever was called {} time(s)\n", inner.calls());
 
     // Different query: cache miss
     println!("  Query 3: \"Tell me about Python\" (different query, cache miss)");
-    let _result = caching.get_relevant_documents("Tell me about Python").await?;
+    let _result = caching
+        .get_relevant_documents("Tell me about Python")
+        .await?;
     let stats = caching.cache_stats().await;
-    println!("    Stats: hits={}, misses={}, size={}", stats.hits, stats.misses, stats.size);
+    println!(
+        "    Stats: hits={}, misses={}, size={}",
+        stats.hits, stats.misses, stats.size
+    );
     println!("    Inner retriever was called {} time(s)\n", inner.calls());
 
     // -----------------------------------------------------------------------
@@ -93,7 +104,9 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------------
     println!("--- 2. Query Normalization ---\n");
 
-    let inner2 = Arc::new(MockRetriever::new(vec![Document::new("Normalized result.")]));
+    let inner2 = Arc::new(MockRetriever::new(vec![Document::new(
+        "Normalized result.",
+    )]));
     let config2 = CacheConfig::default().with_normalize_queries(true);
     let caching2 = CachingRetriever::new(inner2.clone(), config2);
 
@@ -106,14 +119,19 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _r = caching2.get_relevant_documents("hello world").await?;
     let stats = caching2.cache_stats().await;
     println!("    Stats: hits={}, misses={}", stats.hits, stats.misses);
-    println!("    Inner retriever called {} time(s) (only once due to normalization)\n", inner2.calls());
+    println!(
+        "    Inner retriever called {} time(s) (only once due to normalization)\n",
+        inner2.calls()
+    );
 
     // -----------------------------------------------------------------------
     // 3. Cache invalidation
     // -----------------------------------------------------------------------
     println!("--- 3. Cache Invalidation ---\n");
 
-    let inner3 = Arc::new(MockRetriever::new(vec![Document::new("Invalidation test.")]));
+    let inner3 = Arc::new(MockRetriever::new(vec![Document::new(
+        "Invalidation test.",
+    )]));
     let caching3 = CachingRetriever::with_defaults(inner3.clone());
 
     println!("  Populating cache with query \"test\"...");
@@ -124,19 +142,28 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!("  Invalidating entry for \"test\"...");
     caching3.invalidate("test").await;
     let stats = caching3.cache_stats().await;
-    println!("    Cache size: {}, evictions: {}\n", stats.size, stats.evictions);
+    println!(
+        "    Cache size: {}, evictions: {}\n",
+        stats.size, stats.evictions
+    );
 
     println!("  Querying \"test\" again (should be a miss after invalidation)...");
     let _r = caching3.get_relevant_documents("test").await?;
     let stats = caching3.cache_stats().await;
-    println!("    Stats: hits={}, misses={}, evictions={}", stats.hits, stats.misses, stats.evictions);
+    println!(
+        "    Stats: hits={}, misses={}, evictions={}",
+        stats.hits, stats.misses, stats.evictions
+    );
     println!("    Inner retriever called {} time(s)\n", inner3.calls());
 
     // Clear entire cache
     println!("  Clearing entire cache...");
     caching3.clear_cache().await;
     let stats = caching3.cache_stats().await;
-    println!("    Cache size: {}, evictions: {}\n", stats.size, stats.evictions);
+    println!(
+        "    Cache size: {}, evictions: {}\n",
+        stats.size, stats.evictions
+    );
 
     // -----------------------------------------------------------------------
     // 4. TTL expiration
@@ -161,7 +188,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     println!("  Query again after TTL expiry (miss)");
     let _r = caching4.get_relevant_documents("ttl-query").await?;
-    println!("    Inner calls: {} (called again because cache expired)\n", inner4.calls());
+    println!(
+        "    Inner calls: {} (called again because cache expired)\n",
+        inner4.calls()
+    );
 
     // -----------------------------------------------------------------------
     // 5. LRU eviction
@@ -181,13 +211,19 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _r = caching5.get_relevant_documents("query-b").await?;
 
     let stats = caching5.cache_stats().await;
-    println!("    Cache size: {}, evictions: {}", stats.size, stats.evictions);
+    println!(
+        "    Cache size: {}, evictions: {}",
+        stats.size, stats.evictions
+    );
 
     println!("  Adding: \"query-c\" (should trigger eviction of oldest)");
     let _r = caching5.get_relevant_documents("query-c").await?;
 
     let stats = caching5.cache_stats().await;
-    println!("    Cache size: {}, evictions: {}", stats.size, stats.evictions);
+    println!(
+        "    Cache size: {}, evictions: {}",
+        stats.size, stats.evictions
+    );
     println!("    Total inner calls: {}\n", inner5.calls());
 
     println!("=== Done ===");

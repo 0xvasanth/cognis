@@ -127,10 +127,11 @@ impl Default for MiddlewareConfig {
 // ---------------------------------------------------------------------------
 
 /// Declarative backend selection.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BackendConfig {
     /// In-memory state backend (default).
+    #[default]
     InMemory,
     /// Filesystem-backed persistence.
     Filesystem {
@@ -144,12 +145,6 @@ pub enum BackendConfig {
         /// Maximum memory in megabytes.
         max_memory_mb: usize,
     },
-}
-
-impl Default for BackendConfig {
-    fn default() -> Self {
-        Self::InMemory
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -456,25 +451,31 @@ impl ConfigLoader {
             config.model.model_name = v;
         }
         if let Ok(v) = std::env::var("DEEP_AGENT_TEMPERATURE") {
-            config.model.temperature = Some(v.parse::<f64>().map_err(|e| {
-                ConfigError::Env(format!("invalid DEEP_AGENT_TEMPERATURE: {e}"))
-            })?);
+            config.model.temperature =
+                Some(v.parse::<f64>().map_err(|e| {
+                    ConfigError::Env(format!("invalid DEEP_AGENT_TEMPERATURE: {e}"))
+                })?);
         }
         if let Ok(v) = std::env::var("DEEP_AGENT_MAX_TOKENS") {
-            config.model.max_tokens = Some(v.parse::<u32>().map_err(|e| {
-                ConfigError::Env(format!("invalid DEEP_AGENT_MAX_TOKENS: {e}"))
-            })?);
+            config.model.max_tokens =
+                Some(v.parse::<u32>().map_err(|e| {
+                    ConfigError::Env(format!("invalid DEEP_AGENT_MAX_TOKENS: {e}"))
+                })?);
         }
         if let Ok(v) = std::env::var("DEEP_AGENT_API_KEY") {
             config.model.api_key = Some(v);
         }
         if let Ok(v) = std::env::var("DEEP_AGENT_MAX_ITERATIONS") {
-            config.max_iterations = v.parse::<usize>().map_err(|e| {
-                ConfigError::Env(format!("invalid DEEP_AGENT_MAX_ITERATIONS: {e}"))
-            })?;
+            config.max_iterations = v
+                .parse::<usize>()
+                .map_err(|e| ConfigError::Env(format!("invalid DEEP_AGENT_MAX_ITERATIONS: {e}")))?;
         }
         if let Ok(v) = std::env::var("DEEP_AGENT_TOOLS") {
-            config.tools = v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            config.tools = v
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
         if let Ok(v) = std::env::var("DEEP_AGENT_VERBOSE") {
             config.verbose = v == "true" || v == "1";
@@ -484,7 +485,12 @@ impl ConfigLoader {
                 "filesystem" => {
                     let path = std::env::var("DEEP_AGENT_BACKEND_PATH")
                         .map(PathBuf::from)
-                        .map_err(|_| ConfigError::Env("DEEP_AGENT_BACKEND_PATH required for filesystem backend".to_string()))?;
+                        .map_err(|_| {
+                            ConfigError::Env(
+                                "DEEP_AGENT_BACKEND_PATH required for filesystem backend"
+                                    .to_string(),
+                            )
+                        })?;
                     BackendConfig::Filesystem { path }
                 }
                 "sandbox" => BackendConfig::Sandbox {
@@ -559,12 +565,22 @@ impl ConfigLoader {
             middleware: MiddlewareConfig {
                 enable_filesystem: overrides.middleware.enable_filesystem,
                 enable_memory: overrides.middleware.enable_memory,
-                enable_summarization: overrides.middleware.enable_summarization || base.middleware.enable_summarization,
-                enable_planning: overrides.middleware.enable_planning || base.middleware.enable_planning,
-                enable_logging: overrides.middleware.enable_logging || base.middleware.enable_logging,
-                enable_rate_limiter: overrides.middleware.enable_rate_limiter || base.middleware.enable_rate_limiter,
-                filesystem_root: overrides.middleware.filesystem_root.or(base.middleware.filesystem_root),
-                max_context_tokens: overrides.middleware.max_context_tokens.or(base.middleware.max_context_tokens),
+                enable_summarization: overrides.middleware.enable_summarization
+                    || base.middleware.enable_summarization,
+                enable_planning: overrides.middleware.enable_planning
+                    || base.middleware.enable_planning,
+                enable_logging: overrides.middleware.enable_logging
+                    || base.middleware.enable_logging,
+                enable_rate_limiter: overrides.middleware.enable_rate_limiter
+                    || base.middleware.enable_rate_limiter,
+                filesystem_root: overrides
+                    .middleware
+                    .filesystem_root
+                    .or(base.middleware.filesystem_root),
+                max_context_tokens: overrides
+                    .middleware
+                    .max_context_tokens
+                    .or(base.middleware.max_context_tokens),
                 custom_middleware: if !overrides.middleware.custom_middleware.is_empty() {
                     overrides.middleware.custom_middleware
                 } else {
@@ -921,9 +937,7 @@ mod tests {
 
     #[test]
     fn test_builder_max_context_tokens() {
-        let config = AgentConfigBuilder::new()
-            .max_context_tokens(16000)
-            .build();
+        let config = AgentConfigBuilder::new().max_context_tokens(16000).build();
         assert_eq!(config.middleware.max_context_tokens, Some(16000));
     }
 
@@ -1139,33 +1153,25 @@ mod tests {
 
     #[test]
     fn test_builder_enable_rate_limiter() {
-        let config = AgentConfigBuilder::new()
-            .enable_rate_limiter(true)
-            .build();
+        let config = AgentConfigBuilder::new().enable_rate_limiter(true).build();
         assert!(config.middleware.enable_rate_limiter);
     }
 
     #[test]
     fn test_builder_enable_planning() {
-        let config = AgentConfigBuilder::new()
-            .enable_planning(true)
-            .build();
+        let config = AgentConfigBuilder::new().enable_planning(true).build();
         assert!(config.middleware.enable_planning);
     }
 
     #[test]
     fn test_builder_enable_logging() {
-        let config = AgentConfigBuilder::new()
-            .enable_logging(true)
-            .build();
+        let config = AgentConfigBuilder::new().enable_logging(true).build();
         assert!(config.middleware.enable_logging);
     }
 
     #[test]
     fn test_builder_enable_memory() {
-        let config = AgentConfigBuilder::new()
-            .enable_memory(false)
-            .build();
+        let config = AgentConfigBuilder::new().enable_memory(false).build();
         assert!(!config.middleware.enable_memory);
     }
 }

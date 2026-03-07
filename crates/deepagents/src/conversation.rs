@@ -110,7 +110,7 @@ impl ConversationTurn {
 
 /// Rough token estimation: ~4 characters per token (common heuristic).
 fn estimate_tokens(text: &str) -> usize {
-    (text.len() + 3) / 4
+    text.len().div_ceil(4)
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +150,7 @@ pub struct Conversation {
     /// Optional maximum token budget.
     pub max_tokens: Option<usize>,
     /// When the conversation was created.
+    #[allow(dead_code)]
     created_at: SystemTime,
 }
 

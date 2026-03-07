@@ -206,7 +206,8 @@ pub fn coding_assistant() -> AgentPreset {
 
     AgentPreset {
         name: "coding-assistant".to_string(),
-        description: "Optimized for code generation, review, and filesystem operations.".to_string(),
+        description: "Optimized for code generation, review, and filesystem operations."
+            .to_string(),
         system_prompt: config.system_prompt.clone().unwrap_or_default(),
         suggested_tools: vec![
             "read_file".to_string(),
@@ -358,10 +359,7 @@ pub fn task_planner() -> AgentPreset {
         name: "task-planner".to_string(),
         description: "Planning middleware with sub-agent delegation.".to_string(),
         system_prompt: config.system_prompt.clone().unwrap_or_default(),
-        suggested_tools: vec![
-            "create_plan".to_string(),
-            "spawn_subagent".to_string(),
-        ],
+        suggested_tools: vec!["create_plan".to_string(), "spawn_subagent".to_string()],
         config,
         tags,
     }
@@ -396,9 +394,7 @@ pub fn customer_support() -> AgentPreset {
         name: "customer-support".to_string(),
         description: "Memory-enabled agent for FAQ-focused customer support.".to_string(),
         system_prompt: config.system_prompt.clone().unwrap_or_default(),
-        suggested_tools: vec![
-            "knowledge_base_search".to_string(),
-        ],
+        suggested_tools: vec!["knowledge_base_search".to_string()],
         config,
         tags,
     }
@@ -478,7 +474,10 @@ mod tests {
         assert_eq!(preset.config.model.temperature, Some(0.2));
         assert!(preset.config.middleware.enable_filesystem);
         assert!(preset.tags.contains_key("category"));
-        assert_eq!(preset.tags.get("category"), Some(&"development".to_string()));
+        assert_eq!(
+            preset.tags.get("category"),
+            Some(&"development".to_string())
+        );
     }
 
     #[test]
@@ -519,7 +518,9 @@ mod tests {
         assert_eq!(preset.name, "task-planner");
         assert!(preset.config.middleware.enable_planning);
         assert!(preset.config.middleware.enable_summarization);
-        assert!(preset.suggested_tools.contains(&"spawn_subagent".to_string()));
+        assert!(preset
+            .suggested_tools
+            .contains(&"spawn_subagent".to_string()));
         assert_eq!(preset.tags.get("tools"), Some(&"subagent".to_string()));
     }
 
@@ -615,7 +616,10 @@ mod tests {
         registry.register(preset2);
 
         assert_eq!(registry.list().len(), 1);
-        assert_eq!(registry.get("coding-assistant").unwrap().description, "second");
+        assert_eq!(
+            registry.get("coding-assistant").unwrap().description,
+            "second"
+        );
     }
 
     // -- PresetCustomizer tests --
@@ -666,7 +670,10 @@ mod tests {
             .with_system_prompt("Be concise.")
             .build();
         assert_eq!(customized.system_prompt, "Be concise.");
-        assert_eq!(customized.config.system_prompt, Some("Be concise.".to_string()));
+        assert_eq!(
+            customized.config.system_prompt,
+            Some("Be concise.".to_string())
+        );
     }
 
     #[test]

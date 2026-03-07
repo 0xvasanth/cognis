@@ -139,10 +139,7 @@ impl MessagePromptTemplate {
             }
             MessagePromptTemplate::Placeholder(var_name) => {
                 let value = vars.get(var_name).ok_or_else(|| {
-                    RustChainError::Other(format!(
-                        "Missing placeholder variable '{}'",
-                        var_name
-                    ))
+                    RustChainError::Other(format!("Missing placeholder variable '{}'", var_name))
                 })?;
                 parse_messages_from_value(value)
             }
@@ -377,22 +374,19 @@ fn parse_single_message(value: &Value) -> Result<Message> {
     }
 
     // Fall back to role/content format
-    let obj = value.as_object().ok_or_else(|| {
-        RustChainError::TypeMismatch {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| RustChainError::TypeMismatch {
             expected: "Object (message)".into(),
             got: format!("{}", value),
-        }
-    })?;
+        })?;
 
     let role = obj
         .get("role")
         .and_then(|r| r.as_str())
         .ok_or_else(|| RustChainError::Other("Message missing 'role' field".into()))?;
 
-    let content = obj
-        .get("content")
-        .and_then(|c| c.as_str())
-        .unwrap_or("");
+    let content = obj.get("content").and_then(|c| c.as_str()).unwrap_or("");
 
     match role {
         "system" => Ok(Message::system(content)),
@@ -528,14 +522,10 @@ mod tests {
 
     #[test]
     fn test_chat_prompt_from_messages_role_aliases() {
-        let prompt = ChatPromptTemplate::from_messages(vec![
-            ("user", "Hello"),
-            ("assistant", "Hi there"),
-        ]);
+        let prompt =
+            ChatPromptTemplate::from_messages(vec![("user", "Hello"), ("assistant", "Hi there")]);
         assert_eq!(prompt.messages.len(), 2);
-        let msgs = prompt
-            .format_messages(&HashMap::new())
-            .unwrap();
+        let msgs = prompt.format_messages(&HashMap::new()).unwrap();
         assert_eq!(msgs[0].message_type().as_str(), "human");
         assert_eq!(msgs[1].message_type().as_str(), "ai");
     }
@@ -551,19 +541,14 @@ mod tests {
         vars.insert("question".into(), json!("What is Rust?"));
         let msgs = prompt.format_messages(&vars).unwrap();
         assert_eq!(msgs.len(), 2);
-        assert_eq!(
-            msgs[0].content().text(),
-            "You are a helpful assistant."
-        );
+        assert_eq!(msgs[0].content().text(), "You are a helpful assistant.");
         assert_eq!(msgs[1].content().text(), "What is Rust?");
     }
 
     #[test]
     fn test_chat_prompt_format_prompt_string() {
-        let prompt = ChatPromptTemplate::from_messages(vec![
-            ("system", "Be helpful."),
-            ("human", "Hi"),
-        ]);
+        let prompt =
+            ChatPromptTemplate::from_messages(vec![("system", "Be helpful."), ("human", "Hi")]);
         let result = prompt.format_prompt(&HashMap::new()).unwrap();
         assert_eq!(result, "system: Be helpful.\nhuman: Hi");
     }
@@ -622,9 +607,7 @@ mod tests {
 
     #[test]
     fn test_chat_prompt_missing_variable_error() {
-        let prompt = ChatPromptTemplate::from_messages(vec![
-            ("human", "Hello {name}"),
-        ]);
+        let prompt = ChatPromptTemplate::from_messages(vec![("human", "Hello {name}")]);
         let vars = HashMap::new();
         let err = prompt.format_messages(&vars).unwrap_err();
         assert!(format!("{}", err).contains("Missing variable 'name'"));
@@ -643,9 +626,7 @@ mod tests {
 
     #[test]
     fn test_from_messages_placeholder_strips_braces() {
-        let prompt = ChatPromptTemplate::from_messages(vec![
-            ("placeholder", "{history}"),
-        ]);
+        let prompt = ChatPromptTemplate::from_messages(vec![("placeholder", "{history}")]);
         match &prompt.messages[0] {
             MessagePromptTemplate::Placeholder(name) => {
                 assert_eq!(name, "history");
@@ -671,9 +652,7 @@ mod tests {
 
     #[test]
     fn test_numeric_variable_substitution() {
-        let prompt = ChatPromptTemplate::from_messages(vec![
-            ("human", "Count to {n}"),
-        ]);
+        let prompt = ChatPromptTemplate::from_messages(vec![("human", "Count to {n}")]);
         let mut vars = HashMap::new();
         vars.insert("n".into(), json!(5));
         let msgs = prompt.format_messages(&vars).unwrap();
@@ -697,7 +676,10 @@ mod tests {
     #[tokio::test]
     async fn test_runnable_invoke_type_error() {
         let prompt = ChatPromptTemplate::from_messages(vec![("human", "Hi")]);
-        let err = prompt.invoke(json!("not an object"), None).await.unwrap_err();
+        let err = prompt
+            .invoke(json!("not an object"), None)
+            .await
+            .unwrap_err();
         assert!(format!("{}", err).contains("Type mismatch"));
     }
 }

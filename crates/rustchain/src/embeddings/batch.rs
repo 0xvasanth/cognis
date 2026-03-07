@@ -146,6 +146,7 @@ impl BatchEmbedder {
         let total_batches = batches.len();
 
         let semaphore = Arc::new(Semaphore::new(self.config.max_concurrency.max(1)));
+        #[allow(clippy::type_complexity)]
         let results: Arc<Mutex<Vec<(usize, std::result::Result<Vec<Vec<f32>>, String>)>>> =
             Arc::new(Mutex::new(Vec::with_capacity(total_batches)));
         let completed = Arc::new(AtomicUsize::new(0));
@@ -377,9 +378,9 @@ impl EmbeddingRateLimiter {
                 let mut state = self.state.lock().await;
                 let now = Instant::now();
                 let elapsed = now.duration_since(state.last_refill).as_secs_f64();
-                state.available_tokens =
-                    (state.available_tokens + elapsed * self.tokens_per_second)
-                        .min(self.max_burst as f64);
+                state.available_tokens = (state.available_tokens
+                    + elapsed * self.tokens_per_second)
+                    .min(self.max_burst as f64);
                 state.last_refill = now;
 
                 if state.available_tokens >= count as f64 {
@@ -715,9 +716,7 @@ mod tests {
             }
         }
 
-        let config = BatchConfig::new()
-            .batch_size(2)
-            .retry_failed(false);
+        let config = BatchConfig::new().batch_size(2).retry_failed(false);
         let embedder = BatchEmbedder::new(
             Arc::new(CountingFailer {
                 count: call_count.clone(),

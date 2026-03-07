@@ -199,12 +199,11 @@ impl KeywordExtractor {
 
 /// A small set of common English stop words.
 const STOP_WORDS: &[&str] = &[
-    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
-    "has", "have", "he", "her", "his", "how", "i", "if", "in", "into", "is",
-    "it", "its", "my", "no", "not", "of", "on", "or", "our", "she", "so",
-    "that", "the", "their", "them", "then", "there", "these", "they", "this",
-    "to", "up", "us", "was", "we", "what", "when", "which", "who", "will",
-    "with", "you", "your",
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from", "has", "have", "he",
+    "her", "his", "how", "i", "if", "in", "into", "is", "it", "its", "my", "no", "not", "of", "on",
+    "or", "our", "she", "so", "that", "the", "their", "them", "then", "there", "these", "they",
+    "this", "to", "up", "us", "was", "we", "what", "when", "which", "who", "will", "with", "you",
+    "your",
 ];
 
 /// Extract top-N keywords from text using term frequency.
@@ -237,8 +236,7 @@ impl DocumentTransformer for KeywordExtractor {
             .map(|doc| {
                 let mut new_doc = doc.clone();
                 let keywords = extract_keywords(&doc.page_content, self.top_n);
-                let kw_value: Vec<Value> =
-                    keywords.into_iter().map(Value::from).collect();
+                let kw_value: Vec<Value> = keywords.into_iter().map(Value::from).collect();
                 new_doc
                     .metadata
                     .insert("keywords".to_string(), Value::from(kw_value));
@@ -413,9 +411,7 @@ mod tests {
     #[tokio::test]
     async fn test_keyword_extractor() {
         let extractor = KeywordExtractor::new(3);
-        let docs = vec![make_doc(
-            "rust rust rust programming programming language",
-        )];
+        let docs = vec![make_doc("rust rust rust programming programming language")];
         let result = extractor.transform_documents(&docs).await.unwrap();
         let keywords = result[0]
             .metadata

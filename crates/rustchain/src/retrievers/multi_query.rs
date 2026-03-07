@@ -382,10 +382,7 @@ impl FusionRetriever {
     }
 
     /// Apply Reciprocal Rank Fusion across multiple result sets.
-    fn reciprocal_rank_fusion(
-        result_sets: &[Vec<Document>],
-        rrf_k: usize,
-    ) -> Vec<(Document, f64)> {
+    fn reciprocal_rank_fusion(result_sets: &[Vec<Document>], rrf_k: usize) -> Vec<(Document, f64)> {
         let mut score_map: HashMap<String, (Document, f64)> = HashMap::new();
 
         for docs in result_sets {
@@ -396,9 +393,7 @@ impl FusionRetriever {
                 } else {
                     doc.page_content.clone()
                 };
-                let entry = score_map
-                    .entry(key)
-                    .or_insert_with(|| (doc.clone(), 0.0));
+                let entry = score_map.entry(key).or_insert_with(|| (doc.clone(), 0.0));
                 entry.1 += score;
             }
         }
@@ -582,7 +577,10 @@ mod tests {
     #[tokio::test]
     async fn test_simple_generator_what_is_variations() {
         let gen = SimpleQueryGenerator::new(10);
-        let queries = gen.generate_queries("What is machine learning?").await.unwrap();
+        let queries = gen
+            .generate_queries("What is machine learning?")
+            .await
+            .unwrap();
         // Should include perspective changes like "Define machine learning"
         assert!(
             queries.iter().any(|q| q.contains("Define")),
@@ -687,11 +685,18 @@ mod tests {
             .query_generator(gen)
             .k(10)
             .build();
-        let docs = retriever.get_relevant_documents("main query").await.unwrap();
+        let docs = retriever
+            .get_relevant_documents("main query")
+            .await
+            .unwrap();
         // original + 1 generated = 2 unique docs
         assert_eq!(docs.len(), 2);
-        assert!(docs.iter().any(|d| d.page_content == "result for: main query"));
-        assert!(docs.iter().any(|d| d.page_content == "result for: alt query"));
+        assert!(docs
+            .iter()
+            .any(|d| d.page_content == "result for: main query"));
+        assert!(docs
+            .iter()
+            .any(|d| d.page_content == "result for: alt query"));
     }
 
     #[tokio::test]
@@ -847,8 +852,16 @@ mod tests {
         assert_eq!(scored.len(), 3);
 
         // Verify Y's score > X's score
-        let y_score = scored.iter().find(|(d, _)| d.page_content == "Y").unwrap().1;
-        let x_score = scored.iter().find(|(d, _)| d.page_content == "X").unwrap().1;
+        let y_score = scored
+            .iter()
+            .find(|(d, _)| d.page_content == "Y")
+            .unwrap()
+            .1;
+        let x_score = scored
+            .iter()
+            .find(|(d, _)| d.page_content == "X")
+            .unwrap()
+            .1;
         assert!(y_score > x_score);
     }
 

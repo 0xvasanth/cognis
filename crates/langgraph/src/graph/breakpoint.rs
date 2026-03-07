@@ -12,7 +12,7 @@ use std::time::SystemTime;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::errors::{LangGraphError, Result};
+use crate::errors::Result;
 
 // ---------------------------------------------------------------------------
 // BreakpointType
@@ -38,10 +38,9 @@ impl fmt::Debug for BreakpointType {
         match self {
             Self::BeforeNode(n) => f.debug_tuple("BeforeNode").field(n).finish(),
             Self::AfterNode(n) => f.debug_tuple("AfterNode").field(n).finish(),
-            Self::Conditional { node, .. } => f
-                .debug_struct("Conditional")
-                .field("node", node)
-                .finish(),
+            Self::Conditional { node, .. } => {
+                f.debug_struct("Conditional").field("node", node).finish()
+            }
             Self::Always => write!(f, "Always"),
         }
     }
@@ -217,9 +216,7 @@ impl BreakpointManager {
     /// `Always` breakpoints are **not** removed by this method since they are
     /// not associated with a specific node.
     pub fn remove_breakpoint(&mut self, node: &str) {
-        self.breakpoints.retain(|bp| {
-            bp.node_name().map_or(true, |n| n != node)
-        });
+        self.breakpoints.retain(|bp| bp.node_name() != Some(node));
     }
 
     /// Remove every registered breakpoint.
@@ -244,9 +241,7 @@ impl BreakpointManager {
         for bp in &self.breakpoints {
             let matched = match bp {
                 BreakpointType::BeforeNode(n) | BreakpointType::AfterNode(n) => n == node,
-                BreakpointType::Conditional { node: n, condition } => {
-                    n == node && condition(state)
-                }
+                BreakpointType::Conditional { node: n, condition } => n == node && condition(state),
                 BreakpointType::Always => true,
             };
 
@@ -287,6 +282,7 @@ impl BreakpointManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::errors::LangGraphError;
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -400,7 +396,9 @@ mod tests {
             }),
         });
 
-        assert!(mgr.check_breakpoint("check", 2, &json!({"risk": false})).is_none());
+        assert!(mgr
+            .check_breakpoint("check", 2, &json!({"risk": false}))
+            .is_none());
     }
 
     // -- 6. Conditional breakpoint: wrong node -----------------------------
@@ -471,12 +469,7 @@ mod tests {
     #[tokio::test]
     async fn test_auto_approve_handler() {
         let handler = AutoApproveHandler;
-        let event = BreakpointEvent::new(
-            &BreakpointType::Always,
-            "node",
-            0,
-            &json!({}),
-        );
+        let event = BreakpointEvent::new(&BreakpointType::Always, "node", 0, &json!({}));
         let action = handler.on_breakpoint(&event).await.unwrap();
         assert!(matches!(action, BreakpointAction::Continue));
     }

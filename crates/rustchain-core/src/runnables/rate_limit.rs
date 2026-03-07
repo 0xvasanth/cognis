@@ -144,10 +144,7 @@ pub struct RunnableRateLimit {
 impl RunnableRateLimit {
     /// Create a new rate-limited runnable.
     pub fn new(inner: Arc<dyn Runnable>, config: RateLimitConfig) -> Self {
-        let bucket = TokenBucket::new(
-            config.max_burst as f64,
-            config.max_requests_per_second,
-        );
+        let bucket = TokenBucket::new(config.max_burst as f64, config.max_requests_per_second);
         Self {
             inner,
             bucket: Arc::new(Mutex::new(bucket)),
@@ -164,9 +161,7 @@ impl RunnableRateLimit {
                     return Ok(());
                 }
                 if !self.wait_on_limit {
-                    return Err(RustChainError::Other(
-                        "Rate limit exceeded".to_string(),
-                    ));
+                    return Err(RustChainError::Other("Rate limit exceeded".to_string()));
                 }
                 bucket.wait_for_token()
             };
@@ -466,10 +461,7 @@ mod tests {
     #[tokio::test]
     async fn test_throttle_single_invoke() {
         let inner = identity_runnable();
-        let throttled = RunnableThrottle::new(
-            Arc::new(inner),
-            Duration::from_millis(10),
-        );
+        let throttled = RunnableThrottle::new(Arc::new(inner), Duration::from_millis(10));
 
         let result = throttled.invoke(json!("test"), None).await.unwrap();
         assert_eq!(result, json!("test"));
@@ -478,10 +470,7 @@ mod tests {
     #[tokio::test]
     async fn test_throttle_name_delegates() {
         let inner = doubler_runnable();
-        let throttled = RunnableThrottle::new(
-            Arc::new(inner),
-            Duration::from_millis(50),
-        );
+        let throttled = RunnableThrottle::new(Arc::new(inner), Duration::from_millis(50));
 
         assert_eq!(throttled.name(), "doubler");
     }
@@ -532,10 +521,7 @@ mod tests {
         use futures::StreamExt;
 
         let inner = identity_runnable();
-        let throttled = RunnableThrottle::new(
-            Arc::new(inner),
-            Duration::from_millis(10),
-        );
+        let throttled = RunnableThrottle::new(Arc::new(inner), Duration::from_millis(10));
 
         let mut stream = throttled.stream(json!(99), None).await.unwrap();
         let item = stream.next().await.unwrap().unwrap();
@@ -545,10 +531,7 @@ mod tests {
     #[tokio::test]
     async fn test_throttle_delegates_computation() {
         let inner = doubler_runnable();
-        let throttled = RunnableThrottle::new(
-            Arc::new(inner),
-            Duration::from_millis(10),
-        );
+        let throttled = RunnableThrottle::new(Arc::new(inner), Duration::from_millis(10));
 
         let result = throttled.invoke(json!(21), None).await.unwrap();
         assert_eq!(result, json!(42));

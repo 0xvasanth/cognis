@@ -10,11 +10,11 @@
 //!
 //! Run with: `cargo run -p rustchain-examples --example memory_types`
 
-use rustchain::memory::{
-    BaseMemory, ConversationBufferMemory, ConversationWindowMemory, EntityMemory,
-};
 use rustchain::memory::token_buffer::{
     CharBasedTokenCounter, SimpleTokenCounter, TokenBufferMemory,
+};
+use rustchain::memory::{
+    BaseMemory, ConversationBufferMemory, ConversationWindowMemory, EntityMemory,
 };
 use rustchain_core::messages::Message;
 
@@ -58,14 +58,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Show as formatted text
     let text_mem = ConversationBufferMemory::new().with_return_messages(false);
     text_mem
-        .save_context(
-            &Message::human("Hello!"),
-            &Message::ai("Hi there!"),
-        )
+        .save_context(&Message::human("Hello!"), &Message::ai("Hi there!"))
         .await?;
     let text_vars = text_mem.load_memory_variables().await?;
     let text_history = text_vars.get("history").unwrap().as_str().unwrap();
-    println!("  As formatted text:\n  {}\n", text_history.replace('\n', "\n  "));
+    println!(
+        "  As formatted text:\n  {}\n",
+        text_history.replace('\n', "\n  ")
+    );
 
     // Demonstrate clear
     buffer_mem.clear().await?;
@@ -85,10 +85,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Adding 4 conversation turns...\n");
 
     let turns = vec![
-        ("Turn 1: What is Rust?", "Rust is a systems programming language."),
-        ("Turn 2: Who created it?", "Graydon Hoare started Rust at Mozilla."),
-        ("Turn 3: When was v1.0?", "Rust 1.0 was released on May 15, 2015."),
-        ("Turn 4: What about async?", "Async/await was stabilized in Rust 1.39."),
+        (
+            "Turn 1: What is Rust?",
+            "Rust is a systems programming language.",
+        ),
+        (
+            "Turn 2: Who created it?",
+            "Graydon Hoare started Rust at Mozilla.",
+        ),
+        (
+            "Turn 3: When was v1.0?",
+            "Rust 1.0 was released on May 15, 2015.",
+        ),
+        (
+            "Turn 4: What about async?",
+            "Async/await was stabilized in Rust 1.39.",
+        ),
     ];
 
     for (human, ai) in &turns {
@@ -99,7 +111,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let vars = window_mem.load_memory_variables().await?;
     let history = vars.get("history").unwrap().as_array().unwrap();
-    println!("  Messages retained: {} (2 turns x 2 messages)", history.len());
+    println!(
+        "  Messages retained: {} (2 turns x 2 messages)",
+        history.len()
+    );
     println!("  Oldest turns (1 and 2) have been automatically dropped.\n");
 
     // -----------------------------------------------------------------------
@@ -130,12 +145,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get context for a query mentioning specific entities
     let context = entity_mem.get_context("Tell me about Alice and Bob.").await;
-    println!("\n  Entity context for 'Alice and Bob':\n  {}\n", context.replace('\n', "\n  "));
+    println!(
+        "\n  Entity context for 'Alice and Bob':\n  {}\n",
+        context.replace('\n', "\n  ")
+    );
 
     // Load full memory variables
     let vars = entity_mem.load_memory_variables().await?;
     let entity_text = vars.get("entities").unwrap().as_str().unwrap();
-    println!("  All entity summaries:\n  {}\n", entity_text.replace('\n', "\n  "));
+    println!(
+        "  All entity summaries:\n  {}\n",
+        entity_text.replace('\n', "\n  ")
+    );
 
     // Demonstrate entity extraction directly
     let extracted = EntityMemory::extract_entities(
@@ -162,7 +183,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
 
-    println!("    After first turn: {} tokens (limit: 50)", token_mem.total_tokens().await);
+    println!(
+        "    After first turn: {} tokens (limit: 50)",
+        token_mem.total_tokens().await
+    );
     println!("    Messages: {}\n", token_mem.get_messages().await.len());
 
     token_mem
@@ -172,8 +196,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
 
-    println!("    After second turn: {} tokens", token_mem.total_tokens().await);
-    println!("    Messages: {} (older messages trimmed to fit budget)\n", token_mem.get_messages().await.len());
+    println!(
+        "    After second turn: {} tokens",
+        token_mem.total_tokens().await
+    );
+    println!(
+        "    Messages: {} (older messages trimmed to fit budget)\n",
+        token_mem.get_messages().await.len()
+    );
 
     // 4b. Using CharBasedTokenCounter
     println!("  4b. With CharBasedTokenCounter (4 chars per token):");
@@ -188,7 +218,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
 
-    println!("    Total tokens: {} (limit: 30)", char_mem.total_tokens().await);
+    println!(
+        "    Total tokens: {} (limit: 30)",
+        char_mem.total_tokens().await
+    );
     println!("    Messages: {}\n", char_mem.get_messages().await.len());
 
     // 4c. Using the builder pattern
@@ -201,15 +234,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     built_mem
-        .save_context(
-            &Message::human("Hello!"),
-            &Message::ai("Hi! How are you?"),
-        )
+        .save_context(&Message::human("Hello!"), &Message::ai("Hi! How are you?"))
         .await?;
 
     let vars = built_mem.load_memory_variables().await?;
     println!("    Memory key: {}", built_mem.memory_key());
-    println!("    Value (as text): {:?}\n", vars.get("chat_log").unwrap().as_str().unwrap());
+    println!(
+        "    Value (as text): {:?}\n",
+        vars.get("chat_log").unwrap().as_str().unwrap()
+    );
 
     println!("=== Done ===");
     Ok(())

@@ -333,7 +333,8 @@ impl StateReducer for ConcatStringReducer {
             Ok(Value::String(upd_str.to_string()))
         } else {
             Ok(Value::String(format!(
-                "{}{}{}", cur_str, self.separator, upd_str
+                "{}{}{}",
+                cur_str, self.separator, upd_str
             )))
         }
     }
@@ -528,11 +529,7 @@ impl StateSchema {
             let cur_val = result
                 .get(key)
                 .cloned()
-                .or_else(|| {
-                    self.fields
-                        .get(key)
-                        .and_then(|s| s.default_value.clone())
-                })
+                .or_else(|| self.fields.get(key).and_then(|s| s.default_value.clone()))
                 .unwrap_or(Value::Null);
 
             if let Some(spec) = self.fields.get(key) {
@@ -721,13 +718,19 @@ mod tests {
         let current = json!({"a": 1, "nested": {"x": 10, "y": 20}});
         let update = json!({"b": 2, "nested": {"y": 99, "z": 30}});
         let result = r.reduce(&current, &update).unwrap();
-        assert_eq!(result, json!({"a": 1, "b": 2, "nested": {"x": 10, "y": 99, "z": 30}}));
+        assert_eq!(
+            result,
+            json!({"a": 1, "b": 2, "nested": {"x": 10, "y": 99, "z": 30}})
+        );
     }
 
     #[test]
     fn test_merge_object_scalar_overwrite() {
         let r = MergeObjectReducer;
-        assert_eq!(r.reduce(&json!("old"), &json!("new")).unwrap(), json!("new"));
+        assert_eq!(
+            r.reduce(&json!("old"), &json!("new")).unwrap(),
+            json!("new")
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -768,19 +771,13 @@ mod tests {
         let r = UniqueListReducer;
         let current = json!([1, 2, 3]);
         let update = json!([2, 3, 4, 5]);
-        assert_eq!(
-            r.reduce(&current, &update).unwrap(),
-            json!([1, 2, 3, 4, 5])
-        );
+        assert_eq!(r.reduce(&current, &update).unwrap(), json!([1, 2, 3, 4, 5]));
     }
 
     #[test]
     fn test_unique_list_single_duplicate() {
         let r = UniqueListReducer;
-        assert_eq!(
-            r.reduce(&json!([1, 2]), &json!(2)).unwrap(),
-            json!([1, 2])
-        );
+        assert_eq!(r.reduce(&json!([1, 2]), &json!(2)).unwrap(), json!([1, 2]));
     }
 
     #[test]
@@ -982,9 +979,7 @@ mod tests {
 
     #[test]
     fn test_schema_reduce_state_preserves_untouched() {
-        let schema = StateSchema::builder()
-            .field("a", OverwriteReducer)
-            .build();
+        let schema = StateSchema::builder().field("a", OverwriteReducer).build();
         let current = json!({"a": 1, "b": 2});
         let update = json!({"a": 10});
         let result = schema.reduce_state(&current, &update).unwrap();
@@ -1009,7 +1004,9 @@ mod tests {
         let schema = StateSchema::builder()
             .field_with_default("counter", AddNumberReducer, json!(0))
             .build();
-        let result = schema.reduce_state(&json!({}), &json!({"counter": 5})).unwrap();
+        let result = schema
+            .reduce_state(&json!({}), &json!({"counter": 5}))
+            .unwrap();
         assert_eq!(result["counter"], json!(5));
     }
 

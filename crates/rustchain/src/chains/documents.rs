@@ -315,12 +315,12 @@ impl StuffDocumentsChainBuilder {
     /// If a `document_prompt` is set and no explicit strategy is provided,
     /// the strategy will use that prompt.
     pub fn build(self) -> StuffDocumentsChain {
-        let strategy = self.combine_strategy.unwrap_or_else(|| {
-            match &self.document_prompt {
+        let strategy = self
+            .combine_strategy
+            .unwrap_or_else(|| match &self.document_prompt {
                 Some(prompt) => Box::new(StuffStrategy::with_prompt(prompt.clone())),
                 None => Box::new(StuffStrategy::new()),
-            }
-        });
+            });
 
         StuffDocumentsChain {
             combine_strategy: strategy,
@@ -426,10 +426,8 @@ mod tests {
 
     #[test]
     fn test_collapse_strategy_empty() {
-        let strategy = CollapseStrategy::new(
-            2,
-            Box::new(|_docs: &[Document]| Ok("summary".to_string())),
-        );
+        let strategy =
+            CollapseStrategy::new(2, Box::new(|_docs: &[Document]| Ok("summary".to_string())));
         let docs: Vec<Document> = vec![];
         let result = strategy.combine(&docs, "\n\n").unwrap();
         assert_eq!(result, "");
@@ -437,10 +435,8 @@ mod tests {
 
     #[test]
     fn test_collapse_strategy_single_doc() {
-        let strategy = CollapseStrategy::new(
-            2,
-            Box::new(|_docs: &[Document]| Ok("summary".to_string())),
-        );
+        let strategy =
+            CollapseStrategy::new(2, Box::new(|_docs: &[Document]| Ok("summary".to_string())));
         let docs = vec![make_doc("Only one")];
         let result = strategy.combine(&docs, "\n\n").unwrap();
         assert_eq!(result, "Only one");
@@ -603,8 +599,7 @@ mod tests {
 
     #[test]
     fn test_factory_with_metadata() {
-        let chain =
-            create_stuff_documents_chain("{page_content} (source: {metadata.source})");
+        let chain = create_stuff_documents_chain("{page_content} (source: {metadata.source})");
         let mut meta = HashMap::new();
         meta.insert("source".to_string(), json!("test.pdf"));
         let docs = vec![

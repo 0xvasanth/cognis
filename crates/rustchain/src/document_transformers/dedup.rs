@@ -3,8 +3,8 @@
 //! This module provides transformers that remove duplicate documents based on
 //! exact content matching, fuzzy similarity, or content hashing.
 
-use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 use async_trait::async_trait;
@@ -121,7 +121,10 @@ fn char_ngrams(text: &str, n: usize) -> HashSet<String> {
         set.insert(text.to_string());
         return set;
     }
-    chars.windows(n).map(|w| w.iter().collect::<String>()).collect()
+    chars
+        .windows(n)
+        .map(|w| w.iter().collect::<String>())
+        .collect()
 }
 
 /// Compute Jaccard similarity between two sets of n-grams.

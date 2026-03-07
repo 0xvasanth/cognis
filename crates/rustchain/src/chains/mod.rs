@@ -56,6 +56,6 @@ pub use extraction::{
 };
 pub mod documents;
 pub use documents::{
-    CollapseStrategy, DocumentCombineStrategy, DocumentFormatter, StuffDocumentsChain,
-    StuffDocumentsChainBuilder, StuffStrategy, create_stuff_documents_chain,
+    create_stuff_documents_chain, CollapseStrategy, DocumentCombineStrategy, DocumentFormatter,
+    StuffDocumentsChain, StuffDocumentsChainBuilder, StuffStrategy,
 };

@@ -196,7 +196,8 @@ Action Input: quantum computing basics";
     }
 
     // 4b. Parse an AI message with no tool calls (final answer)
-    let toolcall_final = r#"{"content": "The weather in London is 15 degrees Celsius.", "tool_calls": []}"#;
+    let toolcall_final =
+        r#"{"content": "The weather in London is 15 degrees Celsius.", "tool_calls": []}"#;
 
     println!("Input (AI message with no tool calls):\n{toolcall_final}\n");
     match toolcall_parser.parse(toolcall_final) {
