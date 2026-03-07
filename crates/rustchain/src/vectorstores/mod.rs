@@ -11,3 +11,6 @@ pub mod weaviate;
 
 #[cfg(feature = "chroma")]
 pub mod chroma;
+
+#[cfg(feature = "faiss")]
+pub mod faiss;
