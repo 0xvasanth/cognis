@@ -24,6 +24,7 @@ pub mod schema;
 pub mod scoped_callbacks;
 pub mod sequence;
 pub mod timeout;
+pub mod tracing;
 
 use std::pin::Pin;
 
@@ -75,6 +76,10 @@ pub use scoped_callbacks::{
 };
 pub use sequence::RunnableSequence;
 pub use timeout::{RunnableDeadline, RunnableTimeout, TimeoutBehavior, TimeoutConfig};
+pub use tracing::{
+    CompactTraceFormatter, JsonTraceFormatter, SpanResult, TextTraceFormatter, TraceCollector,
+    TraceEntry, TraceExporter, TraceFormatter, TraceLevel, TraceSpan,
+};
 
 /// Creates a `RunnableSequence` from a list of runnables.
 ///
