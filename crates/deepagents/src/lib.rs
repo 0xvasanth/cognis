@@ -68,6 +68,7 @@ pub mod agent;
 pub mod backends;
 pub mod builder;
 pub mod config;
+pub mod context;
 pub mod conversation;
 pub mod events;
 pub mod health;
