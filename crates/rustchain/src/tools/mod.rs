@@ -75,8 +75,10 @@ pub use retriever::{
 };
 pub use shell::ShellTool;
 pub use validation::{
-    StrictnessMode, ToolCallCorrector, ToolCallValidator, ValidatedToolExecutor, ValidationError,
-    ValidationResult, ValidationSchemaBuilder,
+    FieldValidator, InputValidationError, InputValidationResult, JsonType, OutputValidator,
+    StrictnessMode, ToolCallCorrector, ToolCallValidator, ToolValidator, ValidatedTool,
+    ValidatedToolExecutor, ValidationError, ValidationResult, ValidationRule,
+    ValidationSchemaBuilder,
 };
 
 #[cfg(any(
