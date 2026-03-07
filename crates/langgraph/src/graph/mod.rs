@@ -5,6 +5,7 @@
 
 pub mod annotations;
 pub mod ascii;
+pub mod audit;
 pub mod branch;
 pub mod human_in_loop;
 pub mod mermaid;
@@ -22,6 +23,10 @@ pub mod ui;
 pub use annotations::{
     apply_annotations, AnnotatedState, AnnotatedStateBuilder, AnnotatedStateGraph,
     CompiledAnnotatedStateGraph, FieldAnnotation, JsonType,
+};
+pub use audit::{
+    make_event, AuditEvent, AuditEventType, AuditLog, AuditLogConfig, AuditReport, AuditSeverity,
+    AuditTrail,
 };
 pub use ascii::{to_ascii, AsciiGraphRenderer, AsciiRenderOptions, NodeStyle};
 pub use branch::{AsyncBranch, AsyncRouterFn, Branch, RouterFn, RouterResult};
