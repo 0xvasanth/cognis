@@ -33,6 +33,7 @@ pub mod ephemeral_value;
 pub mod last_value;
 pub mod named_barrier;
 pub mod reducers;
+pub mod state_reducers;
 pub mod topic;
 pub mod untracked;
 
