@@ -82,7 +82,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use rustchain_core::documents::Document;
-use rustchain_core::error::{RustChainError, Result};
+use rustchain_core::error::{Result, RustChainError};
 use serde_json::Value;
 
 use crate::text_splitters::TextSplitter;
@@ -345,8 +345,8 @@ impl DocumentLoader for InMemoryJsonLoader {
                 Ok(docs)
             }
             Value::Object(map) => {
-                let content = serde_json::to_string_pretty(&Value::Object(map.clone()))
-                    .unwrap_or_default();
+                let content =
+                    serde_json::to_string_pretty(&Value::Object(map.clone())).unwrap_or_default();
                 Ok(vec![Document::new(content).with_metadata(metadata)])
             }
             other => {
@@ -556,11 +556,7 @@ impl DocumentLoader for InMemoryDirectoryLoader {
 
         for file_path in &files {
             let content = std::fs::read_to_string(file_path).map_err(|e| {
-                RustChainError::Other(format!(
-                    "Failed to read '{}': {}",
-                    file_path.display(),
-                    e
-                ))
+                RustChainError::Other(format!("Failed to read '{}': {}", file_path.display(), e))
             })?;
 
             let mut metadata = HashMap::new();
@@ -570,10 +566,7 @@ impl DocumentLoader for InMemoryDirectoryLoader {
             );
 
             if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
-                metadata.insert(
-                    "file_type".to_string(),
-                    Value::String(ext.to_string()),
-                );
+                metadata.insert("file_type".to_string(), Value::String(ext.to_string()));
             }
 
             docs.push(Document::new(content).with_metadata(metadata));
@@ -651,10 +644,8 @@ impl SimulatedWebLoader {
 impl DocumentLoader for SimulatedWebLoader {
     fn load(&self) -> Result<Vec<Document>> {
         let page_content = match &self.selector {
-            Some(selector) => {
-                Self::extract_between_tags(&self.content, selector)
-                    .unwrap_or_else(|| self.content.clone())
-            }
+            Some(selector) => Self::extract_between_tags(&self.content, selector)
+                .unwrap_or_else(|| self.content.clone()),
             None => self.content.clone(),
         };
 
@@ -786,7 +777,10 @@ mod inline_tests {
     #[test]
     fn test_string_loader_preserves_metadata() {
         let mut meta = HashMap::new();
-        meta.insert("source".to_string(), Value::String("custom_source".to_string()));
+        meta.insert(
+            "source".to_string(),
+            Value::String("custom_source".to_string()),
+        );
         let loader = StringLoader::new("text", meta);
         let docs = loader.load().unwrap();
         assert_eq!(
@@ -934,8 +928,7 @@ mod inline_tests {
 
     #[test]
     fn test_csv_loader_custom_separator() {
-        let loader = InMemoryCsvLoader::new("name\tage\nAlice\t30")
-            .with_separator('\t');
+        let loader = InMemoryCsvLoader::new("name\tage\nAlice\t30").with_separator('\t');
         let docs = loader.load().unwrap();
         assert_eq!(docs.len(), 1);
         assert!(docs[0].page_content.contains("Alice"));
@@ -944,8 +937,7 @@ mod inline_tests {
 
     #[test]
     fn test_csv_loader_semicolon_separator() {
-        let loader = InMemoryCsvLoader::new("name;age\nAlice;30")
-            .with_separator(';');
+        let loader = InMemoryCsvLoader::new("name;age\nAlice;30").with_separator(';');
         let docs = loader.load().unwrap();
         assert_eq!(docs.len(), 1);
         assert!(docs[0].page_content.contains("Alice"));
@@ -957,10 +949,7 @@ mod inline_tests {
         let docs = loader.load().unwrap();
         assert_eq!(docs.len(), 3);
         for (i, doc) in docs.iter().enumerate() {
-            assert_eq!(
-                doc.metadata.get("row").unwrap(),
-                &Value::Number(i.into())
-            );
+            assert_eq!(doc.metadata.get("row").unwrap(), &Value::Number(i.into()));
         }
     }
 
@@ -984,8 +973,7 @@ mod inline_tests {
     #[test]
     fn test_csv_loader_missing_columns() {
         // Requesting columns that don't exist
-        let loader = InMemoryCsvLoader::new("name,age\nAlice,30")
-            .with_columns(vec!["nonexistent"]);
+        let loader = InMemoryCsvLoader::new("name,age\nAlice,30").with_columns(vec!["nonexistent"]);
         let docs = loader.load().unwrap();
         assert_eq!(docs.len(), 1);
         // Content should be empty since the column doesn't exist
@@ -1088,10 +1076,7 @@ mod inline_tests {
 
     #[test]
     fn test_web_loader_basic() {
-        let loader = SimulatedWebLoader::new(
-            "https://example.com",
-            "Page content here",
-        );
+        let loader = SimulatedWebLoader::new("https://example.com", "Page content here");
         let docs = loader.load().unwrap();
         assert_eq!(docs.len(), 1);
         assert_eq!(docs[0].page_content, "Page content here");
@@ -1099,10 +1084,7 @@ mod inline_tests {
 
     #[test]
     fn test_web_loader_url_metadata() {
-        let loader = SimulatedWebLoader::new(
-            "https://example.com/page",
-            "content",
-        );
+        let loader = SimulatedWebLoader::new("https://example.com/page", "content");
         let docs = loader.load().unwrap();
         assert_eq!(
             docs[0].metadata.get("source").unwrap(),
@@ -1123,8 +1105,7 @@ mod inline_tests {
     #[test]
     fn test_web_loader_with_selector() {
         let html = r#"<html><body><nav>Menu</nav><article>Important text</article></body></html>"#;
-        let loader = SimulatedWebLoader::new("https://example.com", html)
-            .with_selector("article");
+        let loader = SimulatedWebLoader::new("https://example.com", html).with_selector("article");
         let docs = loader.load().unwrap();
         assert_eq!(docs[0].page_content, "Important text");
     }
@@ -1132,8 +1113,7 @@ mod inline_tests {
     #[test]
     fn test_web_loader_with_selector_and_attributes() {
         let html = r#"<div><main class="content">Main content here</main></div>"#;
-        let loader = SimulatedWebLoader::new("https://example.com", html)
-            .with_selector("main");
+        let loader = SimulatedWebLoader::new("https://example.com", html).with_selector("main");
         let docs = loader.load().unwrap();
         assert_eq!(docs[0].page_content, "Main content here");
     }
@@ -1141,8 +1121,7 @@ mod inline_tests {
     #[test]
     fn test_web_loader_selector_not_found() {
         let html = "<p>Just a paragraph</p>";
-        let loader = SimulatedWebLoader::new("https://example.com", html)
-            .with_selector("article");
+        let loader = SimulatedWebLoader::new("https://example.com", html).with_selector("article");
         let docs = loader.load().unwrap();
         // Falls back to full content
         assert_eq!(docs[0].page_content, html);
@@ -1268,10 +1247,7 @@ mod inline_tests {
 
     #[test]
     fn test_load_and_split_web() {
-        let loader = SimulatedWebLoader::new(
-            "https://example.com",
-            "aaa\n\nbbb\n\nccc",
-        );
+        let loader = SimulatedWebLoader::new("https://example.com", "aaa\n\nbbb\n\nccc");
         let splitter = CharacterTextSplitter::new()
             .with_chunk_size(5)
             .with_chunk_overlap(0);

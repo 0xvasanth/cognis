@@ -357,10 +357,7 @@ pub struct RunnableWithCallbacks {
 impl RunnableWithCallbacks {
     /// Create a new wrapper around the given runnable with the provided
     /// dispatcher.
-    pub fn new(
-        inner: Arc<dyn super::base::Runnable>,
-        dispatcher: Arc<CallbackDispatcher>,
-    ) -> Self {
+    pub fn new(inner: Arc<dyn super::base::Runnable>, dispatcher: Arc<CallbackDispatcher>) -> Self {
         Self { inner, dispatcher }
     }
 
@@ -401,9 +398,10 @@ impl std::fmt::Debug for RunnableWithCallbacks {
 // ---------------------------------------------------------------------------
 
 /// Create a [`ScopedCallbackConfig`] from a list of handler functions.
-pub fn with_callbacks(
-    handlers: Vec<Box<dyn Fn(&CallbackScope, &CallbackEvent) + Send + Sync>>,
-) -> ScopedCallbackConfig {
+/// Type alias for scoped callback handler functions.
+type ScopedCallbackHandler = Box<dyn Fn(&CallbackScope, &CallbackEvent) + Send + Sync>;
+
+pub fn with_callbacks(handlers: Vec<ScopedCallbackHandler>) -> ScopedCallbackConfig {
     let mut config = ScopedCallbackConfig::new();
     for handler in handlers {
         config.handlers.push(Arc::new(handler));
@@ -798,19 +796,14 @@ mod tests {
 
         let scope = CallbackScope::new("test", "chain");
         dispatcher.dispatch(&scope, &CallbackEvent::OnStart { input: json!(null) });
-        dispatcher.dispatch(&scope, &CallbackEvent::OnEnd { output: json!(null) });
         dispatcher.dispatch(
             &scope,
-            &CallbackEvent::OnError {
-                error: "e".into(),
+            &CallbackEvent::OnEnd {
+                output: json!(null),
             },
         );
-        dispatcher.dispatch(
-            &scope,
-            &CallbackEvent::OnText {
-                text: "t".into(),
-            },
-        );
+        dispatcher.dispatch(&scope, &CallbackEvent::OnError { error: "e".into() });
+        dispatcher.dispatch(&scope, &CallbackEvent::OnText { text: "t".into() });
         dispatcher.dispatch(&scope, &CallbackEvent::OnRetry { attempt: 1 });
         dispatcher.dispatch(
             &scope,
@@ -908,8 +901,7 @@ mod tests {
         let dispatcher = Arc::new(dispatcher);
 
         {
-            let _guard =
-                dispatcher.enter_scope(CallbackScope::new("test", "chain"), json!(null));
+            let _guard = dispatcher.enter_scope(CallbackScope::new("test", "chain"), json!(null));
         }
 
         let errs = errors.lock().unwrap();
@@ -1159,9 +1151,10 @@ mod tests {
     fn test_runnable_with_callbacks_debug() {
         use crate::runnables::RunnableLambda;
 
-        let inner = Arc::new(RunnableLambda::new("test_fn", |v: Value| async move {
-            Ok(v)
-        })) as Arc<dyn super::super::base::Runnable>;
+        let inner = Arc::new(RunnableLambda::new(
+            "test_fn",
+            |v: Value| async move { Ok(v) },
+        )) as Arc<dyn super::super::base::Runnable>;
 
         let wrapped = RunnableWithCallbacks::new(inner, Arc::new(CallbackDispatcher::new()));
         let debug = format!("{:?}", wrapped);

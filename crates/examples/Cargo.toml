@@ -190,3 +190,19 @@ path = "../../examples/node_scheduler.rs"
 [[example]]
 name = "agent_communication"
 path = "../../examples/agent_communication.rs"
+
+[[example]]
+name = "text_splitters"
+path = "../../examples/text_splitters.rs"
+
+[[example]]
+name = "chat_model_registry"
+path = "../../examples/chat_model_registry.rs"
+
+[[example]]
+name = "message_graph"
+path = "../../examples/message_graph.rs"
+
+[[example]]
+name = "agent_memory"
+path = "../../examples/agent_memory.rs"

@@ -356,8 +356,8 @@ pub async fn batch_process(
         use futures::stream::{self, StreamExt};
         let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrency));
 
-        let chunk_results: Vec<BatchItemResult> = stream::iter(
-            chunk.into_iter().enumerate().map(|(local_idx, input)| {
+        let chunk_results: Vec<BatchItemResult> =
+            stream::iter(chunk.into_iter().enumerate().map(|(local_idx, input)| {
                 let idx = global_offset + local_idx;
                 let runnable = Arc::clone(&runnable);
                 let sem = Arc::clone(&semaphore);
@@ -367,14 +367,23 @@ pub async fn batch_process(
 
                 async move {
                     let _permit = sem.acquire().await.unwrap();
-                    let result = invoke_with_options(&runnable, input.clone(), cfg.as_ref(), timeout_ms).await;
+                    let result =
+                        invoke_with_options(&runnable, input.clone(), cfg.as_ref(), timeout_ms)
+                            .await;
 
                     match result {
                         Ok(value) => BatchItemResult::Success { index: idx, value },
                         Err(e) => {
                             // Retry once if configured
                             if retry {
-                                match invoke_with_options(&runnable, input, cfg.as_ref(), timeout_ms).await {
+                                match invoke_with_options(
+                                    &runnable,
+                                    input,
+                                    cfg.as_ref(),
+                                    timeout_ms,
+                                )
+                                .await
+                                {
                                     Ok(value) => BatchItemResult::Success { index: idx, value },
                                     Err(e2) => BatchItemResult::Failure {
                                         index: idx,
@@ -390,11 +399,10 @@ pub async fn batch_process(
                         }
                     }
                 }
-            }),
-        )
-        .buffer_unordered(config.max_concurrency)
-        .collect()
-        .await;
+            }))
+            .buffer_unordered(config.max_concurrency)
+            .collect()
+            .await;
 
         // Sort by index to maintain order within the chunk
         let mut sorted = chunk_results;
@@ -477,13 +485,7 @@ impl RunnableBatchProcessor {
 
     /// Run the batch and return a structured [`BatchResult`].
     pub async fn invoke_batch(&self, inputs: Vec<Value>) -> BatchResult {
-        batch_process(
-            Arc::clone(&self.inner),
-            inputs,
-            self.config.clone(),
-            None,
-        )
-        .await
+        batch_process(Arc::clone(&self.inner), inputs, self.config.clone(), None).await
     }
 }
 
@@ -500,17 +502,12 @@ impl Runnable for RunnableBatchProcessor {
             .as_array()
             .ok_or_else(|| RustChainError::TypeMismatch {
                 expected: "Array".into(),
-                got: format!("{}", input_type_name(&input)),
+                got: input_type_name(&input).to_string(),
             })?
             .clone();
 
-        let batch_result = batch_process(
-            Arc::clone(&self.inner),
-            items,
-            self.config.clone(),
-            _config,
-        )
-        .await;
+        let batch_result =
+            batch_process(Arc::clone(&self.inner), items, self.config.clone(), _config).await;
 
         let output: Vec<Value> = batch_result
             .results
@@ -967,13 +964,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_batch_process_preserves_order() {
-        let runnable = Arc::new(RunnableLambda::new("delay_by_value", |v: Value| async move {
-            let n = v.as_i64().unwrap();
-            // Higher index items finish faster
-            let delay = (5 - n) as u64 * 10;
-            tokio::time::sleep(Duration::from_millis(delay)).await;
-            Ok(json!(n * 100))
-        })) as Arc<dyn Runnable>;
+        let runnable = Arc::new(RunnableLambda::new(
+            "delay_by_value",
+            |v: Value| async move {
+                let n = v.as_i64().unwrap();
+                // Higher index items finish faster
+                let delay = (5 - n) as u64 * 10;
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+                Ok(json!(n * 100))
+            },
+        )) as Arc<dyn Runnable>;
 
         let inputs: Vec<Value> = (0..5).map(|i| json!(i)).collect();
         let config = BatchConfig::new().with_chunk_size(5);

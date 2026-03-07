@@ -335,10 +335,9 @@ impl SkillRegistry {
     /// Remove a skill from the registry.
     pub fn unregister(&mut self, name: &str) -> Result<()> {
         if self.skills.remove(name).is_none() {
-            return Err(DeepAgentError::Other(format!(
-                "skill '{}' not found",
-                name,
-            )));
+            return Err(DeepAgentError::Other(
+                format!("skill '{}' not found", name,),
+            ));
         }
         Ok(())
     }
@@ -705,10 +704,9 @@ mod tests {
 
     #[test]
     fn test_template_render_simple() {
-        let tmpl = SkillTemplate::new(
-            SkillDefinition::new("greet").with_instructions("Hello, {{name}}!"),
-        )
-        .add_parameter(SkillParameter::new("name", SkillParamType::Text));
+        let tmpl =
+            SkillTemplate::new(SkillDefinition::new("greet").with_instructions("Hello, {{name}}!"))
+                .add_parameter(SkillParameter::new("name", SkillParamType::Text));
 
         let mut args = HashMap::new();
         args.insert("name".into(), json!("World"));
@@ -736,14 +734,12 @@ mod tests {
 
     #[test]
     fn test_template_render_with_default() {
-        let tmpl = SkillTemplate::new(
-            SkillDefinition::new("s").with_instructions("Count: {{n}}"),
-        )
-        .add_parameter(
-            SkillParameter::new("n", SkillParamType::Number)
-                .optional()
-                .with_default(json!(5)),
-        );
+        let tmpl = SkillTemplate::new(SkillDefinition::new("s").with_instructions("Count: {{n}}"))
+            .add_parameter(
+                SkillParameter::new("n", SkillParamType::Number)
+                    .optional()
+                    .with_default(json!(5)),
+            );
 
         let args = HashMap::new();
         let result = tmpl.render(&args).unwrap();
@@ -752,10 +748,9 @@ mod tests {
 
     #[test]
     fn test_template_render_number_arg() {
-        let tmpl = SkillTemplate::new(
-            SkillDefinition::new("s").with_instructions("Items: {{count}}"),
-        )
-        .add_parameter(SkillParameter::new("count", SkillParamType::Number));
+        let tmpl =
+            SkillTemplate::new(SkillDefinition::new("s").with_instructions("Items: {{count}}"))
+                .add_parameter(SkillParameter::new("count", SkillParamType::Number));
 
         let mut args = HashMap::new();
         args.insert("count".into(), json!(42));
@@ -800,9 +795,8 @@ mod tests {
 
     #[test]
     fn test_template_validate_args_required_with_default_ok() {
-        let tmpl = SkillTemplate::new(SkillDefinition::new("s")).add_parameter(
-            SkillParameter::new("x", SkillParamType::Number).with_default(json!(0)),
-        );
+        let tmpl = SkillTemplate::new(SkillDefinition::new("s"))
+            .add_parameter(SkillParameter::new("x", SkillParamType::Number).with_default(json!(0)));
 
         let args = HashMap::new();
         assert!(tmpl.validate_args(&args).is_ok());
@@ -867,10 +861,8 @@ mod tests {
     #[test]
     fn test_registry_search_by_name() {
         let mut reg = SkillRegistry::new();
-        reg.register(SkillTemplate::new(
-            SkillDefinition::new("summarize_text"),
-        ))
-        .unwrap();
+        reg.register(SkillTemplate::new(SkillDefinition::new("summarize_text")))
+            .unwrap();
         reg.register(SkillTemplate::new(SkillDefinition::new("translate")))
             .unwrap();
         let results = reg.search("summar");
@@ -1031,11 +1023,7 @@ mod tests {
             rendered_output: String::new(),
             executed_at: "2026-03-08T00:00:00Z".into(),
             success,
-            error: if success {
-                None
-            } else {
-                Some("err".into())
-            },
+            error: if success { None } else { Some("err".into()) },
         }
     }
 

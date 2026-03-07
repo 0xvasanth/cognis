@@ -68,9 +68,7 @@ impl ChannelValue {
             }
             Value::String(s) => ChannelValue::Text(s),
             Value::Array(arr) => ChannelValue::List(arr),
-            Value::Object(map) => {
-                ChannelValue::Map(map.into_iter().collect())
-            }
+            Value::Object(map) => ChannelValue::Map(map.into_iter().collect()),
         }
     }
 
@@ -84,10 +82,8 @@ impl ChannelValue {
             ChannelValue::Text(s) => Value::String(s.clone()),
             ChannelValue::List(arr) => Value::Array(arr.clone()),
             ChannelValue::Map(map) => {
-                let obj: serde_json::Map<String, Value> = map
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
+                let obj: serde_json::Map<String, Value> =
+                    map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 Value::Object(obj)
             }
             ChannelValue::Json(v) => v.clone(),
@@ -524,12 +520,7 @@ impl ChannelProtocol {
     }
 
     /// Define a channel with the given name, reducer, and default value.
-    pub fn define(
-        &mut self,
-        name: impl Into<String>,
-        reducer: ChannelReducer,
-        default: Value,
-    ) {
+    pub fn define(&mut self, name: impl Into<String>, reducer: ChannelReducer, default: Value) {
         self.definitions.push(ChannelDefinition {
             name: name.into(),
             reducer,

@@ -263,6 +263,7 @@ impl Default for MessageState {
 pub struct MessageNode {
     /// The name of this node.
     pub name: String,
+    #[allow(clippy::type_complexity)]
     handler: Box<dyn Fn(&MessageState) -> Vec<GraphMessage> + Send + Sync>,
 }
 
@@ -332,10 +333,9 @@ impl fmt::Debug for MessageEdge {
                 .field("from", from)
                 .field("to", to)
                 .finish(),
-            MessageEdge::Conditional { from, .. } => f
-                .debug_struct("Conditional")
-                .field("from", from)
-                .finish(),
+            MessageEdge::Conditional { from, .. } => {
+                f.debug_struct("Conditional").field("from", from).finish()
+            }
         }
     }
 }
@@ -434,11 +434,7 @@ impl MessageGraph {
             }
 
             // Check if we've reached the finish point
-            if self
-                .finish_point
-                .as_ref()
-                .map_or(false, |fp| fp == &current)
-            {
+            if self.finish_point.as_ref() == Some(&current) {
                 return Ok(state);
             }
 
@@ -859,8 +855,7 @@ mod tests {
 
     #[test]
     fn test_graph_message_to_json_minimal() {
-        let msg = GraphMessage::new(MessageRole::Human, "test")
-            .with_timestamp("ts");
+        let msg = GraphMessage::new(MessageRole::Human, "test").with_timestamp("ts");
         let json = msg.to_json();
         assert!(json.get("name").is_none());
         assert!(json.get("tool_call_id").is_none());
@@ -998,9 +993,7 @@ mod tests {
     #[test]
     fn test_message_state_to_json() {
         let mut state = MessageState::new();
-        state.add(
-            GraphMessage::new(MessageRole::Human, "hi").with_timestamp("ts1"),
-        );
+        state.add(GraphMessage::new(MessageRole::Human, "hi").with_timestamp("ts1"));
         let json = state.to_json();
         let arr = json.as_array().unwrap();
         assert_eq!(arr.len(), 1);
@@ -1375,7 +1368,11 @@ mod tests {
         state.add(GraphMessage::new(MessageRole::Human, "question"));
         let result = graph.execute(state).unwrap();
         assert_eq!(result.len(), 3); // human + system + ai
-        assert!(result.last().unwrap().content.contains("Reply to: question"));
+        assert!(result
+            .last()
+            .unwrap()
+            .content
+            .contains("Reply to: question"));
     }
 
     #[test]

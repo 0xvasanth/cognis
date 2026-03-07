@@ -26,20 +26,15 @@ use rustchain_core::documents::Document;
 // ---------------------------------------------------------------------------
 
 /// How to measure the length of a text chunk.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum LengthFn {
     /// Count Unicode characters (default).
+    #[default]
     Chars,
     /// Count whitespace-delimited words.
     Words,
     /// A user-supplied length function.
     Custom(Arc<dyn Fn(&str) -> usize + Send + Sync>),
-}
-
-impl Default for LengthFn {
-    fn default() -> Self {
-        Self::Chars
-    }
 }
 
 impl LengthFn {
@@ -166,11 +161,7 @@ pub trait TextSplitter: Send + Sync {
 // ---------------------------------------------------------------------------
 
 /// Merge small pieces into chunks up to `chunk_size`, with `chunk_overlap`.
-fn merge_splits(
-    splits: &[&str],
-    separator: &str,
-    config: &SplitConfig,
-) -> Vec<String> {
+fn merge_splits(splits: &[&str], separator: &str, config: &SplitConfig) -> Vec<String> {
     let sep_len = config.len(separator);
     let mut docs: Vec<String> = Vec::new();
     let mut current_doc: Vec<&str> = Vec::new();
@@ -302,7 +293,13 @@ impl TextSplitter for CharacterTextSplitter {
         let good_splits: Vec<&str> = splits
             .iter()
             .copied()
-            .map(|s| if self.config.strip_whitespace { s.trim() } else { s })
+            .map(|s| {
+                if self.config.strip_whitespace {
+                    s.trim()
+                } else {
+                    s
+                }
+            })
             .filter(|s| !s.is_empty())
             .collect();
 
@@ -328,12 +325,7 @@ pub struct RecursiveCharacterTextSplitter {
 impl Default for RecursiveCharacterTextSplitter {
     fn default() -> Self {
         Self {
-            separators: vec![
-                "\n\n".into(),
-                "\n".into(),
-                " ".into(),
-                "".into(),
-            ],
+            separators: vec!["\n\n".into(), "\n".into(), " ".into(), "".into()],
             config: SplitConfig::default(),
         }
     }
@@ -410,12 +402,20 @@ impl RecursiveCharacterTextSplitter {
             text.split(separator).collect()
         };
 
-        let merge_sep = if self.config.keep_separator { "" } else { separator };
+        let merge_sep = if self.config.keep_separator {
+            ""
+        } else {
+            separator
+        };
 
         let mut good_splits: Vec<&str> = Vec::new();
 
         for s in &splits {
-            let piece = if self.config.strip_whitespace { s.trim() } else { *s };
+            let piece = if self.config.strip_whitespace {
+                s.trim()
+            } else {
+                *s
+            };
             if piece.is_empty() {
                 continue;
             }
@@ -517,7 +517,11 @@ impl TextSplitter for TokenTextSplitter {
             return Vec::new();
         }
 
-        let chunk_size = if self.chunk_size == 0 { 1 } else { self.chunk_size };
+        let chunk_size = if self.chunk_size == 0 {
+            1
+        } else {
+            self.chunk_size
+        };
         // Clamp overlap to be less than chunk_size.
         let overlap = self.chunk_overlap.min(chunk_size.saturating_sub(1));
 
@@ -781,8 +785,8 @@ impl TextSplitter for CodeTextSplitter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use serde_json::json;
+    use std::collections::HashMap;
 
     fn doc(content: &str) -> Document {
         Document::new(content)
@@ -834,8 +838,8 @@ mod tests {
 
     #[test]
     fn test_split_config_length_fn_custom() {
-        let config = SplitConfig::new()
-            .with_length_fn(LengthFn::Custom(Arc::new(|s: &str| s.len())));
+        let config =
+            SplitConfig::new().with_length_fn(LengthFn::Custom(Arc::new(|s: &str| s.len())));
         assert_eq!(config.len("abc"), 3);
     }
 
@@ -1050,7 +1054,12 @@ mod tests {
         assert!(chunks.len() >= 2);
         for chunk in &chunks {
             let word_count = chunk.split_whitespace().count();
-            assert!(word_count <= 3, "Chunk has {} words: {:?}", word_count, chunk);
+            assert!(
+                word_count <= 3,
+                "Chunk has {} words: {:?}",
+                word_count,
+                chunk
+            );
         }
     }
 
@@ -1070,7 +1079,11 @@ mod tests {
                 .iter()
                 .filter(|w| second_words.contains(w))
                 .count();
-            assert!(shared >= 1, "Expected overlap, found {} shared words", shared);
+            assert!(
+                shared >= 1,
+                "Expected overlap, found {} shared words",
+                shared
+            );
         }
     }
 
@@ -1267,9 +1280,11 @@ mod tests {
             .with_separator(" ")
             .with_chunk_size(10)
             .with_chunk_overlap(0);
-        let docs = vec![
-            doc_with_meta("hello world foo bar baz", "source", "test.txt"),
-        ];
+        let docs = vec![doc_with_meta(
+            "hello world foo bar baz",
+            "source",
+            "test.txt",
+        )];
         let result = splitter.split_documents(docs);
         assert!(result.len() > 1);
         for d in &result {

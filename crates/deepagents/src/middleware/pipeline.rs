@@ -358,10 +358,7 @@ impl PipelineMiddleware for ValidationMiddleware {
         if let Some(obj) = ctx.request.as_object() {
             for field in &self.required_fields {
                 if !obj.contains_key(field) {
-                    return MiddlewareResult::Error(format!(
-                        "missing required field: '{}'",
-                        field
-                    ));
+                    return MiddlewareResult::Error(format!("missing required field: '{}'", field));
                 }
             }
             MiddlewareResult::Continue(ctx.request.clone())

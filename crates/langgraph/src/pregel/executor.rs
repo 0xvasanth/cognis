@@ -307,15 +307,9 @@ impl PregelExecutor {
                     .map(|e| e.to_string())
                     .unwrap_or_else(|| "unknown error".to_string());
                 if let Value::Object(ref mut state_map) = state {
-                    state_map.insert(
-                        format!("{}_error", name),
-                        Value::String(err_msg.clone()),
-                    );
+                    state_map.insert(format!("{}_error", name), Value::String(err_msg.clone()));
                 }
-                messages.insert(
-                    name.clone(),
-                    serde_json::json!({"error": err_msg}),
-                );
+                messages.insert(name.clone(), serde_json::json!({"error": err_msg}));
                 nodes_executed.push(name.clone());
                 completed.insert(name.clone());
             }
@@ -431,9 +425,7 @@ mod tests {
     #[test]
     fn test_single_node_execution() {
         let mut executor = PregelExecutor::new(ExecutionConfig::new());
-        executor.add_node(ExecutionNode::new("a", |_state| {
-            Ok(json!({"result": 42}))
-        }));
+        executor.add_node(ExecutionNode::new("a", |_state| Ok(json!({"result": 42}))));
 
         let result = executor.execute(json!({})).unwrap();
         assert_eq!(result.final_state["result"], 42);
@@ -488,9 +480,7 @@ mod tests {
     fn test_linear_chain_order() {
         let mut executor = PregelExecutor::new(ExecutionConfig::new());
 
-        executor.add_node(ExecutionNode::new("first", |_| {
-            Ok(json!({"order": [1]}))
-        }));
+        executor.add_node(ExecutionNode::new("first", |_| Ok(json!({"order": [1]}))));
         executor.add_node(
             ExecutionNode::new("second", |state| {
                 let mut order = state
@@ -557,12 +547,8 @@ mod tests {
         let mut executor = PregelExecutor::new(ExecutionConfig::new());
 
         executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": 1}))));
-        executor.add_node(
-            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
-        );
-        executor.add_node(
-            ExecutionNode::new("c", |_| Ok(json!({"c": 3}))).with_dependency("a"),
-        );
+        executor.add_node(ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"));
+        executor.add_node(ExecutionNode::new("c", |_| Ok(json!({"c": 3}))).with_dependency("a"));
         executor.add_node(
             ExecutionNode::new("d", |state| {
                 let b = state.get("b").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -585,12 +571,8 @@ mod tests {
         let mut executor = PregelExecutor::new(ExecutionConfig::new());
 
         executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": 1}))));
-        executor.add_node(
-            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
-        );
-        executor.add_node(
-            ExecutionNode::new("c", |_| Ok(json!({"c": 3}))).with_dependency("a"),
-        );
+        executor.add_node(ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"));
+        executor.add_node(ExecutionNode::new("c", |_| Ok(json!({"c": 3}))).with_dependency("a"));
         executor.add_node(
             ExecutionNode::new("d", |_| Ok(json!({"d": 4})))
                 .with_dependency("b")
@@ -602,8 +584,11 @@ mod tests {
         // Step 0: a
         assert_eq!(result.supersteps[0].nodes_executed, vec!["a".to_string()]);
         // Step 1: b and c (parallel)
-        let step1_names: HashSet<String> =
-            result.supersteps[1].nodes_executed.iter().cloned().collect();
+        let step1_names: HashSet<String> = result.supersteps[1]
+            .nodes_executed
+            .iter()
+            .cloned()
+            .collect();
         assert!(step1_names.contains("b"));
         assert!(step1_names.contains("c"));
         assert_eq!(step1_names.len(), 2);
@@ -620,18 +605,14 @@ mod tests {
 
         // Chain of 5 nodes — needs 5 supersteps but limit is 2.
         executor.add_node(ExecutionNode::new("n1", |_| Ok(json!({"n1": true}))));
-        executor.add_node(
-            ExecutionNode::new("n2", |_| Ok(json!({"n2": true}))).with_dependency("n1"),
-        );
-        executor.add_node(
-            ExecutionNode::new("n3", |_| Ok(json!({"n3": true}))).with_dependency("n2"),
-        );
-        executor.add_node(
-            ExecutionNode::new("n4", |_| Ok(json!({"n4": true}))).with_dependency("n3"),
-        );
-        executor.add_node(
-            ExecutionNode::new("n5", |_| Ok(json!({"n5": true}))).with_dependency("n4"),
-        );
+        executor
+            .add_node(ExecutionNode::new("n2", |_| Ok(json!({"n2": true}))).with_dependency("n1"));
+        executor
+            .add_node(ExecutionNode::new("n3", |_| Ok(json!({"n3": true}))).with_dependency("n2"));
+        executor
+            .add_node(ExecutionNode::new("n4", |_| Ok(json!({"n4": true}))).with_dependency("n3"));
+        executor
+            .add_node(ExecutionNode::new("n5", |_| Ok(json!({"n5": true}))).with_dependency("n4"));
 
         let result = executor.execute(json!({})).unwrap();
         assert_eq!(result.total_steps, 2);
@@ -918,9 +899,7 @@ mod tests {
     fn test_execution_trace_from_execution() {
         let mut executor = PregelExecutor::new(ExecutionConfig::new());
         executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": 1}))));
-        executor.add_node(
-            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
-        );
+        executor.add_node(ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"));
 
         let result = executor.execute(json!({})).unwrap();
 
@@ -967,12 +946,8 @@ mod tests {
         let config = ExecutionConfig::new().with_max_supersteps(10);
         let mut executor = PregelExecutor::new(config);
 
-        executor.add_node(
-            ExecutionNode::new("a", |_| Ok(json!({"a": 1}))).with_dependency("b"),
-        );
-        executor.add_node(
-            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
-        );
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": 1}))).with_dependency("b"));
+        executor.add_node(ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"));
 
         let result = executor.execute(json!({})).unwrap();
         // Neither node should have executed.
@@ -987,15 +962,9 @@ mod tests {
         let config = ExecutionConfig::new().with_max_supersteps(5);
         let mut executor = PregelExecutor::new(config);
 
-        executor.add_node(
-            ExecutionNode::new("a", |_| Ok(json!({"a": 1}))).with_dependency("c"),
-        );
-        executor.add_node(
-            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
-        );
-        executor.add_node(
-            ExecutionNode::new("c", |_| Ok(json!({"c": 3}))).with_dependency("b"),
-        );
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": 1}))).with_dependency("c"));
+        executor.add_node(ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"));
+        executor.add_node(ExecutionNode::new("c", |_| Ok(json!({"c": 3}))).with_dependency("b"));
 
         let result = executor.execute(json!({})).unwrap();
         assert!(result.final_state.get("a").is_none());
@@ -1012,12 +981,8 @@ mod tests {
         // "ok" has no deps and should execute.
         executor.add_node(ExecutionNode::new("ok", |_| Ok(json!({"ok": true}))));
         // "a" and "b" form a cycle.
-        executor.add_node(
-            ExecutionNode::new("a", |_| Ok(json!({"a": 1}))).with_dependency("b"),
-        );
-        executor.add_node(
-            ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"),
-        );
+        executor.add_node(ExecutionNode::new("a", |_| Ok(json!({"a": 1}))).with_dependency("b"));
+        executor.add_node(ExecutionNode::new("b", |_| Ok(json!({"b": 2}))).with_dependency("a"));
 
         let result = executor.execute(json!({})).unwrap();
         assert_eq!(result.final_state["ok"], true);
@@ -1091,8 +1056,7 @@ mod tests {
 
     #[test]
     fn test_execution_node_debug() {
-        let node = ExecutionNode::new("dbg_node", |_| Ok(json!({})))
-            .with_dependency("x");
+        let node = ExecutionNode::new("dbg_node", |_| Ok(json!({}))).with_dependency("x");
         let debug_str = format!("{:?}", node);
         assert!(debug_str.contains("dbg_node"));
         assert!(debug_str.contains("x"));
@@ -1165,8 +1129,7 @@ mod tests {
         let mut executor = PregelExecutor::new(config);
 
         executor.add_node(
-            ExecutionNode::new("blocked", |_| Ok(json!({"b": 1})))
-                .with_dependency("nonexistent"),
+            ExecutionNode::new("blocked", |_| Ok(json!({"b": 1}))).with_dependency("nonexistent"),
         );
 
         let result = executor.execute(json!({})).unwrap();

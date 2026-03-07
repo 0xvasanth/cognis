@@ -57,12 +57,12 @@ pub use reducers::{
     reduce_state, AppendReducer, BinaryOpReducer, FieldSpec, LastValueReducer, MergeReducer,
     Reducer, StateSchema, StateSchemaBuilder,
 };
-pub use topic::{
-    DeadLetterQueue, Topic, TopicBus, TopicBusStats, TopicChannel, TopicFilter, TopicMessage,
-    TopicRouter,
-};
 pub use state::{
     BinaryChannel, ChannelManager, ChannelProtocol, ChannelReducer, ChannelValue, LastValueChannel,
     StateChannel,
+};
+pub use topic::{
+    DeadLetterQueue, Topic, TopicBus, TopicBusStats, TopicChannel, TopicFilter, TopicMessage,
+    TopicRouter,
 };
 pub use untracked::UntrackedValue;

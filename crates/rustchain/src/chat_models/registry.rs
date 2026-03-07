@@ -283,10 +283,7 @@ impl ModelRegistry {
 
     /// Return all models that satisfy a given capability.
     pub fn with_capability(&self, cap: &ModelCapability) -> Vec<&ModelInfo> {
-        self.models
-            .values()
-            .filter(|m| cap.matches(m))
-            .collect()
+        self.models.values().filter(|m| cap.matches(m)).collect()
     }
 
     /// Return all registered models.
@@ -458,9 +455,10 @@ impl<'a> ModelSelector<'a> {
     ///
     /// Returns `None` if no model satisfies every capability.
     pub fn select(&self, requirements: &[ModelCapability]) -> Option<&'a ModelInfo> {
-        self.registry.models.values().find(|info| {
-            requirements.iter().all(|cap| cap.matches(info))
-        })
+        self.registry
+            .models
+            .values()
+            .find(|info| requirements.iter().all(|cap| cap.matches(info)))
     }
 
     /// Select the cheapest model (by total cost per token) that meets all
@@ -601,18 +599,15 @@ mod tests {
 
     #[test]
     fn test_model_config_merge_stop_sequences() {
-        let mut base = ModelConfig::new("m")
-            .with_stop_sequences(vec!["a".into()]);
-        let other = ModelConfig::new("")
-            .with_stop_sequences(vec!["x".into(), "y".into()]);
+        let mut base = ModelConfig::new("m").with_stop_sequences(vec!["a".into()]);
+        let other = ModelConfig::new("").with_stop_sequences(vec!["x".into(), "y".into()]);
         base.merge(&other);
         assert_eq!(base.stop_sequences, vec!["x", "y"]);
     }
 
     #[test]
     fn test_model_config_merge_extras() {
-        let mut base = ModelConfig::new("m")
-            .with_extra("a", serde_json::json!(1));
+        let mut base = ModelConfig::new("m").with_extra("a", serde_json::json!(1));
         let other = ModelConfig::new("")
             .with_extra("b", serde_json::json!(2))
             .with_extra("a", serde_json::json!(99));
@@ -881,8 +876,7 @@ mod tests {
 
     #[test]
     fn test_chat_response_with_finish_reason() {
-        let resp =
-            ChatResponse::new("done", "m", TokenUsage::default()).with_finish_reason("stop");
+        let resp = ChatResponse::new("done", "m", TokenUsage::default()).with_finish_reason("stop");
         assert_eq!(resp.finish_reason, Some("stop".into()));
     }
 
@@ -895,8 +889,8 @@ mod tests {
 
     #[test]
     fn test_chat_response_to_json() {
-        let resp = ChatResponse::new("hi", "m", TokenUsage::new(1, 2, 3))
-            .with_finish_reason("stop");
+        let resp =
+            ChatResponse::new("hi", "m", TokenUsage::new(1, 2, 3)).with_finish_reason("stop");
         let j = resp.to_json();
         assert_eq!(j["content"], "hi");
         assert_eq!(j["model"], "m");
@@ -1026,10 +1020,7 @@ mod tests {
     #[test]
     fn test_selector_select_cheapest_no_cost_fallback() {
         let mut reg = ModelRegistry::new();
-        reg.register(
-            ModelInfo::new("p", "no-cost", 4096)
-                .with_streaming(true),
-        );
+        reg.register(ModelInfo::new("p", "no-cost", 4096).with_streaming(true));
         let sel = ModelSelector::new(&reg);
         // Even without cost info it should still be returned.
         let result = sel.select_cheapest(&[ModelCapability::Streaming]);

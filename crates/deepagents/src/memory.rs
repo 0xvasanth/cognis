@@ -219,9 +219,7 @@ impl ShortTermMemory {
             self.evict_one();
         }
 
-        let entry = MemoryEntry::builder(&key, value)
-            .category(category)
-            .build();
+        let entry = MemoryEntry::builder(&key, value).category(category).build();
         self.entries.insert(key, entry);
     }
 
@@ -247,8 +245,7 @@ impl ShortTermMemory {
         self.entries
             .values()
             .filter(|e| {
-                e.key.to_lowercase().contains(&q)
-                    || e.value.to_string().to_lowercase().contains(&q)
+                e.key.to_lowercase().contains(&q) || e.value.to_string().to_lowercase().contains(&q)
             })
             .collect()
     }
@@ -332,8 +329,7 @@ impl LongTermMemory {
         self.entries
             .values()
             .filter(|e| {
-                e.key.to_lowercase().contains(&q)
-                    || e.value.to_string().to_lowercase().contains(&q)
+                e.key.to_lowercase().contains(&q) || e.value.to_string().to_lowercase().contains(&q)
             })
             .collect()
     }
@@ -464,9 +460,7 @@ impl MemoryIndex {
 
 /// Simple whitespace tokenizer producing lowercase terms.
 fn tokenize(text: &str) -> Vec<String> {
-    text.split_whitespace()
-        .map(|w| w.to_lowercase())
-        .collect()
+    text.split_whitespace().map(|w| w.to_lowercase()).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -550,9 +544,7 @@ impl MemoryManager {
 
     /// Recall a memory by key. Checks short-term first, then long-term.
     pub fn recall(&self, key: &str) -> Option<&MemoryEntry> {
-        self.short_term
-            .get(key)
-            .or_else(|| self.long_term.get(key))
+        self.short_term.get(key).or_else(|| self.long_term.get(key))
     }
 
     /// Search both memory stores for entries matching the query.
@@ -663,19 +655,13 @@ mod tests {
 
     #[test]
     fn test_category_custom_as_str() {
-        assert_eq!(
-            MemoryCategory::Custom("my_cat".into()).as_str(),
-            "my_cat"
-        );
+        assert_eq!(MemoryCategory::Custom("my_cat".into()).as_str(), "my_cat");
     }
 
     #[test]
     fn test_category_display() {
         assert_eq!(MemoryCategory::Fact.to_string(), "fact");
-        assert_eq!(
-            MemoryCategory::Custom("agent".into()).to_string(),
-            "agent"
-        );
+        assert_eq!(MemoryCategory::Custom("agent".into()).to_string(), "agent");
     }
 
     // -- MemoryEntry --
@@ -862,13 +848,21 @@ mod tests {
     #[test]
     fn test_short_term_search() {
         let mut mem = ShortTermMemory::new(10);
-        mem.store("user_name", serde_json::json!("Alice"), MemoryCategory::Fact);
+        mem.store(
+            "user_name",
+            serde_json::json!("Alice"),
+            MemoryCategory::Fact,
+        );
         mem.store(
             "project",
             serde_json::json!("Rustchain"),
             MemoryCategory::Context,
         );
-        mem.store("preference", serde_json::json!("dark mode"), MemoryCategory::Preference);
+        mem.store(
+            "preference",
+            serde_json::json!("dark mode"),
+            MemoryCategory::Preference,
+        );
 
         let results = mem.search("alice");
         assert_eq!(results.len(), 1);
@@ -950,10 +944,8 @@ mod tests {
     #[test]
     fn test_long_term_search() {
         let mut mem = LongTermMemory::new();
-        let e1 = MemoryEntry::builder("colors", serde_json::json!("blue"))
-            .build();
-        let e2 = MemoryEntry::builder("food", serde_json::json!("pizza"))
-            .build();
+        let e1 = MemoryEntry::builder("colors", serde_json::json!("blue")).build();
+        let e2 = MemoryEntry::builder("food", serde_json::json!("pizza")).build();
         mem.store(e1);
         mem.store(e2);
 
@@ -1029,7 +1021,10 @@ mod tests {
         mem_a.merge_from(&mem_b);
         assert_eq!(mem_a.len(), 3);
         // "shared" keeps the value from mem_a
-        assert_eq!(mem_a.get("shared").unwrap().value, serde_json::json!("from_a"));
+        assert_eq!(
+            mem_a.get("shared").unwrap().value,
+            serde_json::json!("from_a")
+        );
         assert!(mem_a.get("only_b").is_some());
     }
 
@@ -1258,7 +1253,7 @@ mod tests {
         let stats = mgr.stats();
         assert_eq!(stats.short_term_count, 3);
         assert_eq!(stats.long_term_count, 1); // only "b" has importance >= 0.7
-        // "b" is in both short-term and long-term, count categories from both
+                                              // "b" is in both short-term and long-term, count categories from both
         assert!(stats.categories.contains_key("fact"));
         assert!(stats.categories.contains_key("preference"));
     }
