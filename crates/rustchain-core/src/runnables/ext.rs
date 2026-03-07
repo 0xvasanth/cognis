@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::error::Result;
 
@@ -9,6 +10,7 @@ use super::binding::RunnableBinding;
 use super::config::RunnableConfig;
 use super::each::RunnableEach;
 use super::fallbacks::RunnableWithFallbacks;
+use super::rate_limit::{RateLimitConfig, RunnableRateLimit, RunnableThrottle};
 use super::retry::RunnableRetry;
 use super::sequence::RunnableSequence;
 use serde_json::Value;
@@ -144,6 +146,25 @@ pub trait RunnableExt: Runnable + Sized + 'static {
     /// Equivalent to Python's `Runnable.pick(keys)`.
     /// If a single key string is passed, returns the value directly.
     /// If multiple keys are passed, returns a dict with only those keys.
+    /// Wrap this runnable with token-bucket rate limiting.
+    ///
+    /// Controls the maximum rate of invocations using the provided configuration.
+    ///
+    /// # Arguments
+    /// * `config` - Rate limit configuration (requests per second, burst size, wait behavior).
+    fn with_rate_limit(self, config: RateLimitConfig) -> RunnableRateLimit {
+        RunnableRateLimit::new(Arc::new(self) as Arc<dyn Runnable>, config)
+    }
+
+    /// Wrap this runnable with a simple throttle that enforces a minimum interval
+    /// between invocations.
+    ///
+    /// # Arguments
+    /// * `min_interval` - Minimum duration between consecutive invocations.
+    fn with_throttle(self, min_interval: Duration) -> RunnableThrottle {
+        RunnableThrottle::new(Arc::new(self) as Arc<dyn Runnable>, min_interval)
+    }
+
     fn pick(self, keys: Vec<String>) -> Result<RunnableSequence> {
         let picker = if keys.len() == 1 {
             RunnablePick::one(keys.into_iter().next().unwrap())

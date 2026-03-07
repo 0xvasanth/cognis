@@ -15,6 +15,7 @@ pub mod lambda;
 pub mod parallel;
 pub mod passthrough;
 pub mod pipe;
+pub mod rate_limit;
 pub mod retry;
 pub mod router;
 pub mod schema;
@@ -50,6 +51,7 @@ pub use lambda::RunnableLambda;
 pub use parallel::RunnableParallel;
 pub use passthrough::RunnablePassthrough;
 pub use pipe::{pipe as pipe_fn, PipeBuilder, RunnablePipe};
+pub use rate_limit::{RateLimitConfig, RunnableRateLimit, RunnableThrottle};
 pub use retry::RunnableRetry;
 pub use router::{RouterRunnable, RunnableFnBranch, RunnableRouter};
 pub use scoped_callbacks::{
