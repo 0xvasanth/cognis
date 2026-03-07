@@ -55,6 +55,7 @@ pub mod prompts;
 pub mod retrievers;
 pub mod stores;
 pub mod text_splitter;
+pub mod text_splitters;
 pub mod tools;
 pub mod vectorstores;
 
