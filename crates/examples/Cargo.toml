@@ -142,3 +142,19 @@ path = "../../examples/execution_hooks.rs"
 [[example]]
 name = "health_monitoring"
 path = "../../examples/health_monitoring.rs"
+
+[[example]]
+name = "summary_buffer_memory"
+path = "../../examples/summary_buffer_memory.rs"
+
+[[example]]
+name = "reranking_retriever"
+path = "../../examples/reranking_retriever.rs"
+
+[[example]]
+name = "topic_channels"
+path = "../../examples/topic_channels.rs"
+
+[[example]]
+name = "plugin_system"
+path = "../../examples/plugin_system.rs"
