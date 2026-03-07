@@ -8,6 +8,7 @@ pub mod context;
 pub mod filesystem;
 pub mod logging;
 pub mod memory;
+pub mod planning;
 pub mod patch_tool_calls;
 pub mod rate_limiter;
 pub mod skills;
