@@ -5,6 +5,7 @@ pub mod human;
 pub mod json_query;
 pub mod openapi;
 pub mod python_repl;
+pub mod requests;
 pub mod retriever;
 pub mod shell;
 pub mod validation;
@@ -46,6 +47,10 @@ pub use openapi::ReqwestExecutor;
 pub use python_repl::{
     CodeSanitizer, MockPythonREPL, PythonREPLConfig, PythonREPLConfigBuilder, PythonREPLResult,
     PythonREPLTool, SanitizationError,
+};
+pub use requests::{
+    requests_get_tool, requests_post_tool, HttpClient, HttpMethod, HttpResponse, MockHttpClient,
+    RequestConfig, RequestConfigBuilder, RequestsTool, TextExtractor,
 };
 pub use retriever::{
     create_retriever_tool, DocumentFormatter, MultiRetrieverTool, RetrieverTool,
