@@ -6,6 +6,7 @@
 //! - [`multi_vector`] -- Multi-vector retriever that searches summaries but returns originals.
 //! - [`contextual_compression`] -- Contextual compression retriever with LLM and embeddings compressors.
 
+pub mod compressor_pipeline;
 pub mod contextual_compression;
 pub mod docstore;
 pub mod ensemble;

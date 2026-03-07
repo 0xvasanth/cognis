@@ -31,6 +31,9 @@ pub trait DocumentCompressor: Send + Sync {
         documents: &[Document],
         query: &str,
     ) -> Result<Vec<Document>>;
+
+    /// The name of this compressor.
+    fn name(&self) -> &str;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +87,10 @@ impl LLMCompressor {
 
 #[async_trait]
 impl DocumentCompressor for LLMCompressor {
+    fn name(&self) -> &str {
+        "LLMCompressor"
+    }
+
     async fn compress_documents(
         &self,
         documents: &[Document],
@@ -170,6 +177,10 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 #[async_trait]
 impl DocumentCompressor for EmbeddingsFilter {
+    fn name(&self) -> &str {
+        "EmbeddingsFilter"
+    }
+
     async fn compress_documents(
         &self,
         documents: &[Document],

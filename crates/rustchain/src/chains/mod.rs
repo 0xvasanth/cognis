@@ -37,3 +37,9 @@ pub use streaming::{
     ConsoleStreamingCallback, StreamingCallback, StreamingCallbackAdapter, StreamingChainExecutor,
     StreamingChainResult, TokenCollector, stream_chain,
 };
+pub mod extraction;
+pub use extraction::{
+    ExtractionChain, ExtractionChainBuilder, ExtractionExample, ExtractionResult,
+    ExtractionSchema, ExtractionSchemaBuilder, FieldType, OutputFormat, SchemaField,
+    SchemaFieldBuilder,
+};
