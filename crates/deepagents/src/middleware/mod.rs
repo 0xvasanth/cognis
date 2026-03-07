@@ -4,6 +4,7 @@
 //! allowing pluggable behaviour such as filesystem access, memory
 //! injection, and context summarization.
 
+pub mod context;
 pub mod filesystem;
 pub mod logging;
 pub mod memory;
