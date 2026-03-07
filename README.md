@@ -52,8 +52,8 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
                            | depends on
 +--------------------------v--------------------------------+
 |               rustchain  (Implementation Layer)            |
-|  Chat models (5 providers), chains (12 types), memory,     |
-|  document loaders, text splitters, agents, tools           |
+|  Chat models (5 providers), chains (14 types), memory,     |
+|  document loaders, text splitters, vector stores, agents   |
 +--------------------------+--------------------------------+
                            | depends on
 +--------------------------v--------------------------------+
@@ -82,8 +82,8 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 |---|---|
 | `messages` | `Message` enum (Human, AI, System, Tool, Function) with streaming chunks, merge, and trim utilities |
 | `language_models` | `BaseChatModel` and `BaseLLM` traits, plus fake/testing models |
-| `runnables` | `Runnable` trait with sequence, parallel, branch, lambda, retry, fallback, and 30+ combinators |
-| `tools` | `BaseTool` trait and toolkit interface for agent tool calling |
+| `runnables` | `Runnable` trait with sequence, parallel, branch, lambda, retry, fallback, scoped callbacks, and 30+ combinators |
+| `tools` | `BaseTool` trait, toolkit interface, structured tools, schema generation, and retriever adapter |
 | `prompts` | Chat prompt templates, few-shot selectors, structured prompts, image prompts |
 | `output_parsers` | JSON, string, list, XML, and tool-call parsers |
 | `callbacks` | Extensible callback system with run managers and tracers |
@@ -92,7 +92,7 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | `documents` | `Document` type used across loaders, splitters, and retrievers |
 | `retrievers` | `BaseRetriever` trait for document retrieval |
 | `indexing` | Document indexing with record managers |
-| `tracers` | stdout, OpenTelemetry, event/log stream tracers |
+| `tracers` | stdout, OpenTelemetry, LangSmith-compatible, event/log stream tracers |
 | `caches` | Caching infrastructure for LLM responses |
 | `chat_history` | Chat history management interfaces |
 | `stores` | Key-value store abstractions |
@@ -101,15 +101,17 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 
 | Module | Description |
 |---|---|
-| `chat_models` | **5 providers**: Anthropic Claude, OpenAI GPT, Google Gemini, Ollama, Azure OpenAI. **Wrappers**: cached, circuit breaker, rate limited, retrying, structured, token counting, graceful |
-| `chains` | **12 types**: LLM, conversation, conversation retrieval, sequential, retrieval QA, map-reduce, refine, router, structured output, summarize, SQL, API |
+| `chat_models` | **5 providers**: Anthropic Claude, OpenAI GPT, Google Gemini, Ollama, Azure OpenAI. **Wrappers**: cached, circuit breaker, rate limited, retrying, structured, token counting, graceful, interceptor |
+| `chains` | **14 types**: LLM, sequential, conversation, conversation retrieval, retrieval QA, map-reduce, refine, router, structured output, summarize, SQL, API, streaming, extraction |
 | `memory` | **6 types**: buffer, window, summary, vector, chat history, hybrid |
-| `retrievers` | **6 types**: contextual compression, docstore, ensemble, multi-vector, parent document, self-query |
-| `document_loaders` | **8 types**: text, CSV, JSON, HTML, Markdown, PDF (optional), directory, web |
-| `text_splitter` | **8 types**: character, recursive, markdown, HTML, JSON, code, token, token-aware |
-| `embeddings` | **5 providers**: Anthropic, OpenAI, Google, Ollama + cached wrapper |
-| `tools` | Calculator, shell command, JSON query, web search, Wikipedia, OpenAPI, cached wrapper |
+| `vectorstores` | **6 backends**: InMemory, Qdrant, Pinecone, Weaviate, ChromaDB, FAISS (with Flat/IVF/HNSW indexes) |
+| `retrievers` | **7 types**: contextual compression, compressor pipeline, docstore, ensemble, multi-vector, parent document, self-query |
+| `document_loaders` | **10 types**: text, CSV, JSON, HTML, Markdown, PDF, web/crawler, YAML, TOML, directory |
+| `text_splitter` | **10 types**: character, recursive character (with language presets), Markdown, HTML, JSON, code, token, token-aware, sentence-aware (with abbreviation handling) |
+| `embeddings` | **7 providers/utilities**: OpenAI, Anthropic, Google, Ollama, cached wrapper, distance metrics, router |
+| `tools` | **10 types**: calculator, shell, web search, Wikipedia, JSON query, OpenAPI, cached, validation/auto-correction, Python REPL, retriever adapter |
 | `agents` | `AgentExecutor` with tool calling and structured output. **18 middleware types**: retry, model retry, model fallback, tool retry, tool call limit, model call limit, human-in-the-loop, PII redaction, summarization, context editing, file search, shell tool, tool emulator, tool selection, todo, redaction, execution |
+| `prompts` | Prompt registry with versioning and built-in templates |
 | `evaluation` | LLM output evaluation framework |
 | `indexing` | Document indexing pipeline |
 | `cache` | SQLite-backed LLM response cache |
@@ -124,14 +126,18 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | `graph::human_in_loop` | Human-in-the-loop interrupt and approval patterns |
 | `graph::time_travel` | State history navigation and replay |
 | `graph::send` | Send API for dynamic fan-out patterns |
+| `graph::ascii` | ASCII art graph visualization for terminal display |
 | `graph::mermaid` | Export graphs as Mermaid diagrams |
+| `graph::snapshot` | Graph state snapshot and restore with pluggable storage |
+| `graph::audit` | Execution audit log with trail tracing |
 | `graph::stream_events` | Streaming events from graph execution |
 | `graph::annotations` | State annotations for reducer functions |
 | `graph::message` | Message-based graph construction |
 | `pregel` | Pregel-style superstep execution engine |
-| `channels` | **8 types**: LastValue, BinaryOp, Topic, AnyValue, NamedBarrier, EphemeralValue, Untracked, reducers |
-| `checkpoint` | `CheckpointSaver` trait with in-memory, SQLite, and PostgreSQL backends |
-| `prebuilt` | `create_react_agent` and `create_tool_agent` factories |
+| `channels` | **9 types**: LastValue, BinaryOp, Topic, AnyValue, NamedBarrier, EphemeralValue, Untracked, Broadcast (pub/sub with topic filtering), reducers |
+| `checkpoint` | `CheckpointSaver` trait with in-memory, SQLite, and PostgreSQL backends. Serialization formats with diff support |
+| `prebuilt` | `create_react_agent`, `create_tool_agent`, and `ChatAgent` (prebuilt tool-calling agent with streaming) |
+| `utils` | Configuration utilities and execution profiler with bottleneck detection |
 | `types` | StreamMode (Values, Updates, Debug), InterruptType, RetryPolicy, CachePolicy |
 
 ### deepagents — High-Level Agent Factory (Beta)
@@ -139,8 +145,8 @@ RustChain is organized as a Cargo workspace with four crates, each with clear re
 | Module | Description |
 |---|---|
 | `agent` | `create_deep_agent()` factory returning a compiled graph with middleware |
-| `middleware` | **6 types**: Filesystem (read, write, edit, ls, glob, grep), Memory, SubAgent, Summarization, Skills, PatchToolCalls |
-| `backends` | **2 types**: `StateBackend` (in-memory), `FilesystemBackend` (local disk) |
+| `middleware` | **9 types**: Filesystem (read, write, edit, ls, glob, grep), Memory, SubAgent, Summarization, Skills, PatchToolCalls, Rate Limiter (token bucket with cost tracking), Logging (structured with redaction), Context Manager (dynamic context injection) |
+| `backends` | **3 types**: `StateBackend` (in-memory), `FilesystemBackend` (local disk), `SandboxBackend` (isolated execution with resource limits and permissions) |
 | `config` | `DeepAgentConfig` for model, tools, middleware, and backend configuration |
 
 ---
@@ -294,9 +300,16 @@ while let Some(chunk) = stream.next().await {
 | `rustchain` | `google` | Google Gemini chat models and embeddings |
 | `rustchain` | `ollama` | Ollama local inference models and embeddings |
 | `rustchain` | `azure` | Azure OpenAI chat models |
-| `rustchain` | `all-providers` | All five providers above |
+| `rustchain` | `all-providers` | All providers plus `yaml` and `toml-loader` |
 | `rustchain` | `pdf` | PDF document loader (via `pdf-extract`) |
+| `rustchain` | `yaml` | YAML document loader (via `serde_yaml`) |
+| `rustchain` | `toml-loader` | TOML document loader (via `toml`) |
 | `rustchain` | `sqlite` | SQLite-backed LLM response cache |
+| `rustchain` | `qdrant` | Qdrant vector store backend |
+| `rustchain` | `pinecone` | Pinecone vector store backend |
+| `rustchain` | `weaviate` | Weaviate vector store backend |
+| `rustchain` | `chroma` | ChromaDB vector store backend |
+| `rustchain` | `faiss` | FAISS-compatible vector store (pure-Rust Flat/IVF/HNSW indexes) |
 | `langgraph` | `sqlite` | SQLite checkpoint persistence |
 | `langgraph` | `postgres` | PostgreSQL checkpoint persistence |
 
@@ -352,21 +365,21 @@ This project migrates the Python LangChain ecosystem to Rust. Here is the mappin
 | `langchain.chains` (LLM, Sequential, RetrievalQA, etc.) | `rustchain::chains` | Done |
 | `langchain.agents` (AgentExecutor, middleware) | `rustchain::agents` | Done |
 | `langchain.memory` (Buffer, Window, Summary, Vector) | `rustchain::memory` | Done |
-| `langchain.document_loaders` (Text, CSV, JSON, HTML, PDF) | `rustchain::document_loaders` | Done |
-| `langchain.text_splitter` (Recursive, Markdown, Code) | `rustchain::text_splitter` | Done |
-| `langchain.embeddings` (OpenAI, Anthropic, Google) | `rustchain::embeddings` | Done |
-| `langchain.tools` (Calculator, Shell, Search) | `rustchain::tools` | Done |
-| `langchain.vectorstores` (InMemory) | `rustchain_core::vectorstores` | Done |
+| `langchain.document_loaders` (Text, CSV, JSON, HTML, PDF, YAML, TOML) | `rustchain::document_loaders` | Done |
+| `langchain.text_splitter` (Recursive, Markdown, Code, Sentence) | `rustchain::text_splitter` | Done |
+| `langchain.embeddings` (OpenAI, Anthropic, Google, Router) | `rustchain::embeddings` | Done |
+| `langchain.tools` (Calculator, Shell, Search, Python REPL) | `rustchain::tools` | Done |
+| `langchain.vectorstores` (InMemory, Qdrant, Pinecone, Weaviate, Chroma, FAISS) | `rustchain::vectorstores` | Done |
 | `langchain.retrievers` (MultiVector, SelfQuery, Ensemble) | `rustchain::retrievers` | Done |
 | `langchain.evaluation` | `rustchain::evaluation` | Done |
 | `langgraph.graph` (StateGraph, MessageGraph) | `langgraph::graph` | Done |
 | `langgraph.pregel` (Execution engine) | `langgraph::pregel` | Done |
-| `langgraph.channels` (LastValue, Topic, BinaryOp) | `langgraph::channels` | Done |
-| `langgraph.checkpoint` (Memory, SQLite, Postgres) | `langgraph::checkpoint` | Done |
-| `langgraph.prebuilt` (ReAct agent, Tool agent) | `langgraph::prebuilt` | Done |
+| `langgraph.channels` (LastValue, Topic, BinaryOp, Broadcast) | `langgraph::channels` | Done |
+| `langgraph.checkpoint` (Memory, SQLite, Postgres, Serialization) | `langgraph::checkpoint` | Done |
+| `langgraph.prebuilt` (ReAct agent, Tool agent, ChatAgent) | `langgraph::prebuilt` | Done |
 | `deepagents.graph` (create_deep_agent) | `deepagents::agent` | Done |
-| `deepagents.middleware` (Filesystem, Memory, SubAgent) | `deepagents::middleware` | Done |
-| `deepagents.backends` (State, Filesystem) | `deepagents::backends` | Done |
+| `deepagents.middleware` (Filesystem, Memory, SubAgent, RateLimiter, Logging, Context) | `deepagents::middleware` | Done |
+| `deepagents.backends` (State, Filesystem, Sandbox) | `deepagents::backends` | Done |
 
 ---
 
@@ -442,6 +455,8 @@ rustchain/
 | CSV parsing | `csv` |
 | File globbing | `glob` |
 | PDF extraction | `pdf-extract` (optional) |
+| YAML | `serde_yaml` (optional) |
+| TOML | `toml` (optional) |
 
 ---
 
