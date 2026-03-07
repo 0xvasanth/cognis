@@ -22,6 +22,7 @@ pub mod router;
 pub mod schema;
 pub mod scoped_callbacks;
 pub mod sequence;
+pub mod timeout;
 
 use std::pin::Pin;
 
@@ -61,6 +62,7 @@ pub use scoped_callbacks::{
     RunnableWithCallbacks, ScopeGuard, ScopedCallbackConfig,
 };
 pub use sequence::RunnableSequence;
+pub use timeout::{RunnableDeadline, RunnableTimeout, TimeoutBehavior, TimeoutConfig};
 
 /// Creates a `RunnableSequence` from a list of runnables.
 ///

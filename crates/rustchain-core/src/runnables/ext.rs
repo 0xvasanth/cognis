@@ -12,6 +12,7 @@ use super::config::RunnableConfig;
 use super::each::RunnableEach;
 use super::fallbacks::RunnableWithFallbacks;
 use super::rate_limit::{RateLimitConfig, RunnableRateLimit, RunnableThrottle};
+use super::timeout::{RunnableTimeout, TimeoutConfig};
 use super::retry::RunnableRetry;
 use super::sequence::RunnableSequence;
 use serde_json::Value;
@@ -175,6 +176,28 @@ pub trait RunnableExt: Runnable + Sized + 'static {
     /// * `config` - Cache configuration (max entries, TTL, custom key function).
     fn with_cache(self, config: CacheConfig) -> RunnableCache {
         RunnableCache::new(Arc::new(self) as Arc<dyn Runnable>, config)
+    }
+
+    /// Wrap this runnable with a relative timeout.
+    ///
+    /// If the operation does not complete within `duration`, a timeout error
+    /// is returned.
+    ///
+    /// # Arguments
+    /// * `duration` - Maximum time allowed for the operation.
+    fn with_timeout(self, duration: Duration) -> RunnableTimeout {
+        RunnableTimeout::new(
+            Arc::new(self) as Arc<dyn Runnable>,
+            TimeoutConfig::new(duration),
+        )
+    }
+
+    /// Wrap this runnable with a fully configured timeout.
+    ///
+    /// # Arguments
+    /// * `config` - Timeout configuration (duration and behavior on timeout).
+    fn with_timeout_config(self, config: TimeoutConfig) -> RunnableTimeout {
+        RunnableTimeout::new(Arc::new(self) as Arc<dyn Runnable>, config)
     }
 
     fn pick(self, keys: Vec<String>) -> Result<RunnableSequence> {
