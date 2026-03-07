@@ -71,6 +71,7 @@ pub mod conversation;
 pub mod events;
 pub mod health;
 pub mod middleware;
+pub mod plugins;
 pub mod presets;
 pub mod session;
 pub mod telemetry;
