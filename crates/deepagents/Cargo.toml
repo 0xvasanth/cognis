@@ -16,6 +16,7 @@ async-trait.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 glob = "0.3"
+regex = "1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
