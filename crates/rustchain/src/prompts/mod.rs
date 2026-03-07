@@ -6,6 +6,7 @@
 
 pub mod few_shot;
 pub mod hub;
+pub mod registry;
 pub mod template;
 
 pub use few_shot::{
@@ -14,4 +15,5 @@ pub use few_shot::{
     SemanticSimilaritySelectorBuilder,
 };
 pub use hub::{PromptEntry, PromptHub};
+pub use registry::{PromptComposer, PromptExporter, PromptRegistry, RegisteredPrompt};
 pub use template::PromptTemplate;
