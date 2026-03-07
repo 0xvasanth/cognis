@@ -78,3 +78,19 @@ path = "../../examples/tool_calling_agent.rs"
 [[example]]
 name = "indexing_rag"
 path = "../../examples/indexing_rag.rs"
+
+[[example]]
+name = "vector_store_search"
+path = "../../examples/vector_store_search.rs"
+
+[[example]]
+name = "text_splitting"
+path = "../../examples/text_splitting.rs"
+
+[[example]]
+name = "extraction_chain"
+path = "../../examples/extraction_chain.rs"
+
+[[example]]
+name = "graph_visualization"
+path = "../../examples/graph_visualization.rs"
