@@ -48,6 +48,21 @@
 //! - [`backends::StateBackend`] -- in-memory (default)
 //! - [`backends::FilesystemBackend`] -- local disk storage
 //! - [`backends::SandboxBackend`] -- isolated execution with resource limits
+//!
+//! ## Events
+//!
+//! The [`events`] module provides a typed event bus system with handlers and
+//! lifecycle tracking for observing and reacting to agent execution events.
+//!
+//! ## Conversation
+//!
+//! The [`conversation`] module provides a conversation manager with context
+//! windowing, message history management, and export/serialization support.
+//!
+//! ## Presets
+//!
+//! The [`presets`] module provides ready-made agent configurations via a preset
+//! registry and customizer pattern for common agent types.
 
 pub mod agent;
 pub mod backends;

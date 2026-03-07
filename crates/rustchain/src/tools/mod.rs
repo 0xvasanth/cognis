@@ -1,4 +1,20 @@
-/// Concrete tool implementations for use with the agent executor.
+//! Concrete tool implementations for use with the agent executor.
+//!
+//! This module provides ready-to-use tools that can be plugged into agents:
+//!
+//! - [`calculator`] -- Arithmetic expression evaluation.
+//! - [`shell`] -- Shell command execution.
+//! - [`web_search`] -- Web search via DuckDuckGo (requires provider feature).
+//! - [`wikipedia`] -- Wikipedia article lookup (requires provider feature).
+//! - [`json_query`] -- JSON path querying.
+//! - [`openapi`] -- OpenAPI spec-driven HTTP tool generation.
+//! - [`cached`] -- Cache wrapper for any tool with TTL and stats.
+//! - [`validation`] -- Tool call validation and auto-correction.
+//! - [`python_repl`] -- Mock Python REPL with code sanitization.
+//! - [`retriever`] -- Retriever-backed document lookup tool.
+//! - [`human`] -- Human input tool for interactive prompts, approval wrapper, and toolkit system.
+//! - [`requests`] -- HTTP request tools (GET/POST) with domain allowlisting and mock client.
+//! - [`file_management`] -- File management tools (read, write, copy, move, list, delete) with path safety and toolkit grouping.
 pub mod cached;
 pub mod calculator;
 pub mod file_management;

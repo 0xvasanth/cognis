@@ -18,6 +18,12 @@
 //! - [`NamedBarrierValue`] — Synchronization barrier that waits for all named
 //!   participants before becoming available.
 //! - [`UntrackedValue`] — Like `LastValue` but never included in checkpoints.
+//! - [`Broadcast`](broadcast::BroadcastChannel) — Pub/sub channel with topic filtering and
+//!   configurable delivery guarantees.
+//! - [`reducers`] — State reducers (append, last-value, merge, binary-op) for composing
+//!   channel updates.
+//! - [`state_reducers`] — Schema-validated state reducers with field-level reducer
+//!   specifications, type checking, and composable reduction strategies.
 //!
 //! # The `BaseChannel` Trait
 //!

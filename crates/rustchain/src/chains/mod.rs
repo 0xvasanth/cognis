@@ -1,5 +1,27 @@
+//! Chain abstractions for composing prompts, models, and sequential pipelines.
+//!
+//! This module provides a variety of chain types for building LLM workflows:
+//!
+//! - [`llm`] -- Basic LLM chain (prompt -> model -> output).
+//! - [`sequential`] -- Sequential chain that pipes output from one chain to the next.
+//! - [`conversation`] -- Conversation chain with memory integration.
+//! - [`conversation_retrieval`] -- Conversational retrieval chain combining memory and document lookup.
+//! - [`retrieval`] -- Retrieval QA chain for question answering over documents.
+//! - [`map_reduce`] -- Map-reduce chain for processing document collections.
+//! - [`refine`] -- Refine chain that iteratively improves answers over documents.
+//! - [`router`] -- Router chain with semantic routing for dynamic dispatch.
+//! - [`structured_output`] -- Structured output chain for schema-validated responses.
+//! - [`summarize`] -- Summarization chains (stuff, map-reduce, refine strategies).
+//! - [`sql`] -- Text-to-SQL chain with schema validation.
+//! - [`api`] -- API chain for calling external HTTP endpoints.
+//! - [`streaming`] -- Streaming chain execution with callback-driven token delivery.
+//! - [`extraction`] -- Extraction chain for pulling structured data from text.
+//! - [`transform`] -- Transform chains with sync/async transforms and pipeline composition.
+//! - [`conditional`] -- Conditional, branch, and switch chains for routing based on predicates.
+//! - [`documents`] -- Stuff documents chain for combining documents with formatting strategies.
+//! - [`qa`] -- QA chain with retrieval integration and citation tracking.
+
 pub mod conversation;
-/// Chain abstractions for composing prompts, models, and sequential pipelines.
 pub mod llm;
 pub mod map_reduce;
 pub mod refine;
@@ -61,6 +83,6 @@ pub use documents::{
 };
 pub mod qa;
 pub use qa::{
-    create_qa_chain, CitedAnswer, Citation, QAChain, QAChainType, QAConfig, QAConfigBuilder,
+    create_qa_chain, Citation, CitedAnswer, QAChain, QAChainType, QAConfig, QAConfigBuilder,
     QAResult,
 };
