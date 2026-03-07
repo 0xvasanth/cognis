@@ -23,5 +23,7 @@ pub mod retrying;
 pub mod structured;
 pub mod token_counting;
 
+pub mod factory;
+
 pub use base::*;
 pub use structured::*;
