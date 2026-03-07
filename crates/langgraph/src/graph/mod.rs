@@ -33,6 +33,7 @@ pub mod snapshot;
 pub mod state;
 pub mod stream_events;
 pub mod stream_writer;
+pub mod streaming;
 pub mod subgraph;
 pub mod time_travel;
 pub mod ui;
