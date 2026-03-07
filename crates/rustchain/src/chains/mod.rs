@@ -32,3 +32,8 @@ pub use api::{
     APIChain, APIChainBuilder, APISpec, APISpecBuilder, EndpointSpec, EndpointSpecBuilder,
     ParameterSpec, ParameterSpecBuilder, RequestValidator,
 };
+pub mod streaming;
+pub use streaming::{
+    ConsoleStreamingCallback, StreamingCallback, StreamingCallbackAdapter, StreamingChainExecutor,
+    StreamingChainResult, TokenCollector, stream_chain,
+};
