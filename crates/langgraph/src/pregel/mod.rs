@@ -17,6 +17,7 @@ pub mod io;
 pub mod protocol;
 pub mod read;
 pub mod retry;
+pub mod scheduler;
 pub mod types;
 pub mod utils;
 pub mod validate;
