@@ -474,6 +474,7 @@ impl ExecutionHook for StateSnapshotHook {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LangGraphError;
     use serde_json::json;
 
     // -----------------------------------------------------------------------
