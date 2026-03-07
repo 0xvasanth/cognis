@@ -12,4 +12,5 @@ pub mod docstore;
 pub mod ensemble;
 pub mod multi_vector;
 pub mod parent_document;
+pub mod query_translator;
 pub mod self_query;
