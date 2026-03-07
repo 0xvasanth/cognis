@@ -4,6 +4,7 @@ mod html;
 mod json;
 mod markdown;
 mod recursive;
+pub mod sentence;
 mod token;
 pub mod token_aware;
 
@@ -12,6 +13,7 @@ pub use code::Language;
 pub use html::HTMLHeaderTextSplitter;
 pub use json::RecursiveJsonSplitter;
 pub use markdown::{MarkdownHeaderTextSplitter, MarkdownTextSplitter};
+pub use sentence::{SentencePattern, SentenceTextSplitter, SentenceTextSplitterBuilder};
 pub use recursive::{
     KeepSeparator, LengthFunction, RecursiveCharacterTextSplitter,
     RecursiveCharacterTextSplitterBuilder,
