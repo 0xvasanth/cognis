@@ -74,6 +74,7 @@ pub mod health;
 pub mod middleware;
 pub mod plugins;
 pub mod presets;
+pub mod recovery;
 pub mod sandbox;
 pub mod session;
 pub mod telemetry;
