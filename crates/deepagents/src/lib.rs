@@ -73,6 +73,7 @@ pub mod context;
 pub mod conversation;
 pub mod events;
 pub mod health;
+pub mod memory;
 pub mod middleware;
 pub mod orchestrator;
 pub mod plugins;
