@@ -60,7 +60,10 @@ pub use hooks::{
 };
 pub use human_in_loop::{ApprovalRequest, HumanAction, HumanInTheLoop, HumanInTheLoopResult};
 pub use mermaid::{to_mermaid, to_mermaid_url};
-pub use message::{add_messages, message_graph};
+pub use message::{
+    add_messages, message_graph, GraphMessage, MessageEdge, MessageGraph, MessageGraphBuilder,
+    MessageNode, MessageRole, MessageState,
+};
 pub use persistent::PersistentGraph;
 pub use runner::{GraphRunner, LoggingHook, MetricsHook, RunConfig, StepEvent, StepHook};
 pub use send::{deep_merge_values, fan_in, fan_out, send_to, MapReduceGraph, SendCommand};
