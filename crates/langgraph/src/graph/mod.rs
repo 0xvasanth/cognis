@@ -53,8 +53,8 @@ pub use breakpoint::{
 };
 pub use hooks::{
     ExecutionHook, HookAction, HookContext, HookPhase, HookRegistry,
-    LoggingHook as HooksLoggingHook, StateSnapshot, StateSnapshotHook, StateValidationHook,
-    TimingHook,
+    LoggingHook as HooksLoggingHook, StateSnapshot as HooksStateSnapshot, StateSnapshotHook,
+    StateValidationHook, TimingHook,
 };
 pub use human_in_loop::{ApprovalRequest, HumanAction, HumanInTheLoop, HumanInTheLoopResult};
 pub use mermaid::{to_mermaid, to_mermaid_url};
@@ -64,8 +64,8 @@ pub use runner::{GraphRunner, LoggingHook, MetricsHook, RunConfig, StepEvent, St
 pub use send::{deep_merge_values, fan_in, fan_out, send_to, MapReduceGraph, SendCommand};
 pub use serialize::{ConditionalEdgeDef, GraphDefinition, GraphRegistry};
 pub use snapshot::{
-    ExecutionStep, FileSnapshotStorage, GraphSnapshot, InMemorySnapshotStorage, SnapshotDiff,
-    SnapshotManager, SnapshotStorage, SnapshotSummary,
+    SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot,
+    TimeTravelDebugger,
 };
 pub use state::{AsyncNodeAction, CompiledStateGraph, NodeAction, NodeSpec, StateGraph};
 pub use stream_events::{stream_graph_events, GraphEventCollector, GraphStreamEvent};
