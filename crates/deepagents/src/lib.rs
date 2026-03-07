@@ -53,6 +53,7 @@ pub mod agent;
 pub mod backends;
 pub mod config;
 pub mod conversation;
+pub mod events;
 pub mod middleware;
 pub mod presets;
 pub mod tool_registry;
