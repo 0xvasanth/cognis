@@ -44,7 +44,10 @@ pub use cache::{CacheConfig, CacheStats, RunnableCache};
 pub use config::{
     ensure_config, get_config_list, merge_configs, patch_config, ConfigPatch, RunnableConfig,
 };
-pub use configurable::{ConfigurableField, RunnableConfigurableFields};
+pub use configurable::{
+    ConfigurableAlternatives, ConfigurableField, ConfigurableFieldType, ConfigurableSpec,
+    RunnableConfigurableFields,
+};
 pub use each::RunnableEach;
 pub use ext::RunnableExt;
 pub use fallbacks::{with_fallbacks, RunnableWithFallbacks};

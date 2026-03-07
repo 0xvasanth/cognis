@@ -531,11 +531,11 @@ async fn test_configurable_default() {
     }));
     let configurable = RunnableConfigurableFields::new(
         default_lambda as Arc<dyn Runnable>,
-        vec![ConfigurableField {
-            id: "model".into(),
-            name: Some("Model".into()),
-            description: None,
-        }],
+        vec![ConfigurableField::new(
+            "model",
+            "Model",
+            rustchain_core::runnables::ConfigurableFieldType::String,
+        )],
     );
     let result = configurable.invoke(json!("test"), None).await.unwrap();
     assert_eq!(result, json!("default: \"test\""));
@@ -553,11 +553,11 @@ async fn test_configurable_with_alternative() {
     alts.insert("gpt4".into(), alt_lambda as Arc<dyn Runnable>);
     let configurable = RunnableConfigurableFields::new(
         default_lambda as Arc<dyn Runnable>,
-        vec![ConfigurableField {
-            id: "model".into(),
-            name: None,
-            description: None,
-        }],
+        vec![ConfigurableField::new(
+            "model",
+            "model",
+            rustchain_core::runnables::ConfigurableFieldType::String,
+        )],
     )
     .with_alternatives("model", alts);
 
