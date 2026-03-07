@@ -22,6 +22,7 @@ pub mod circuit_breaker;
 pub mod google;
 pub mod graceful;
 pub mod interceptor;
+pub mod load_balancer;
 #[cfg(feature = "ollama")]
 pub mod ollama;
 #[cfg(feature = "openai")]
