@@ -627,15 +627,9 @@ mod tests {
     #[test]
     fn test_buffer_with_capacity_evicts_oldest() {
         let mut buf = StreamBuffer::with_capacity(2);
-        buf.push(
-            StreamEvent::new(StreamEventType::NodeStart, json!("a")).with_node("first"),
-        );
-        buf.push(
-            StreamEvent::new(StreamEventType::NodeOutput, json!("b")).with_node("second"),
-        );
-        buf.push(
-            StreamEvent::new(StreamEventType::NodeEnd, json!("c")).with_node("third"),
-        );
+        buf.push(StreamEvent::new(StreamEventType::NodeStart, json!("a")).with_node("first"));
+        buf.push(StreamEvent::new(StreamEventType::NodeOutput, json!("b")).with_node("second"));
+        buf.push(StreamEvent::new(StreamEventType::NodeEnd, json!("c")).with_node("third"));
         assert_eq!(buf.len(), 2);
         // The first event should have been evicted.
         assert_eq!(buf.events()[0].node.as_deref(), Some("second"));
@@ -779,7 +773,9 @@ mod tests {
 
     #[test]
     fn test_controller_full_lifecycle() {
-        let cfg = StreamConfig::default().with_debug(true).with_heartbeats(true);
+        let cfg = StreamConfig::default()
+            .with_debug(true)
+            .with_heartbeats(true);
         let mut ctrl = StreamController::new(cfg);
 
         ctrl.emit_node_start("agent", &json!({"input": "hello"}));
@@ -883,7 +879,8 @@ mod tests {
     #[test]
     fn test_aggregator_node_outputs() {
         let mut agg = StreamAggregator::new();
-        let e1 = StreamEvent::new(StreamEventType::NodeOutput, json!({"r": "hello"})).with_node("agent");
+        let e1 =
+            StreamEvent::new(StreamEventType::NodeOutput, json!({"r": "hello"})).with_node("agent");
         agg.process(&e1);
         let outputs = agg.node_outputs();
         assert_eq!(outputs["agent"], json!({"r": "hello"}));
@@ -925,7 +922,8 @@ mod tests {
     #[test]
     fn test_aggregator_state_update_event() {
         let mut agg = StreamAggregator::new();
-        let su = StreamEvent::new(StreamEventType::StateUpdate, json!({"count": 5})).with_node("counter");
+        let su = StreamEvent::new(StreamEventType::StateUpdate, json!({"count": 5}))
+            .with_node("counter");
         agg.process(&su);
         assert_eq!(agg.current_state(), &json!({"count": 5}));
         assert_eq!(agg.node_outputs()["counter"], json!({"count": 5}));

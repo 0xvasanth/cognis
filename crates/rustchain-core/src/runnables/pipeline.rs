@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use crate::error::{Result, RustChainError};
 
 /// A single stage in a pipeline with optional error handling and conditional execution.
+#[allow(clippy::type_complexity)]
 pub struct PipelineStage {
     /// Human-readable name for this stage.
     name: String,
@@ -488,15 +489,15 @@ mod tests {
 
     #[test]
     fn test_stage_should_run_condition_true() {
-        let stage = PipelineStage::new("noop", |v| Ok(v))
-            .with_condition(|v| v.as_i64().unwrap_or(0) > 10);
+        let stage =
+            PipelineStage::new("noop", |v| Ok(v)).with_condition(|v| v.as_i64().unwrap_or(0) > 10);
         assert!(stage.should_run(&json!(20)));
     }
 
     #[test]
     fn test_stage_should_run_condition_false() {
-        let stage = PipelineStage::new("noop", |v| Ok(v))
-            .with_condition(|v| v.as_i64().unwrap_or(0) > 10);
+        let stage =
+            PipelineStage::new("noop", |v| Ok(v)).with_condition(|v| v.as_i64().unwrap_or(0) > 10);
         assert!(!stage.should_run(&json!(5)));
     }
 
@@ -618,10 +619,8 @@ mod tests {
     #[test]
     fn test_pipeline_error_handler_fallback() {
         let mut pipeline = Pipeline::new("fallback");
-        let stage = PipelineStage::new("risky", |_v| {
-            Err(RustChainError::Other("oops".into()))
-        })
-        .with_error_handler(|_| json!("recovered"));
+        let stage = PipelineStage::new("risky", |_v| Err(RustChainError::Other("oops".into())))
+            .with_error_handler(|_| json!("recovered"));
         pipeline.add_stage(stage);
         pipeline.stage("after", |v| {
             Ok(json!(format!("got: {}", v.as_str().unwrap_or("?"))))
@@ -639,12 +638,8 @@ mod tests {
         let mut pipeline = Pipeline::new("dry");
         pipeline
             .stage("always", |v| Ok(v))
-            .conditional_stage("only_positive", |v| Ok(v), |v| {
-                v.as_i64().unwrap_or(0) > 0
-            })
-            .conditional_stage("only_negative", |v| Ok(v), |v| {
-                v.as_i64().unwrap_or(0) < 0
-            });
+            .conditional_stage("only_positive", |v| Ok(v), |v| v.as_i64().unwrap_or(0) > 0)
+            .conditional_stage("only_negative", |v| Ok(v), |v| v.as_i64().unwrap_or(0) < 0);
 
         let would_run = pipeline.dry_run(&json!(5));
         assert!(would_run.contains(&"always".to_string()));
@@ -793,9 +788,7 @@ mod tests {
     #[test]
     fn test_builder_on_error() {
         let pipeline = PipelineBuilder::new("err_builder")
-            .then("risky", |_v| {
-                Err(RustChainError::Other("failed".into()))
-            })
+            .then("risky", |_v| Err(RustChainError::Other("failed".into())))
             .on_error("risky", |_| json!("fallback"))
             .then("after", |v| Ok(v))
             .build();
@@ -914,16 +907,12 @@ mod tests {
     fn test_all_stages_fail_with_handlers() {
         let mut pipeline = Pipeline::new("all_fail");
         pipeline.add_stage(
-            PipelineStage::new("fail1", |_| {
-                Err(RustChainError::Other("e1".into()))
-            })
-            .with_error_handler(|_| json!("recovered1")),
+            PipelineStage::new("fail1", |_| Err(RustChainError::Other("e1".into())))
+                .with_error_handler(|_| json!("recovered1")),
         );
         pipeline.add_stage(
-            PipelineStage::new("fail2", |_| {
-                Err(RustChainError::Other("e2".into()))
-            })
-            .with_error_handler(|_| json!("recovered2")),
+            PipelineStage::new("fail2", |_| Err(RustChainError::Other("e2".into())))
+                .with_error_handler(|_| json!("recovered2")),
         );
 
         let result = pipeline.execute(json!(0));

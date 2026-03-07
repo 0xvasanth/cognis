@@ -59,10 +59,7 @@ impl FieldCondition {
 impl Condition for FieldCondition {
     fn evaluate(&self, state: &Value) -> Result<String> {
         let field_value = state.get(&self.field).ok_or_else(|| {
-            LangGraphError::Other(format!(
-                "Field '{}' not found in state",
-                self.field
-            ))
+            LangGraphError::Other(format!("Field '{}' not found in state", self.field))
         })?;
 
         let key = match field_value {
@@ -175,17 +172,11 @@ impl ThresholdCondition {
 impl Condition for ThresholdCondition {
     fn evaluate(&self, state: &Value) -> Result<String> {
         let field_value = state.get(&self.field).ok_or_else(|| {
-            LangGraphError::Other(format!(
-                "Field '{}' not found in state",
-                self.field
-            ))
+            LangGraphError::Other(format!("Field '{}' not found in state", self.field))
         })?;
 
         let num = field_value.as_f64().ok_or_else(|| {
-            LangGraphError::Other(format!(
-                "Field '{}' is not a number",
-                self.field
-            ))
+            LangGraphError::Other(format!("Field '{}' is not a number", self.field))
         })?;
 
         if (num - self.threshold).abs() < f64::EPSILON {
@@ -552,7 +543,12 @@ mod tests {
     #[test]
     fn predicate_condition_true_path() {
         let cond = PredicateCondition::new(
-            |state| state.get("ready").and_then(|v| v.as_bool()).unwrap_or(false),
+            |state| {
+                state
+                    .get("ready")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            },
             "proceed",
             "wait",
         );
@@ -564,7 +560,12 @@ mod tests {
     #[test]
     fn predicate_condition_false_path() {
         let cond = PredicateCondition::new(
-            |state| state.get("ready").and_then(|v| v.as_bool()).unwrap_or(false),
+            |state| {
+                state
+                    .get("ready")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            },
             "proceed",
             "wait",
         );
@@ -576,7 +577,12 @@ mod tests {
     #[test]
     fn predicate_condition_missing_field_defaults_false() {
         let cond = PredicateCondition::new(
-            |state| state.get("ready").and_then(|v| v.as_bool()).unwrap_or(false),
+            |state| {
+                state
+                    .get("ready")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            },
             "proceed",
             "wait",
         );

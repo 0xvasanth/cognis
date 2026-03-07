@@ -221,10 +221,7 @@ impl InMemoryDocStore {
 
 impl DocStore for InMemoryDocStore {
     fn add(&mut self, mut doc: Document) -> Result<String> {
-        let id = doc
-            .id
-            .clone()
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let id = doc.id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
         doc.id = Some(id.clone());
         self.docs.insert(id.clone(), doc);
         Ok(id)
@@ -508,16 +505,14 @@ mod tests {
 
     #[test]
     fn metadata_equals() {
-        let meta: HashMap<String, Value> =
-            [("color".into(), json!("red"))].into_iter().collect();
+        let meta: HashMap<String, Value> = [("color".into(), json!("red"))].into_iter().collect();
         assert!(MetadataCondition::Equals("color".into(), json!("red")).matches(&meta));
         assert!(!MetadataCondition::Equals("color".into(), json!("blue")).matches(&meta));
     }
 
     #[test]
     fn metadata_not_equals() {
-        let meta: HashMap<String, Value> =
-            [("color".into(), json!("red"))].into_iter().collect();
+        let meta: HashMap<String, Value> = [("color".into(), json!("red"))].into_iter().collect();
         assert!(MetadataCondition::NotEquals("color".into(), json!("blue")).matches(&meta));
         assert!(!MetadataCondition::NotEquals("color".into(), json!("red")).matches(&meta));
     }
@@ -532,48 +527,42 @@ mod tests {
 
     #[test]
     fn metadata_greater_than() {
-        let meta: HashMap<String, Value> =
-            [("score".into(), json!(7.5))].into_iter().collect();
+        let meta: HashMap<String, Value> = [("score".into(), json!(7.5))].into_iter().collect();
         assert!(MetadataCondition::GreaterThan("score".into(), 5.0).matches(&meta));
         assert!(!MetadataCondition::GreaterThan("score".into(), 10.0).matches(&meta));
     }
 
     #[test]
     fn metadata_less_than() {
-        let meta: HashMap<String, Value> =
-            [("score".into(), json!(3.0))].into_iter().collect();
+        let meta: HashMap<String, Value> = [("score".into(), json!(3.0))].into_iter().collect();
         assert!(MetadataCondition::LessThan("score".into(), 5.0).matches(&meta));
         assert!(!MetadataCondition::LessThan("score".into(), 1.0).matches(&meta));
     }
 
     #[test]
     fn metadata_exists() {
-        let meta: HashMap<String, Value> =
-            [("key".into(), json!(null))].into_iter().collect();
+        let meta: HashMap<String, Value> = [("key".into(), json!(null))].into_iter().collect();
         assert!(MetadataCondition::Exists("key".into()).matches(&meta));
         assert!(!MetadataCondition::Exists("missing".into()).matches(&meta));
     }
 
     #[test]
     fn metadata_not_exists() {
-        let meta: HashMap<String, Value> =
-            [("key".into(), json!(null))].into_iter().collect();
+        let meta: HashMap<String, Value> = [("key".into(), json!(null))].into_iter().collect();
         assert!(MetadataCondition::NotExists("missing".into()).matches(&meta));
         assert!(!MetadataCondition::NotExists("key".into()).matches(&meta));
     }
 
     #[test]
     fn metadata_contains_non_string_value() {
-        let meta: HashMap<String, Value> =
-            [("num".into(), json!(42))].into_iter().collect();
+        let meta: HashMap<String, Value> = [("num".into(), json!(42))].into_iter().collect();
         // Contains on a non-string value should return false
         assert!(!MetadataCondition::Contains("num".into(), "42".into()).matches(&meta));
     }
 
     #[test]
     fn metadata_greater_than_non_numeric() {
-        let meta: HashMap<String, Value> =
-            [("name".into(), json!("alice"))].into_iter().collect();
+        let meta: HashMap<String, Value> = [("name".into(), json!("alice"))].into_iter().collect();
         assert!(!MetadataCondition::GreaterThan("name".into(), 0.0).matches(&meta));
     }
 

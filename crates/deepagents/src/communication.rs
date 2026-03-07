@@ -491,10 +491,7 @@ impl CommunicationHub {
                 mailbox.deliver(msg);
                 Ok(())
             }
-            None => Err(DeepAgentError::Other(format!(
-                "unknown recipient: {}",
-                to
-            ))),
+            None => Err(DeepAgentError::Other(format!("unknown recipient: {}", to))),
         }
     }
 
@@ -608,16 +605,15 @@ mod tests {
 
     #[test]
     fn test_message_with_priority() {
-        let msg = AgentMessage::new("a", "b", "s", json!({}))
-            .with_priority(MessagePriority::Urgent);
+        let msg =
+            AgentMessage::new("a", "b", "s", json!({})).with_priority(MessagePriority::Urgent);
         assert_eq!(msg.priority, MessagePriority::Urgent);
     }
 
     #[test]
     fn test_message_with_reply_to() {
         let original = AgentMessage::new("a", "b", "s", json!({}));
-        let reply = AgentMessage::new("b", "a", "re: s", json!({}))
-            .with_reply_to(&original.id);
+        let reply = AgentMessage::new("b", "a", "re: s", json!({})).with_reply_to(&original.id);
         assert!(reply.is_reply());
         assert_eq!(reply.reply_to.as_deref(), Some(original.id.as_str()));
     }
@@ -652,8 +648,7 @@ mod tests {
 
     #[test]
     fn test_message_to_json_with_reply() {
-        let msg = AgentMessage::new("a", "b", "s", json!({}))
-            .with_reply_to("orig-123");
+        let msg = AgentMessage::new("a", "b", "s", json!({})).with_reply_to("orig-123");
         let j = msg.to_json();
         assert_eq!(j["reply_to"], "orig-123");
     }
@@ -731,8 +726,8 @@ mod tests {
     #[test]
     fn test_filter_priority() {
         let filter = MessageFilter::new().priority(MessagePriority::Urgent);
-        let yes = AgentMessage::new("a", "b", "s", json!({}))
-            .with_priority(MessagePriority::Urgent);
+        let yes =
+            AgentMessage::new("a", "b", "s", json!({})).with_priority(MessagePriority::Urgent);
         let no = AgentMessage::new("a", "b", "s", json!({}));
         assert!(filter.matches(&yes));
         assert!(!filter.matches(&no));
@@ -743,10 +738,10 @@ mod tests {
         let filter = MessageFilter::new()
             .from_agent("alice")
             .priority(MessagePriority::Urgent);
-        let yes = AgentMessage::new("alice", "b", "s", json!({}))
-            .with_priority(MessagePriority::Urgent);
-        let no_wrong_sender = AgentMessage::new("bob", "b", "s", json!({}))
-            .with_priority(MessagePriority::Urgent);
+        let yes =
+            AgentMessage::new("alice", "b", "s", json!({})).with_priority(MessagePriority::Urgent);
+        let no_wrong_sender =
+            AgentMessage::new("bob", "b", "s", json!({})).with_priority(MessagePriority::Urgent);
         let no_wrong_priority = AgentMessage::new("alice", "b", "s", json!({}));
         assert!(filter.matches(&yes));
         assert!(!filter.matches(&no_wrong_sender));
@@ -1010,7 +1005,9 @@ mod tests {
         hub.subscribe("updates", "b");
         hub.subscribe("updates", "c");
 
-        let count = hub.broadcast("updates", "a", "news", json!({"v": 1})).unwrap();
+        let count = hub
+            .broadcast("updates", "a", "news", json!({"v": 1}))
+            .unwrap();
         assert_eq!(count, 2); // b and c (not a)
 
         assert_eq!(hub.get_mailbox("a").unwrap().unread_count(), 0);
@@ -1028,7 +1025,8 @@ mod tests {
     #[test]
     fn test_hub_shared_state() {
         let mut hub = CommunicationHub::new();
-        hub.shared_state_mut().set("plan", json!({"step": 1}), "planner");
+        hub.shared_state_mut()
+            .set("plan", json!({"step": 1}), "planner");
         assert_eq!(hub.shared_state().get("plan"), Some(&json!({"step": 1})));
         assert_eq!(hub.shared_state().get_owner("plan"), Some("planner"));
     }
@@ -1062,8 +1060,13 @@ mod tests {
         hub.register_agent("reviewer");
 
         // Planner sends task to executor
-        let task = AgentMessage::new("planner", "executor", "execute task", json!({"task": "build"}))
-            .with_priority(MessagePriority::Urgent);
+        let task = AgentMessage::new(
+            "planner",
+            "executor",
+            "execute task",
+            json!({"task": "build"}),
+        )
+        .with_priority(MessagePriority::Urgent);
         let task_id = task.id.clone();
         hub.send(task).unwrap();
 

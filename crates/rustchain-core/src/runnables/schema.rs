@@ -249,10 +249,7 @@ impl RunnableSchema {
                     field: "<root>".to_string(),
                     expected: "object".to_string(),
                     actual: value_type_name(value),
-                    message: format!(
-                        "Expected an object but got {}",
-                        value_type_name(value)
-                    ),
+                    message: format!("Expected an object but got {}", value_type_name(value)),
                 });
                 return SchemaValidationResult {
                     valid: false,
@@ -269,10 +266,7 @@ impl RunnableSchema {
                             field: field.name.clone(),
                             expected: field.field_type.type_name(),
                             actual: "missing".to_string(),
-                            message: format!(
-                                "Required field '{}' is missing",
-                                field.name
-                            ),
+                            message: format!("Required field '{}' is missing", field.name),
                         });
                     }
                 }
@@ -465,9 +459,8 @@ impl SchemaInference {
         let mut schema = RunnableSchema::new();
         if let Some(obj) = value.as_object() {
             for (key, val) in obj {
-                schema = schema.add_field(
-                    SchemaField::new(key.clone(), Self::infer_type(val)).required(),
-                );
+                schema = schema
+                    .add_field(SchemaField::new(key.clone(), Self::infer_type(val)).required());
             }
         }
         schema
@@ -843,11 +836,11 @@ mod tests {
     #[test]
     fn test_to_json_schema_basic() {
         let schema = RunnableSchema::new()
-            .add_field(
-                SchemaField::new("name", SchemaType::String)
-                    .with_description("User name"),
-            )
-            .add_field(SchemaField::new("scores", SchemaType::Array(Box::new(SchemaType::Integer))));
+            .add_field(SchemaField::new("name", SchemaType::String).with_description("User name"))
+            .add_field(SchemaField::new(
+                "scores",
+                SchemaType::Array(Box::new(SchemaType::Integer)),
+            ));
 
         let js = schema.to_json_schema();
         assert_eq!(js["type"], "object");
@@ -856,13 +849,16 @@ mod tests {
         assert_eq!(js["properties"]["scores"]["type"], "array");
         assert_eq!(js["properties"]["scores"]["items"]["type"], "integer");
         assert!(js["required"].as_array().unwrap().contains(&json!("name")));
-        assert!(js["required"].as_array().unwrap().contains(&json!("scores")));
+        assert!(js["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("scores")));
     }
 
     #[test]
     fn test_to_json_schema_no_required() {
-        let schema = RunnableSchema::new()
-            .add_field(SchemaField::new("opt", SchemaType::String).optional());
+        let schema =
+            RunnableSchema::new().add_field(SchemaField::new("opt", SchemaType::String).optional());
 
         let js = schema.to_json_schema();
         assert!(js.get("required").is_none());
@@ -1052,10 +1048,7 @@ mod tests {
 
     #[test]
     fn test_infer_from_samples_type_merging() {
-        let samples = vec![
-            json!({"val": 42}),
-            json!({"val": 3.14}),
-        ];
+        let samples = vec![json!({"val": 42}), json!({"val": 3.14})];
 
         let schema = SchemaInference::infer_from_samples(&samples);
         // Integer + Number -> Number
@@ -1107,9 +1100,8 @@ mod tests {
 
     #[test]
     fn test_schema_required_with_default_allows_missing() {
-        let schema = RunnableSchema::new().add_field(
-            SchemaField::new("x", SchemaType::Integer).with_default(json!(0)),
-        );
+        let schema = RunnableSchema::new()
+            .add_field(SchemaField::new("x", SchemaType::Integer).with_default(json!(0)));
 
         // Field is required but has a default, so missing is OK
         let result = schema.validate(&json!({}));

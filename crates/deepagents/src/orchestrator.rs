@@ -202,7 +202,10 @@ impl ExecutionPlan {
             in_degree.entry(call.id.as_str()).or_insert(0);
             adjacency.entry(call.id.as_str()).or_default();
             for dep in &call.dependencies {
-                adjacency.entry(dep.as_str()).or_default().push(call.id.as_str());
+                adjacency
+                    .entry(dep.as_str())
+                    .or_default()
+                    .push(call.id.as_str());
                 *in_degree.entry(call.id.as_str()).or_insert(0) += 1;
             }
         }
@@ -256,7 +259,10 @@ impl ExecutionPlan {
         for call in &self.calls {
             in_degree.entry(call.id.as_str()).or_insert(0);
             for dep in &call.dependencies {
-                dependents.entry(dep.as_str()).or_default().push(call.id.as_str());
+                dependents
+                    .entry(dep.as_str())
+                    .or_default()
+                    .push(call.id.as_str());
                 *in_degree.entry(call.id.as_str()).or_insert(0) += 1;
             }
         }
@@ -643,7 +649,10 @@ impl CallGraph {
         }
 
         for (from, to) in &self.edges {
-            adjacency.entry(from.as_str()).or_default().push(to.as_str());
+            adjacency
+                .entry(from.as_str())
+                .or_default()
+                .push(to.as_str());
             *in_degree.entry(to.as_str()).or_insert(0) += 1;
         }
 
@@ -768,10 +777,7 @@ mod tests {
 
     #[test]
     fn test_call_status_display_error() {
-        assert_eq!(
-            CallStatus::Error("boom".into()).to_string(),
-            "error: boom"
-        );
+        assert_eq!(CallStatus::Error("boom".into()).to_string(), "error: boom");
     }
 
     #[test]

@@ -14,9 +14,7 @@
 
 use std::collections::HashMap;
 
-use rustchain::memory::conversation::{
-    ConversationMemory, ConversationSearch, ConversationWindow,
-};
+use rustchain::memory::conversation::{ConversationMemory, ConversationSearch, ConversationWindow};
 use serde_json::json;
 
 fn main() {
@@ -29,9 +27,15 @@ fn main() {
 
     let mut memory = ConversationMemory::new();
 
-    memory.add_turn("What is Rust?", "Rust is a systems programming language focused on safety and performance.");
+    memory.add_turn(
+        "What is Rust?",
+        "Rust is a systems programming language focused on safety and performance.",
+    );
     memory.add_turn("How does ownership work?", "Each value in Rust has a single owner. When the owner goes out of scope, the value is dropped.");
-    memory.add_turn("What are lifetimes?", "Lifetimes are annotations that tell the compiler how long references are valid.");
+    memory.add_turn(
+        "What are lifetimes?",
+        "Lifetimes are annotations that tell the compiler how long references are valid.",
+    );
     memory.add_turn("Explain async in Rust.", "Async Rust uses futures and the async/await syntax to write non-blocking code, typically with the tokio runtime.");
 
     println!("Total turns stored: {}", memory.len());
@@ -109,10 +113,7 @@ fn main() {
         "Generally no. Rust is compiled and much faster for CPU-bound tasks.",
     );
 
-    println!(
-        "Turns visible on branch 'python-tangent': {}",
-        memory.len()
-    );
+    println!("Turns visible on branch 'python-tangent': {}", memory.len());
     let branch_turns = memory.get_turns(&ConversationWindow::All);
     for (i, turn) in branch_turns.iter().enumerate() {
         println!("  [{}] Human: {}", i, turn.human);
@@ -125,7 +126,10 @@ fn main() {
     // The API exposes switch_branch but not a direct "switch to main", so we list branches
     // and show the main line via get_turns after checking branch info.
     let summary = memory.summary();
-    println!("Memory summary: {}", serde_json::to_string_pretty(&summary).unwrap());
+    println!(
+        "Memory summary: {}",
+        serde_json::to_string_pretty(&summary).unwrap()
+    );
     println!();
 
     // -----------------------------------------------------------------------
@@ -200,7 +204,8 @@ fn main() {
     let export = tagged_memory.export();
     println!(
         "Exported memory JSON (truncated): {}...",
-        &serde_json::to_string(&export).unwrap()[..120.min(serde_json::to_string(&export).unwrap().len())]
+        &serde_json::to_string(&export).unwrap()
+            [..120.min(serde_json::to_string(&export).unwrap().len())]
     );
     println!();
 

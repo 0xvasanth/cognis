@@ -246,7 +246,10 @@ impl TemplateEngine {
                 let tag_content = template[pos + 2..close].trim();
                 pos = close + 2;
 
-                if let Some(cond) = tag_content.strip_prefix("if ").or_else(|| tag_content.strip_prefix("if\t")) {
+                if let Some(cond) = tag_content
+                    .strip_prefix("if ")
+                    .or_else(|| tag_content.strip_prefix("if\t"))
+                {
                     let condition = cond.trim().to_string();
                     let (if_blocks, else_blocks, new_pos) =
                         self.parse_conditional(template, pos)?;
@@ -256,7 +259,10 @@ impl TemplateEngine {
                         else_blocks,
                     });
                     pos = new_pos;
-                } else if let Some(for_expr) = tag_content.strip_prefix("for ").or_else(|| tag_content.strip_prefix("for\t")) {
+                } else if let Some(for_expr) = tag_content
+                    .strip_prefix("for ")
+                    .or_else(|| tag_content.strip_prefix("for\t"))
+                {
                     let (variable, iterable) = parse_for_expr(for_expr.trim())?;
                     let (body, new_pos) = self.parse_loop(template, pos)?;
                     blocks.push(TemplateBlock::Loop {
@@ -307,7 +313,7 @@ impl TemplateEngine {
             else {
                 let mut text = String::new();
                 while pos < len
-                    && !(bytes[pos] == b'{')
+                    && (bytes[pos] != b'{')
                     && !(bytes[pos] == b'}' && pos + 1 < len && bytes[pos + 1] == b'}')
                 {
                     text.push(bytes[pos] as char);
@@ -337,8 +343,9 @@ impl TemplateEngine {
 
         while pos < len {
             if pos + 1 < len && bytes[pos] == b'{' && bytes[pos + 1] == b'%' {
-                let close = find_tag_close(template, pos + 2, "%}")
-                    .ok_or_else(|| RustChainError::Other("Unclosed {%...%} tag in conditional".into()))?;
+                let close = find_tag_close(template, pos + 2, "%}").ok_or_else(|| {
+                    RustChainError::Other("Unclosed {%...%} tag in conditional".into())
+                })?;
                 let tag_content = template[pos + 2..close].trim();
 
                 if tag_content == "endif" {
@@ -401,11 +408,7 @@ impl TemplateEngine {
     }
 
     /// Parse the body of a loop block, returning (body, new_pos).
-    fn parse_loop(
-        &self,
-        template: &str,
-        start: usize,
-    ) -> Result<(Vec<TemplateBlock>, usize)> {
+    fn parse_loop(&self, template: &str, start: usize) -> Result<(Vec<TemplateBlock>, usize)> {
         let mut body = Vec::new();
         let mut pos = start;
         let bytes = template.as_bytes();
@@ -495,7 +498,7 @@ impl TemplateEngine {
         let mut text = String::new();
         let mut p = pos;
         while p < len
-            && !(bytes[p] == b'{')
+            && (bytes[p] != b'{')
             && !(bytes[p] == b'}' && p + 1 < len && bytes[p + 1] == b'}')
         {
             text.push(bytes[p] as char);
@@ -547,10 +550,7 @@ impl TemplateEngine {
                     body,
                 } => {
                     let list = context.get(iterable).ok_or_else(|| {
-                        RustChainError::Other(format!(
-                            "Missing iterable variable '{}'",
-                            iterable
-                        ))
+                        RustChainError::Other(format!("Missing iterable variable '{}'", iterable))
                     })?;
                     if let TemplateVariable::List(items) = list {
                         for item in items {
@@ -844,12 +844,12 @@ mod tests {
         ctx.set_string("name", "Bob");
         ctx.set_number("age", 30.0);
         ctx.set_bool("active", true);
-        ctx.set_list(
-            "items",
-            vec![TemplateVariable::String("a".into())],
-        );
+        ctx.set_list("items", vec![TemplateVariable::String("a".into())]);
 
-        assert_eq!(ctx.get("name"), Some(&TemplateVariable::String("Bob".into())));
+        assert_eq!(
+            ctx.get("name"),
+            Some(&TemplateVariable::String("Bob".into()))
+        );
         assert_eq!(ctx.get("age"), Some(&TemplateVariable::Number(30.0)));
         assert_eq!(ctx.get("active"), Some(&TemplateVariable::Boolean(true)));
         assert_eq!(ctx.len(), 4);
@@ -883,10 +883,7 @@ mod tests {
             ctx1.get("b"),
             Some(&TemplateVariable::String("overwritten".into()))
         );
-        assert_eq!(
-            ctx1.get("c"),
-            Some(&TemplateVariable::String("3".into()))
-        );
+        assert_eq!(ctx1.get("c"), Some(&TemplateVariable::String("3".into())));
     }
 
     #[test]
@@ -974,13 +971,19 @@ mod tests {
         let mut ctx = TemplateContext::new();
         ctx.set_bool("premium", true);
         let result = engine
-            .render("{%if premium%}Welcome, VIP!{%else%}Please subscribe.{%endif%}", &ctx)
+            .render(
+                "{%if premium%}Welcome, VIP!{%else%}Please subscribe.{%endif%}",
+                &ctx,
+            )
             .unwrap();
         assert_eq!(result, "Welcome, VIP!");
 
         ctx.set_bool("premium", false);
         let result = engine
-            .render("{%if premium%}Welcome, VIP!{%else%}Please subscribe.{%endif%}", &ctx)
+            .render(
+                "{%if premium%}Welcome, VIP!{%else%}Please subscribe.{%endif%}",
+                &ctx,
+            )
             .unwrap();
         assert_eq!(result, "Please subscribe.");
     }

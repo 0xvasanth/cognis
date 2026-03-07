@@ -521,7 +521,10 @@ mod tests {
     #[test]
     fn test_pattern_classifier_timeout() {
         let c = PatternErrorClassifier::new();
-        assert_eq!(c.classify("request timed out after 30s"), ErrorKind::Timeout);
+        assert_eq!(
+            c.classify("request timed out after 30s"),
+            ErrorKind::Timeout
+        );
     }
 
     #[test]
@@ -533,13 +536,19 @@ mod tests {
     #[test]
     fn test_pattern_classifier_rate_limit_429() {
         let c = PatternErrorClassifier::new();
-        assert_eq!(c.classify("HTTP 429 Too Many Requests"), ErrorKind::RateLimit);
+        assert_eq!(
+            c.classify("HTTP 429 Too Many Requests"),
+            ErrorKind::RateLimit
+        );
     }
 
     #[test]
     fn test_pattern_classifier_validation() {
         let c = PatternErrorClassifier::new();
-        assert_eq!(c.classify("validation failed for field X"), ErrorKind::Validation);
+        assert_eq!(
+            c.classify("validation failed for field X"),
+            ErrorKind::Validation
+        );
     }
 
     #[test]

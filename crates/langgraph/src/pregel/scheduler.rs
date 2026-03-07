@@ -196,18 +196,14 @@ impl Scheduler {
 
         let chosen_idx = match &self.strategy {
             SchedulingStrategy::FIFO => ready_indices[0],
-            SchedulingStrategy::Priority => {
-                *ready_indices
-                    .iter()
-                    .max_by(|&&a, &&b| self.pending[a].priority.cmp(&self.pending[b].priority))
-                    .unwrap()
-            }
-            SchedulingStrategy::ShortestJobFirst => {
-                *ready_indices
-                    .iter()
-                    .min_by_key(|&&i| self.pending[i].estimated_cost)
-                    .unwrap()
-            }
+            SchedulingStrategy::Priority => *ready_indices
+                .iter()
+                .max_by(|&&a, &&b| self.pending[a].priority.cmp(&self.pending[b].priority))
+                .unwrap(),
+            SchedulingStrategy::ShortestJobFirst => *ready_indices
+                .iter()
+                .min_by_key(|&&i| self.pending[i].estimated_cost)
+                .unwrap(),
             SchedulingStrategy::RoundRobin => {
                 // Pick the ready node at or after rr_index
                 let idx = ready_indices
@@ -349,9 +345,7 @@ impl ResourcePool {
     /// Returns `true` if there is an available slot and enough memory.
     /// The resources are reserved upon success.
     pub fn acquire(&mut self, cost: u64) -> bool {
-        if self.active < self.max_concurrent
-            && self.used_memory_mb + cost <= self.max_memory_mb
-        {
+        if self.active < self.max_concurrent && self.used_memory_mb + cost <= self.max_memory_mb {
             self.active += 1;
             self.used_memory_mb += cost;
             true
@@ -589,8 +583,7 @@ mod tests {
 
     #[test]
     fn test_is_ready_empty_completed() {
-        let node = ScheduledNode::new("node", NodePriority::Normal)
-            .with_dependency("dep");
+        let node = ScheduledNode::new("node", NodePriority::Normal).with_dependency("dep");
         let completed = HashSet::new();
         assert!(!node.is_ready(&completed));
     }
@@ -689,9 +682,7 @@ mod tests {
     fn test_next_batch_with_dependencies() {
         let mut scheduler = Scheduler::new(SchedulingStrategy::FIFO);
         scheduler.add_node(ScheduledNode::new("a", NodePriority::Normal));
-        scheduler.add_node(
-            ScheduledNode::new("b", NodePriority::Normal).with_dependency("a"),
-        );
+        scheduler.add_node(ScheduledNode::new("b", NodePriority::Normal).with_dependency("a"));
         scheduler.add_node(ScheduledNode::new("c", NodePriority::Normal));
 
         let completed = HashSet::new();
@@ -710,12 +701,10 @@ mod tests {
     fn test_dependency_chain() {
         let mut scheduler = Scheduler::new(SchedulingStrategy::FIFO);
         scheduler.add_node(ScheduledNode::new("step1", NodePriority::Normal));
-        scheduler.add_node(
-            ScheduledNode::new("step2", NodePriority::Normal).with_dependency("step1"),
-        );
-        scheduler.add_node(
-            ScheduledNode::new("step3", NodePriority::Normal).with_dependency("step2"),
-        );
+        scheduler
+            .add_node(ScheduledNode::new("step2", NodePriority::Normal).with_dependency("step1"));
+        scheduler
+            .add_node(ScheduledNode::new("step3", NodePriority::Normal).with_dependency("step2"));
 
         let mut completed = HashSet::new();
 
@@ -766,12 +755,8 @@ mod tests {
     #[test]
     fn test_circular_deps_handled_gracefully() {
         let mut scheduler = Scheduler::new(SchedulingStrategy::FIFO);
-        scheduler.add_node(
-            ScheduledNode::new("a", NodePriority::Normal).with_dependency("b"),
-        );
-        scheduler.add_node(
-            ScheduledNode::new("b", NodePriority::Normal).with_dependency("a"),
-        );
+        scheduler.add_node(ScheduledNode::new("a", NodePriority::Normal).with_dependency("b"));
+        scheduler.add_node(ScheduledNode::new("b", NodePriority::Normal).with_dependency("a"));
 
         let completed = HashSet::new();
         // Neither node can be scheduled — circular dependency

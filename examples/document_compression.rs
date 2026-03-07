@@ -97,7 +97,10 @@ fn main() {
     // 4. RedundancyFilter
     // -----------------------------------------------------------------------
     println!("--- 4. RedundancyFilter (threshold 0.8) ---");
-    println!("  Input: {} documents (doc 0 and doc 2 are duplicates)", documents.len());
+    println!(
+        "  Input: {} documents (doc 0 and doc 2 are duplicates)",
+        documents.len()
+    );
 
     let redundancy_filter = RedundancyFilter::new(0.8);
     let deduped = redundancy_filter
@@ -124,7 +127,11 @@ fn main() {
         .compress(&documents, "rust memory safety")
         .expect("scoring should succeed");
 
-    println!("  {} of {} documents passed relevance threshold", relevant.len(), documents.len());
+    println!(
+        "  {} of {} documents passed relevance threshold",
+        relevant.len(),
+        documents.len()
+    );
     for doc in &relevant {
         println!(
             "  \"{}...\"",

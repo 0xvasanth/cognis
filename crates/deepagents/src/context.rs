@@ -223,7 +223,10 @@ impl ContextWindow {
 
     /// Add an item if it fits within the budget. Returns `true` if added.
     pub fn add(&mut self, item: ContextItem) -> bool {
-        if self.budget.can_fit(item.token_estimate, self.current_tokens()) {
+        if self
+            .budget
+            .can_fit(item.token_estimate, self.current_tokens())
+        {
             self.items.push(item);
             true
         } else {
@@ -266,7 +269,9 @@ impl ContextWindow {
 
     /// Tokens remaining within the budget.
     pub fn remaining_tokens(&self) -> usize {
-        self.budget.available().saturating_sub(self.current_tokens())
+        self.budget
+            .available()
+            .saturating_sub(self.current_tokens())
     }
 
     /// Whether the total tokens exceed the available budget.
@@ -339,7 +344,11 @@ impl SystemPromptInjector {
 
 impl ContextInjector for SystemPromptInjector {
     fn inject(&self, window: &mut ContextWindow) -> Result<usize> {
-        let item = ContextItem::new(self.prompt.clone(), ContextPriority::Critical, "system_prompt");
+        let item = ContextItem::new(
+            self.prompt.clone(),
+            ContextPriority::Critical,
+            "system_prompt",
+        );
         if window.add(item) {
             Ok(1)
         } else {
@@ -495,12 +504,10 @@ impl ContextManager {
                 let available = self.budget.available();
                 let utilization = if available > 0 {
                     total_tokens as f64 / available as f64
+                } else if total_tokens > 0 {
+                    f64::INFINITY
                 } else {
-                    if total_tokens > 0 {
-                        f64::INFINITY
-                    } else {
-                        0.0
-                    }
+                    0.0
                 };
 
                 let mut items_by_priority: HashMap<String, usize> = HashMap::new();
@@ -716,7 +723,10 @@ mod tests {
 
         // The low-priority item should have been evicted
         assert!(!window.is_over_budget());
-        assert!(window.items().iter().all(|i| i.priority == ContextPriority::Critical));
+        assert!(window
+            .items()
+            .iter()
+            .all(|i| i.priority == ContextPriority::Critical));
     }
 
     #[test]
@@ -766,9 +776,21 @@ mod tests {
     fn test_window_evict_to_budget() {
         let mut window = ContextWindow::new(ContextBudget::new(10000));
         // Add items of various priorities
-        window.add(ContextItem::new("background stuff", ContextPriority::Background, "a"));
-        window.add(ContextItem::new("critical stuff", ContextPriority::Critical, "b"));
-        window.add(ContextItem::new("low stuff here", ContextPriority::Low, "c"));
+        window.add(ContextItem::new(
+            "background stuff",
+            ContextPriority::Background,
+            "a",
+        ));
+        window.add(ContextItem::new(
+            "critical stuff",
+            ContextPriority::Critical,
+            "b",
+        ));
+        window.add(ContextItem::new(
+            "low stuff here",
+            ContextPriority::Low,
+            "c",
+        ));
 
         // Now shrink the budget by creating a new window with small budget and moving items
         let mut small_window = ContextWindow::new(ContextBudget::new(5));
@@ -804,9 +826,21 @@ mod tests {
         // Budget of 2 tokens; each item ~3 tokens ("aaa bbb ccc" = 12 chars each => 3 tokens)
         let mut window = ContextWindow::new(ContextBudget::new(2));
         // "aaa bbb ccc!" = 12 chars => 3 tokens each
-        window.items.push(ContextItem::new("aaa bbb ccc!", ContextPriority::Critical, "a"));
-        window.items.push(ContextItem::new("ddd eee fff!", ContextPriority::Critical, "b"));
-        window.items.push(ContextItem::new("ggg hhh iii!", ContextPriority::Critical, "c"));
+        window.items.push(ContextItem::new(
+            "aaa bbb ccc!",
+            ContextPriority::Critical,
+            "a",
+        ));
+        window.items.push(ContextItem::new(
+            "ddd eee fff!",
+            ContextPriority::Critical,
+            "b",
+        ));
+        window.items.push(ContextItem::new(
+            "ggg hhh iii!",
+            ContextPriority::Critical,
+            "c",
+        ));
 
         assert!(window.is_over_budget());
         let evicted = window.evict_to_budget();
@@ -860,14 +894,20 @@ mod tests {
         assert_eq!(window.len(), 2);
         assert!(window.items()[0].content.contains("User: Hello"));
         assert!(window.items()[1].content.contains("Assistant: Hi there!"));
-        assert!(window.items().iter().all(|i| i.priority == ContextPriority::Medium));
+        assert!(window
+            .items()
+            .iter()
+            .all(|i| i.priority == ContextPriority::Medium));
     }
 
     #[test]
     fn test_memory_injector_partial_fit() {
         let turns = vec![
             ("User".to_string(), "short".to_string()),
-            ("Assistant".to_string(), "This is a much longer response that should not fit in budget".to_string()),
+            (
+                "Assistant".to_string(),
+                "This is a much longer response that should not fit in budget".to_string(),
+            ),
         ];
         let injector = MemoryInjector::new(turns);
         // Small budget: first item fits, second doesn't
@@ -886,9 +926,14 @@ mod tests {
         let mut window = ContextWindow::new(ContextBudget::new(1000));
         let count = injector.inject(&mut window).unwrap();
         assert_eq!(count, 2);
-        assert!(window.items()[0].content.contains("[search]: Found 5 results"));
+        assert!(window.items()[0]
+            .content
+            .contains("[search]: Found 5 results"));
         assert!(window.items()[1].content.contains("[calculator]: 42"));
-        assert!(window.items().iter().all(|i| i.priority == ContextPriority::High));
+        assert!(window
+            .items()
+            .iter()
+            .all(|i| i.priority == ContextPriority::High));
         assert_eq!(window.items()[0].source, "tool:search");
     }
 
@@ -908,9 +953,10 @@ mod tests {
         let budget = ContextBudget::new(10000);
         let mut manager = ContextManager::new(budget);
         manager.add_injector(Box::new(SystemPromptInjector::new("System prompt")));
-        manager.add_injector(Box::new(MemoryInjector::new(vec![
-            ("User".to_string(), "Hello".to_string()),
-        ])));
+        manager.add_injector(Box::new(MemoryInjector::new(vec![(
+            "User".to_string(),
+            "Hello".to_string(),
+        )])));
 
         let window = manager.build_context().unwrap();
         assert_eq!(window.len(), 2);
@@ -944,9 +990,10 @@ mod tests {
         let budget = ContextBudget::new(10000);
         let mut manager = ContextManager::new(budget);
         manager.add_injector(Box::new(SystemPromptInjector::new("System")));
-        manager.add_injector(Box::new(ToolResultInjector::new(vec![
-            ("tool".to_string(), "result".to_string()),
-        ])));
+        manager.add_injector(Box::new(ToolResultInjector::new(vec![(
+            "tool".to_string(),
+            "result".to_string(),
+        )])));
         manager.build_context().unwrap();
 
         let stats = manager.stats();
@@ -991,12 +1038,14 @@ mod tests {
         let budget = ContextBudget::new(10000);
         let mut manager = ContextManager::new(budget);
         manager.add_injector(Box::new(SystemPromptInjector::new("System")));
-        manager.add_injector(Box::new(MemoryInjector::new(vec![
-            ("User".to_string(), "Q".to_string()),
-        ])));
-        manager.add_injector(Box::new(ToolResultInjector::new(vec![
-            ("t".to_string(), "r".to_string()),
-        ])));
+        manager.add_injector(Box::new(MemoryInjector::new(vec![(
+            "User".to_string(),
+            "Q".to_string(),
+        )])));
+        manager.add_injector(Box::new(ToolResultInjector::new(vec![(
+            "t".to_string(),
+            "r".to_string(),
+        )])));
 
         let window = manager.build_context().unwrap();
         assert_eq!(window.len(), 3);
@@ -1023,14 +1072,24 @@ mod tests {
         // Budget of 4 tokens; each long item is ~5 tokens (20 chars)
         let mut window = ContextWindow::new(ContextBudget::new(4));
         // Directly push items to simulate over-budget
-        window.items.push(ContextItem::new("background item text!", ContextPriority::Background, "a"));
-        window.items.push(ContextItem::new("critical item text!!", ContextPriority::Critical, "b"));
+        window.items.push(ContextItem::new(
+            "background item text!",
+            ContextPriority::Background,
+            "a",
+        ));
+        window.items.push(ContextItem::new(
+            "critical item text!!",
+            ContextPriority::Critical,
+            "b",
+        ));
 
         assert!(window.is_over_budget());
         let evicted = window.evict_to_budget();
         // Background should be evicted before Critical
         assert!(!evicted.is_empty());
-        assert!(evicted.iter().any(|i| i.priority == ContextPriority::Background));
+        assert!(evicted
+            .iter()
+            .any(|i| i.priority == ContextPriority::Background));
         // Critical should remain if it fits
         if !window.is_empty() {
             assert_eq!(window.items()[0].priority, ContextPriority::Critical);

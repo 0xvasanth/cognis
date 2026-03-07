@@ -129,9 +129,7 @@ fn main() {
     println!("\n--- 5. MapErrorHandler ---");
     println!("Transforms error messages before propagating them.\n");
 
-    let mapper = MapErrorHandler::new(|msg| {
-        format!("[LLM Pipeline Error] {}", msg.to_uppercase())
-    });
+    let mapper = MapErrorHandler::new(|msg| format!("[LLM Pipeline Error] {}", msg.to_uppercase()));
 
     // Direct mapping
     let original = "model returned empty response";
@@ -174,7 +172,10 @@ fn main() {
     println!("\n  Waiting 150ms for reset timeout...");
     thread::sleep(Duration::from_millis(150));
     println!("  State after wait: {}", cb.state());
-    println!("  Allow request:    {} (one probe allowed)", cb.allow_request());
+    println!(
+        "  Allow request:    {} (one probe allowed)",
+        cb.allow_request()
+    );
 
     // A successful probe closes the circuit
     cb.record_success();
@@ -200,7 +201,11 @@ fn main() {
     println!("Collects classified errors through a processing pipeline.\n");
 
     let mut chain = ErrorChain::new();
-    println!("  Empty chain: len={}, is_empty={}", chain.len(), chain.is_empty());
+    println!(
+        "  Empty chain: len={}, is_empty={}",
+        chain.len(),
+        chain.is_empty()
+    );
 
     // Add errors from a hypothetical multi-step pipeline
     chain.add(
@@ -257,10 +262,7 @@ fn main() {
 
     let actions: Vec<(&str, ErrorAction)> = vec![
         ("Propagate", ErrorAction::Propagate),
-        (
-            "Recover",
-            ErrorAction::Recover(json!({"default": "value"})),
-        ),
+        ("Recover", ErrorAction::Recover(json!({"default": "value"}))),
         ("Retry", ErrorAction::Retry),
         (
             "Fallback",

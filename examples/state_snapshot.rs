@@ -12,8 +12,7 @@
 //! Run with: `cargo run -p rustchain-examples --example state_snapshot`
 
 use langgraph::graph::{
-    SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot,
-    TimeTravelDebugger,
+    SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot, TimeTravelDebugger,
 };
 use serde_json::json;
 
@@ -116,18 +115,30 @@ fn main() {
 
     // goto_step
     if let Some(snap) = debugger.goto_step(1) {
-        println!("  goto_step(1): node={}, status={}", snap.node_name, snap.state["status"]);
+        println!(
+            "  goto_step(1): node={}, status={}",
+            snap.node_name, snap.state["status"]
+        );
     }
 
     // rewind from latest
     if let Some(snap) = debugger.rewind(0) {
-        println!("  rewind(0) [latest]: node={}, step={}", snap.node_name, snap.step);
+        println!(
+            "  rewind(0) [latest]: node={}, step={}",
+            snap.node_name, snap.step
+        );
     }
     if let Some(snap) = debugger.rewind(2) {
-        println!("  rewind(2) [2 back]: node={}, step={}", snap.node_name, snap.step);
+        println!(
+            "  rewind(2) [2 back]: node={}, step={}",
+            snap.node_name, snap.step
+        );
     }
     if let Some(snap) = debugger.rewind(4) {
-        println!("  rewind(4) [4 back]: node={}, step={}", snap.node_name, snap.step);
+        println!(
+            "  rewind(4) [4 back]: node={}, step={}",
+            snap.node_name, snap.step
+        );
     }
 
     // goto_snapshot by ID
@@ -207,7 +218,10 @@ fn main() {
     let a = StateSnapshot::new(json!({"x": 1}), "node_a", 100);
     let b = StateSnapshot::new(json!({"x": 1}), "node_b", 200);
     let equiv2 = SnapshotComparator::is_equivalent(&a, &b);
-    println!("  Two snapshots with same state but different node/step equivalent? {}", equiv2);
+    println!(
+        "  Two snapshots with same state but different node/step equivalent? {}",
+        equiv2
+    );
     println!();
 
     // -----------------------------------------------------------------------
