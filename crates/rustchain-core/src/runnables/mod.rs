@@ -7,6 +7,7 @@ pub mod cache;
 pub mod config;
 pub mod configurable;
 pub mod each;
+pub mod error_handling;
 pub mod events;
 pub mod ext;
 pub mod fallbacks;
@@ -52,6 +53,10 @@ pub use configurable::{
     RunnableConfigurableFields,
 };
 pub use each::RunnableEach;
+pub use error_handling::{
+    CircuitBreaker, CircuitState, ClassifiedError, ErrorAction, ErrorChain, ErrorClassifier,
+    ErrorHandler, ErrorKind, MapErrorHandler, PatternErrorClassifier, RecoveryHandler,
+};
 pub use events::{EventEmitter, EventFilter, EventTrace, RunEvent, RunEventType};
 pub use ext::RunnableExt;
 pub use fallbacks::{with_fallbacks, RunnableWithFallbacks};
