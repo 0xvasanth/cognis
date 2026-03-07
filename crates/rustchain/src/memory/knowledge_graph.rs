@@ -3,6 +3,10 @@
 //! [`KnowledgeGraphMemory`] extracts subject-predicate-object triples from conversation
 //! text and maintains a knowledge graph. This allows chains to include relevant
 //! relational knowledge in prompts.
+//!
+//! - [`KnowledgeTriple`] — a subject-predicate-object triple with confidence and source metadata
+//! - [`KnowledgeGraph`] — an in-memory graph storing and querying triples
+//! - [`KnowledgeGraphMemory`] — a [`BaseMemory`] implementation that automatically extracts triples
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -91,8 +95,7 @@ impl KnowledgeGraph {
         self.triples
             .iter()
             .filter(|t| {
-                t.subject.to_lowercase() == entity_lower
-                    || t.object.to_lowercase() == entity_lower
+                t.subject.to_lowercase() == entity_lower || t.object.to_lowercase() == entity_lower
             })
             .collect()
     }
@@ -131,8 +134,7 @@ impl KnowledgeGraph {
     pub fn remove_triples_for_entity(&mut self, entity: &str) {
         let entity_lower = entity.to_lowercase();
         self.triples.retain(|t| {
-            t.subject.to_lowercase() != entity_lower
-                && t.object.to_lowercase() != entity_lower
+            t.subject.to_lowercase() != entity_lower && t.object.to_lowercase() != entity_lower
         });
     }
 
@@ -777,8 +779,7 @@ mod tests {
     #[test]
     fn test_extractor_multiple_triples() {
         let extractor = RegexTripleExtractor::new();
-        let triples =
-            extractor.extract_triples("Alice is a developer. Bob works at Google.");
+        let triples = extractor.extract_triples("Alice is a developer. Bob works at Google.");
         assert!(triples.len() >= 2);
     }
 
@@ -815,10 +816,8 @@ mod tests {
         let extractor = RegexTripleExtractor::new();
         // The "is a" and "is" patterns could both match, but dedup should prevent duplicates
         let triples = extractor.extract_triples("Alice is a developer.");
-        let unique_subjects: std::collections::HashSet<_> = triples
-            .iter()
-            .map(|t| (&t.subject, &t.object))
-            .collect();
+        let unique_subjects: std::collections::HashSet<_> =
+            triples.iter().map(|t| (&t.subject, &t.object)).collect();
         // Each (subject, object) pair should be unique per predicate
         assert_eq!(unique_subjects.len(), triples.len());
     }

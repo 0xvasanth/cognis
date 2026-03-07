@@ -1,3 +1,13 @@
+//! Caching wrapper for runnables.
+//!
+//! Provides a [`Runnable`] wrapper that memoizes `invoke` results keyed by
+//! the serialized input (or a custom key function). The cache supports
+//! TTL-based expiry and LRU eviction when the maximum entry count is exceeded.
+//!
+//! - [`CacheConfig`] — configuration for max entries, TTL, and custom key generation
+//! - [`CacheStats`] — snapshot of cache hit/miss/eviction counters
+//! - [`RunnableCache`] — the caching wrapper that implements [`Runnable`]
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -12,6 +22,9 @@ use crate::error::Result;
 use super::base::Runnable;
 use super::config::RunnableConfig;
 use super::RunnableStream;
+
+/// A thread-safe function that generates a cache key from a JSON value.
+type CacheKeyFn = Arc<dyn Fn(&Value) -> String + Send + Sync>;
 
 /// Configuration for the caching wrapper.
 ///
@@ -33,7 +46,7 @@ pub struct CacheConfig {
     /// Optional time-to-live for cache entries. Expired entries are evicted on access.
     pub ttl: Option<Duration>,
     /// Optional custom key generation function. Defaults to JSON serialization of input.
-    pub cache_key_fn: Option<Arc<dyn Fn(&Value) -> String + Send + Sync>>,
+    pub cache_key_fn: Option<CacheKeyFn>,
 }
 
 impl Default for CacheConfig {
@@ -303,9 +316,7 @@ impl Runnable for RunnableCache {
                 Self::evict_lru(&mut state);
             }
 
-            state
-                .entries
-                .insert(key, CacheEntry::new(result.clone()));
+            state.entries.insert(key, CacheEntry::new(result.clone()));
         }
 
         Ok(result)
@@ -372,8 +383,7 @@ mod tests {
 
     #[test]
     fn test_cache_config_custom_key_fn() {
-        let config =
-            CacheConfig::new().with_cache_key_fn(|v: &Value| format!("custom:{}", v));
+        let config = CacheConfig::new().with_cache_key_fn(|v: &Value| format!("custom:{}", v));
         assert!(config.cache_key_fn.is_some());
         let key = (config.cache_key_fn.unwrap())(&json!(42));
         assert_eq!(key, "custom:42");
@@ -542,7 +552,7 @@ mod tests {
 
         cached.invoke(json!(1), None).await.unwrap(); // miss
         cached.invoke(json!(2), None).await.unwrap(); // miss
-        // Access 1 again to make it recently used.
+                                                      // Access 1 again to make it recently used.
         cached.invoke(json!(1), None).await.unwrap(); // hit
 
         // Now insert 3 -> should evict 2 (least recently used), not 1.

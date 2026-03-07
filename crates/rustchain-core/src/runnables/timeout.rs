@@ -1,3 +1,15 @@
+//! Timeout and deadline wrappers for runnables.
+//!
+//! Provides [`Runnable`] wrappers that enforce time limits on execution.
+//! [`RunnableTimeout`] uses a relative duration from invocation, while
+//! [`RunnableDeadline`] enforces an absolute point in time, which is useful
+//! when multiple operations share a common deadline.
+//!
+//! - [`TimeoutBehavior`] — controls what happens on timeout (error, default value, or fallback runnable)
+//! - [`TimeoutConfig`] — configuration combining a duration with a [`TimeoutBehavior`]
+//! - [`RunnableTimeout`] — wrapper that enforces a relative timeout on each invocation
+//! - [`RunnableDeadline`] — wrapper that enforces an absolute deadline across invocations
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -114,8 +126,11 @@ impl Runnable for RunnableTimeout {
     }
 
     async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
-        match tokio::time::timeout(self.config.duration, self.inner.invoke(input.clone(), config))
-            .await
+        match tokio::time::timeout(
+            self.config.duration,
+            self.inner.invoke(input.clone(), config),
+        )
+        .await
         {
             Ok(result) => result,
             Err(_elapsed) => self.handle_timeout(input, config).await,
@@ -153,9 +168,7 @@ impl Runnable for RunnableTimeout {
                         let val = val.clone();
                         Ok(Box::pin(stream::once(async move { Ok(val) })))
                     }
-                    TimeoutBehavior::Fallback(fallback) => {
-                        fallback.stream(input, config).await
-                    }
+                    TimeoutBehavior::Fallback(fallback) => fallback.stream(input, config).await,
                 }
             }
         }
