@@ -158,3 +158,19 @@ path = "../../examples/topic_channels.rs"
 [[example]]
 name = "plugin_system"
 path = "../../examples/plugin_system.rs"
+
+[[example]]
+name = "conversation_memory"
+path = "../../examples/conversation_memory.rs"
+
+[[example]]
+name = "document_compression"
+path = "../../examples/document_compression.rs"
+
+[[example]]
+name = "state_snapshot"
+path = "../../examples/state_snapshot.rs"
+
+[[example]]
+name = "error_recovery"
+path = "../../examples/error_recovery.rs"
