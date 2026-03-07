@@ -16,6 +16,7 @@ pub mod serialize;
 pub mod snapshot;
 pub mod state;
 pub mod stream_events;
+pub mod stream_writer;
 pub mod subgraph;
 pub mod time_travel;
 pub mod runner;
@@ -43,6 +44,7 @@ pub use snapshot::{
 };
 pub use state::{AsyncNodeAction, CompiledStateGraph, NodeAction, NodeSpec, StateGraph};
 pub use stream_events::{stream_graph_events, GraphEventCollector, GraphStreamEvent};
+pub use stream_writer::{FilteredStream, StreamChunk, StreamCollector, StreamReader, StreamWriter};
 pub use subgraph::SubgraphNode;
 pub use time_travel::TimeTravelEngine;
 pub use runner::{GraphRunner, LoggingHook, MetricsHook, RunConfig, StepEvent, StepHook};
