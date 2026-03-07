@@ -43,6 +43,12 @@ pub use streaming::{
     stream_chain, ConsoleStreamingCallback, StreamingCallback, StreamingCallbackAdapter,
     StreamingChainExecutor, StreamingChainResult, TokenCollector,
 };
+pub mod conditional;
+pub use conditional::{
+    BranchChain, BranchChainBuilder, ClosureCondition, Condition, ConditionalChain,
+    ConditionalChainBuilder, KeyContainsCondition, KeyEqualsCondition, KeyExistsCondition,
+    SwitchChain, SwitchChainBuilder,
+};
 pub mod extraction;
 pub use extraction::{
     ExtractionChain, ExtractionChainBuilder, ExtractionExample, ExtractionResult, ExtractionSchema,
