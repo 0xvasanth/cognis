@@ -43,6 +43,7 @@ pub mod agents;
 pub mod cache;
 pub mod chains;
 pub mod chat_models;
+pub mod chat_sessions;
 pub mod document_loaders;
 pub mod document_transformers;
 pub mod embeddings;
