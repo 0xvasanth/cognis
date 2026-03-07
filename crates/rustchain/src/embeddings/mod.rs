@@ -14,6 +14,7 @@ pub mod google;
 pub mod ollama;
 #[cfg(feature = "openai")]
 pub mod openai;
+pub mod batch;
 pub mod router;
 
 pub use base::*;
