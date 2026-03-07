@@ -1,6 +1,7 @@
 pub mod assign;
 pub mod base;
 pub mod batch;
+pub mod batch_processor;
 pub mod binding;
 pub mod branch;
 pub mod cache;
@@ -42,6 +43,10 @@ pub type RunnableStream = Pin<Box<dyn Stream<Item = Result<Value>> + Send>>;
 pub use assign::{RunnableAssign, RunnablePick};
 pub use base::Runnable;
 pub use batch::{batch_invoke, RunnableBatch};
+pub use batch_processor::{
+    batch_process, BatchConfig, BatchItemResult, BatchProgress, BatchResult, ChunkIterator,
+    RunnableBatchProcessor,
+};
 pub use binding::RunnableBinding;
 pub use branch::RunnableBranch;
 pub use cache::{CacheConfig, CacheStats, RunnableCache};
