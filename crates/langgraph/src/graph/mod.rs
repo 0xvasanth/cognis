@@ -14,6 +14,7 @@
 //! - [`audit`] — Execution audit log and trail tracing
 //! - [`ascii`] / [`mermaid`] — Graph visualization (terminal and Mermaid diagrams)
 
+pub mod analysis;
 pub mod annotations;
 pub mod ascii;
 pub mod audit;
