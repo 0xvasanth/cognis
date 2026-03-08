@@ -71,6 +71,7 @@ pub mod communication;
 pub mod config;
 pub mod context;
 pub mod conversation;
+pub mod evaluation;
 pub mod events;
 pub mod factory;
 pub mod health;
