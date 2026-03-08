@@ -11,6 +11,7 @@
 //! - [`SqliteCheckpointSaver`] (behind the `sqlite` feature) — durable SQLite storage
 
 pub mod memory;
+pub mod persistence;
 pub mod serialization;
 pub mod serializer;
 pub mod store;
