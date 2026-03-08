@@ -25,6 +25,7 @@ pub mod retry;
 pub mod router;
 pub mod router_ext;
 pub mod schema;
+pub mod serialization;
 pub mod scoped_callbacks;
 pub mod sequence;
 pub mod timeout;
@@ -103,6 +104,10 @@ pub use scoped_callbacks::{
     RunnableWithCallbacks, ScopeGuard, ScopedCallbackConfig,
 };
 pub use sequence::RunnableSequence;
+pub use serialization::{
+    ConfigDiff, ConfigMigration, ConfigRegistry, ConfigSchema, ParamSpec, ParamType,
+    SerializableConfig, SerializableConfigBuilder,
+};
 pub use timeout::{RunnableDeadline, RunnableTimeout, TimeoutBehavior, TimeoutConfig};
 pub use tracing::{
     CompactTraceFormatter, JsonTraceFormatter, SpanResult, TextTraceFormatter, TraceCollector,
