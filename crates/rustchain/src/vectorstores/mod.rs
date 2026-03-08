@@ -1,5 +1,6 @@
 pub mod filters;
 pub mod in_memory;
+pub mod memory;
 
 #[cfg(feature = "qdrant")]
 pub mod qdrant;
