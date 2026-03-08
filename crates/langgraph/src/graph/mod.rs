@@ -18,6 +18,7 @@ pub mod annotations;
 pub mod ascii;
 pub mod audit;
 pub mod branch;
+pub mod compiled;
 pub mod breakpoint;
 pub mod conditional;
 pub mod hooks;
@@ -80,6 +81,10 @@ pub use subgraph::{
 };
 pub use time_travel::TimeTravelEngine;
 pub use ui::{ui_message_reducer, AnyUIMessage, RemoveUIMessage, UIMessage};
+pub use compiled::{
+    CompiledEdge, CompiledGraph, CompiledNode, ExecutionLog, GraphCompiler,
+    GraphDefinitionBuilder, LogEntry,
+};
 pub use validator::{
     CycleDetector, GraphValidator, ReachabilityAnalyzer, ValidationIssue, ValidationResult,
     ValidationSeverity,
