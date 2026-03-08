@@ -82,6 +82,7 @@ pub mod recovery;
 pub mod sandbox;
 pub mod session;
 pub mod skills;
+pub mod summarization;
 pub mod telemetry;
 pub mod tool_registry;
 pub mod workflow;
