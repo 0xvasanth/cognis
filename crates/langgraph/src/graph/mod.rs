@@ -63,7 +63,11 @@ pub use hooks::{
     LoggingHook as HooksLoggingHook, StateSnapshot as HooksStateSnapshot, StateSnapshotHook,
     StateValidationHook, TimingHook,
 };
-pub use human_in_loop::{ApprovalRequest, HumanAction, HumanInTheLoop, HumanInTheLoopResult};
+pub use human_in_loop::{
+    ApprovalPolicy, ApprovalRequest, FeedbackLog, HumanAction, HumanApproval, HumanFeedback,
+    HumanInLoopConfig, HumanInLoopConfigBuilder, HumanInTheLoop, HumanInTheLoopResult,
+    HumanReviewPoint, ReviewApprovalRequest, ReviewApprovalRequestBuilder, ReviewQueue,
+};
 pub use mermaid::{to_mermaid, to_mermaid_url};
 pub use message::{
     add_messages, message_graph, GraphMessage, MessageEdge, MessageGraph, MessageGraphBuilder,
