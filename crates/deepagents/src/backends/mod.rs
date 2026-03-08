@@ -6,10 +6,15 @@
 pub mod filesystem;
 pub mod sandbox;
 pub mod state;
+pub mod storage;
 
 pub use self::filesystem::FilesystemBackend;
 pub use self::sandbox::SandboxBackend;
 pub use self::state::StateBackend;
+pub use self::storage::{
+    BackendConfig, BackendFactory, BackendStats, CachedBackend, FilesystemStorageBackend,
+    InMemoryBackend, NamespacedBackend, StorageBackend,
+};
 
 use async_trait::async_trait;
 use serde_json::Value;
