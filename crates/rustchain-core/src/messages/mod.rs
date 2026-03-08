@@ -5,6 +5,7 @@ pub mod chat;
 pub mod chunks;
 pub mod content;
 pub mod function;
+pub mod history;
 pub mod human;
 pub mod multimodal;
 pub mod openai;
@@ -32,6 +33,10 @@ pub use self::content::{
     is_data_content_block_type, Annotation, Citation, ContentBlock, ImageUrlInfo, KNOWN_BLOCK_TYPES,
 };
 pub use self::function::FunctionMessage;
+pub use self::history::{
+    ConversationTurn, HistoryMessage, HistorySerializer, MessageHistory, SlidingWindowHistory,
+    TokenBudgetHistory, TurnHistory,
+};
 pub use self::human::HumanMessage;
 pub use self::multimodal::{ContentPart, ImageDetail, ImageUrlContent};
 pub use self::openai::{convert_to_openai_messages, count_tokens_approximately};
