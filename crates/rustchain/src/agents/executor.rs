@@ -8,6 +8,13 @@
 //! - Early stopping strategies (`EarlyStoppingMethod`)
 //! - Parsing error recovery (`handle_parsing_errors`)
 //! - `Runnable` trait integration
+//!
+//! Also provides a planner-based execution model:
+//! - [`AgentPlanner`] trait for pluggable planning logic
+//! - [`ToolExecutor`] for managing and invoking tools by name
+//! - [`ExecutorConfig`] with builder pattern for iteration/time limits
+//! - [`PlannerAgentExecutor`] — the main planning loop
+//! - [`AgentFinish`], [`AgentDecision`], [`PlannerAgentStep`] enums for control flow
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -55,6 +62,41 @@ pub struct AgentAction {
     pub tool_input: Value,
     /// A human-readable log describing the action.
     pub log: String,
+    /// Optional message log for tracing.
+    #[serde(default)]
+    pub message_log: Vec<String>,
+}
+
+impl AgentAction {
+    /// Create a new `AgentAction`.
+    pub fn new(
+        tool: impl Into<String>,
+        tool_input: Value,
+        log: impl Into<String>,
+    ) -> Self {
+        Self {
+            tool_name: tool.into(),
+            tool_input,
+            log: log.into(),
+            message_log: Vec::new(),
+        }
+    }
+
+    /// Create a new `AgentAction` with a message log.
+    pub fn with_message_log(mut self, message_log: Vec<String>) -> Self {
+        self.message_log = message_log;
+        self
+    }
+
+    /// Serialize to a JSON value.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "tool": self.tool_name,
+            "tool_input": self.tool_input,
+            "log": self.log,
+            "message_log": self.message_log,
+        })
+    }
 }
 
 /// The result of running an agent to completion.
@@ -393,14 +435,14 @@ impl AgentExecutor {
 
                 // Record intermediate step
                 intermediate_steps.push(AgentStep {
-                    action: AgentAction {
-                        tool_name: tool_call.name.clone(),
-                        tool_input: serde_json::to_value(&tool_call.args).unwrap_or_default(),
-                        log: format!(
+                    action: AgentAction::new(
+                        tool_call.name.clone(),
+                        serde_json::to_value(&tool_call.args).unwrap_or_default(),
+                        format!(
                             "Calling tool `{}` with args: {}",
                             tool_call.name, tool_input_str
                         ),
-                    },
+                    ),
                     observation: result_text.clone(),
                 });
 
@@ -554,6 +596,361 @@ fn parse_agent_input(input: Value) -> Result<Vec<Message>> {
             expected: "String or Array of Messages".into(),
             got: format!("{}", input),
         }),
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Planner-based agent execution model
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A completed agent result — the agent has decided to stop and return values.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentFinish {
+    /// Key-value pairs the agent returns (typically includes "output").
+    pub return_values: HashMap<String, Value>,
+    /// Human-readable log of the finish decision.
+    pub log: String,
+}
+
+impl AgentFinish {
+    /// Create a new `AgentFinish`.
+    pub fn new(return_values: HashMap<String, Value>, log: impl Into<String>) -> Self {
+        Self {
+            return_values,
+            log: log.into(),
+        }
+    }
+
+    /// Serialize to a JSON value.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "return_values": self.return_values,
+            "log": self.log,
+        })
+    }
+}
+
+/// An intermediate step variant: either an action or a finish.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PlannerAgentStep {
+    /// The agent wants to invoke a tool.
+    Action(AgentAction),
+    /// The agent has finished and produced a final result.
+    Finish(AgentFinish),
+}
+
+impl PlannerAgentStep {
+    /// Returns `true` if this step is an action.
+    pub fn is_action(&self) -> bool {
+        matches!(self, Self::Action(_))
+    }
+
+    /// Returns `true` if this step is a finish.
+    pub fn is_finish(&self) -> bool {
+        matches!(self, Self::Finish(_))
+    }
+}
+
+/// What the agent planner decides to do next.
+#[derive(Debug, Clone)]
+pub enum AgentDecision {
+    /// Continue with one or more tool invocations.
+    Continue(Vec<AgentAction>),
+    /// The agent is done.
+    Finish(AgentFinish),
+    /// An error occurred during planning.
+    Error(String),
+}
+
+/// Trait for the "brain" that decides what the agent should do next.
+///
+/// Implementations receive the current intermediate steps and input,
+/// then return an [`AgentDecision`].
+pub trait AgentPlanner: Send + Sync {
+    /// Decide the next action(s) given intermediate steps so far and the original input.
+    fn plan(
+        &self,
+        intermediate_steps: &[(AgentAction, String)],
+        input: &Value,
+    ) -> AgentDecision;
+}
+
+/// Manages available tools and executes them by name.
+pub struct ToolExecutor {
+    tools: HashMap<String, Box<dyn Fn(Value) -> Result<String> + Send + Sync>>,
+}
+
+impl ToolExecutor {
+    /// Create an empty `ToolExecutor`.
+    pub fn new() -> Self {
+        Self {
+            tools: HashMap::new(),
+        }
+    }
+
+    /// Register a tool handler under the given name.
+    pub fn add_tool(
+        &mut self,
+        name: String,
+        handler: Box<dyn Fn(Value) -> Result<String> + Send + Sync>,
+    ) {
+        self.tools.insert(name, handler);
+    }
+
+    /// Execute a tool by name with the given JSON input.
+    pub fn execute(&self, name: &str, input: Value) -> Result<String> {
+        match self.tools.get(name) {
+            Some(handler) => handler(input),
+            None => Err(RustChainError::Other(format!(
+                "Tool '{}' not found",
+                name
+            ))),
+        }
+    }
+
+    /// Check whether a tool with the given name is registered.
+    pub fn has_tool(&self, name: &str) -> bool {
+        self.tools.contains_key(name)
+    }
+
+    /// Return the names of all registered tools.
+    pub fn tool_names(&self) -> Vec<&str> {
+        self.tools.keys().map(|k| k.as_str()).collect()
+    }
+}
+
+impl Default for ToolExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Configuration for the planner-based agent executor.
+#[derive(Debug, Clone)]
+pub struct ExecutorConfig {
+    /// Maximum number of planning iterations (default: 15).
+    pub max_iterations: usize,
+    /// Optional time budget in milliseconds.
+    pub max_execution_time_ms: Option<u64>,
+    /// Whether to include intermediate steps in the result (default: false).
+    pub return_intermediate_steps: bool,
+    /// What to do when the iteration/time limit is reached.
+    pub early_stopping_method: EarlyStoppingMethod,
+}
+
+impl ExecutorConfig {
+    /// Create a new config with defaults.
+    pub fn new() -> Self {
+        Self {
+            max_iterations: 15,
+            max_execution_time_ms: None,
+            return_intermediate_steps: false,
+            early_stopping_method: EarlyStoppingMethod::Force,
+        }
+    }
+
+    /// Set max iterations.
+    pub fn max_iterations(mut self, max: usize) -> Self {
+        self.max_iterations = max;
+        self
+    }
+
+    /// Set the time budget in milliseconds.
+    pub fn max_execution_time_ms(mut self, ms: u64) -> Self {
+        self.max_execution_time_ms = Some(ms);
+        self
+    }
+
+    /// Set whether to return intermediate steps.
+    pub fn return_intermediate_steps(mut self, yes: bool) -> Self {
+        self.return_intermediate_steps = yes;
+        self
+    }
+
+    /// Set the early stopping method.
+    pub fn early_stopping_method(mut self, method: EarlyStoppingMethod) -> Self {
+        self.early_stopping_method = method;
+        self
+    }
+}
+
+impl Default for ExecutorConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The result of running the planner-based agent executor.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutorResult {
+    /// The final output value.
+    pub output: Value,
+    /// Intermediate steps taken (action, observation) pairs.
+    pub intermediate_steps: Vec<(AgentAction, String)>,
+    /// Number of planning iterations used.
+    pub iterations: usize,
+    /// Wall-clock duration in milliseconds.
+    pub duration_ms: u64,
+}
+
+impl ExecutorResult {
+    /// Serialize to a JSON value.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "output": self.output,
+            "intermediate_steps": self.intermediate_steps.iter().map(|(a, obs)| {
+                serde_json::json!({
+                    "action": {
+                        "tool": a.tool_name,
+                        "tool_input": a.tool_input,
+                        "log": a.log,
+                    },
+                    "observation": obs,
+                })
+            }).collect::<Vec<_>>(),
+            "iterations": self.iterations,
+            "duration_ms": self.duration_ms,
+        })
+    }
+}
+
+/// The planner-based agent executor loop.
+///
+/// Repeatedly calls the planner to decide what to do, executes tool actions
+/// via the `ToolExecutor`, and accumulates intermediate steps until the
+/// planner returns `Finish` or the iteration limit is reached.
+pub struct PlannerAgentExecutor {
+    planner: Box<dyn AgentPlanner>,
+    tools: ToolExecutor,
+    config: ExecutorConfig,
+}
+
+impl PlannerAgentExecutor {
+    /// Create a new planner-based executor.
+    pub fn new(
+        planner: Box<dyn AgentPlanner>,
+        tools: ToolExecutor,
+        config: ExecutorConfig,
+    ) -> Self {
+        Self {
+            planner,
+            tools,
+            config,
+        }
+    }
+
+    /// Run the planning loop to completion.
+    pub fn execute(&self, input: Value) -> Result<ExecutorResult> {
+        let start = std::time::Instant::now();
+        let mut intermediate_steps: Vec<(AgentAction, String)> = Vec::new();
+        let mut iterations = 0usize;
+
+        loop {
+            // Check iteration limit
+            if iterations >= self.config.max_iterations {
+                return match self.config.early_stopping_method {
+                    EarlyStoppingMethod::Force => Ok(ExecutorResult {
+                        output: Value::String(format!(
+                            "Agent stopped: reached max iterations ({})",
+                            self.config.max_iterations,
+                        )),
+                        intermediate_steps: if self.config.return_intermediate_steps {
+                            intermediate_steps
+                        } else {
+                            Vec::new()
+                        },
+                        iterations,
+                        duration_ms: start.elapsed().as_millis() as u64,
+                    }),
+                    EarlyStoppingMethod::GenerateResponse => {
+                        // Ask the planner one last time with a signal to wrap up
+                        let decision = self.planner.plan(&intermediate_steps, &input);
+                        match decision {
+                            AgentDecision::Finish(finish) => Ok(ExecutorResult {
+                                output: Value::Object(
+                                    finish
+                                        .return_values
+                                        .into_iter()
+                                        .collect::<serde_json::Map<String, Value>>(),
+                                ),
+                                intermediate_steps: if self.config.return_intermediate_steps {
+                                    intermediate_steps
+                                } else {
+                                    Vec::new()
+                                },
+                                iterations,
+                                duration_ms: start.elapsed().as_millis() as u64,
+                            }),
+                            _ => Ok(ExecutorResult {
+                                output: Value::String(format!(
+                                    "Agent stopped: reached max iterations ({})",
+                                    self.config.max_iterations,
+                                )),
+                                intermediate_steps: if self.config.return_intermediate_steps {
+                                    intermediate_steps
+                                } else {
+                                    Vec::new()
+                                },
+                                iterations,
+                                duration_ms: start.elapsed().as_millis() as u64,
+                            }),
+                        }
+                    }
+                };
+            }
+
+            // Check time budget
+            if let Some(max_ms) = self.config.max_execution_time_ms {
+                if start.elapsed().as_millis() as u64 >= max_ms {
+                    return Ok(ExecutorResult {
+                        output: Value::String("Agent stopped: time limit exceeded".into()),
+                        intermediate_steps: if self.config.return_intermediate_steps {
+                            intermediate_steps
+                        } else {
+                            Vec::new()
+                        },
+                        iterations,
+                        duration_ms: start.elapsed().as_millis() as u64,
+                    });
+                }
+            }
+
+            iterations += 1;
+
+            let decision = self.planner.plan(&intermediate_steps, &input);
+
+            match decision {
+                AgentDecision::Continue(actions) => {
+                    for action in actions {
+                        let observation = match self.tools.execute(&action.tool_name, action.tool_input.clone()) {
+                            Ok(result) => result,
+                            Err(e) => format!("Error: {}", e),
+                        };
+                        intermediate_steps.push((action, observation));
+                    }
+                }
+                AgentDecision::Finish(finish) => {
+                    return Ok(ExecutorResult {
+                        output: Value::Object(
+                            finish
+                                .return_values
+                                .into_iter()
+                                .collect::<serde_json::Map<String, Value>>(),
+                        ),
+                        intermediate_steps: if self.config.return_intermediate_steps {
+                            intermediate_steps
+                        } else {
+                            Vec::new()
+                        },
+                        iterations,
+                        duration_ms: start.elapsed().as_millis() as u64,
+                    });
+                }
+                AgentDecision::Error(msg) => {
+                    return Err(RustChainError::Other(msg));
+                }
+            }
+        }
     }
 }
 
@@ -1306,5 +1703,886 @@ mod tests {
         assert!(result.intermediate_steps[0]
             .observation
             .contains("tool 'nonexistent' not found"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Planner-based executor tests
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// A planner that finishes immediately with the input value.
+    struct ImmediateFinishPlanner;
+
+    impl AgentPlanner for ImmediateFinishPlanner {
+        fn plan(
+            &self,
+            _intermediate_steps: &[(AgentAction, String)],
+            input: &Value,
+        ) -> AgentDecision {
+            let mut rv = HashMap::new();
+            rv.insert("output".to_string(), input.clone());
+            AgentDecision::Finish(AgentFinish::new(rv, "Finished immediately"))
+        }
+    }
+
+    /// A planner that takes one action then finishes.
+    struct OneActionPlanner;
+
+    impl AgentPlanner for OneActionPlanner {
+        fn plan(
+            &self,
+            intermediate_steps: &[(AgentAction, String)],
+            _input: &Value,
+        ) -> AgentDecision {
+            if intermediate_steps.is_empty() {
+                AgentDecision::Continue(vec![AgentAction::new(
+                    "calculator",
+                    serde_json::json!({"expr": "2+2"}),
+                    "Computing 2+2",
+                )])
+            } else {
+                let obs = &intermediate_steps[0].1;
+                let mut rv = HashMap::new();
+                rv.insert("output".to_string(), Value::String(obs.clone()));
+                AgentDecision::Finish(AgentFinish::new(rv, "Got the answer"))
+            }
+        }
+    }
+
+    /// A planner that takes two actions then finishes.
+    struct TwoActionPlanner;
+
+    impl AgentPlanner for TwoActionPlanner {
+        fn plan(
+            &self,
+            intermediate_steps: &[(AgentAction, String)],
+            _input: &Value,
+        ) -> AgentDecision {
+            match intermediate_steps.len() {
+                0 => AgentDecision::Continue(vec![AgentAction::new(
+                    "calculator",
+                    serde_json::json!({"expr": "2+2"}),
+                    "Step 1",
+                )]),
+                1 => AgentDecision::Continue(vec![AgentAction::new(
+                    "echo",
+                    serde_json::json!({"text": "hello"}),
+                    "Step 2",
+                )]),
+                _ => {
+                    let mut rv = HashMap::new();
+                    rv.insert(
+                        "output".to_string(),
+                        Value::String(format!(
+                            "{} and {}",
+                            intermediate_steps[0].1, intermediate_steps[1].1
+                        )),
+                    );
+                    AgentDecision::Finish(AgentFinish::new(rv, "All done"))
+                }
+            }
+        }
+    }
+
+    /// A planner that never finishes (always continues).
+    struct NeverFinishPlanner;
+
+    impl AgentPlanner for NeverFinishPlanner {
+        fn plan(
+            &self,
+            _intermediate_steps: &[(AgentAction, String)],
+            _input: &Value,
+        ) -> AgentDecision {
+            AgentDecision::Continue(vec![AgentAction::new(
+                "calculator",
+                serde_json::json!({}),
+                "Looping forever",
+            )])
+        }
+    }
+
+    /// A planner that returns an error.
+    struct ErrorPlanner;
+
+    impl AgentPlanner for ErrorPlanner {
+        fn plan(
+            &self,
+            _intermediate_steps: &[(AgentAction, String)],
+            _input: &Value,
+        ) -> AgentDecision {
+            AgentDecision::Error("Planning failed".to_string())
+        }
+    }
+
+    /// A planner that calls a missing tool.
+    struct MissingToolPlanner;
+
+    impl AgentPlanner for MissingToolPlanner {
+        fn plan(
+            &self,
+            intermediate_steps: &[(AgentAction, String)],
+            _input: &Value,
+        ) -> AgentDecision {
+            if intermediate_steps.is_empty() {
+                AgentDecision::Continue(vec![AgentAction::new(
+                    "nonexistent_tool",
+                    serde_json::json!({}),
+                    "Calling missing tool",
+                )])
+            } else {
+                let mut rv = HashMap::new();
+                rv.insert(
+                    "output".to_string(),
+                    Value::String(intermediate_steps[0].1.clone()),
+                );
+                AgentDecision::Finish(AgentFinish::new(rv, "Done"))
+            }
+        }
+    }
+
+    /// A planner that continues with multiple actions at once.
+    struct MultiActionPlanner;
+
+    impl AgentPlanner for MultiActionPlanner {
+        fn plan(
+            &self,
+            intermediate_steps: &[(AgentAction, String)],
+            _input: &Value,
+        ) -> AgentDecision {
+            if intermediate_steps.is_empty() {
+                AgentDecision::Continue(vec![
+                    AgentAction::new("calculator", serde_json::json!({"a": 1}), "First"),
+                    AgentAction::new("echo", serde_json::json!({"b": 2}), "Second"),
+                ])
+            } else {
+                let mut rv = HashMap::new();
+                rv.insert(
+                    "output".to_string(),
+                    Value::String("multi-done".to_string()),
+                );
+                AgentDecision::Finish(AgentFinish::new(rv, "Done"))
+            }
+        }
+    }
+
+    fn make_calculator_tool() -> ToolExecutor {
+        let mut tools = ToolExecutor::new();
+        tools.add_tool(
+            "calculator".to_string(),
+            Box::new(|_input: Value| Ok("4".to_string())),
+        );
+        tools
+    }
+
+    fn make_two_tools() -> ToolExecutor {
+        let mut tools = ToolExecutor::new();
+        tools.add_tool(
+            "calculator".to_string(),
+            Box::new(|_input: Value| Ok("4".to_string())),
+        );
+        tools.add_tool(
+            "echo".to_string(),
+            Box::new(|input: Value| {
+                Ok(input
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("echoed")
+                    .to_string())
+            }),
+        );
+        tools
+    }
+
+    // ── Planner Test 1: AgentAction creation ──
+
+    #[test]
+    fn test_agent_action_new() {
+        let action = AgentAction::new("tool_a", serde_json::json!({"key": "val"}), "my log");
+        assert_eq!(action.tool_name, "tool_a");
+        assert_eq!(action.tool_input, serde_json::json!({"key": "val"}));
+        assert_eq!(action.log, "my log");
+        assert!(action.message_log.is_empty());
+    }
+
+    // ── Planner Test 2: AgentAction with message log ──
+
+    #[test]
+    fn test_agent_action_with_message_log() {
+        let action = AgentAction::new("tool_a", serde_json::json!(null), "log")
+            .with_message_log(vec!["msg1".to_string(), "msg2".to_string()]);
+        assert_eq!(action.message_log.len(), 2);
+        assert_eq!(action.message_log[0], "msg1");
+    }
+
+    // ── Planner Test 3: AgentAction to_json ──
+
+    #[test]
+    fn test_agent_action_to_json() {
+        let action = AgentAction::new("tool_b", serde_json::json!(42), "do thing");
+        let json = action.to_json();
+        assert_eq!(json["tool"], "tool_b");
+        assert_eq!(json["tool_input"], 42);
+        assert_eq!(json["log"], "do thing");
+        assert!(json["message_log"].as_array().unwrap().is_empty());
+    }
+
+    // ── Planner Test 4: AgentFinish creation ──
+
+    #[test]
+    fn test_agent_finish_new() {
+        let mut rv = HashMap::new();
+        rv.insert("output".to_string(), Value::String("done".into()));
+        let finish = AgentFinish::new(rv.clone(), "finished");
+        assert_eq!(finish.return_values["output"], "done");
+        assert_eq!(finish.log, "finished");
+    }
+
+    // ── Planner Test 5: AgentFinish to_json ──
+
+    #[test]
+    fn test_agent_finish_to_json() {
+        let mut rv = HashMap::new();
+        rv.insert("result".to_string(), Value::Number(42.into()));
+        let finish = AgentFinish::new(rv, "completed");
+        let json = finish.to_json();
+        assert_eq!(json["return_values"]["result"], 42);
+        assert_eq!(json["log"], "completed");
+    }
+
+    // ── Planner Test 6: AgentFinish empty return values ──
+
+    #[test]
+    fn test_agent_finish_empty_return_values() {
+        let finish = AgentFinish::new(HashMap::new(), "empty");
+        assert!(finish.return_values.is_empty());
+        let json = finish.to_json();
+        assert!(json["return_values"].as_object().unwrap().is_empty());
+    }
+
+    // ── Planner Test 7: PlannerAgentStep is_action ──
+
+    #[test]
+    fn test_planner_agent_step_is_action() {
+        let step = PlannerAgentStep::Action(AgentAction::new("t", serde_json::json!(null), "l"));
+        assert!(step.is_action());
+        assert!(!step.is_finish());
+    }
+
+    // ── Planner Test 8: PlannerAgentStep is_finish ──
+
+    #[test]
+    fn test_planner_agent_step_is_finish() {
+        let step = PlannerAgentStep::Finish(AgentFinish::new(HashMap::new(), "done"));
+        assert!(step.is_finish());
+        assert!(!step.is_action());
+    }
+
+    // ── Planner Test 9: ToolExecutor add and execute ──
+
+    #[test]
+    fn test_tool_executor_add_and_execute() {
+        let mut te = ToolExecutor::new();
+        te.add_tool(
+            "adder".to_string(),
+            Box::new(|input: Value| {
+                let a = input["a"].as_i64().unwrap_or(0);
+                let b = input["b"].as_i64().unwrap_or(0);
+                Ok(format!("{}", a + b))
+            }),
+        );
+        let result = te
+            .execute("adder", serde_json::json!({"a": 3, "b": 7}))
+            .unwrap();
+        assert_eq!(result, "10");
+    }
+
+    // ── Planner Test 10: ToolExecutor missing tool ──
+
+    #[test]
+    fn test_tool_executor_missing_tool() {
+        let te = ToolExecutor::new();
+        let result = te.execute("missing", serde_json::json!({}));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Tool 'missing' not found"));
+    }
+
+    // ── Planner Test 11: ToolExecutor has_tool ──
+
+    #[test]
+    fn test_tool_executor_has_tool() {
+        let mut te = ToolExecutor::new();
+        assert!(!te.has_tool("calc"));
+        te.add_tool("calc".to_string(), Box::new(|_| Ok("0".to_string())));
+        assert!(te.has_tool("calc"));
+        assert!(!te.has_tool("other"));
+    }
+
+    // ── Planner Test 12: ToolExecutor tool_names ──
+
+    #[test]
+    fn test_tool_executor_tool_names() {
+        let mut te = ToolExecutor::new();
+        te.add_tool("alpha".to_string(), Box::new(|_| Ok("a".to_string())));
+        te.add_tool("beta".to_string(), Box::new(|_| Ok("b".to_string())));
+        let mut names = te.tool_names();
+        names.sort();
+        assert_eq!(names, vec!["alpha", "beta"]);
+    }
+
+    // ── Planner Test 13: ToolExecutor empty ──
+
+    #[test]
+    fn test_tool_executor_empty() {
+        let te = ToolExecutor::new();
+        assert!(te.tool_names().is_empty());
+        assert!(!te.has_tool("anything"));
+    }
+
+    // ── Planner Test 14: ToolExecutor default ──
+
+    #[test]
+    fn test_tool_executor_default() {
+        let te = ToolExecutor::default();
+        assert!(te.tool_names().is_empty());
+    }
+
+    // ── Planner Test 15: ExecutorConfig defaults ──
+
+    #[test]
+    fn test_executor_config_defaults() {
+        let config = ExecutorConfig::new();
+        assert_eq!(config.max_iterations, 15);
+        assert_eq!(config.max_execution_time_ms, None);
+        assert!(!config.return_intermediate_steps);
+        assert_eq!(config.early_stopping_method, EarlyStoppingMethod::Force);
+    }
+
+    // ── Planner Test 16: ExecutorConfig builder ──
+
+    #[test]
+    fn test_executor_config_builder() {
+        let config = ExecutorConfig::new()
+            .max_iterations(5)
+            .max_execution_time_ms(1000)
+            .return_intermediate_steps(true)
+            .early_stopping_method(EarlyStoppingMethod::GenerateResponse);
+        assert_eq!(config.max_iterations, 5);
+        assert_eq!(config.max_execution_time_ms, Some(1000));
+        assert!(config.return_intermediate_steps);
+        assert_eq!(
+            config.early_stopping_method,
+            EarlyStoppingMethod::GenerateResponse
+        );
+    }
+
+    // ── Planner Test 17: ExecutorConfig default trait ──
+
+    #[test]
+    fn test_executor_config_default_trait() {
+        let config = ExecutorConfig::default();
+        assert_eq!(config.max_iterations, 15);
+    }
+
+    // ── Planner Test 18: EarlyStoppingMethod variants ──
+
+    #[test]
+    fn test_early_stopping_method_variants() {
+        let force = EarlyStoppingMethod::Force;
+        let gen = EarlyStoppingMethod::GenerateResponse;
+        assert_ne!(force, gen);
+        assert_eq!(force, EarlyStoppingMethod::Force);
+        assert_eq!(gen, EarlyStoppingMethod::GenerateResponse);
+    }
+
+    // ── Planner Test 19: Immediate finish planner ──
+
+    #[test]
+    fn test_planner_immediate_finish() {
+        let planner = Box::new(ImmediateFinishPlanner);
+        let tools = ToolExecutor::new();
+        let config = ExecutorConfig::new();
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("hello"))
+            .expect("should succeed");
+        assert_eq!(result.output["output"], "hello");
+        assert_eq!(result.iterations, 1);
+        assert!(result.intermediate_steps.is_empty());
+    }
+
+    // ── Planner Test 20: One action then finish ──
+
+    #[test]
+    fn test_planner_one_action_then_finish() {
+        let planner = Box::new(OneActionPlanner);
+        let tools = make_calculator_tool();
+        let config = ExecutorConfig::new().return_intermediate_steps(true);
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("compute"))
+            .expect("should succeed");
+        assert_eq!(result.output["output"], "4");
+        assert_eq!(result.iterations, 2);
+        assert_eq!(result.intermediate_steps.len(), 1);
+        assert_eq!(result.intermediate_steps[0].0.tool_name, "calculator");
+        assert_eq!(result.intermediate_steps[0].1, "4");
+    }
+
+    // ── Planner Test 21: Multi-step execution ──
+
+    #[test]
+    fn test_planner_multi_step_execution() {
+        let planner = Box::new(TwoActionPlanner);
+        let tools = make_two_tools();
+        let config = ExecutorConfig::new().return_intermediate_steps(true);
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("do things"))
+            .expect("should succeed");
+        assert_eq!(result.output["output"], "4 and hello");
+        assert_eq!(result.iterations, 3);
+        assert_eq!(result.intermediate_steps.len(), 2);
+        assert_eq!(result.intermediate_steps[0].0.tool_name, "calculator");
+        assert_eq!(result.intermediate_steps[1].0.tool_name, "echo");
+    }
+
+    // ── Planner Test 22: Max iterations limit ──
+
+    #[test]
+    fn test_planner_max_iterations_limit() {
+        let planner = Box::new(NeverFinishPlanner);
+        let tools = make_calculator_tool();
+        let config = ExecutorConfig::new().max_iterations(3);
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("loop"))
+            .expect("should stop with Force");
+        assert!(result.output.as_str().unwrap().contains("max iterations"));
+        assert_eq!(result.iterations, 3);
+    }
+
+    // ── Planner Test 23: Error from planner ──
+
+    #[test]
+    fn test_planner_error() {
+        let planner = Box::new(ErrorPlanner);
+        let tools = ToolExecutor::new();
+        let config = ExecutorConfig::new();
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor.execute(serde_json::json!("go"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Planning failed"));
+    }
+
+    // ── Planner Test 24: Missing tool handled gracefully ──
+
+    #[test]
+    fn test_planner_missing_tool_graceful() {
+        let planner = Box::new(MissingToolPlanner);
+        let tools = ToolExecutor::new(); // no tools registered
+        let config = ExecutorConfig::new().return_intermediate_steps(true);
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("try missing"))
+            .expect("should succeed");
+        assert!(result.output["output"]
+            .as_str()
+            .unwrap()
+            .contains("Error"));
+        assert_eq!(result.intermediate_steps.len(), 1);
+        assert!(result.intermediate_steps[0].1.contains("not found"));
+    }
+
+    // ── Planner Test 25: Intermediate steps not returned when disabled ──
+
+    #[test]
+    fn test_planner_no_intermediate_steps_when_disabled() {
+        let planner = Box::new(OneActionPlanner);
+        let tools = make_calculator_tool();
+        let config = ExecutorConfig::new().return_intermediate_steps(false);
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("compute"))
+            .expect("should succeed");
+        assert!(result.intermediate_steps.is_empty());
+    }
+
+    // ── Planner Test 26: ExecutorResult to_json ──
+
+    #[test]
+    fn test_executor_result_to_json() {
+        let result = ExecutorResult {
+            output: Value::String("answer".into()),
+            intermediate_steps: vec![(
+                AgentAction::new("tool_x", serde_json::json!(1), "step log"),
+                "observation_x".to_string(),
+            )],
+            iterations: 2,
+            duration_ms: 150,
+        };
+        let json = result.to_json();
+        assert_eq!(json["output"], "answer");
+        assert_eq!(json["iterations"], 2);
+        assert_eq!(json["duration_ms"], 150);
+        let steps = json["intermediate_steps"].as_array().unwrap();
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0]["action"]["tool"], "tool_x");
+        assert_eq!(steps[0]["observation"], "observation_x");
+    }
+
+    // ── Planner Test 27: ExecutorResult empty steps to_json ──
+
+    #[test]
+    fn test_executor_result_empty_to_json() {
+        let result = ExecutorResult {
+            output: Value::Null,
+            intermediate_steps: vec![],
+            iterations: 0,
+            duration_ms: 0,
+        };
+        let json = result.to_json();
+        assert_eq!(json["output"], Value::Null);
+        assert!(json["intermediate_steps"].as_array().unwrap().is_empty());
+    }
+
+    // ── Planner Test 28: Multi-action in single step ──
+
+    #[test]
+    fn test_planner_multi_action_single_step() {
+        let planner = Box::new(MultiActionPlanner);
+        let tools = make_two_tools();
+        let config = ExecutorConfig::new().return_intermediate_steps(true);
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("multi"))
+            .expect("should succeed");
+        assert_eq!(result.output["output"], "multi-done");
+        // Two actions in first iteration, then finish in second
+        assert_eq!(result.iterations, 2);
+        assert_eq!(result.intermediate_steps.len(), 2);
+    }
+
+    // ── Planner Test 29: Duration is tracked ──
+
+    #[test]
+    fn test_planner_duration_tracked() {
+        let planner = Box::new(ImmediateFinishPlanner);
+        let tools = ToolExecutor::new();
+        let config = ExecutorConfig::new();
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("quick"))
+            .expect("should succeed");
+        // Duration should be >= 0 (just check it's a reasonable number)
+        assert!(result.duration_ms < 1000);
+    }
+
+    // ── Planner Test 30: AgentDecision Continue variant ──
+
+    #[test]
+    fn test_agent_decision_continue() {
+        let decision = AgentDecision::Continue(vec![AgentAction::new(
+            "tool",
+            serde_json::json!(null),
+            "log",
+        )]);
+        match decision {
+            AgentDecision::Continue(actions) => assert_eq!(actions.len(), 1),
+            _ => panic!("Expected Continue"),
+        }
+    }
+
+    // ── Planner Test 31: AgentDecision Finish variant ──
+
+    #[test]
+    fn test_agent_decision_finish() {
+        let decision = AgentDecision::Finish(AgentFinish::new(HashMap::new(), "done"));
+        match decision {
+            AgentDecision::Finish(f) => assert_eq!(f.log, "done"),
+            _ => panic!("Expected Finish"),
+        }
+    }
+
+    // ── Planner Test 32: AgentDecision Error variant ──
+
+    #[test]
+    fn test_agent_decision_error() {
+        let decision = AgentDecision::Error("oops".to_string());
+        match decision {
+            AgentDecision::Error(msg) => assert_eq!(msg, "oops"),
+            _ => panic!("Expected Error"),
+        }
+    }
+
+    // ── Planner Test 33: ToolExecutor overwrite existing tool ──
+
+    #[test]
+    fn test_tool_executor_overwrite_tool() {
+        let mut te = ToolExecutor::new();
+        te.add_tool("calc".to_string(), Box::new(|_| Ok("old".to_string())));
+        te.add_tool("calc".to_string(), Box::new(|_| Ok("new".to_string())));
+        let result = te.execute("calc", serde_json::json!(null)).unwrap();
+        assert_eq!(result, "new");
+    }
+
+    // ── Planner Test 34: ToolExecutor tool returns error ──
+
+    #[test]
+    fn test_tool_executor_tool_returns_error() {
+        let mut te = ToolExecutor::new();
+        te.add_tool(
+            "fail_tool".to_string(),
+            Box::new(|_| Err(RustChainError::Other("tool broke".into()))),
+        );
+        let result = te.execute("fail_tool", serde_json::json!(null));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("tool broke"));
+    }
+
+    // ── Planner Test 35: AgentAction serialization roundtrip ──
+
+    #[test]
+    fn test_agent_action_serialization() {
+        let action = AgentAction::new("my_tool", serde_json::json!({"x": 1}), "log msg")
+            .with_message_log(vec!["m1".to_string()]);
+        let json_str = serde_json::to_string(&action).unwrap();
+        let deserialized: AgentAction = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(deserialized.tool_name, "my_tool");
+        assert_eq!(deserialized.tool_input, serde_json::json!({"x": 1}));
+        assert_eq!(deserialized.log, "log msg");
+        assert_eq!(deserialized.message_log, vec!["m1"]);
+    }
+
+    // ── Planner Test 36: AgentFinish serialization roundtrip ──
+
+    #[test]
+    fn test_agent_finish_serialization() {
+        let mut rv = HashMap::new();
+        rv.insert("key".to_string(), Value::Bool(true));
+        let finish = AgentFinish::new(rv, "final");
+        let json_str = serde_json::to_string(&finish).unwrap();
+        let deserialized: AgentFinish = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(deserialized.return_values["key"], true);
+        assert_eq!(deserialized.log, "final");
+    }
+
+    // ── Planner Test 37: PlannerAgentStep serialization ──
+
+    #[test]
+    fn test_planner_agent_step_serialization() {
+        let step = PlannerAgentStep::Action(AgentAction::new("t", serde_json::json!(1), "l"));
+        let json_str = serde_json::to_string(&step).unwrap();
+        let deserialized: PlannerAgentStep = serde_json::from_str(&json_str).unwrap();
+        assert!(deserialized.is_action());
+    }
+
+    // ── Planner Test 38: Finish PlannerAgentStep serialization ──
+
+    #[test]
+    fn test_planner_agent_step_finish_serialization() {
+        let step = PlannerAgentStep::Finish(AgentFinish::new(HashMap::new(), "end"));
+        let json_str = serde_json::to_string(&step).unwrap();
+        let deserialized: PlannerAgentStep = serde_json::from_str(&json_str).unwrap();
+        assert!(deserialized.is_finish());
+    }
+
+    // ── Planner Test 39: Max iterations with GenerateResponse ──
+
+    #[test]
+    fn test_planner_max_iterations_generate_response() {
+        // NeverFinishPlanner always continues, so GenerateResponse will also
+        // not produce a finish, and we expect the fallback message.
+        let planner = Box::new(NeverFinishPlanner);
+        let tools = make_calculator_tool();
+        let config = ExecutorConfig::new()
+            .max_iterations(2)
+            .early_stopping_method(EarlyStoppingMethod::GenerateResponse);
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("loop"))
+            .expect("should stop");
+        assert!(result.output.as_str().unwrap().contains("max iterations"));
+    }
+
+    // ── Planner Test 40: Max iterations 1 ──
+
+    #[test]
+    fn test_planner_max_iterations_one() {
+        let planner = Box::new(NeverFinishPlanner);
+        let tools = make_calculator_tool();
+        let config = ExecutorConfig::new().max_iterations(1);
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("one"))
+            .expect("should stop at 1 iteration");
+        assert_eq!(result.iterations, 1);
+    }
+
+    // ── Planner Test 41: Zero max iterations ──
+
+    #[test]
+    fn test_planner_max_iterations_zero() {
+        let planner = Box::new(ImmediateFinishPlanner);
+        let tools = ToolExecutor::new();
+        let config = ExecutorConfig::new().max_iterations(0);
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("zero"))
+            .expect("should stop immediately");
+        assert_eq!(result.iterations, 0);
+        assert!(result.output.as_str().unwrap().contains("max iterations"));
+    }
+
+    // ── Planner Test 42: ToolExecutor with many tools ──
+
+    #[test]
+    fn test_tool_executor_many_tools() {
+        let mut te = ToolExecutor::new();
+        for i in 0..10 {
+            let name = format!("tool_{}", i);
+            let expected = format!("result_{}", i);
+            te.add_tool(
+                name,
+                Box::new(move |_| Ok(expected.clone())),
+            );
+        }
+        assert_eq!(te.tool_names().len(), 10);
+        assert!(te.has_tool("tool_5"));
+        assert_eq!(
+            te.execute("tool_7", serde_json::json!(null)).unwrap(),
+            "result_7"
+        );
+    }
+
+    // ── Planner Test 43: AgentAction to_json with message_log ──
+
+    #[test]
+    fn test_agent_action_to_json_with_message_log() {
+        let action = AgentAction::new("t", serde_json::json!(null), "l")
+            .with_message_log(vec!["a".into(), "b".into()]);
+        let json = action.to_json();
+        let msgs = json["message_log"].as_array().unwrap();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0], "a");
+        assert_eq!(msgs[1], "b");
+    }
+
+    // ── Planner Test 44: ExecutorResult with multiple steps ──
+
+    #[test]
+    fn test_executor_result_multiple_steps_to_json() {
+        let result = ExecutorResult {
+            output: Value::String("final".into()),
+            intermediate_steps: vec![
+                (
+                    AgentAction::new("t1", serde_json::json!(1), "s1"),
+                    "obs1".to_string(),
+                ),
+                (
+                    AgentAction::new("t2", serde_json::json!(2), "s2"),
+                    "obs2".to_string(),
+                ),
+                (
+                    AgentAction::new("t3", serde_json::json!(3), "s3"),
+                    "obs3".to_string(),
+                ),
+            ],
+            iterations: 4,
+            duration_ms: 500,
+        };
+        let json = result.to_json();
+        assert_eq!(json["intermediate_steps"].as_array().unwrap().len(), 3);
+        assert_eq!(json["iterations"], 4);
+    }
+
+    // ── Planner Test 45: Tool error propagated as observation ──
+
+    #[test]
+    fn test_planner_tool_error_in_observation() {
+        /// Planner that calls a tool that errors, then finishes with the observation.
+        struct FailingToolPlanner;
+        impl AgentPlanner for FailingToolPlanner {
+            fn plan(
+                &self,
+                intermediate_steps: &[(AgentAction, String)],
+                _input: &Value,
+            ) -> AgentDecision {
+                if intermediate_steps.is_empty() {
+                    AgentDecision::Continue(vec![AgentAction::new(
+                        "fail_tool",
+                        serde_json::json!({}),
+                        "calling fail",
+                    )])
+                } else {
+                    let mut rv = HashMap::new();
+                    rv.insert(
+                        "error".to_string(),
+                        Value::String(intermediate_steps[0].1.clone()),
+                    );
+                    AgentDecision::Finish(AgentFinish::new(rv, "done"))
+                }
+            }
+        }
+
+        let mut tools = ToolExecutor::new();
+        tools.add_tool(
+            "fail_tool".to_string(),
+            Box::new(|_| Err(RustChainError::Other("kaboom".into()))),
+        );
+        let config = ExecutorConfig::new().return_intermediate_steps(true);
+        let executor = PlannerAgentExecutor::new(Box::new(FailingToolPlanner), tools, config);
+
+        let result = executor
+            .execute(serde_json::json!("go"))
+            .expect("should succeed");
+        assert!(result.output["error"].as_str().unwrap().contains("kaboom"));
+        assert!(result.intermediate_steps[0].1.contains("Error"));
+    }
+
+    // ── Planner Test 46: Planner with complex JSON input ──
+
+    #[test]
+    fn test_planner_complex_json_input() {
+        let planner = Box::new(ImmediateFinishPlanner);
+        let tools = ToolExecutor::new();
+        let config = ExecutorConfig::new();
+        let executor = PlannerAgentExecutor::new(planner, tools, config);
+
+        let input = serde_json::json!({
+            "query": "What is the weather?",
+            "context": {"location": "SF", "units": "celsius"},
+            "history": ["msg1", "msg2"]
+        });
+        let result = executor.execute(input.clone()).expect("should succeed");
+        assert_eq!(result.output["output"], input);
+    }
+
+    // ── Planner Test 47: AgentFinish with multiple return values ──
+
+    #[test]
+    fn test_agent_finish_multiple_return_values() {
+        let mut rv = HashMap::new();
+        rv.insert("output".to_string(), Value::String("answer".into()));
+        rv.insert("confidence".to_string(), serde_json::json!(0.95));
+        rv.insert(
+            "sources".to_string(),
+            serde_json::json!(["doc1", "doc2"]),
+        );
+        let finish = AgentFinish::new(rv, "multi-value finish");
+        assert_eq!(finish.return_values.len(), 3);
+        let json = finish.to_json();
+        assert_eq!(json["return_values"]["confidence"], 0.95);
+        assert_eq!(json["return_values"]["sources"][0], "doc1");
     }
 }

@@ -18,7 +18,9 @@ pub mod structured_output;
 pub mod tool_calling;
 
 pub use executor::{
-    AgentAction, AgentExecutor, AgentExecutorBuilder, AgentResult, AgentStep, EarlyStoppingMethod,
+    AgentAction, AgentDecision, AgentExecutor, AgentExecutorBuilder, AgentFinish, AgentPlanner,
+    AgentResult, AgentStep, EarlyStoppingMethod, ExecutorConfig, ExecutorResult,
+    PlannerAgentExecutor, PlannerAgentStep, ToolExecutor,
 };
 pub use middleware::types::{
     AgentMiddleware, AgentState, JumpTo, ModelCallResult, ModelRequest, ModelResponse,
