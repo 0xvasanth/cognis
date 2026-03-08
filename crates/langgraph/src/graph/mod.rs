@@ -32,6 +32,7 @@ pub mod send;
 pub mod serialize;
 pub mod snapshot;
 pub mod state;
+pub mod state_machine;
 pub mod stream_events;
 pub mod stream_writer;
 pub mod streaming;
@@ -81,6 +82,10 @@ pub use snapshot::{
     SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot, TimeTravelDebugger,
 };
 pub use state::{AsyncNodeAction, CompiledStateGraph, NodeAction, NodeSpec, StateGraph};
+pub use state_machine::{
+    StateHistory, StateId, StateMachine, StateMachineBuilder, StateMachineValidator,
+    StateTransitionRecord, Transition,
+};
 pub use stream_events::{stream_graph_events, GraphEventCollector, GraphStreamEvent};
 pub use stream_writer::{FilteredStream, StreamChunk, StreamCollector, StreamReader, StreamWriter};
 pub use subgraph::{
