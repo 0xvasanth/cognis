@@ -24,6 +24,7 @@ pub mod cached;
 pub mod distance;
 #[cfg(feature = "google")]
 pub mod google;
+pub mod models;
 #[cfg(feature = "ollama")]
 pub mod ollama;
 #[cfg(feature = "openai")]
