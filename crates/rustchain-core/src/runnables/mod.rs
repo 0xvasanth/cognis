@@ -50,7 +50,10 @@ pub use batch_processor::{
 };
 pub use binding::RunnableBinding;
 pub use branch::RunnableBranch;
-pub use cache::{CacheConfig, CacheStats, RunnableCache};
+pub use cache::{
+    CacheConfig, CacheEntry, CacheInvalidator, CacheKey, CacheStats, CachedRunnable,
+    EvictionPolicy, RunnableCache,
+};
 pub use config::{
     ensure_config, get_config_list, merge_configs, patch_config, ConfigPatch, RunnableConfig,
 };

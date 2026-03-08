@@ -1,21 +1,26 @@
 //! Caching wrapper for runnables.
 //!
-//! Provides a [`Runnable`] wrapper that memoizes `invoke` results keyed by
-//! the serialized input (or a custom key function). The cache supports
-//! TTL-based expiry and LRU eviction when the maximum entry count is exceeded.
+//! Provides caching infrastructure to avoid redundant LLM calls. Supports
+//! multiple eviction policies (LRU, LFU, FIFO, TTL) and pattern-based
+//! invalidation.
 //!
-//! - [`CacheConfig`] — configuration for max entries, TTL, and custom key generation
-//! - [`CacheStats`] — snapshot of cache hit/miss/eviction counters
-//! - [`RunnableCache`] — the caching wrapper that implements [`Runnable`]
+//! - [`CacheKey`] — hashed key for cache lookups
+//! - [`CacheEntry`] — cached value with metadata
+//! - [`CacheConfig`] — configuration with eviction policy, max entries, TTL
+//! - [`EvictionPolicy`] — LRU, LFU, FIFO, or TTL-based eviction
+//! - [`RunnableCache`] — the cache store with get/put/invalidate operations
+//! - [`CacheStats`] — hit/miss/eviction counters
+//! - [`CachedRunnable`] — wraps a [`Runnable`] with transparent caching
+//! - [`CacheInvalidator`] — pattern-based cache invalidation utility
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use serde_json::Value;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
 use crate::error::Result;
 
@@ -23,300 +28,448 @@ use super::base::Runnable;
 use super::config::RunnableConfig;
 use super::RunnableStream;
 
-/// A thread-safe function that generates a cache key from a JSON value.
-type CacheKeyFn = Arc<dyn Fn(&Value) -> String + Send + Sync>;
+// ---------------------------------------------------------------------------
+// CacheKey
+// ---------------------------------------------------------------------------
 
-/// Configuration for the caching wrapper.
-///
-/// Controls cache size, TTL, and key generation.
-///
-/// # Example
-/// ```ignore
-/// use std::time::Duration;
-/// use rustchain_core::runnables::cache::CacheConfig;
-///
-/// let config = CacheConfig::new()
-///     .with_max_entries(500)
-///     .with_ttl(Duration::from_secs(60));
-/// ```
-#[derive(Clone)]
-pub struct CacheConfig {
-    /// Maximum number of entries the cache can hold before LRU eviction.
-    pub max_entries: usize,
-    /// Optional time-to-live for cache entries. Expired entries are evicted on access.
+/// A cache key wrapping a hashed string representation of a value.
+#[derive(Debug, Clone, Eq)]
+pub struct CacheKey {
+    hash: String,
+}
+
+impl CacheKey {
+    /// Create a `CacheKey` by serializing the given JSON value to a string
+    /// and producing a simple string-based hash.
+    pub fn from_value(value: &Value) -> CacheKey {
+        let serialized = serde_json::to_string(value).unwrap_or_default();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        serialized.hash(&mut hasher);
+        let hash_val = hasher.finish();
+        CacheKey {
+            hash: format!("{:016x}", hash_val),
+        }
+    }
+
+    /// Return the key as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.hash
+    }
+}
+
+impl PartialEq for CacheKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash == other.hash
+    }
+}
+
+impl Hash for CacheKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.hash.hash(state);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CacheEntry
+// ---------------------------------------------------------------------------
+
+/// A single entry in the cache, storing value and metadata.
+pub struct CacheEntry {
+    /// The cache key for this entry.
+    pub key: CacheKey,
+    /// The cached JSON value.
+    pub value: Value,
+    /// When this entry was created.
+    pub created_at: Instant,
+    /// Number of times this entry has been accessed.
+    pub access_count: u64,
+    /// Optional per-entry TTL.
     pub ttl: Option<Duration>,
-    /// Optional custom key generation function. Defaults to JSON serialization of input.
-    pub cache_key_fn: Option<CacheKeyFn>,
+    /// When this entry was last accessed (for LRU).
+    last_accessed: Instant,
+    /// Insertion order index (for FIFO).
+    insertion_order: u64,
+}
+
+impl CacheEntry {
+    /// Create a new cache entry.
+    pub fn new(key: CacheKey, value: Value, ttl: Option<Duration>) -> Self {
+        let now = Instant::now();
+        Self {
+            key,
+            value,
+            created_at: now,
+            access_count: 0,
+            ttl,
+            last_accessed: now,
+            insertion_order: 0,
+        }
+    }
+
+    /// Check whether this entry has expired based on its TTL.
+    pub fn is_expired(&self) -> bool {
+        match self.ttl {
+            Some(ttl) => self.created_at.elapsed() > ttl,
+            None => false,
+        }
+    }
+
+    /// Record an access: increment `access_count` and update `last_accessed`.
+    pub fn touch(&mut self) {
+        self.access_count += 1;
+        self.last_accessed = Instant::now();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EvictionPolicy
+// ---------------------------------------------------------------------------
+
+/// Eviction strategy used when the cache is full.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvictionPolicy {
+    /// Least Recently Used — evicts the entry that was accessed least recently.
+    LRU,
+    /// Least Frequently Used — evicts the entry with the fewest accesses.
+    LFU,
+    /// First In, First Out — evicts the oldest inserted entry.
+    FIFO,
+    /// TTL-only — only evicts expired entries (no forced eviction).
+    TTL,
+}
+
+impl EvictionPolicy {
+    /// Return a human-readable name for this policy.
+    pub fn name(&self) -> &str {
+        match self {
+            EvictionPolicy::LRU => "LRU",
+            EvictionPolicy::LFU => "LFU",
+            EvictionPolicy::FIFO => "FIFO",
+            EvictionPolicy::TTL => "TTL",
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CacheConfig
+// ---------------------------------------------------------------------------
+
+/// Configuration for [`RunnableCache`].
+#[derive(Debug, Clone)]
+pub struct CacheConfig {
+    /// Maximum number of entries the cache can hold.
+    pub max_entries: usize,
+    /// Default TTL applied to entries that do not specify their own.
+    pub default_ttl: Option<Duration>,
+    /// The eviction policy to use when the cache is full.
+    pub eviction_policy: EvictionPolicy,
 }
 
 impl Default for CacheConfig {
     fn default() -> Self {
         Self {
             max_entries: 1000,
-            ttl: None,
-            cache_key_fn: None,
+            default_ttl: None,
+            eviction_policy: EvictionPolicy::LRU,
         }
     }
 }
 
 impl CacheConfig {
-    /// Create a new cache configuration with default settings.
+    /// Create a new configuration with default settings.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Set the maximum number of cache entries.
+    /// Set the maximum number of entries.
     pub fn with_max_entries(mut self, max_entries: usize) -> Self {
         self.max_entries = max_entries;
         self
     }
 
-    /// Set the time-to-live for cache entries.
-    pub fn with_ttl(mut self, ttl: Duration) -> Self {
-        self.ttl = Some(ttl);
+    /// Set the default TTL.
+    pub fn with_default_ttl(mut self, ttl: Duration) -> Self {
+        self.default_ttl = Some(ttl);
         self
     }
 
-    /// Set a custom cache key generation function.
-    pub fn with_cache_key_fn(
-        mut self,
-        f: impl Fn(&Value) -> String + Send + Sync + 'static,
-    ) -> Self {
-        self.cache_key_fn = Some(Arc::new(f));
+    /// Set the eviction policy.
+    pub fn with_eviction_policy(mut self, policy: EvictionPolicy) -> Self {
+        self.eviction_policy = policy;
         self
     }
 }
 
-impl std::fmt::Debug for CacheConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CacheConfig")
-            .field("max_entries", &self.max_entries)
-            .field("ttl", &self.ttl)
-            .field("cache_key_fn", &self.cache_key_fn.is_some())
-            .finish()
-    }
-}
+// ---------------------------------------------------------------------------
+// CacheStats
+// ---------------------------------------------------------------------------
 
-/// An entry in the cache storing a computed value and metadata.
-pub(crate) struct CacheEntry {
-    /// The cached output value.
-    value: Value,
-    /// When this entry was created.
-    created_at: Instant,
-    /// When this entry was last accessed (for LRU eviction).
-    last_accessed: Instant,
-    /// Number of cache hits for this entry.
-    hit_count: AtomicUsize,
-}
-
-impl CacheEntry {
-    fn new(value: Value) -> Self {
-        let now = Instant::now();
-        Self {
-            value,
-            created_at: now,
-            last_accessed: now,
-            hit_count: AtomicUsize::new(0),
-        }
-    }
-
-    /// Check if this entry has expired given a TTL.
-    fn is_expired(&self, ttl: Option<Duration>) -> bool {
-        match ttl {
-            Some(ttl) => self.created_at.elapsed() > ttl,
-            None => false,
-        }
-    }
-}
-
-/// Statistics about cache usage.
+/// Snapshot of cache statistics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheStats {
-    /// Number of cache hits.
-    pub hits: usize,
-    /// Number of cache misses.
-    pub misses: usize,
-    /// Number of entries evicted (TTL expiry or LRU).
-    pub evictions: usize,
+    /// Total cache hits.
+    pub hits: u64,
+    /// Total cache misses.
+    pub misses: u64,
+    /// Total evictions (TTL + policy-based).
+    pub evictions: u64,
     /// Current number of entries in the cache.
-    pub size: usize,
+    pub current_size: usize,
 }
 
-/// Internal shared state for the cache.
-struct CacheState {
-    entries: HashMap<String, CacheEntry>,
-    hits: usize,
-    misses: usize,
-    evictions: usize,
+impl CacheStats {
+    /// Compute the hit rate as a ratio (0.0 to 1.0).
+    /// Returns 0.0 if there have been no lookups.
+    pub fn hit_rate(&self) -> f64 {
+        let total = self.hits + self.misses;
+        if total == 0 {
+            0.0
+        } else {
+            self.hits as f64 / total as f64
+        }
+    }
+
+    /// Serialize stats to a JSON value.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "hits": self.hits,
+            "misses": self.misses,
+            "evictions": self.evictions,
+            "current_size": self.current_size,
+            "hit_rate": self.hit_rate(),
+        })
+    }
 }
 
-impl CacheState {
-    fn new() -> Self {
+// ---------------------------------------------------------------------------
+// RunnableCache (the cache store)
+// ---------------------------------------------------------------------------
+
+/// A cache store supporting configurable eviction policies.
+pub struct RunnableCache {
+    entries: HashMap<CacheKey, CacheEntry>,
+    /// Insertion order tracking for FIFO.
+    insertion_counter: u64,
+    config: CacheConfig,
+    hits: u64,
+    misses: u64,
+    evictions: u64,
+}
+
+impl RunnableCache {
+    /// Create a new cache with the given configuration.
+    pub fn new(config: CacheConfig) -> Self {
         Self {
             entries: HashMap::new(),
+            insertion_counter: 0,
+            config,
             hits: 0,
             misses: 0,
             evictions: 0,
         }
     }
-}
 
-/// A runnable wrapper that memoizes `invoke` results based on input.
-///
-/// Cache entries are keyed by the JSON serialization of the input (or a custom
-/// key function). Supports TTL-based expiry and LRU eviction when the cache
-/// exceeds `max_entries`.
-///
-/// Streaming is not cached and delegates directly to the inner runnable.
-///
-/// # Example
-/// ```ignore
-/// use std::time::Duration;
-/// use rustchain_core::runnables::{RunnableLambda, RunnableExt};
-/// use rustchain_core::runnables::cache::CacheConfig;
-///
-/// let config = CacheConfig::new()
-///     .with_max_entries(100)
-///     .with_ttl(Duration::from_secs(300));
-///
-/// let cached = my_runnable.with_cache(config);
-/// ```
-pub struct RunnableCache {
-    /// The wrapped runnable.
-    inner: Arc<dyn Runnable>,
-    /// Thread-safe cache state.
-    state: Arc<RwLock<CacheState>>,
-    /// Cache configuration.
-    config: CacheConfig,
-}
+    /// Look up a value by key. Returns `None` if the key is missing or expired.
+    /// On hit, the entry is touched (access count incremented, last_accessed updated).
+    pub fn get(&mut self, key: &CacheKey) -> Option<&Value> {
+        // Check expiration first.
+        if let Some(entry) = self.entries.get(key) {
+            if entry.is_expired() {
+                self.entries.remove(key);
+                self.evictions += 1;
+                self.misses += 1;
+                return None;
+            }
+        }
 
-impl RunnableCache {
-    /// Create a new cached runnable wrapper.
-    pub fn new(inner: Arc<dyn Runnable>, config: CacheConfig) -> Self {
-        Self {
-            inner,
-            state: Arc::new(RwLock::new(CacheState::new())),
-            config,
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.touch();
+            self.hits += 1;
+            Some(&entry.value)
+        } else {
+            self.misses += 1;
+            None
         }
     }
 
-    /// Compute the cache key for a given input value.
-    fn cache_key(&self, input: &Value) -> String {
-        match &self.config.cache_key_fn {
-            Some(f) => f(input),
-            None => serde_json::to_string(input).unwrap_or_default(),
-        }
-    }
-
-    /// Set a custom cache key function, returning self for chaining.
-    pub fn with_cache_key(mut self, f: impl Fn(&Value) -> String + Send + Sync + 'static) -> Self {
-        self.config.cache_key_fn = Some(Arc::new(f));
-        self
-    }
-
-    /// Invalidate (remove) a specific cache entry by key.
-    pub async fn invalidate(&self, key: &str) {
-        let mut state = self.state.write().await;
-        if state.entries.remove(key).is_some() {
-            state.evictions += 1;
-        }
-    }
-
-    /// Clear all entries from the cache.
-    pub async fn invalidate_all(&self) {
-        let mut state = self.state.write().await;
-        let count = state.entries.len();
-        state.entries.clear();
-        state.evictions += count;
-    }
-
-    /// Get current cache statistics.
-    pub async fn stats(&self) -> CacheStats {
-        let state = self.state.read().await;
-        CacheStats {
-            hits: state.hits,
-            misses: state.misses,
-            evictions: state.evictions,
-            size: state.entries.len(),
-        }
-    }
-
-    /// Evict expired entries from the cache.
-    fn evict_expired(state: &mut CacheState, ttl: Option<Duration>) -> usize {
-        if ttl.is_none() {
-            return 0;
-        }
-        let before = state.entries.len();
-        state.entries.retain(|_, entry| !entry.is_expired(ttl));
-        let evicted = before - state.entries.len();
-        state.evictions += evicted;
-        evicted
-    }
-
-    /// Evict the least recently used entry to make room.
-    fn evict_lru(state: &mut CacheState) {
-        if state.entries.is_empty() {
+    /// Insert or update a cache entry. Evicts entries if the cache is full.
+    pub fn put(&mut self, key: CacheKey, value: Value) {
+        // If key already exists, just update the value.
+        if let Some(entry) = self.entries.get_mut(&key) {
+            entry.value = value;
+            entry.touch();
             return;
         }
-        let lru_key = state
+
+        // Evict expired entries first.
+        self.evict_expired();
+
+        // Evict based on policy while at capacity.
+        while self.entries.len() >= self.config.max_entries && self.config.max_entries > 0 {
+            self.evict_one();
+        }
+
+        // If max_entries is 0, we cannot store anything.
+        if self.config.max_entries == 0 {
+            return;
+        }
+
+        let mut entry = CacheEntry::new(key.clone(), value, self.config.default_ttl);
+        entry.insertion_order = self.insertion_counter;
+        self.insertion_counter += 1;
+        self.entries.insert(key, entry);
+    }
+
+    /// Remove a specific entry by key.
+    pub fn invalidate(&mut self, key: &CacheKey) {
+        if self.entries.remove(key).is_some() {
+            self.evictions += 1;
+        }
+    }
+
+    /// Remove all entries.
+    pub fn clear(&mut self) {
+        let count = self.entries.len() as u64;
+        self.entries.clear();
+        self.evictions += count;
+    }
+
+    /// Return the number of entries currently in the cache.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Return whether the cache is empty.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Compute the cache hit rate (0.0 to 1.0).
+    pub fn hit_rate(&self) -> f64 {
+        let total = self.hits + self.misses;
+        if total == 0 {
+            0.0
+        } else {
+            self.hits as f64 / total as f64
+        }
+    }
+
+    /// Return a snapshot of cache statistics.
+    pub fn stats(&self) -> CacheStats {
+        CacheStats {
+            hits: self.hits,
+            misses: self.misses,
+            evictions: self.evictions,
+            current_size: self.entries.len(),
+        }
+    }
+
+    /// Evict all expired entries.
+    fn evict_expired(&mut self) {
+        let expired_keys: Vec<CacheKey> = self
             .entries
             .iter()
-            .min_by_key(|(_, entry)| entry.last_accessed)
-            .map(|(key, _)| key.clone());
-
-        if let Some(key) = lru_key {
-            state.entries.remove(&key);
-            state.evictions += 1;
+            .filter(|(_, e)| e.is_expired())
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in &expired_keys {
+            self.entries.remove(key);
         }
+        self.evictions += expired_keys.len() as u64;
+    }
+
+    /// Evict one entry based on the configured policy.
+    fn evict_one(&mut self) {
+        if self.entries.is_empty() {
+            return;
+        }
+
+        let victim_key = match self.config.eviction_policy {
+            EvictionPolicy::LRU => self
+                .entries
+                .iter()
+                .min_by_key(|(_, e)| e.last_accessed)
+                .map(|(k, _)| k.clone()),
+            EvictionPolicy::LFU => self
+                .entries
+                .iter()
+                .min_by_key(|(_, e)| e.access_count)
+                .map(|(k, _)| k.clone()),
+            EvictionPolicy::FIFO => self
+                .entries
+                .iter()
+                .min_by_key(|(_, e)| e.insertion_order)
+                .map(|(k, _)| k.clone()),
+            EvictionPolicy::TTL => {
+                // TTL-only: only evict expired. If none expired, evict oldest.
+                let expired = self
+                    .entries
+                    .iter()
+                    .filter(|(_, e)| e.is_expired())
+                    .min_by_key(|(_, e)| e.created_at)
+                    .map(|(k, _)| k.clone());
+                expired.or_else(|| {
+                    self.entries
+                        .iter()
+                        .min_by_key(|(_, e)| e.created_at)
+                        .map(|(k, _)| k.clone())
+                })
+            }
+        };
+
+        if let Some(key) = victim_key {
+            self.entries.remove(&key);
+            self.evictions += 1;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CachedRunnable
+// ---------------------------------------------------------------------------
+
+/// A [`Runnable`] wrapper that transparently caches `invoke` results.
+///
+/// On `invoke`, the input is hashed to a [`CacheKey`]. If a matching,
+/// non-expired entry exists in the cache, it is returned directly without
+/// calling the inner runnable. On a miss, the inner runnable is invoked and
+/// the result is cached.
+pub struct CachedRunnable {
+    inner: Arc<dyn Runnable>,
+    cache: Arc<Mutex<RunnableCache>>,
+}
+
+impl CachedRunnable {
+    /// Create a new `CachedRunnable` wrapping the given runnable and cache.
+    pub fn new(inner: Arc<dyn Runnable>, cache: Arc<Mutex<RunnableCache>>) -> Self {
+        Self { inner, cache }
     }
 }
 
 #[async_trait]
-impl Runnable for RunnableCache {
+impl Runnable for CachedRunnable {
     fn name(&self) -> &str {
         self.inner.name()
     }
 
     async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
-        let key = self.cache_key(&input);
+        let key = CacheKey::from_value(&input);
 
-        // Try to read from cache first.
+        // Check cache.
         {
-            let state = self.state.read().await;
-            if let Some(entry) = state.entries.get(&key) {
-                if !entry.is_expired(self.config.ttl) {
-                    entry.hit_count.fetch_add(1, Ordering::Relaxed);
-                    // We need a write lock to update last_accessed and hits,
-                    // so drop the read lock and re-acquire as write below.
-                    let value = entry.value.clone();
-                    drop(state);
-                    let mut state = self.state.write().await;
-                    state.hits += 1;
-                    if let Some(entry) = state.entries.get_mut(&key) {
-                        entry.last_accessed = Instant::now();
-                    }
-                    return Ok(value);
-                }
+            let mut cache = self.cache.lock().await;
+            if let Some(value) = cache.get(&key) {
+                return Ok(value.clone());
             }
         }
 
-        // Cache miss: invoke the inner runnable.
+        // Cache miss: invoke inner runnable.
         let result = self.inner.invoke(input, config).await?;
 
-        // Store the result in the cache.
+        // Store result in cache.
         {
-            let mut state = self.state.write().await;
-            state.misses += 1;
-
-            // Evict expired entries first.
-            Self::evict_expired(&mut state, self.config.ttl);
-
-            // If still at capacity, evict the LRU entry.
-            while state.entries.len() >= self.config.max_entries {
-                Self::evict_lru(&mut state);
-            }
-
-            state.entries.insert(key, CacheEntry::new(result.clone()));
+            let mut cache = self.cache.lock().await;
+            cache.put(key, result.clone());
         }
 
         Ok(result)
@@ -332,15 +485,69 @@ impl Runnable for RunnableCache {
     }
 }
 
+// ---------------------------------------------------------------------------
+// CacheInvalidator
+// ---------------------------------------------------------------------------
+
+/// Utility for pattern-based cache invalidation.
+///
+/// Stores a set of patterns (simple substring matches on key strings) and
+/// can check individual keys or bulk-invalidate matching entries from a cache.
+pub struct CacheInvalidator {
+    patterns: Vec<String>,
+}
+
+impl CacheInvalidator {
+    /// Create a new invalidator with no patterns.
+    pub fn new() -> Self {
+        Self {
+            patterns: Vec::new(),
+        }
+    }
+
+    /// Add a pattern (substring match) to the invalidator.
+    pub fn add_pattern(&mut self, pattern: &str) {
+        self.patterns.push(pattern.to_string());
+    }
+
+    /// Check whether a key matches any of the registered patterns.
+    pub fn should_invalidate(&self, key: &CacheKey) -> bool {
+        let key_str = key.as_str();
+        self.patterns.iter().any(|p| key_str.contains(p))
+    }
+
+    /// Remove all entries from the cache whose keys match any registered pattern.
+    pub fn invalidate_matching(&self, cache: &mut RunnableCache) {
+        let matching_keys: Vec<CacheKey> = cache
+            .entries
+            .keys()
+            .filter(|k| self.should_invalidate(k))
+            .cloned()
+            .collect();
+        for key in matching_keys {
+            cache.invalidate(&key);
+        }
+    }
+}
+
+impl Default for CacheInvalidator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runnables::ext::RunnableExt;
     use crate::runnables::lambda::RunnableLambda;
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    /// Helper: creates a RunnableLambda that counts invocations via an AtomicUsize counter.
+    /// Helper: creates a RunnableLambda that counts invocations.
     fn counting_doubler(counter: Arc<AtomicUsize>) -> RunnableLambda {
         RunnableLambda::new("counting_doubler", move |v: Value| {
             let counter = counter.clone();
@@ -362,31 +569,121 @@ mod tests {
         })
     }
 
+    // ==================== CacheKey tests ====================
+
+    #[test]
+    fn test_cache_key_from_value_deterministic() {
+        let k1 = CacheKey::from_value(&json!(42));
+        let k2 = CacheKey::from_value(&json!(42));
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn test_cache_key_different_values_differ() {
+        let k1 = CacheKey::from_value(&json!(1));
+        let k2 = CacheKey::from_value(&json!(2));
+        assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn test_cache_key_as_str() {
+        let k = CacheKey::from_value(&json!("hello"));
+        assert!(!k.as_str().is_empty());
+        assert_eq!(k.as_str().len(), 16); // 16-char hex
+    }
+
+    #[test]
+    fn test_cache_key_hash_impl() {
+        use std::collections::HashSet;
+        let k1 = CacheKey::from_value(&json!(1));
+        let k2 = CacheKey::from_value(&json!(1));
+        let k3 = CacheKey::from_value(&json!(2));
+        let mut set = HashSet::new();
+        set.insert(k1);
+        set.insert(k2);
+        set.insert(k3);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_cache_key_from_complex_value() {
+        let k1 = CacheKey::from_value(&json!({"a": 1, "b": [2, 3]}));
+        let k2 = CacheKey::from_value(&json!({"a": 1, "b": [2, 3]}));
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn test_cache_key_from_null() {
+        let k = CacheKey::from_value(&json!(null));
+        assert!(!k.as_str().is_empty());
+    }
+
+    // ==================== CacheEntry tests ====================
+
+    #[test]
+    fn test_cache_entry_creation() {
+        let key = CacheKey::from_value(&json!(1));
+        let entry = CacheEntry::new(key.clone(), json!(42), None);
+        assert_eq!(entry.value, json!(42));
+        assert_eq!(entry.access_count, 0);
+        assert!(entry.ttl.is_none());
+        assert!(!entry.is_expired());
+    }
+
+    #[test]
+    fn test_cache_entry_with_ttl_not_expired() {
+        let key = CacheKey::from_value(&json!(1));
+        let entry = CacheEntry::new(key, json!(42), Some(Duration::from_secs(60)));
+        assert!(!entry.is_expired());
+    }
+
+    #[test]
+    fn test_cache_entry_with_zero_ttl_expired() {
+        let key = CacheKey::from_value(&json!(1));
+        let entry = CacheEntry::new(key, json!(42), Some(Duration::from_nanos(0)));
+        // The entry is created and immediately checked — with zero TTL it should be expired.
+        std::thread::sleep(Duration::from_millis(1));
+        assert!(entry.is_expired());
+    }
+
+    #[test]
+    fn test_cache_entry_touch() {
+        let key = CacheKey::from_value(&json!(1));
+        let mut entry = CacheEntry::new(key, json!(42), None);
+        assert_eq!(entry.access_count, 0);
+        entry.touch();
+        assert_eq!(entry.access_count, 1);
+        entry.touch();
+        entry.touch();
+        assert_eq!(entry.access_count, 3);
+    }
+
+    #[test]
+    fn test_cache_entry_no_ttl_never_expires() {
+        let key = CacheKey::from_value(&json!(1));
+        let entry = CacheEntry::new(key, json!(42), None);
+        assert!(!entry.is_expired());
+    }
+
     // ==================== CacheConfig tests ====================
 
     #[test]
     fn test_cache_config_defaults() {
         let config = CacheConfig::new();
         assert_eq!(config.max_entries, 1000);
-        assert!(config.ttl.is_none());
-        assert!(config.cache_key_fn.is_none());
+        assert!(config.default_ttl.is_none());
+        assert_eq!(config.eviction_policy, EvictionPolicy::LRU);
     }
 
     #[test]
     fn test_cache_config_builder() {
         let config = CacheConfig::new()
             .with_max_entries(500)
-            .with_ttl(Duration::from_secs(60));
+            .with_default_ttl(Duration::from_secs(60))
+            .with_eviction_policy(EvictionPolicy::LFU);
         assert_eq!(config.max_entries, 500);
-        assert_eq!(config.ttl, Some(Duration::from_secs(60)));
-    }
-
-    #[test]
-    fn test_cache_config_custom_key_fn() {
-        let config = CacheConfig::new().with_cache_key_fn(|v: &Value| format!("custom:{}", v));
-        assert!(config.cache_key_fn.is_some());
-        let key = (config.cache_key_fn.unwrap())(&json!(42));
-        assert_eq!(key, "custom:42");
+        assert_eq!(config.default_ttl, Some(Duration::from_secs(60)));
+        assert_eq!(config.eviction_policy, EvictionPolicy::LFU);
     }
 
     #[test]
@@ -397,420 +694,411 @@ mod tests {
         assert!(debug.contains("max_entries"));
     }
 
-    // ==================== Basic caching tests ====================
+    // ==================== EvictionPolicy tests ====================
+
+    #[test]
+    fn test_eviction_policy_name() {
+        assert_eq!(EvictionPolicy::LRU.name(), "LRU");
+        assert_eq!(EvictionPolicy::LFU.name(), "LFU");
+        assert_eq!(EvictionPolicy::FIFO.name(), "FIFO");
+        assert_eq!(EvictionPolicy::TTL.name(), "TTL");
+    }
+
+    #[test]
+    fn test_eviction_policy_equality() {
+        assert_eq!(EvictionPolicy::LRU, EvictionPolicy::LRU);
+        assert_ne!(EvictionPolicy::LRU, EvictionPolicy::LFU);
+    }
+
+    // ==================== RunnableCache put/get/invalidate/clear ====================
+
+    #[test]
+    fn test_runnable_cache_put_get() {
+        let mut cache = RunnableCache::new(CacheConfig::new());
+        let key = CacheKey::from_value(&json!(1));
+        cache.put(key.clone(), json!(42));
+        assert_eq!(cache.get(&key), Some(&json!(42)));
+    }
+
+    #[test]
+    fn test_runnable_cache_get_missing() {
+        let mut cache = RunnableCache::new(CacheConfig::new());
+        let key = CacheKey::from_value(&json!(999));
+        assert_eq!(cache.get(&key), None);
+    }
+
+    #[test]
+    fn test_runnable_cache_invalidate() {
+        let mut cache = RunnableCache::new(CacheConfig::new());
+        let key = CacheKey::from_value(&json!(1));
+        cache.put(key.clone(), json!(42));
+        assert_eq!(cache.len(), 1);
+        cache.invalidate(&key);
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.get(&key), None);
+    }
+
+    #[test]
+    fn test_runnable_cache_invalidate_nonexistent() {
+        let mut cache = RunnableCache::new(CacheConfig::new());
+        let key = CacheKey::from_value(&json!(999));
+        cache.invalidate(&key); // should not panic
+        assert_eq!(cache.stats().evictions, 0);
+    }
+
+    #[test]
+    fn test_runnable_cache_clear() {
+        let mut cache = RunnableCache::new(CacheConfig::new());
+        cache.put(CacheKey::from_value(&json!(1)), json!(10));
+        cache.put(CacheKey::from_value(&json!(2)), json!(20));
+        cache.put(CacheKey::from_value(&json!(3)), json!(30));
+        assert_eq!(cache.len(), 3);
+        cache.clear();
+        assert_eq!(cache.len(), 0);
+        assert!(cache.is_empty());
+        assert_eq!(cache.stats().evictions, 3);
+    }
+
+    #[test]
+    fn test_runnable_cache_len_is_empty() {
+        let mut cache = RunnableCache::new(CacheConfig::new());
+        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 0);
+        cache.put(CacheKey::from_value(&json!(1)), json!(10));
+        assert!(!cache.is_empty());
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn test_runnable_cache_update_existing_key() {
+        let mut cache = RunnableCache::new(CacheConfig::new());
+        let key = CacheKey::from_value(&json!(1));
+        cache.put(key.clone(), json!(10));
+        cache.put(key.clone(), json!(20));
+        assert_eq!(cache.get(&key), Some(&json!(20)));
+        assert_eq!(cache.len(), 1);
+    }
+
+    // ==================== LRU eviction ====================
+
+    #[test]
+    fn test_lru_eviction_evicts_least_recently_accessed() {
+        let config = CacheConfig::new()
+            .with_max_entries(2)
+            .with_eviction_policy(EvictionPolicy::LRU);
+        let mut cache = RunnableCache::new(config);
+
+        let k1 = CacheKey::from_value(&json!(1));
+        let k2 = CacheKey::from_value(&json!(2));
+        let k3 = CacheKey::from_value(&json!(3));
+
+        cache.put(k1.clone(), json!(10));
+        cache.put(k2.clone(), json!(20));
+
+        // Access k1 to make it recently used.
+        cache.get(&k1);
+
+        // Insert k3 — should evict k2 (least recently used).
+        cache.put(k3.clone(), json!(30));
+
+        assert_eq!(cache.len(), 2);
+        assert!(cache.entries.contains_key(&k1));
+        assert!(!cache.entries.contains_key(&k2));
+        assert!(cache.entries.contains_key(&k3));
+    }
+
+    #[test]
+    fn test_lru_eviction_multiple() {
+        let config = CacheConfig::new()
+            .with_max_entries(2)
+            .with_eviction_policy(EvictionPolicy::LRU);
+        let mut cache = RunnableCache::new(config);
+
+        for i in 0..5 {
+            cache.put(CacheKey::from_value(&json!(i)), json!(i * 10));
+        }
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.stats().evictions, 3);
+    }
+
+    // ==================== LFU eviction ====================
+
+    #[test]
+    fn test_lfu_eviction_evicts_least_frequently_accessed() {
+        let config = CacheConfig::new()
+            .with_max_entries(2)
+            .with_eviction_policy(EvictionPolicy::LFU);
+        let mut cache = RunnableCache::new(config);
+
+        let k1 = CacheKey::from_value(&json!(1));
+        let k2 = CacheKey::from_value(&json!(2));
+        let k3 = CacheKey::from_value(&json!(3));
+
+        cache.put(k1.clone(), json!(10));
+        cache.put(k2.clone(), json!(20));
+
+        // Access k1 multiple times to increase its frequency.
+        cache.get(&k1);
+        cache.get(&k1);
+        cache.get(&k1);
+        // Access k2 once.
+        cache.get(&k2);
+
+        // Insert k3 — should evict k2 (least frequently used).
+        cache.put(k3.clone(), json!(30));
+
+        assert_eq!(cache.len(), 2);
+        assert!(cache.entries.contains_key(&k1));
+        assert!(!cache.entries.contains_key(&k2));
+        assert!(cache.entries.contains_key(&k3));
+    }
+
+    // ==================== FIFO eviction ====================
+
+    #[test]
+    fn test_fifo_eviction_evicts_oldest() {
+        let config = CacheConfig::new()
+            .with_max_entries(2)
+            .with_eviction_policy(EvictionPolicy::FIFO);
+        let mut cache = RunnableCache::new(config);
+
+        let k1 = CacheKey::from_value(&json!(1));
+        let k2 = CacheKey::from_value(&json!(2));
+        let k3 = CacheKey::from_value(&json!(3));
+
+        cache.put(k1.clone(), json!(10));
+        cache.put(k2.clone(), json!(20));
+
+        // Access k1 (should not matter for FIFO).
+        cache.get(&k1);
+
+        // Insert k3 — should evict k1 (first inserted).
+        cache.put(k3.clone(), json!(30));
+
+        assert_eq!(cache.len(), 2);
+        assert!(!cache.entries.contains_key(&k1));
+        assert!(cache.entries.contains_key(&k2));
+        assert!(cache.entries.contains_key(&k3));
+    }
+
+    #[test]
+    fn test_fifo_order_preserved_on_access() {
+        let config = CacheConfig::new()
+            .with_max_entries(3)
+            .with_eviction_policy(EvictionPolicy::FIFO);
+        let mut cache = RunnableCache::new(config);
+
+        let k1 = CacheKey::from_value(&json!(1));
+        let k2 = CacheKey::from_value(&json!(2));
+        let k3 = CacheKey::from_value(&json!(3));
+        let k4 = CacheKey::from_value(&json!(4));
+
+        cache.put(k1.clone(), json!(10));
+        cache.put(k2.clone(), json!(20));
+        cache.put(k3.clone(), json!(30));
+
+        // Access k1 heavily — FIFO should still evict it first.
+        for _ in 0..10 {
+            cache.get(&k1);
+        }
+
+        cache.put(k4.clone(), json!(40));
+        assert!(!cache.entries.contains_key(&k1), "FIFO should evict k1 regardless of access");
+    }
+
+    // ==================== TTL expiration ====================
+
+    #[test]
+    fn test_ttl_expiration_on_get() {
+        let config = CacheConfig::new()
+            .with_default_ttl(Duration::from_millis(1))
+            .with_eviction_policy(EvictionPolicy::TTL);
+        let mut cache = RunnableCache::new(config);
+
+        let key = CacheKey::from_value(&json!(1));
+        cache.put(key.clone(), json!(42));
+
+        std::thread::sleep(Duration::from_millis(5));
+        assert_eq!(cache.get(&key), None);
+    }
+
+    #[test]
+    fn test_ttl_not_expired_returns_value() {
+        let config = CacheConfig::new()
+            .with_default_ttl(Duration::from_secs(60))
+            .with_eviction_policy(EvictionPolicy::TTL);
+        let mut cache = RunnableCache::new(config);
+
+        let key = CacheKey::from_value(&json!(1));
+        cache.put(key.clone(), json!(42));
+        assert_eq!(cache.get(&key), Some(&json!(42)));
+    }
+
+    // ==================== CacheStats tracking ====================
+
+    #[test]
+    fn test_cache_stats_initial() {
+        let cache = RunnableCache::new(CacheConfig::new());
+        let stats = cache.stats();
+        assert_eq!(stats.hits, 0);
+        assert_eq!(stats.misses, 0);
+        assert_eq!(stats.evictions, 0);
+        assert_eq!(stats.current_size, 0);
+    }
+
+    #[test]
+    fn test_cache_stats_hits_and_misses() {
+        let mut cache = RunnableCache::new(CacheConfig::new());
+        let k1 = CacheKey::from_value(&json!(1));
+        let k2 = CacheKey::from_value(&json!(2));
+
+        cache.put(k1.clone(), json!(10));
+        cache.get(&k1); // hit
+        cache.get(&k1); // hit
+        cache.get(&k2); // miss
+
+        let stats = cache.stats();
+        assert_eq!(stats.hits, 2);
+        assert_eq!(stats.misses, 1);
+        assert_eq!(stats.current_size, 1);
+    }
+
+    #[test]
+    fn test_cache_stats_hit_rate() {
+        let stats = CacheStats {
+            hits: 3,
+            misses: 1,
+            evictions: 0,
+            current_size: 2,
+        };
+        assert!((stats.hit_rate() - 0.75).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_cache_stats_hit_rate_no_lookups() {
+        let stats = CacheStats {
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            current_size: 0,
+        };
+        assert!((stats.hit_rate() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_cache_stats_to_json() {
+        let stats = CacheStats {
+            hits: 10,
+            misses: 5,
+            evictions: 2,
+            current_size: 8,
+        };
+        let j = stats.to_json();
+        assert_eq!(j["hits"], 10);
+        assert_eq!(j["misses"], 5);
+        assert_eq!(j["evictions"], 2);
+        assert_eq!(j["current_size"], 8);
+    }
+
+    #[test]
+    fn test_runnable_cache_hit_rate() {
+        let mut cache = RunnableCache::new(CacheConfig::new());
+        assert!((cache.hit_rate() - 0.0).abs() < f64::EPSILON);
+
+        let key = CacheKey::from_value(&json!(1));
+        cache.put(key.clone(), json!(10));
+        cache.get(&key); // hit
+        cache.get(&CacheKey::from_value(&json!(2))); // miss
+
+        assert!((cache.hit_rate() - 0.5).abs() < f64::EPSILON);
+    }
+
+    // ==================== Edge cases ====================
+
+    #[test]
+    fn test_zero_max_entries() {
+        let config = CacheConfig::new().with_max_entries(0);
+        let mut cache = RunnableCache::new(config);
+
+        let key = CacheKey::from_value(&json!(1));
+        cache.put(key.clone(), json!(42));
+        // Nothing should be stored.
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.get(&key), None);
+    }
+
+    #[test]
+    fn test_immediate_ttl_expiry() {
+        let config = CacheConfig::new().with_default_ttl(Duration::from_nanos(1));
+        let mut cache = RunnableCache::new(config);
+
+        let key = CacheKey::from_value(&json!(1));
+        cache.put(key.clone(), json!(42));
+        std::thread::sleep(Duration::from_millis(1));
+
+        // Should be expired on get.
+        assert_eq!(cache.get(&key), None);
+    }
+
+    #[test]
+    fn test_max_entries_one() {
+        let config = CacheConfig::new().with_max_entries(1);
+        let mut cache = RunnableCache::new(config);
+
+        let k1 = CacheKey::from_value(&json!(1));
+        let k2 = CacheKey::from_value(&json!(2));
+
+        cache.put(k1.clone(), json!(10));
+        assert_eq!(cache.len(), 1);
+
+        cache.put(k2.clone(), json!(20));
+        assert_eq!(cache.len(), 1);
+        assert!(cache.entries.contains_key(&k2));
+        assert!(!cache.entries.contains_key(&k1));
+    }
+
+    // ==================== CachedRunnable tests ====================
 
     #[tokio::test]
-    async fn test_cache_hit_avoids_recomputation() {
+    async fn test_cached_runnable_cache_hit() {
         let counter = Arc::new(AtomicUsize::new(0));
         let runnable = counting_doubler(counter.clone());
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
+        let cache = Arc::new(Mutex::new(RunnableCache::new(CacheConfig::new())));
+        let cached = CachedRunnable::new(Arc::new(runnable), cache.clone());
 
         let r1 = cached.invoke(json!(5), None).await.unwrap();
         assert_eq!(r1, json!(10));
         assert_eq!(counter.load(Ordering::SeqCst), 1);
 
+        // Second call with same input should be a cache hit.
         let r2 = cached.invoke(json!(5), None).await.unwrap();
         assert_eq!(r2, json!(10));
-        assert_eq!(counter.load(Ordering::SeqCst), 1); // Not called again
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
-    async fn test_cache_miss_for_different_inputs() {
+    async fn test_cached_runnable_cache_miss() {
         let counter = Arc::new(AtomicUsize::new(0));
         let runnable = counting_doubler(counter.clone());
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
+        let cache = Arc::new(Mutex::new(RunnableCache::new(CacheConfig::new())));
+        let cached = CachedRunnable::new(Arc::new(runnable), cache);
 
         cached.invoke(json!(5), None).await.unwrap();
         cached.invoke(json!(10), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 2);
+        assert_eq!(counter.load(Ordering::SeqCst), 2); // Two different inputs
     }
 
     #[tokio::test]
-    async fn test_cache_returns_correct_values() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_doubler(counter.clone());
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
-
-        assert_eq!(cached.invoke(json!(3), None).await.unwrap(), json!(6));
-        assert_eq!(cached.invoke(json!(7), None).await.unwrap(), json!(14));
-        // Repeat, should be from cache
-        assert_eq!(cached.invoke(json!(3), None).await.unwrap(), json!(6));
-        assert_eq!(cached.invoke(json!(7), None).await.unwrap(), json!(14));
-        assert_eq!(counter.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test]
-    async fn test_cache_name_delegates() {
+    async fn test_cached_runnable_name_delegates() {
         let counter = Arc::new(AtomicUsize::new(0));
         let runnable = counting_doubler(counter);
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
+        let cache = Arc::new(Mutex::new(RunnableCache::new(CacheConfig::new())));
+        let cached = CachedRunnable::new(Arc::new(runnable), cache);
         assert_eq!(cached.name(), "counting_doubler");
     }
 
-    // ==================== Stats tests ====================
-
     #[tokio::test]
-    async fn test_cache_stats_initial() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter);
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
-
-        let stats = cached.stats().await;
-        assert_eq!(
-            stats,
-            CacheStats {
-                hits: 0,
-                misses: 0,
-                evictions: 0,
-                size: 0
-            }
-        );
-    }
-
-    #[tokio::test]
-    async fn test_cache_stats_hits_and_misses() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter);
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
-
-        cached.invoke(json!(1), None).await.unwrap(); // miss
-        cached.invoke(json!(2), None).await.unwrap(); // miss
-        cached.invoke(json!(1), None).await.unwrap(); // hit
-        cached.invoke(json!(1), None).await.unwrap(); // hit
-        cached.invoke(json!(3), None).await.unwrap(); // miss
-
-        let stats = cached.stats().await;
-        assert_eq!(stats.hits, 2);
-        assert_eq!(stats.misses, 3);
-        assert_eq!(stats.size, 3);
-    }
-
-    // ==================== TTL tests ====================
-
-    #[tokio::test]
-    async fn test_cache_ttl_expiry() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_doubler(counter.clone());
-        let config = CacheConfig::new().with_ttl(Duration::from_millis(50));
-        let cached = RunnableCache::new(Arc::new(runnable), config);
-
-        cached.invoke(json!(5), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-
-        // Entry should still be valid.
-        cached.invoke(json!(5), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-
-        // Wait for TTL to expire.
-        tokio::time::sleep(Duration::from_millis(60)).await;
-
-        // Should re-invoke because entry expired.
-        cached.invoke(json!(5), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test]
-    async fn test_cache_no_ttl_entries_persist() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let config = CacheConfig::new(); // no TTL
-        let cached = RunnableCache::new(Arc::new(runnable), config);
-
-        cached.invoke(json!("hello"), None).await.unwrap();
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        cached.invoke(json!("hello"), None).await.unwrap();
-
-        assert_eq!(counter.load(Ordering::SeqCst), 1); // Still cached
-    }
-
-    // ==================== LRU eviction tests ====================
-
-    #[tokio::test]
-    async fn test_cache_lru_eviction() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let config = CacheConfig::new().with_max_entries(2);
-        let cached = RunnableCache::new(Arc::new(runnable), config);
-
-        cached.invoke(json!(1), None).await.unwrap(); // miss, cache: {1}
-        cached.invoke(json!(2), None).await.unwrap(); // miss, cache: {1, 2}
-        cached.invoke(json!(3), None).await.unwrap(); // miss, evicts 1, cache: {2, 3}
-
-        assert_eq!(counter.load(Ordering::SeqCst), 3);
-
-        let stats = cached.stats().await;
-        assert_eq!(stats.size, 2);
-        assert_eq!(stats.evictions, 1);
-    }
-
-    #[tokio::test]
-    async fn test_cache_lru_evicts_least_recently_used() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let config = CacheConfig::new().with_max_entries(2);
-        let cached = RunnableCache::new(Arc::new(runnable), config);
-
-        cached.invoke(json!(1), None).await.unwrap(); // miss
-        cached.invoke(json!(2), None).await.unwrap(); // miss
-                                                      // Access 1 again to make it recently used.
-        cached.invoke(json!(1), None).await.unwrap(); // hit
-
-        // Now insert 3 -> should evict 2 (least recently used), not 1.
-        cached.invoke(json!(3), None).await.unwrap(); // miss, evicts 2
-
-        // 1 should still be cached.
-        cached.invoke(json!(1), None).await.unwrap(); // hit
-        assert_eq!(counter.load(Ordering::SeqCst), 3); // only 1, 2, 3 were actual calls
-
-        // 2 should have been evicted and needs recomputation.
-        cached.invoke(json!(2), None).await.unwrap(); // miss
-        assert_eq!(counter.load(Ordering::SeqCst), 4);
-    }
-
-    #[tokio::test]
-    async fn test_cache_max_entries_one() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let config = CacheConfig::new().with_max_entries(1);
-        let cached = RunnableCache::new(Arc::new(runnable), config);
-
-        cached.invoke(json!(1), None).await.unwrap();
-        cached.invoke(json!(1), None).await.unwrap(); // hit
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-
-        cached.invoke(json!(2), None).await.unwrap(); // miss, evicts 1
-        assert_eq!(counter.load(Ordering::SeqCst), 2);
-
-        cached.invoke(json!(1), None).await.unwrap(); // miss, evicts 2
-        assert_eq!(counter.load(Ordering::SeqCst), 3);
-
-        let stats = cached.stats().await;
-        assert_eq!(stats.size, 1);
-        assert_eq!(stats.evictions, 2);
-    }
-
-    // ==================== Invalidation tests ====================
-
-    #[tokio::test]
-    async fn test_invalidate_specific_key() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
-
-        cached.invoke(json!(42), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-
-        let key = serde_json::to_string(&json!(42)).unwrap();
-        cached.invalidate(&key).await;
-
-        cached.invoke(json!(42), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 2); // Re-invoked
-    }
-
-    #[tokio::test]
-    async fn test_invalidate_nonexistent_key() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter);
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
-
-        // Should not panic or change eviction count.
-        cached.invalidate("nonexistent").await;
-        let stats = cached.stats().await;
-        assert_eq!(stats.evictions, 0);
-    }
-
-    #[tokio::test]
-    async fn test_invalidate_all() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
-
-        cached.invoke(json!(1), None).await.unwrap();
-        cached.invoke(json!(2), None).await.unwrap();
-        cached.invoke(json!(3), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 3);
-
-        cached.invalidate_all().await;
-        let stats = cached.stats().await;
-        assert_eq!(stats.size, 0);
-        assert_eq!(stats.evictions, 3);
-
-        // All should be misses now.
-        cached.invoke(json!(1), None).await.unwrap();
-        cached.invoke(json!(2), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 5);
-    }
-
-    // ==================== Custom key function tests ====================
-
-    #[tokio::test]
-    async fn test_custom_cache_key_fn() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let config = CacheConfig::new().with_cache_key_fn(|v: &Value| {
-            // Only use the "id" field as the key, ignoring other fields.
-            v.get("id")
-                .and_then(|id| id.as_str())
-                .unwrap_or("unknown")
-                .to_string()
-        });
-        let cached = RunnableCache::new(Arc::new(runnable), config);
-
-        let input1 = json!({"id": "abc", "data": 1});
-        let input2 = json!({"id": "abc", "data": 2}); // same id, different data
-
-        cached.invoke(input1.clone(), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-
-        // Should be a cache hit because the key ("abc") is the same.
-        let result = cached.invoke(input2, None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-        // Returns the first cached value.
-        assert_eq!(result, input1);
-    }
-
-    #[tokio::test]
-    async fn test_with_cache_key_method() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new())
-            .with_cache_key(|v: &Value| format!("prefix:{}", v));
-
-        cached.invoke(json!(1), None).await.unwrap();
-        cached.invoke(json!(1), None).await.unwrap(); // hit
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-    }
-
-    // ==================== Stream delegation tests ====================
-
-    #[tokio::test]
-    async fn test_stream_delegates_without_caching() {
-        use futures::StreamExt;
-
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
-
-        let mut stream = cached.stream(json!(42), None).await.unwrap();
-        let item = stream.next().await.unwrap().unwrap();
-        assert_eq!(item, json!(42));
-
-        // Streaming does not populate the cache.
-        let stats = cached.stats().await;
-        assert_eq!(stats.size, 0);
-    }
-
-    // ==================== Thread safety tests ====================
-
-    #[tokio::test]
-    async fn test_cache_thread_safety() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let cached = Arc::new(RunnableCache::new(Arc::new(runnable), CacheConfig::new()));
-
-        let mut handles = vec![];
-        for i in 0..10 {
-            let cached = cached.clone();
-            handles.push(tokio::spawn(async move {
-                // All tasks invoke the same key.
-                cached.invoke(json!(i % 3), None).await.unwrap()
-            }));
-        }
-
-        for handle in handles {
-            handle.await.unwrap();
-        }
-
-        // At most 3 unique keys were invoked.
-        assert!(counter.load(Ordering::SeqCst) <= 10);
-        let stats = cached.stats().await;
-        assert!(stats.size <= 3);
-    }
-
-    // ==================== Extension trait test ====================
-
-    #[tokio::test]
-    async fn test_with_cache_extension() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_doubler(counter.clone());
-        let cached = runnable.with_cache(CacheConfig::new().with_max_entries(10));
-
-        let r1 = cached.invoke(json!(5), None).await.unwrap();
-        assert_eq!(r1, json!(10));
-
-        let r2 = cached.invoke(json!(5), None).await.unwrap();
-        assert_eq!(r2, json!(10));
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-    }
-
-    // ==================== Complex input types ====================
-
-    #[tokio::test]
-    async fn test_cache_with_object_inputs() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
-
-        let input = json!({"key": "value", "nested": {"a": 1}});
-        cached.invoke(input.clone(), None).await.unwrap();
-        cached.invoke(input.clone(), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn test_cache_with_array_inputs() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
-
-        cached.invoke(json!([1, 2, 3]), None).await.unwrap();
-        cached.invoke(json!([1, 2, 3]), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-
-        cached.invoke(json!([1, 2, 4]), None).await.unwrap(); // different array
-        assert_eq!(counter.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test]
-    async fn test_cache_with_null_input() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
-
-        cached.invoke(json!(null), None).await.unwrap();
-        cached.invoke(json!(null), None).await.unwrap();
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
-    }
-
-    // ==================== TTL + LRU combined ====================
-
-    #[tokio::test]
-    async fn test_ttl_eviction_frees_space_before_lru() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let runnable = counting_identity(counter.clone());
-        let config = CacheConfig::new()
-            .with_max_entries(2)
-            .with_ttl(Duration::from_millis(50));
-        let cached = RunnableCache::new(Arc::new(runnable), config);
-
-        cached.invoke(json!(1), None).await.unwrap(); // miss
-        cached.invoke(json!(2), None).await.unwrap(); // miss
-
-        // Wait for TTL to expire.
-        tokio::time::sleep(Duration::from_millis(60)).await;
-
-        // Insert 3: expired entries should be evicted first via TTL, not LRU.
-        cached.invoke(json!(3), None).await.unwrap(); // miss, TTL evicts 1 & 2
-        assert_eq!(counter.load(Ordering::SeqCst), 3);
-
-        let stats = cached.stats().await;
-        assert_eq!(stats.size, 1); // Only entry 3 remains.
-    }
-
-    // ==================== Error propagation ====================
-
-    #[tokio::test]
-    async fn test_cache_does_not_cache_errors() {
+    async fn test_cached_runnable_does_not_cache_errors() {
         let counter = Arc::new(AtomicUsize::new(0));
         let c = counter.clone();
         let runnable = RunnableLambda::new("failing", move |v: Value| {
@@ -827,16 +1115,117 @@ mod tests {
                 }
             }
         });
-        let cached = RunnableCache::new(Arc::new(runnable), CacheConfig::new());
+        let cache = Arc::new(Mutex::new(RunnableCache::new(CacheConfig::new())));
+        let cached = CachedRunnable::new(Arc::new(runnable), cache);
 
-        // Error should not be cached.
         assert!(cached.invoke(json!(-1), None).await.is_err());
         assert!(cached.invoke(json!(-1), None).await.is_err());
         assert_eq!(counter.load(Ordering::SeqCst), 2); // Called twice (not cached)
+    }
 
-        // Successful result should be cached.
-        assert_eq!(cached.invoke(json!(5), None).await.unwrap(), json!(10));
-        assert_eq!(cached.invoke(json!(5), None).await.unwrap(), json!(10));
-        assert_eq!(counter.load(Ordering::SeqCst), 3); // Only one more call
+    #[tokio::test]
+    async fn test_cached_runnable_stats() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let runnable = counting_identity(counter.clone());
+        let cache = Arc::new(Mutex::new(RunnableCache::new(CacheConfig::new())));
+        let cached = CachedRunnable::new(Arc::new(runnable), cache.clone());
+
+        cached.invoke(json!(1), None).await.unwrap(); // miss
+        cached.invoke(json!(1), None).await.unwrap(); // hit
+        cached.invoke(json!(2), None).await.unwrap(); // miss
+
+        let stats = cache.lock().await.stats();
+        assert_eq!(stats.hits, 1);
+        assert_eq!(stats.misses, 2);
+        assert_eq!(stats.current_size, 2);
+    }
+
+    #[tokio::test]
+    async fn test_cached_runnable_with_eviction() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let runnable = counting_identity(counter.clone());
+        let config = CacheConfig::new().with_max_entries(2);
+        let cache = Arc::new(Mutex::new(RunnableCache::new(config)));
+        let cached = CachedRunnable::new(Arc::new(runnable), cache.clone());
+
+        cached.invoke(json!(1), None).await.unwrap();
+        cached.invoke(json!(2), None).await.unwrap();
+        cached.invoke(json!(3), None).await.unwrap(); // evicts 1
+
+        assert_eq!(counter.load(Ordering::SeqCst), 3);
+        let stats = cache.lock().await.stats();
+        assert_eq!(stats.current_size, 2);
+        assert_eq!(stats.evictions, 1);
+    }
+
+    #[tokio::test]
+    async fn test_cached_runnable_stream_not_cached() {
+        use futures::StreamExt;
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let runnable = counting_identity(counter.clone());
+        let cache = Arc::new(Mutex::new(RunnableCache::new(CacheConfig::new())));
+        let cached = CachedRunnable::new(Arc::new(runnable), cache.clone());
+
+        let mut stream = cached.stream(json!(42), None).await.unwrap();
+        let item = stream.next().await.unwrap().unwrap();
+        assert_eq!(item, json!(42));
+
+        // Stream should not populate cache.
+        let stats = cache.lock().await.stats();
+        assert_eq!(stats.current_size, 0);
+    }
+
+    // ==================== CacheInvalidator tests ====================
+
+    #[test]
+    fn test_cache_invalidator_no_patterns() {
+        let invalidator = CacheInvalidator::new();
+        let key = CacheKey::from_value(&json!(1));
+        assert!(!invalidator.should_invalidate(&key));
+    }
+
+    #[test]
+    fn test_cache_invalidator_matching_pattern() {
+        let mut invalidator = CacheInvalidator::new();
+        let key = CacheKey::from_value(&json!(1));
+        // Add a pattern that matches a substring of the key hash.
+        let prefix = key.as_str()[..4].to_string();
+        invalidator.add_pattern(&prefix);
+        assert!(invalidator.should_invalidate(&key));
+    }
+
+    #[test]
+    fn test_cache_invalidator_non_matching_pattern() {
+        let mut invalidator = CacheInvalidator::new();
+        invalidator.add_pattern("zzzzzzzzz_nonexistent");
+        let key = CacheKey::from_value(&json!(1));
+        assert!(!invalidator.should_invalidate(&key));
+    }
+
+    #[test]
+    fn test_cache_invalidator_invalidate_matching() {
+        let mut cache = RunnableCache::new(CacheConfig::new());
+        let k1 = CacheKey::from_value(&json!(1));
+        let k2 = CacheKey::from_value(&json!(2));
+        cache.put(k1.clone(), json!(10));
+        cache.put(k2.clone(), json!(20));
+        assert_eq!(cache.len(), 2);
+
+        let mut invalidator = CacheInvalidator::new();
+        // Match the first key's prefix.
+        let prefix = k1.as_str()[..4].to_string();
+        invalidator.add_pattern(&prefix);
+
+        invalidator.invalidate_matching(&mut cache);
+
+        // k1 should be gone (or if k2's hash also starts with the same prefix, both).
+        assert!(!cache.entries.contains_key(&k1));
+    }
+
+    #[test]
+    fn test_cache_invalidator_default() {
+        let invalidator = CacheInvalidator::default();
+        assert!(!invalidator.should_invalidate(&CacheKey::from_value(&json!(1))));
     }
 }

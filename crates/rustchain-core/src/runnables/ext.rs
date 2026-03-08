@@ -7,7 +7,7 @@ use crate::error::Result;
 use super::assign::{RunnableAssign, RunnablePick};
 use super::base::Runnable;
 use super::binding::RunnableBinding;
-use super::cache::{CacheConfig, RunnableCache};
+use super::cache::{CacheConfig, CachedRunnable, RunnableCache};
 use super::config::RunnableConfig;
 use super::each::RunnableEach;
 use super::fallbacks::RunnableWithFallbacks;
@@ -174,8 +174,9 @@ pub trait RunnableExt: Runnable + Sized + 'static {
     ///
     /// # Arguments
     /// * `config` - Cache configuration (max entries, TTL, custom key function).
-    fn with_cache(self, config: CacheConfig) -> RunnableCache {
-        RunnableCache::new(Arc::new(self) as Arc<dyn Runnable>, config)
+    fn with_cache(self, config: CacheConfig) -> CachedRunnable {
+        let cache = Arc::new(tokio::sync::Mutex::new(RunnableCache::new(config)));
+        CachedRunnable::new(Arc::new(self) as Arc<dyn Runnable>, cache)
     }
 
     /// Wrap this runnable with a relative timeout.
