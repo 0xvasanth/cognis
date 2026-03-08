@@ -19,8 +19,13 @@ pub mod few_shot;
 pub mod hub;
 pub mod registry;
 pub mod template;
+pub mod management;
 pub mod template_engine;
 
+pub use management::{
+    FewShotExample, FewShotSelector, PromptLibrary, PromptOptimizer, PromptSectionComposer,
+    PromptVersion, VersionedPrompt,
+};
 pub use chat::{
     extract_template_variables, messages_placeholder, ChatPromptTemplate, MessagePromptTemplate,
 };
