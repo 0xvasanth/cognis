@@ -87,3 +87,9 @@ pub use qa::{
     QAResult,
 };
 pub mod callbacks;
+pub mod composition;
+pub use composition::{
+    ChainMetrics, ChainPipeline, ChainStep, ChainStepBuilder, CompositionConditionalChain,
+    CompositionSequentialChain, CompositionTransformChain, MapChain, ParallelChain, StepMetric,
+    execute_with_metrics,
+};
