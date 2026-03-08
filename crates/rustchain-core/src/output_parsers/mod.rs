@@ -1,4 +1,5 @@
 pub mod base;
+pub mod format;
 pub mod json;
 pub mod list;
 pub mod openai_functions;
@@ -24,6 +25,11 @@ pub use string::StrOutputParser;
 pub use tools::ToolCallOutputParser;
 pub use transform::CumulativeTransformParser;
 pub use xml::XmlOutputParser;
+
+pub use format::{
+    CommaSeparatedParser, DatetimeOutputParser, ExtractingJsonParser, ListOutputParser,
+    OutputFixingParser, ParseError, PydanticOutputParser, RetryParser,
+};
 
 /// Standard JSON format instructions template.
 ///
