@@ -33,7 +33,9 @@ fn main() {
     // 1. ModelConfig Building
     // -----------------------------------------------------------------------
     println!("--- 1. ModelConfig Building ---");
-    println!("Build generation configs with temperature, max_tokens, stop sequences, and extras.\n");
+    println!(
+        "Build generation configs with temperature, max_tokens, stop sequences, and extras.\n"
+    );
 
     let config = ModelConfig::new("claude-sonnet-4-20250514")
         .with_temperature(0.7)
@@ -42,7 +44,10 @@ fn main() {
         .with_stop_sequence("END")
         .with_stop_sequence("STOP")
         .with_timeout_ms(30_000)
-        .with_extra("system_prompt", serde_json::json!("You are a helpful assistant."));
+        .with_extra(
+            "system_prompt",
+            serde_json::json!("You are a helpful assistant."),
+        );
 
     println!("Config for '{}':", config.model_name);
     println!("  temperature:    {:?}", config.temperature);
@@ -52,7 +57,10 @@ fn main() {
     println!("  timeout_ms:     {:?}", config.timeout_ms);
     println!("  extras:         {} key(s)", config.extra.len());
     println!("\nSerialized config (JSON):");
-    println!("  {}", serde_json::to_string_pretty(&config.to_json()).unwrap());
+    println!(
+        "  {}",
+        serde_json::to_string_pretty(&config.to_json()).unwrap()
+    );
 
     // -----------------------------------------------------------------------
     // 2. ModelConfig Merging (Overrides)
@@ -85,12 +93,30 @@ fn main() {
     base_config.merge(&override_config);
 
     println!("\nAfter merge:");
-    println!("  model:          {} (kept from base, override was empty)", base_config.model_name);
-    println!("  temperature:    {:?} (overridden)", base_config.temperature);
-    println!("  max_tokens:     {:?} (kept from base)", base_config.max_tokens);
-    println!("  top_p:          {:?} (new from override)", base_config.top_p);
-    println!("  stop_sequences: {:?} (replaced by override)", base_config.stop_sequences);
-    println!("  timeout_ms:     {:?} (kept from base)", base_config.timeout_ms);
+    println!(
+        "  model:          {} (kept from base, override was empty)",
+        base_config.model_name
+    );
+    println!(
+        "  temperature:    {:?} (overridden)",
+        base_config.temperature
+    );
+    println!(
+        "  max_tokens:     {:?} (kept from base)",
+        base_config.max_tokens
+    );
+    println!(
+        "  top_p:          {:?} (new from override)",
+        base_config.top_p
+    );
+    println!(
+        "  stop_sequences: {:?} (replaced by override)",
+        base_config.stop_sequences
+    );
+    println!(
+        "  timeout_ms:     {:?} (kept from base)",
+        base_config.timeout_ms
+    );
 
     // -----------------------------------------------------------------------
     // 3. ModelInfo Creation for Multiple Providers
@@ -246,9 +272,15 @@ fn main() {
     }
 
     let large_ctx = registry.with_capability(&ModelCapability::LargeContext(500_000));
-    println!("\nLargeContext (>= 500K tokens) models ({}):", large_ctx.len());
+    println!(
+        "\nLargeContext (>= 500K tokens) models ({}):",
+        large_ctx.len()
+    );
     for m in &large_ctx {
-        println!("  - {} ({}, context={})", m.model_id, m.provider, m.context_window);
+        println!(
+            "  - {} ({}, context={})",
+            m.model_id, m.provider, m.context_window
+        );
     }
 
     let json_models = registry.with_capability(&ModelCapability::Json);
@@ -297,7 +329,9 @@ fn main() {
     let result = selector.select(&[ModelCapability::LargeContext(10_000_000)]);
     println!(
         "LargeContext(10M): {}",
-        result.map(|m| m.model_id.as_str()).unwrap_or("none (no model qualifies)")
+        result
+            .map(|m| m.model_id.as_str())
+            .unwrap_or("none (no model qualifies)")
     );
 
     // -----------------------------------------------------------------------
@@ -401,7 +435,10 @@ fn main() {
     println!("  messages:      {}", request.message_count());
     println!("  temperature:   {:?}", request.config.temperature);
     println!("  max_tokens:    {:?}", request.config.max_tokens);
-    println!("  metadata keys: {:?}", request.metadata.keys().collect::<Vec<_>>());
+    println!(
+        "  metadata keys: {:?}",
+        request.metadata.keys().collect::<Vec<_>>()
+    );
 
     // Simulate a response
     let usage = TokenUsage::new(45, 250, 295);

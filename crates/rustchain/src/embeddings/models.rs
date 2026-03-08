@@ -262,11 +262,7 @@ impl EmbeddingDistance {
     /// Find the `top_k` most similar candidates to the query vector.
     ///
     /// Returns `(index, cosine_similarity)` pairs sorted by descending similarity.
-    pub fn most_similar(
-        query: &[f64],
-        candidates: &[Vec<f64>],
-        top_k: usize,
-    ) -> Vec<(usize, f64)> {
+    pub fn most_similar(query: &[f64], candidates: &[Vec<f64>], top_k: usize) -> Vec<(usize, f64)> {
         let mut scored: Vec<(usize, f64)> = candidates
             .iter()
             .enumerate()
@@ -424,7 +420,10 @@ mod tests {
         let model = FakeEmbeddingModel::new(16);
         let v1 = model.embed_text("alpha").unwrap();
         let v2 = model.embed_text("beta").unwrap();
-        assert_ne!(v1, v2, "different inputs should produce different embeddings");
+        assert_ne!(
+            v1, v2,
+            "different inputs should produce different embeddings"
+        );
     }
 
     #[test]
@@ -520,12 +519,7 @@ mod tests {
 
     #[test]
     fn test_embedding_result_creation() {
-        let result = EmbeddingResult::new(
-            vec![1.0, 2.0, 3.0],
-            "hello",
-            "model-v1",
-            None,
-        );
+        let result = EmbeddingResult::new(vec![1.0, 2.0, 3.0], "hello", "model-v1", None);
         assert_eq!(result.vector, vec![1.0, 2.0, 3.0]);
         assert_eq!(result.text, "hello");
         assert_eq!(result.model, "model-v1");
@@ -660,14 +654,20 @@ mod tests {
     fn test_most_similar_basic() {
         let query = vec![1.0, 0.0, 0.0];
         let candidates = vec![
-            vec![1.0, 0.0, 0.0],  // identical
-            vec![0.0, 1.0, 0.0],  // orthogonal
-            vec![0.9, 0.1, 0.0],  // close
+            vec![1.0, 0.0, 0.0], // identical
+            vec![0.0, 1.0, 0.0], // orthogonal
+            vec![0.9, 0.1, 0.0], // close
         ];
         let results = EmbeddingDistance::most_similar(&query, &candidates, 2);
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].0, 0, "most similar should be the identical vector");
-        assert_eq!(results[1].0, 2, "second most similar should be the close vector");
+        assert_eq!(
+            results[0].0, 0,
+            "most similar should be the identical vector"
+        );
+        assert_eq!(
+            results[1].0, 2,
+            "second most similar should be the close vector"
+        );
     }
 
     #[test]
@@ -690,9 +690,9 @@ mod tests {
     fn test_most_similar_ranking_order() {
         let query = vec![1.0, 0.0];
         let candidates = vec![
-            vec![0.0, 1.0],    // orthogonal (sim ~ 0)
-            vec![0.5, 0.5],    // moderate
-            vec![0.99, 0.01],  // very close
+            vec![0.0, 1.0],   // orthogonal (sim ~ 0)
+            vec![0.5, 0.5],   // moderate
+            vec![0.99, 0.01], // very close
         ];
         let results = EmbeddingDistance::most_similar(&query, &candidates, 3);
         assert_eq!(results[0].0, 2); // most similar
@@ -736,10 +736,7 @@ mod tests {
         let b = NormalizedEmbedding::from_vec(vec![4.0, 5.0, 6.0]);
         let dp = a.dot_product(&b);
         // Should equal cosine similarity of the original vectors.
-        let cosine = EmbeddingDistance::cosine_similarity(
-            &[1.0, 2.0, 3.0],
-            &[4.0, 5.0, 6.0],
-        );
+        let cosine = EmbeddingDistance::cosine_similarity(&[1.0, 2.0, 3.0], &[4.0, 5.0, 6.0]);
         assert!((dp - cosine).abs() < 1e-10);
     }
 

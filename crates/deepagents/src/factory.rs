@@ -414,9 +414,7 @@ impl AgentTemplate {
     pub fn coding_agent() -> Self {
         let spec = AgentSpec::builder("coding-agent")
             .model("claude-sonnet-4-6")
-            .system_prompt(
-                "You are an expert software engineer. Write clean, well-tested code.",
-            )
+            .system_prompt("You are an expert software engineer. Write clean, well-tested code.")
             .tool("read_file")
             .tool("write_file")
             .tool("run_command")
@@ -427,9 +425,12 @@ impl AgentTemplate {
             .temperature(0.2)
             .build();
 
-        Self::new("coding-agent", "An agent specialized in writing and reviewing code")
-            .with_spec(spec)
-            .with_tags(vec!["coding".to_string(), "development".to_string()])
+        Self::new(
+            "coding-agent",
+            "An agent specialized in writing and reviewing code",
+        )
+        .with_spec(spec)
+        .with_tags(vec!["coding".to_string(), "development".to_string()])
     }
 
     /// Return a pre-configured research agent template.
@@ -449,9 +450,12 @@ impl AgentTemplate {
             .temperature(0.3)
             .build();
 
-        Self::new("research-agent", "An agent specialized in research and analysis")
-            .with_spec(spec)
-            .with_tags(vec!["research".to_string(), "analysis".to_string()])
+        Self::new(
+            "research-agent",
+            "An agent specialized in research and analysis",
+        )
+        .with_spec(spec)
+        .with_tags(vec!["research".to_string(), "analysis".to_string()])
     }
 
     /// Return a pre-configured chat agent template.
@@ -1013,8 +1017,7 @@ mod tests {
 
     #[test]
     fn test_template_with_tags() {
-        let tmpl = AgentTemplate::new("t", "d")
-            .with_tags(vec!["a".to_string(), "b".to_string()]);
+        let tmpl = AgentTemplate::new("t", "d").with_tags(vec!["a".to_string(), "b".to_string()]);
         assert_eq!(tmpl.tags, vec!["a", "b"]);
     }
 
@@ -1159,18 +1162,9 @@ mod tests {
     #[test]
     fn test_event_agent_id() {
         let id = "abc-123".to_string();
-        assert_eq!(
-            AgentEvent::Created { id: id.clone() }.agent_id(),
-            "abc-123"
-        );
-        assert_eq!(
-            AgentEvent::Started { id: id.clone() }.agent_id(),
-            "abc-123"
-        );
-        assert_eq!(
-            AgentEvent::Paused { id: id.clone() }.agent_id(),
-            "abc-123"
-        );
+        assert_eq!(AgentEvent::Created { id: id.clone() }.agent_id(), "abc-123");
+        assert_eq!(AgentEvent::Started { id: id.clone() }.agent_id(), "abc-123");
+        assert_eq!(AgentEvent::Paused { id: id.clone() }.agent_id(), "abc-123");
         assert_eq!(
             AgentEvent::Completed {
                 id: id.clone(),

@@ -657,9 +657,7 @@ impl ContextCompressor {
     /// Whether the context has been compressed (i.e. some messages were
     /// summarized to fit within the token budget).
     pub fn is_compressed(&self) -> bool {
-        self.get_compressed_context()
-            .iter()
-            .any(|m| m.is_summary)
+        self.get_compressed_context().iter().any(|m| m.is_summary)
     }
 
     /// Build a compressed context that fits within the token budget.
@@ -742,7 +740,10 @@ impl ContextCompressor {
         // Insert the summary as a system message.
         compressed.push(CompressedMessage::new(
             "system",
-            format!("[Summary of {} earlier messages] {}", split_point, result.summary),
+            format!(
+                "[Summary of {} earlier messages] {}",
+                split_point, result.summary
+            ),
             true,
             Some(split_point),
         ));
@@ -781,14 +782,23 @@ mod tests {
 
     #[test]
     fn test_strategy_display() {
-        assert_eq!(format!("{}", SummarizationStrategy::Extractive), "extractive");
+        assert_eq!(
+            format!("{}", SummarizationStrategy::Extractive),
+            "extractive"
+        );
         assert_eq!(format!("{}", SummarizationStrategy::Truncate), "truncate");
     }
 
     #[test]
     fn test_strategy_equality() {
-        assert_eq!(SummarizationStrategy::Extractive, SummarizationStrategy::Extractive);
-        assert_ne!(SummarizationStrategy::Extractive, SummarizationStrategy::Truncate);
+        assert_eq!(
+            SummarizationStrategy::Extractive,
+            SummarizationStrategy::Extractive
+        );
+        assert_ne!(
+            SummarizationStrategy::Extractive,
+            SummarizationStrategy::Truncate
+        );
     }
 
     #[test]
@@ -941,8 +951,12 @@ mod tests {
         let result = summarizer.summarize(text);
 
         // The sentence with key terms should be prioritized.
-        assert!(result.summary.contains("important") || result.summary.contains("key")
-            || result.summary.contains("must") || result.summary.contains("result"));
+        assert!(
+            result.summary.contains("important")
+                || result.summary.contains("key")
+                || result.summary.contains("must")
+                || result.summary.contains("result")
+        );
     }
 
     #[test]

@@ -132,11 +132,9 @@ impl Runnable for RegexRouter {
     }
 
     async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
-        let text = input.as_str().ok_or_else(|| {
-            RustChainError::TypeMismatch {
-                expected: "string".into(),
-                got: format!("{}", input),
-            }
+        let text = input.as_str().ok_or_else(|| RustChainError::TypeMismatch {
+            expected: "string".into(),
+            got: format!("{}", input),
         })?;
 
         for route in &self.routes {
@@ -198,10 +196,7 @@ impl Runnable for KeyRouter {
             .get(&self.key)
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                RustChainError::InvalidKey(format!(
-                    "Input must have a string '{}' field",
-                    self.key
-                ))
+                RustChainError::InvalidKey(format!("Input must have a string '{}' field", self.key))
             })?
             .to_string();
 
@@ -543,10 +538,7 @@ mod tests {
             label_runnable("id_handler"),
         );
 
-        let result = router
-            .invoke(json!({"name": "Alice"}), None)
-            .await
-            .unwrap();
+        let result = router.invoke(json!({"name": "Alice"}), None).await.unwrap();
         assert_eq!(result["from"], "name_handler");
 
         let result = router.invoke(json!({"id": 42}), None).await.unwrap();
@@ -602,10 +594,7 @@ mod tests {
     #[tokio::test]
     async fn test_regex_router_empty_no_patterns() {
         let router = RegexRouter::new();
-        let err = router
-            .invoke(json!("anything"), None)
-            .await
-            .unwrap_err();
+        let err = router.invoke(json!("anything"), None).await.unwrap_err();
         assert!(format!("{}", err).contains("No regex pattern matched"));
     }
 
@@ -675,7 +664,10 @@ mod tests {
     async fn test_key_router_missing_key_error() {
         let router = KeyRouter::new("action".into());
 
-        let err = router.invoke(json!({"other": "field"}), None).await.unwrap_err();
+        let err = router
+            .invoke(json!({"other": "field"}), None)
+            .await
+            .unwrap_err();
         assert!(format!("{}", err).contains("action"));
     }
 
@@ -710,10 +702,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fallback_router_first_succeeds() {
-        let router = FallbackRouter::new(vec![
-            label_runnable("first"),
-            label_runnable("second"),
-        ]);
+        let router = FallbackRouter::new(vec![label_runnable("first"), label_runnable("second")]);
 
         let result = router.invoke(json!("test"), None).await.unwrap();
         assert_eq!(result["from"], "first");
@@ -721,10 +710,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_fallback_router_first_fails_second_succeeds() {
-        let router = FallbackRouter::new(vec![
-            failing_runnable("error1"),
-            label_runnable("second"),
-        ]);
+        let router =
+            FallbackRouter::new(vec![failing_runnable("error1"), label_runnable("second")]);
 
         let result = router.invoke(json!("test"), None).await.unwrap();
         assert_eq!(result["from"], "second");
@@ -732,10 +719,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_fallback_router_all_fail() {
-        let router = FallbackRouter::new(vec![
-            failing_runnable("error1"),
-            failing_runnable("error2"),
-        ]);
+        let router =
+            FallbackRouter::new(vec![failing_runnable("error1"), failing_runnable("error2")]);
 
         let err = router.invoke(json!("test"), None).await.unwrap_err();
         // Last error should be returned
@@ -835,10 +820,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_conditional_branch_no_match_no_otherwise() {
-        let branch = ConditionalBranch::new().when(
-            Box::new(|_: &Value| false),
-            label_runnable("never"),
-        );
+        let branch =
+            ConditionalBranch::new().when(Box::new(|_: &Value| false), label_runnable("never"));
 
         let err = branch.invoke(json!("test"), None).await.unwrap_err();
         assert!(format!("{}", err).contains("No condition matched"));

@@ -111,9 +111,7 @@ impl fmt::Debug for CompiledEdge {
                 .field("from", from)
                 .field("to", to)
                 .finish(),
-            CompiledEdge::Conditional {
-                from, targets, ..
-            } => f
+            CompiledEdge::Conditional { from, targets, .. } => f
                 .debug_struct("Conditional")
                 .field("from", from)
                 .field("targets", targets)
@@ -350,9 +348,7 @@ impl CompiledGraph {
                         )));
                     }
                 }
-                CompiledEdge::Conditional {
-                    from, targets, ..
-                } => {
+                CompiledEdge::Conditional { from, targets, .. } => {
                     if !self.nodes.contains_key(from) {
                         return Err(LangGraphError::Other(format!(
                             "Edge source '{}' does not exist in the graph",
@@ -428,12 +424,9 @@ impl CompiledGraph {
                         return true;
                     }
                 }
-                CompiledEdge::Conditional {
-                    from, targets, ..
-                } if from == node => {
+                CompiledEdge::Conditional { from, targets, .. } if from == node => {
                     for target in targets {
-                        if self.nodes.contains_key(target)
-                            && self.dfs_cycle(target, visited, stack)
+                        if self.nodes.contains_key(target) && self.dfs_cycle(target, visited, stack)
                         {
                             return true;
                         }
@@ -464,9 +457,7 @@ impl CompiledGraph {
                             queue.push_back(to.clone());
                         }
                     }
-                    CompiledEdge::Conditional {
-                        from, targets, ..
-                    } if from == &current => {
+                    CompiledEdge::Conditional { from, targets, .. } if from == &current => {
                         for target in targets {
                             if !reachable.contains(target) {
                                 queue.push_back(target.clone());
@@ -516,10 +507,7 @@ impl CompiledGraph {
     }
 
     /// Execute the graph and return both the final state and the execution log.
-    pub fn invoke_with_log(
-        &self,
-        input: Value,
-    ) -> Result<(Value, ExecutionLog), LangGraphError> {
+    pub fn invoke_with_log(&self, input: Value) -> Result<(Value, ExecutionLog), LangGraphError> {
         let mut state = input;
         let mut current = self.entry_point.clone();
         let mut log = ExecutionLog::new();
@@ -593,9 +581,7 @@ impl CompiledGraph {
                 CompiledEdge::Direct { from, to } => {
                     lines.push(format!("    {} --> {}", from, to));
                 }
-                CompiledEdge::Conditional {
-                    from, targets, ..
-                } => {
+                CompiledEdge::Conditional { from, targets, .. } => {
                     for target in targets {
                         lines.push(format!("    {} -.-> {}", from, target));
                     }
@@ -646,19 +632,22 @@ fn deep_merge(a: &Value, b: &Value) -> Value {
 // GraphDefinitionBuilder
 // ---------------------------------------------------------------------------
 
+/// Node handler: takes a `Value` and returns a `Result<Value, LangGraphError>`.
+type NodeHandler = Box<dyn Fn(Value) -> Result<Value, LangGraphError> + Send + Sync>;
+
+/// Conditional edge: source node, routing function, and list of possible targets.
+type ConditionalEdge = (
+    String,
+    Box<dyn Fn(&Value) -> String + Send + Sync>,
+    Vec<String>,
+);
+
 /// A declarative builder for constructing graph definitions that can be compiled.
 pub struct GraphDefinitionBuilder {
     name: String,
-    nodes: Vec<(
-        String,
-        Box<dyn Fn(Value) -> Result<Value, LangGraphError> + Send + Sync>,
-    )>,
+    nodes: Vec<(String, NodeHandler)>,
     edges: Vec<(String, String)>,
-    conditional_edges: Vec<(
-        String,
-        Box<dyn Fn(&Value) -> String + Send + Sync>,
-        Vec<String>,
-    )>,
+    conditional_edges: Vec<ConditionalEdge>,
     entry_point: Option<String>,
     finish_points: Vec<String>,
 }
@@ -734,9 +723,7 @@ impl GraphDefinitionBuilder {
             ));
         }
         if self.nodes.is_empty() {
-            return Err(LangGraphError::Other(
-                "Graph has no nodes".to_string(),
-            ));
+            return Err(LangGraphError::Other("Graph has no nodes".to_string()));
         }
         let node_names: HashSet<&str> = self.nodes.iter().map(|(n, _)| n.as_str()).collect();
         let entry = self.entry_point.as_deref().unwrap();
@@ -788,9 +775,9 @@ impl GraphCompiler {
         &self,
         definition: GraphDefinitionBuilder,
     ) -> Result<CompiledGraph, LangGraphError> {
-        let entry_point = definition.entry_point.ok_or_else(|| {
-            LangGraphError::Other("No entry point specified".to_string())
-        })?;
+        let entry_point = definition
+            .entry_point
+            .ok_or_else(|| LangGraphError::Other("No entry point specified".to_string()))?;
 
         let mut graph = CompiledGraph::new(entry_point);
 
@@ -1154,9 +1141,7 @@ mod tests {
             Ok(json!({"route": "left"}))
         }));
         graph.add_node(CompiledNode::new("left", |_| Ok(json!({"path": "left"}))));
-        graph.add_node(CompiledNode::new("right", |_| {
-            Ok(json!({"path": "right"}))
-        }));
+        graph.add_node(CompiledNode::new("right", |_| Ok(json!({"path": "right"}))));
         graph.add_conditional_edge(
             "router",
             |state| {
@@ -1182,9 +1167,7 @@ mod tests {
             Ok(json!({"route": "right"}))
         }));
         graph.add_node(CompiledNode::new("left", |_| Ok(json!({"path": "left"}))));
-        graph.add_node(CompiledNode::new("right", |_| {
-            Ok(json!({"path": "right"}))
-        }));
+        graph.add_node(CompiledNode::new("right", |_| Ok(json!({"path": "right"}))));
         graph.add_conditional_edge(
             "router",
             |state| {
@@ -1225,12 +1208,8 @@ mod tests {
         graph.add_node(CompiledNode::new("start", |_| {
             Ok(json!({"route": "end_a"}))
         }));
-        graph.add_node(CompiledNode::new("end_a", |_| {
-            Ok(json!({"result": "A"}))
-        }));
-        graph.add_node(CompiledNode::new("end_b", |_| {
-            Ok(json!({"result": "B"}))
-        }));
+        graph.add_node(CompiledNode::new("end_a", |_| Ok(json!({"result": "A"}))));
+        graph.add_node(CompiledNode::new("end_b", |_| Ok(json!({"result": "B"}))));
         graph.add_conditional_edge(
             "start",
             |state| {
@@ -1330,16 +1309,14 @@ mod tests {
 
     #[test]
     fn test_definition_builder_build_no_entry() {
-        let builder = GraphDefinitionBuilder::new("test")
-            .node("A", |s| Ok(s));
+        let builder = GraphDefinitionBuilder::new("test").node("A", |s| Ok(s));
         let result = builder.build();
         assert!(result.is_err());
     }
 
     #[test]
     fn test_definition_builder_build_no_nodes() {
-        let builder = GraphDefinitionBuilder::new("test")
-            .entry("A");
+        let builder = GraphDefinitionBuilder::new("test").entry("A");
         let result = builder.build();
         assert!(result.is_err());
     }

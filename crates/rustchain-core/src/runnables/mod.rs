@@ -25,9 +25,9 @@ pub mod retry;
 pub mod router;
 pub mod router_ext;
 pub mod schema;
-pub mod serialization;
 pub mod scoped_callbacks;
 pub mod sequence;
+pub mod serialization;
 pub mod timeout;
 pub mod tracing;
 

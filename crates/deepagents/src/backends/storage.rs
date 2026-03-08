@@ -828,9 +828,7 @@ mod tests {
         inner
             .save("other:key", &serde_json::json!("other"))
             .unwrap();
-        inner
-            .save("myns:key", &serde_json::json!("mine"))
-            .unwrap();
+        inner.save("myns:key", &serde_json::json!("mine")).unwrap();
         let ns = NamespacedBackend::new(Box::new(inner), "myns".to_string());
         let keys = ns.keys();
         assert_eq!(keys, vec!["key"]);
@@ -879,9 +877,7 @@ mod tests {
     #[test]
     fn test_cached_miss_on_uncached_key() {
         let mut inner = InMemoryBackend::new();
-        inner
-            .save("pre", &serde_json::json!("existing"))
-            .unwrap();
+        inner.save("pre", &serde_json::json!("existing")).unwrap();
         let mut cached = CachedBackend::new(Box::new(inner), 100);
 
         // Loading a key that exists in inner but not in cache.
@@ -1032,8 +1028,7 @@ mod tests {
 
     #[test]
     fn test_backend_config_to_json_with_path() {
-        let config =
-            BackendConfig::new("filesystem").with_base_path(PathBuf::from("/data/store"));
+        let config = BackendConfig::new("filesystem").with_base_path(PathBuf::from("/data/store"));
         let json = config.to_json();
         assert_eq!(json["base_path"], "/data/store");
     }
@@ -1181,18 +1176,11 @@ mod tests {
     #[test]
     fn test_nested_multiple_namespaces_isolation() {
         let mut inner = InMemoryBackend::new();
-        inner
-            .save("ns_a:key", &serde_json::json!("a_val"))
-            .unwrap();
-        inner
-            .save("ns_b:key", &serde_json::json!("b_val"))
-            .unwrap();
+        inner.save("ns_a:key", &serde_json::json!("a_val")).unwrap();
+        inner.save("ns_b:key", &serde_json::json!("b_val")).unwrap();
 
         let ns_a = NamespacedBackend::new(Box::new(inner), "ns_a".to_string());
-        assert_eq!(
-            ns_a.load("key").unwrap(),
-            Some(serde_json::json!("a_val"))
-        );
+        assert_eq!(ns_a.load("key").unwrap(), Some(serde_json::json!("a_val")));
         assert_eq!(ns_a.keys(), vec!["key"]);
     }
 

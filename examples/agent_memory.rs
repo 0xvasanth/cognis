@@ -37,22 +37,32 @@ fn main() {
         .importance(0.9)
         .build();
 
-    println!("  Entry: key={}, category={}, importance={:.1}", fact.key, fact.category, fact.importance);
+    println!(
+        "  Entry: key={}, category={}, importance={:.1}",
+        fact.key, fact.category, fact.importance
+    );
     println!("  Value: {}", fact.value);
-    println!("  Access count: {}, created_at: {}", fact.access_count, fact.created_at);
+    println!(
+        "  Access count: {}, created_at: {}",
+        fact.access_count, fact.created_at
+    );
 
     let pref = MemoryEntry::builder("color_pref", serde_json::json!("blue"))
         .category(MemoryCategory::Preference)
         .importance(0.4)
         .build();
 
-    println!("\n  Preference entry: key={}, category={}, importance={:.1}",
-        pref.key, pref.category, pref.importance);
+    println!(
+        "\n  Preference entry: key={}, category={}, importance={:.1}",
+        pref.key, pref.category, pref.importance
+    );
 
     // Default category is Context, default importance is 0.5
     let default_entry = MemoryEntry::builder("temp", serde_json::json!("data")).build();
-    println!("  Default entry: category={}, importance={:.1}",
-        default_entry.category, default_entry.importance);
+    println!(
+        "  Default entry: category={}, importance={:.1}",
+        default_entry.category, default_entry.importance
+    );
 
     // Importance is clamped to [0.0, 1.0]
     let clamped = MemoryEntry::builder("high", serde_json::json!(true))
@@ -80,9 +90,21 @@ fn main() {
     let mut stm = ShortTermMemory::new(3);
     println!("  Created ShortTermMemory with capacity=3");
 
-    stm.store("fact_1", serde_json::json!("The sky is blue"), MemoryCategory::Fact);
-    stm.store("fact_2", serde_json::json!("Water is H2O"), MemoryCategory::Fact);
-    stm.store("pref_1", serde_json::json!("dark mode"), MemoryCategory::Preference);
+    stm.store(
+        "fact_1",
+        serde_json::json!("The sky is blue"),
+        MemoryCategory::Fact,
+    );
+    stm.store(
+        "fact_2",
+        serde_json::json!("Water is H2O"),
+        MemoryCategory::Fact,
+    );
+    stm.store(
+        "pref_1",
+        serde_json::json!("dark mode"),
+        MemoryCategory::Preference,
+    );
     println!("  Stored 3 entries: len={}", stm.len());
 
     // Access fact_1 to increase its access count
@@ -92,7 +114,11 @@ fn main() {
     }
 
     // Store a 4th entry, triggering eviction of least-accessed
-    stm.store("ctx_1", serde_json::json!("current task: demo"), MemoryCategory::Context);
+    stm.store(
+        "ctx_1",
+        serde_json::json!("current task: demo"),
+        MemoryCategory::Context,
+    );
     println!("  Stored 4th entry (triggers eviction): len={}", stm.len());
 
     // fact_1 was touched, so it survived; one of the untouched entries was evicted
@@ -136,23 +162,35 @@ fn main() {
             .build(),
     );
     ltm.store(
-        MemoryEntry::builder("project_goal", serde_json::json!("Build an LLM framework in Rust"))
-            .category(MemoryCategory::Context)
-            .importance(0.95)
-            .build(),
+        MemoryEntry::builder(
+            "project_goal",
+            serde_json::json!("Build an LLM framework in Rust"),
+        )
+        .category(MemoryCategory::Context)
+        .importance(0.95)
+        .build(),
     );
 
     println!("  Stored {} entries in long-term memory", ltm.len());
 
     // Filter by importance
     let high_importance = ltm.by_importance(0.8);
-    println!("  Entries with importance >= 0.8: {}", high_importance.len());
+    println!(
+        "  Entries with importance >= 0.8: {}",
+        high_importance.len()
+    );
     for entry in &high_importance {
-        println!("    key={}, importance={:.2}, category={}", entry.key, entry.importance, entry.category);
+        println!(
+            "    key={}, importance={:.2}, category={}",
+            entry.key, entry.importance, entry.category
+        );
     }
 
     let low_importance = ltm.by_importance(0.0);
-    println!("  Entries with importance >= 0.0 (all): {}", low_importance.len());
+    println!(
+        "  Entries with importance >= 0.0 (all): {}",
+        low_importance.len()
+    );
 
     // Search
     let results = ltm.search("rust");
@@ -182,7 +220,10 @@ fn main() {
     index.add("doc3", "Rust and Python are both popular languages");
     index.add("doc4", "The Rust borrow checker ensures memory safety");
 
-    println!("  Indexed 4 documents, {} distinct terms", index.term_count());
+    println!(
+        "  Indexed 4 documents, {} distinct terms",
+        index.term_count()
+    );
 
     // Search for terms
     let results = index.search("Rust");
@@ -197,7 +238,10 @@ fn main() {
     // Remove a document and search again
     index.remove("doc1");
     let results = index.search("systems programming");
-    println!("  After removing 'doc1', search 'systems programming': {:?}", results);
+    println!(
+        "  After removing 'doc1', search 'systems programming': {:?}",
+        results
+    );
 
     // -----------------------------------------------------------------------
     // 5. MemoryManager Unified Interface
@@ -209,9 +253,24 @@ fn main() {
     println!("  Created MemoryManager with short-term capacity=5");
 
     // Store entries with varying importance
-    manager.remember("user_name", serde_json::json!("Bob"), MemoryCategory::Fact, 0.9);
-    manager.remember("session_id", serde_json::json!("sess_abc"), MemoryCategory::Context, 0.3);
-    manager.remember("preference", serde_json::json!("verbose output"), MemoryCategory::Preference, 0.5);
+    manager.remember(
+        "user_name",
+        serde_json::json!("Bob"),
+        MemoryCategory::Fact,
+        0.9,
+    );
+    manager.remember(
+        "session_id",
+        serde_json::json!("sess_abc"),
+        MemoryCategory::Context,
+        0.3,
+    );
+    manager.remember(
+        "preference",
+        serde_json::json!("verbose output"),
+        MemoryCategory::Preference,
+        0.5,
+    );
 
     println!("  Stored 3 entries:");
     println!("    Short-term: {}", manager.short_term_len());
@@ -224,7 +283,10 @@ fn main() {
     println!("Entries with importance >= 0.7 are automatically stored in long-term memory.\n");
 
     // 'user_name' had importance 0.9, so it should be in both stores
-    println!("  'user_name' (importance=0.9) in long-term: {}", manager.long_term_len() > 0);
+    println!(
+        "  'user_name' (importance=0.9) in long-term: {}",
+        manager.long_term_len() > 0
+    );
 
     // Store another high-importance entry
     manager.remember(
@@ -238,7 +300,12 @@ fn main() {
     println!("    Long-term: {}", manager.long_term_len());
 
     // Low importance entry stays only in short-term
-    manager.remember("temp_note", serde_json::json!("check later"), MemoryCategory::Context, 0.2);
+    manager.remember(
+        "temp_note",
+        serde_json::json!("check later"),
+        MemoryCategory::Context,
+        0.2,
+    );
     println!("  After storing 'temp_note' (importance=0.2):");
     println!("    Short-term: {}", manager.short_term_len());
     println!("    Long-term: {} (unchanged)", manager.long_term_len());
@@ -251,12 +318,18 @@ fn main() {
 
     // Recall from short-term
     if let Some(entry) = manager.recall("session_id") {
-        println!("  Recalled 'session_id': value={}, category={}", entry.value, entry.category);
+        println!(
+            "  Recalled 'session_id': value={}, category={}",
+            entry.value, entry.category
+        );
     }
 
     // Recall from long-term (user_name is in both, but short-term is checked first)
     if let Some(entry) = manager.recall("user_name") {
-        println!("  Recalled 'user_name': value={}, category={}", entry.value, entry.category);
+        println!(
+            "  Recalled 'user_name': value={}, category={}",
+            entry.value, entry.category
+        );
     }
 
     // Search across both tiers
@@ -271,7 +344,11 @@ fn main() {
         Ok(()) => println!("  Promoted 'session_id' to long-term"),
         Err(e) => println!("  Promotion error: {}", e),
     }
-    println!("    Short-term: {}, Long-term: {}", manager.short_term_len(), manager.long_term_len());
+    println!(
+        "    Short-term: {}, Long-term: {}",
+        manager.short_term_len(),
+        manager.long_term_len()
+    );
 
     // Promoting again fails (it was moved out of short-term)
     match manager.promote("session_id") {
@@ -281,12 +358,18 @@ fn main() {
 
     // Still recallable from long-term
     if let Some(entry) = manager.recall("session_id") {
-        println!("  'session_id' still recallable from long-term: {}", entry.value);
+        println!(
+            "  'session_id' still recallable from long-term: {}",
+            entry.value
+        );
     }
 
     // Forget an entry from all tiers
     manager.forget("temp_note");
-    println!("  Forgot 'temp_note': recall={:?}", manager.recall("temp_note").map(|e| &e.key));
+    println!(
+        "  Forgot 'temp_note': recall={:?}",
+        manager.recall("temp_note").map(|e| &e.key)
+    );
 
     // -----------------------------------------------------------------------
     // 8. MemoryStats Computation

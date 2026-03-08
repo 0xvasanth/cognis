@@ -37,6 +37,7 @@ impl CheckpointId {
     }
 
     /// Create a `CheckpointId` from an existing string.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         Self(s.to_string())
     }
@@ -308,15 +309,15 @@ impl CheckpointHistory {
     /// Register a checkpoint's lineage.
     pub fn add(&mut self, checkpoint: &PersistentCheckpoint) {
         let id = checkpoint.id.as_str().to_string();
-        let parent_id = checkpoint.parent_id.as_ref().map(|p| p.as_str().to_string());
+        let parent_id = checkpoint
+            .parent_id
+            .as_ref()
+            .map(|p| p.as_str().to_string());
 
         self.parents.insert(id.clone(), parent_id.clone());
 
         if let Some(ref pid) = parent_id {
-            self.children
-                .entry(pid.clone())
-                .or_default()
-                .push(id);
+            self.children.entry(pid.clone()).or_default().push(id);
         }
     }
 
@@ -515,18 +516,12 @@ impl CheckpointManager {
     }
 
     /// Restore the latest checkpoint for a given thread.
-    pub fn restore_latest(
-        &self,
-        thread_id: &str,
-    ) -> Result<Option<PersistentCheckpoint>, String> {
+    pub fn restore_latest(&self, thread_id: &str) -> Result<Option<PersistentCheckpoint>, String> {
         self.saver.load_latest(thread_id)
     }
 
     /// Query checkpoints using a filter.
-    pub fn query(
-        &self,
-        filter: &CheckpointFilter,
-    ) -> Result<Vec<PersistentCheckpoint>, String> {
+    pub fn query(&self, filter: &CheckpointFilter) -> Result<Vec<PersistentCheckpoint>, String> {
         // Collect from all known threads.
         let mut results = Vec::new();
         for thread_id in self.thread_checkpoints.keys() {
@@ -557,11 +552,7 @@ impl CheckpointManager {
     /// Compute summary statistics.
     pub fn stats(&self) -> CheckpointStats {
         let threads = self.thread_checkpoints.len();
-        let total_checkpoints: usize = self
-            .thread_checkpoints
-            .values()
-            .map(|ids| ids.len())
-            .sum();
+        let total_checkpoints: usize = self.thread_checkpoints.values().map(|ids| ids.len()).sum();
         let avg_steps_per_thread = if threads > 0 {
             total_checkpoints as f64 / threads as f64
         } else {
@@ -1447,6 +1438,8 @@ mod tests {
             .build();
         history.add(&cp);
 
-        assert!(history.get_children(&CheckpointId::from_str("leaf")).is_empty());
+        assert!(history
+            .get_children(&CheckpointId::from_str("leaf"))
+            .is_empty());
     }
 }

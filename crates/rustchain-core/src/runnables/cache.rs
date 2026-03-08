@@ -903,7 +903,10 @@ mod tests {
         }
 
         cache.put(k4.clone(), json!(40));
-        assert!(!cache.entries.contains_key(&k1), "FIFO should evict k1 regardless of access");
+        assert!(
+            !cache.entries.contains_key(&k1),
+            "FIFO should evict k1 regardless of access"
+        );
     }
 
     // ==================== TTL expiration ====================

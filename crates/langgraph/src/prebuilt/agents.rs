@@ -36,9 +36,10 @@ use crate::errors::LangGraphError;
 // ---------------------------------------------------------------------------
 
 /// Strategy for selecting which tools the agent may call.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ToolChoice {
     /// The agent decides whether to call a tool.
+    #[default]
     Auto,
     /// The agent must call at least one tool.
     Required,
@@ -57,12 +58,6 @@ impl ToolChoice {
             ToolChoice::None => "none",
             ToolChoice::Specific(name) => name.as_str(),
         }
-    }
-}
-
-impl Default for ToolChoice {
-    fn default() -> Self {
-        ToolChoice::Auto
     }
 }
 
@@ -906,9 +901,7 @@ mod tests {
 
     #[test]
     fn tool_node_handler_error_produces_error_result() {
-        let tools = vec![ToolDefinition::new("bad", "fails", |_| {
-            Err("boom".into())
-        })];
+        let tools = vec![ToolDefinition::new("bad", "fails", |_| Err("boom".into()))];
         let node = create_tool_node(tools);
         let mut state = AgentState::new(5);
         state.add_tool_call(ToolCall::new("c1", "bad", json!({})));
@@ -1103,8 +1096,14 @@ mod tests {
         let state = agent.invoke(input).unwrap();
         assert!(state.is_finished);
         assert!(state.tool_calls.iter().all(|tc| tc.is_resolved()));
-        assert_eq!(state.tool_calls[0].result.as_ref().unwrap()["error"], "err1");
-        assert_eq!(state.tool_calls[1].result.as_ref().unwrap()["error"], "err2");
+        assert_eq!(
+            state.tool_calls[0].result.as_ref().unwrap()["error"],
+            "err1"
+        );
+        assert_eq!(
+            state.tool_calls[1].result.as_ref().unwrap()["error"],
+            "err2"
+        );
     }
 
     #[test]

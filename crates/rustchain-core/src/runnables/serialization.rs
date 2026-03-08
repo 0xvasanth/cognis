@@ -488,11 +488,7 @@ impl ConfigMigration {
     }
 
     /// Adds a parameter rename rule.
-    pub fn add_rename(
-        mut self,
-        old_key: impl Into<String>,
-        new_key: impl Into<String>,
-    ) -> Self {
+    pub fn add_rename(mut self, old_key: impl Into<String>, new_key: impl Into<String>) -> Self {
         self.renames.push((old_key.into(), new_key.into()));
         self
     }
@@ -577,9 +573,10 @@ impl ConfigRegistry {
 
     /// Validates a config against the schema registered under the given name.
     pub fn validate(&self, name: &str, config: &SerializableConfig) -> Result<()> {
-        let schema = self.schemas.get(name).ok_or_else(|| {
-            RustChainError::Other(format!("no schema registered for '{}'", name))
-        })?;
+        let schema = self
+            .schemas
+            .get(name)
+            .ok_or_else(|| RustChainError::Other(format!("no schema registered for '{}'", name)))?;
 
         schema.validate(config).map_err(|errors| {
             RustChainError::Other(format!("validation errors: {}", errors.join("; ")))
@@ -873,8 +870,7 @@ mod tests {
 
     #[test]
     fn test_schema_validate_wrong_type_required() {
-        let schema =
-            ConfigSchema::new().add_required(ParamSpec::new("count", ParamType::Integer));
+        let schema = ConfigSchema::new().add_required(ParamSpec::new("count", ParamType::Integer));
 
         let config = SerializableConfig::builder()
             .name("cfg")
@@ -892,8 +888,7 @@ mod tests {
 
     #[test]
     fn test_schema_validate_wrong_type_optional() {
-        let schema =
-            ConfigSchema::new().add_optional(ParamSpec::new("debug", ParamType::Boolean));
+        let schema = ConfigSchema::new().add_optional(ParamSpec::new("debug", ParamType::Boolean));
 
         let config = SerializableConfig::builder()
             .name("cfg")
@@ -908,8 +903,7 @@ mod tests {
 
     #[test]
     fn test_schema_validate_optional_missing_ok() {
-        let schema =
-            ConfigSchema::new().add_optional(ParamSpec::new("debug", ParamType::Boolean));
+        let schema = ConfigSchema::new().add_optional(ParamSpec::new("debug", ParamType::Boolean));
 
         let config = SerializableConfig::builder()
             .name("cfg")
@@ -1139,8 +1133,8 @@ mod tests {
 
     #[test]
     fn test_migration_add_default() {
-        let migration = ConfigMigration::new("1.0", "2.0")
-            .add_default("new_param", json!("default_value"));
+        let migration =
+            ConfigMigration::new("1.0", "2.0").add_default("new_param", json!("default_value"));
 
         let mut config = SerializableConfig::builder()
             .name("cfg")
@@ -1157,8 +1151,7 @@ mod tests {
 
     #[test]
     fn test_migration_default_does_not_overwrite() {
-        let migration =
-            ConfigMigration::new("1.0", "2.0").add_default("param", json!("default"));
+        let migration = ConfigMigration::new("1.0", "2.0").add_default("param", json!("default"));
 
         let mut config = SerializableConfig::builder()
             .name("cfg")
@@ -1254,8 +1247,7 @@ mod tests {
     #[test]
     fn test_registry_register_and_get() {
         let mut registry = ConfigRegistry::new();
-        let schema =
-            ConfigSchema::new().add_required(ParamSpec::new("model", ParamType::String));
+        let schema = ConfigSchema::new().add_required(ParamSpec::new("model", ParamType::String));
 
         registry.register("llm", schema);
         assert!(registry.get("llm").is_some());
@@ -1265,8 +1257,7 @@ mod tests {
     #[test]
     fn test_registry_validate_success() {
         let mut registry = ConfigRegistry::new();
-        let schema =
-            ConfigSchema::new().add_required(ParamSpec::new("model", ParamType::String));
+        let schema = ConfigSchema::new().add_required(ParamSpec::new("model", ParamType::String));
         registry.register("llm", schema);
 
         let config = SerializableConfig::builder()
@@ -1282,8 +1273,7 @@ mod tests {
     #[test]
     fn test_registry_validate_failure() {
         let mut registry = ConfigRegistry::new();
-        let schema =
-            ConfigSchema::new().add_required(ParamSpec::new("model", ParamType::String));
+        let schema = ConfigSchema::new().add_required(ParamSpec::new("model", ParamType::String));
         registry.register("llm", schema);
 
         let config = SerializableConfig::builder()

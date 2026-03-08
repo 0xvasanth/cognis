@@ -195,11 +195,7 @@ impl ParallelChain {
     }
 
     /// Add a named branch.
-    pub fn add_branch(
-        &mut self,
-        name: impl Into<String>,
-        handler: Handler,
-    ) {
+    pub fn add_branch(&mut self, name: impl Into<String>, handler: Handler) {
         self.branches.push(Branch {
             name: name.into(),
             handler,
@@ -309,11 +305,7 @@ impl CompositionConditionalChain {
     }
 
     /// Add a condition-handler pair. Conditions are evaluated in insertion order.
-    pub fn when(
-        &mut self,
-        condition: Box<dyn Fn(&Value) -> bool + Send + Sync>,
-        chain: Handler,
-    ) {
+    pub fn when(&mut self, condition: Box<dyn Fn(&Value) -> bool + Send + Sync>, chain: Handler) {
         self.branches.push(ConditionBranch { condition, chain });
     }
 
@@ -401,6 +393,7 @@ impl ChainPipeline {
     }
 
     /// Append a conditional routing stage.
+    #[allow(clippy::type_complexity)]
     pub fn conditional(
         mut self,
         conditions: Vec<(Box<dyn Fn(&Value) -> bool + Send + Sync>, Handler)>,
@@ -457,9 +450,7 @@ impl ChainPipeline {
                         if let Some(ref fallback) = otherwise {
                             result = fallback(current)?;
                         } else {
-                            return Err(
-                                "No condition matched in pipeline conditional".to_string()
-                            );
+                            return Err("No condition matched in pipeline conditional".to_string());
                         }
                     }
                     result
@@ -738,9 +729,24 @@ mod tests {
     #[test]
     fn test_sequential_chain_step_names() {
         let mut chain = CompositionSequentialChain::new();
-        chain.add_step(ChainStep::builder().name("a").handler(identity_handler()).build());
-        chain.add_step(ChainStep::builder().name("b").handler(identity_handler()).build());
-        chain.add_step(ChainStep::builder().name("c").handler(identity_handler()).build());
+        chain.add_step(
+            ChainStep::builder()
+                .name("a")
+                .handler(identity_handler())
+                .build(),
+        );
+        chain.add_step(
+            ChainStep::builder()
+                .name("b")
+                .handler(identity_handler())
+                .build(),
+        );
+        chain.add_step(
+            ChainStep::builder()
+                .name("c")
+                .handler(identity_handler())
+                .build(),
+        );
         assert_eq!(chain.step_names(), vec!["a", "b", "c"]);
     }
 
@@ -774,9 +780,24 @@ mod tests {
     fn test_sequential_chain_three_steps() {
         let mut chain = CompositionSequentialChain::new();
         // double, double, add_one: (2*2)*2 + 1 = 9
-        chain.add_step(ChainStep::builder().name("d1").handler(double_handler()).build());
-        chain.add_step(ChainStep::builder().name("d2").handler(double_handler()).build());
-        chain.add_step(ChainStep::builder().name("a1").handler(add_one_handler()).build());
+        chain.add_step(
+            ChainStep::builder()
+                .name("d1")
+                .handler(double_handler())
+                .build(),
+        );
+        chain.add_step(
+            ChainStep::builder()
+                .name("d2")
+                .handler(double_handler())
+                .build(),
+        );
+        chain.add_step(
+            ChainStep::builder()
+                .name("a1")
+                .handler(add_one_handler())
+                .build(),
+        );
         let result = chain.execute(json!({"value": 2})).unwrap();
         assert_eq!(result["value"], 9);
     }
@@ -1131,8 +1152,18 @@ mod tests {
     #[test]
     fn test_execute_with_metrics_success() {
         let mut chain = CompositionSequentialChain::new();
-        chain.add_step(ChainStep::builder().name("double").handler(double_handler()).build());
-        chain.add_step(ChainStep::builder().name("add_one").handler(add_one_handler()).build());
+        chain.add_step(
+            ChainStep::builder()
+                .name("double")
+                .handler(double_handler())
+                .build(),
+        );
+        chain.add_step(
+            ChainStep::builder()
+                .name("add_one")
+                .handler(add_one_handler())
+                .build(),
+        );
         let (result, metrics) = execute_with_metrics(&chain, json!({"value": 4}));
         assert_eq!(result.unwrap()["value"], 9);
         assert_eq!(metrics.step_metrics().len(), 2);
@@ -1142,9 +1173,24 @@ mod tests {
     #[test]
     fn test_execute_with_metrics_failure() {
         let mut chain = CompositionSequentialChain::new();
-        chain.add_step(ChainStep::builder().name("double").handler(double_handler()).build());
-        chain.add_step(ChainStep::builder().name("fail").handler(failing_handler()).build());
-        chain.add_step(ChainStep::builder().name("add_one").handler(add_one_handler()).build());
+        chain.add_step(
+            ChainStep::builder()
+                .name("double")
+                .handler(double_handler())
+                .build(),
+        );
+        chain.add_step(
+            ChainStep::builder()
+                .name("fail")
+                .handler(failing_handler())
+                .build(),
+        );
+        chain.add_step(
+            ChainStep::builder()
+                .name("add_one")
+                .handler(add_one_handler())
+                .build(),
+        );
         let (result, metrics) = execute_with_metrics(&chain, json!({"value": 1}));
         assert!(result.is_err());
         // Only 2 steps recorded (double succeeded, fail failed, add_one skipped)
@@ -1209,8 +1255,14 @@ mod tests {
     fn test_conditional_chain_first_condition_wins() {
         let mut chain = CompositionConditionalChain::new();
         // Both conditions are true, but first one should win
-        chain.when(Box::new(|_| true), Box::new(|_| Ok(json!({"winner": "first"}))));
-        chain.when(Box::new(|_| true), Box::new(|_| Ok(json!({"winner": "second"}))));
+        chain.when(
+            Box::new(|_| true),
+            Box::new(|_| Ok(json!({"winner": "first"}))),
+        );
+        chain.when(
+            Box::new(|_| true),
+            Box::new(|_| Ok(json!({"winner": "second"}))),
+        );
         let result = chain.execute(json!({})).unwrap();
         assert_eq!(result["winner"], "first");
     }

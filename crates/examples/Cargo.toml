@@ -206,3 +206,15 @@ path = "../../examples/message_graph.rs"
 [[example]]
 name = "agent_memory"
 path = "../../examples/agent_memory.rs"
+
+[[example]]
+name = "embedding_models"
+path = "../../examples/embedding_models.rs"
+
+[[example]]
+name = "chain_composition"
+path = "../../examples/chain_composition.rs"
+
+[[example]]
+name = "checkpoint_persistence"
+path = "../../examples/checkpoint_persistence.rs"

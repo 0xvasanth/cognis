@@ -47,9 +47,15 @@ fn main() {
 
     // Conversion from string slices
     let from_str: MessageRole = "assistant".into(); // maps to Ai
-    println!("\n  \"assistant\".into() => {:?} (display: {})", from_str, from_str);
+    println!(
+        "\n  \"assistant\".into() => {:?} (display: {})",
+        from_str, from_str
+    );
     let from_str: MessageRole = "user".into(); // maps to Human
-    println!("  \"user\".into()      => {:?} (display: {})", from_str, from_str);
+    println!(
+        "  \"user\".into()      => {:?} (display: {})",
+        from_str, from_str
+    );
 
     // -----------------------------------------------------------------------
     // 2. GraphMessage Creation with Metadata
@@ -64,11 +70,17 @@ fn main() {
         .with_name("alice")
         .with_metadata("source", serde_json::json!("cli"))
         .with_metadata("priority", serde_json::json!(1));
-    println!("  Human message: \"{}\" (name: {:?})", user_msg.content, user_msg.name);
+    println!(
+        "  Human message: \"{}\" (name: {:?})",
+        user_msg.content, user_msg.name
+    );
     println!("  Metadata: {:?}", user_msg.metadata);
 
-    let tool_msg = GraphMessage::new(MessageRole::Tool, "search result: Rust is a systems language")
-        .with_tool_call_id("call_001");
+    let tool_msg = GraphMessage::new(
+        MessageRole::Tool,
+        "search result: Rust is a systems language",
+    )
+    .with_tool_call_id("call_001");
     println!("  Tool message: tool_call_id={:?}", tool_msg.tool_call_id);
 
     // Serialize to JSON
@@ -77,8 +89,13 @@ fn main() {
     println!("  {}", serde_json::to_string_pretty(&json).unwrap());
 
     // Role checks
-    println!("\n  is_human: {}, is_ai: {}, is_system: {}, is_tool: {}",
-        user_msg.is_human(), user_msg.is_ai(), system_msg.is_system(), tool_msg.is_tool());
+    println!(
+        "\n  is_human: {}, is_ai: {}, is_system: {}, is_tool: {}",
+        user_msg.is_human(),
+        user_msg.is_ai(),
+        system_msg.is_system(),
+        tool_msg.is_tool()
+    );
 
     // -----------------------------------------------------------------------
     // 3. MessageState Operations
@@ -88,7 +105,11 @@ fn main() {
 
     let mut state = MessageState::new();
     assert!(state.is_empty());
-    println!("  Empty state: len={}, is_empty={}", state.len(), state.is_empty());
+    println!(
+        "  Empty state: len={}, is_empty={}",
+        state.len(),
+        state.is_empty()
+    );
 
     state.add(GraphMessage::new(MessageRole::System, "Be concise."));
     state.add(GraphMessage::new(MessageRole::Human, "Hello!"));
@@ -99,8 +120,12 @@ fn main() {
 
     // Filter by role
     let human_msgs = state.filter_by_role(&MessageRole::Human);
-    println!("  Human messages: {} (\"{}\" and \"{}\")",
-        human_msgs.len(), human_msgs[0].content, human_msgs[1].content);
+    println!(
+        "  Human messages: {} (\"{}\" and \"{}\")",
+        human_msgs.len(),
+        human_msgs[0].content,
+        human_msgs[1].content
+    );
 
     let ai_msgs = state.filter_by_role(&MessageRole::Ai);
     println!("  AI messages: {}", ai_msgs.len());
@@ -114,11 +139,17 @@ fn main() {
 
     // Last message overall
     let last = state.last().unwrap();
-    println!("  Last message (any role): \"{}\" [{}]", last.content, last.role);
+    println!(
+        "  Last message (any role): \"{}\" [{}]",
+        last.content, last.role
+    );
 
     // Serialize state to JSON
     let state_json = state.to_json();
-    println!("  State as JSON array: {} messages", state_json.as_array().unwrap().len());
+    println!(
+        "  State as JSON array: {} messages",
+        state_json.as_array().unwrap().len()
+    );
 
     // -----------------------------------------------------------------------
     // 4. MessageNode Creation
@@ -127,7 +158,10 @@ fn main() {
     println!("Nodes are functions that receive the state and return new messages.\n");
 
     let greeter = MessageNode::new("greeter", |_state: &MessageState| {
-        vec![GraphMessage::new(MessageRole::Ai, "Welcome! How can I help you?")]
+        vec![GraphMessage::new(
+            MessageRole::Ai,
+            "Welcome! How can I help you?",
+        )]
     });
     println!("  Created node: {:?}", greeter);
 
@@ -143,7 +177,10 @@ fn main() {
                 format!("You said: {}", last.content),
             )]
         } else {
-            vec![GraphMessage::new(MessageRole::Ai, "I did not hear anything.")]
+            vec![GraphMessage::new(
+                MessageRole::Ai,
+                "I did not hear anything.",
+            )]
         }
     });
     println!("  Created node: {:?}", echo);
@@ -164,7 +201,10 @@ fn main() {
     }));
 
     graph.add_node(MessageNode::new("process", |state: &MessageState| {
-        let user_query = state.last_human().map(|m| m.content.as_str()).unwrap_or("(none)");
+        let user_query = state
+            .last_human()
+            .map(|m| m.content.as_str())
+            .unwrap_or("(none)");
         vec![GraphMessage::new(
             MessageRole::Ai,
             format!("Processing query: '{}'", user_query),
@@ -183,7 +223,11 @@ fn main() {
     graph.set_entry_point("intake");
     graph.set_finish_point("respond");
 
-    println!("  Graph: {} nodes, {} edges", graph.node_count(), graph.edge_count());
+    println!(
+        "  Graph: {} nodes, {} edges",
+        graph.node_count(),
+        graph.edge_count()
+    );
 
     // Execute with initial user message
     let mut initial_state = MessageState::new();
@@ -212,23 +256,35 @@ fn main() {
         } else {
             "general"
         };
-        vec![GraphMessage::new(MessageRole::Ai, format!("category:{}", label))]
+        vec![GraphMessage::new(
+            MessageRole::Ai,
+            format!("category:{}", label),
+        )]
     }));
 
-    graph.add_node(MessageNode::new("weather_handler", |_state: &MessageState| {
-        vec![GraphMessage::new(MessageRole::Ai, "It is sunny and 25C today.")]
-    }));
+    graph.add_node(MessageNode::new(
+        "weather_handler",
+        |_state: &MessageState| {
+            vec![GraphMessage::new(
+                MessageRole::Ai,
+                "It is sunny and 25C today.",
+            )]
+        },
+    ));
 
     graph.add_node(MessageNode::new("math_handler", |_state: &MessageState| {
         vec![GraphMessage::new(MessageRole::Ai, "The answer is 42.")]
     }));
 
-    graph.add_node(MessageNode::new("general_handler", |_state: &MessageState| {
-        vec![GraphMessage::new(
-            MessageRole::Ai,
-            "I can help with general questions.",
-        )]
-    }));
+    graph.add_node(MessageNode::new(
+        "general_handler",
+        |_state: &MessageState| {
+            vec![GraphMessage::new(
+                MessageRole::Ai,
+                "I can help with general questions.",
+            )]
+        },
+    ));
 
     graph.set_entry_point("classifier");
     graph.add_conditional_edge("classifier", |state: &MessageState| {
@@ -292,7 +348,11 @@ fn main() {
         .build()
         .expect("Graph validation should pass");
 
-    println!("  Built graph: {} nodes, {} edges", graph.node_count(), graph.edge_count());
+    println!(
+        "  Built graph: {} nodes, {} edges",
+        graph.node_count(),
+        graph.edge_count()
+    );
 
     let mut state = MessageState::new();
     state.add(GraphMessage::new(MessageRole::Human, "Go!"));

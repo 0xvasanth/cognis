@@ -69,11 +69,7 @@ pub struct AgentAction {
 
 impl AgentAction {
     /// Create a new `AgentAction`.
-    pub fn new(
-        tool: impl Into<String>,
-        tool_input: Value,
-        log: impl Into<String>,
-    ) -> Self {
+    pub fn new(tool: impl Into<String>, tool_input: Value, log: impl Into<String>) -> Self {
         Self {
             tool_name: tool.into(),
             tool_input,
@@ -668,11 +664,7 @@ pub enum AgentDecision {
 /// then return an [`AgentDecision`].
 pub trait AgentPlanner: Send + Sync {
     /// Decide the next action(s) given intermediate steps so far and the original input.
-    fn plan(
-        &self,
-        intermediate_steps: &[(AgentAction, String)],
-        input: &Value,
-    ) -> AgentDecision;
+    fn plan(&self, intermediate_steps: &[(AgentAction, String)], input: &Value) -> AgentDecision;
 }
 
 /// Manages available tools and executes them by name.
@@ -701,10 +693,7 @@ impl ToolExecutor {
     pub fn execute(&self, name: &str, input: Value) -> Result<String> {
         match self.tools.get(name) {
             Some(handler) => handler(input),
-            None => Err(RustChainError::Other(format!(
-                "Tool '{}' not found",
-                name
-            ))),
+            None => Err(RustChainError::Other(format!("Tool '{}' not found", name))),
         }
     }
 
@@ -922,7 +911,10 @@ impl PlannerAgentExecutor {
             match decision {
                 AgentDecision::Continue(actions) => {
                     for action in actions {
-                        let observation = match self.tools.execute(&action.tool_name, action.tool_input.clone()) {
+                        let observation = match self
+                            .tools
+                            .execute(&action.tool_name, action.tool_input.clone())
+                        {
                             Ok(result) => result,
                             Err(e) => format!("Error: {}", e),
                         };
@@ -2002,7 +1994,10 @@ mod tests {
         let te = ToolExecutor::new();
         let result = te.execute("missing", serde_json::json!({}));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Tool 'missing' not found"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Tool 'missing' not found"));
     }
 
     // ── Planner Test 11: ToolExecutor has_tool ──
@@ -2190,10 +2185,7 @@ mod tests {
         let result = executor
             .execute(serde_json::json!("try missing"))
             .expect("should succeed");
-        assert!(result.output["output"]
-            .as_str()
-            .unwrap()
-            .contains("Error"));
+        assert!(result.output["output"].as_str().unwrap().contains("Error"));
         assert_eq!(result.intermediate_steps.len(), 1);
         assert!(result.intermediate_steps[0].1.contains("not found"));
     }
@@ -2452,10 +2444,7 @@ mod tests {
         for i in 0..10 {
             let name = format!("tool_{}", i);
             let expected = format!("result_{}", i);
-            te.add_tool(
-                name,
-                Box::new(move |_| Ok(expected.clone())),
-            );
+            te.add_tool(name, Box::new(move |_| Ok(expected.clone())));
         }
         assert_eq!(te.tool_names().len(), 10);
         assert!(te.has_tool("tool_5"));
@@ -2575,10 +2564,7 @@ mod tests {
         let mut rv = HashMap::new();
         rv.insert("output".to_string(), Value::String("answer".into()));
         rv.insert("confidence".to_string(), serde_json::json!(0.95));
-        rv.insert(
-            "sources".to_string(),
-            serde_json::json!(["doc1", "doc2"]),
-        );
+        rv.insert("sources".to_string(), serde_json::json!(["doc1", "doc2"]));
         let finish = AgentFinish::new(rv, "multi-value finish");
         assert_eq!(finish.return_values.len(), 3);
         let json = finish.to_json();
