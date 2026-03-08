@@ -23,6 +23,7 @@ pub mod pipeline;
 pub mod rate_limit;
 pub mod retry;
 pub mod router;
+pub mod router_ext;
 pub mod schema;
 pub mod scoped_callbacks;
 pub mod sequence;
@@ -87,6 +88,9 @@ pub use rate_limit::{
 };
 pub use retry::RunnableRetry;
 pub use router::{RouterRunnable, RunnableFnBranch, RunnableRouter};
+pub use router_ext::{
+    ConditionalBranch, ContentRouter, FallbackRouter, KeyRouter, RegexRouter, RoutingTable,
+};
 pub use schema::{
     EventData, RunnableSchema, SchemaContract, SchemaError, SchemaField, SchemaInference,
     SchemaType, SchemaValidationResult, StreamEvent,
