@@ -30,6 +30,7 @@ pub mod message;
 pub mod persistent;
 pub mod runner;
 pub mod send;
+pub mod serialization;
 pub mod serialize;
 pub mod snapshot;
 pub mod state;
@@ -78,6 +79,10 @@ pub use message::{
 pub use persistent::PersistentGraph;
 pub use runner::{GraphRunner, LoggingHook, MetricsHook, RunConfig, StepEvent, StepHook};
 pub use send::{deep_merge_values, fan_in, fan_out, send_to, MapReduceGraph, SendCommand};
+pub use serialization::{
+    EdgeType as SerializationEdgeType, GraphChanges, GraphDefBuilder, GraphFormat, GraphTemplate,
+    GraphVersioning, SerializableGraphDefinition, SerializedEdge, SerializedNode,
+};
 pub use serialize::{ConditionalEdgeDef, GraphDefinition, GraphRegistry};
 pub use snapshot::{
     SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot, TimeTravelDebugger,
