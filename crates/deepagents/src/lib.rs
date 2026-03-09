@@ -78,6 +78,7 @@ pub mod health;
 pub mod logging;
 pub mod memory;
 pub mod middleware;
+pub mod multi_agent;
 pub mod orchestrator;
 pub mod plugins;
 pub mod presets;
