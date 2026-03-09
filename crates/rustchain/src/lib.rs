@@ -53,6 +53,7 @@ pub mod indexing;
 pub mod memory;
 pub mod output_parsers;
 pub mod prompts;
+pub mod providers;
 pub mod retrievers;
 pub mod stores;
 pub mod text_splitter;
