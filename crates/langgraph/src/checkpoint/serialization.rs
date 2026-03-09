@@ -646,8 +646,8 @@ mod tests {
 
         let serializer = JsonSerializer::compact();
 
-        // Serialize to an in-memory buffer via export → bytes.
-        let tmp_dir = std::env::temp_dir();
+        let tmp_dir = std::env::temp_dir().join("rustchain_tests");
+        let _ = std::fs::create_dir_all(&tmp_dir);
         let tmp_path = tmp_dir.join("test_bundle_export.lgbundle");
         bundle.export(&tmp_path, &serializer).unwrap();
 
@@ -657,7 +657,6 @@ mod tests {
         assert_eq!(restored.checkpoints.len(), 2);
         assert_eq!(restored.version, "1.0");
 
-        // Cleanup.
         let _ = std::fs::remove_file(&tmp_path);
     }
 
@@ -673,7 +672,9 @@ mod tests {
         bundle.checkpoints.push(sample_checkpoint());
 
         let serializer = JsonSerializer::compact();
-        let tmp_path = std::env::temp_dir().join("test_bundle_meta.lgbundle");
+        let tmp_dir = std::env::temp_dir().join("rustchain_tests");
+        let _ = std::fs::create_dir_all(&tmp_dir);
+        let tmp_path = tmp_dir.join("test_bundle_meta.lgbundle");
         bundle.export(&tmp_path, &serializer).unwrap();
 
         let file_bytes = std::fs::read(&tmp_path).unwrap();
