@@ -112,7 +112,11 @@ pub struct LogEntry {
 
 impl LogEntry {
     /// Create a new log entry builder.
-    pub fn builder(level: LogLevel, message: impl Into<String>, source: impl Into<String>) -> LogEntryBuilder {
+    pub fn builder(
+        level: LogLevel,
+        message: impl Into<String>,
+        source: impl Into<String>,
+    ) -> LogEntryBuilder {
         LogEntryBuilder {
             level,
             message: message.into(),
@@ -141,10 +145,7 @@ impl LogEntry {
     pub fn to_formatted_string(&self) -> String {
         format!(
             "[{} {}] {}: {}",
-            self.timestamp,
-            self.level,
-            self.source,
-            self.message,
+            self.timestamp, self.level, self.source, self.message,
         )
     }
 }
@@ -774,7 +775,8 @@ mod tests {
             .with_contains("timeout");
 
         let match_all = LogEntry::builder(LogLevel::Error, "connection timeout", "network").build();
-        let wrong_level = LogEntry::builder(LogLevel::Debug, "connection timeout", "network").build();
+        let wrong_level =
+            LogEntry::builder(LogLevel::Debug, "connection timeout", "network").build();
         let wrong_source = LogEntry::builder(LogLevel::Error, "connection timeout", "db").build();
         let wrong_msg = LogEntry::builder(LogLevel::Error, "success", "network").build();
 

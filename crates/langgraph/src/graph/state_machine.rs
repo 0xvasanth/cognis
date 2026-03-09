@@ -61,8 +61,10 @@ pub struct Transition {
     /// Target state.
     pub to: StateId,
     /// Optional guard predicate evaluated against the current context.
+    #[allow(clippy::type_complexity)]
     pub guard: Option<Box<dyn Fn(&Value) -> bool + Send + Sync>>,
     /// Optional action executed (mutating context) when the transition fires.
+    #[allow(clippy::type_complexity)]
     pub action: Option<Box<dyn Fn(&mut Value) + Send + Sync>>,
     /// Human-readable label for this transition.
     pub label: String,
@@ -200,7 +202,10 @@ impl StateMachine {
                 let to = self.transitions.get(&self.current).unwrap()[i].to.clone();
 
                 if !self.states.contains(&to) {
-                    return Err(format!("Transition target '{}' is not a registered state", to));
+                    return Err(format!(
+                        "Transition target '{}' is not a registered state",
+                        to
+                    ));
                 }
 
                 // Execute the action if present.
@@ -272,7 +277,10 @@ impl fmt::Debug for StateMachine {
             .field("current", &self.current)
             .field("states", &self.states)
             .field("final_states", &self.final_states)
-            .field("transition_count", &self.transitions.values().map(|v| v.len()).sum::<usize>())
+            .field(
+                "transition_count",
+                &self.transitions.values().map(|v| v.len()).sum::<usize>(),
+            )
             .finish()
     }
 }
@@ -409,11 +417,8 @@ impl StateMachineBuilder {
         to: impl Into<String>,
         label: impl Into<String>,
     ) -> Self {
-        self.transitions.push(Transition::new(
-            StateId::new(from),
-            StateId::new(to),
-            label,
-        ));
+        self.transitions
+            .push(Transition::new(StateId::new(from), StateId::new(to), label));
         self
     }
 
@@ -425,9 +430,8 @@ impl StateMachineBuilder {
         label: impl Into<String>,
         guard: impl Fn(&Value) -> bool + Send + Sync + 'static,
     ) -> Self {
-        self.transitions.push(
-            Transition::new(StateId::new(from), StateId::new(to), label).with_guard(guard),
-        );
+        self.transitions
+            .push(Transition::new(StateId::new(from), StateId::new(to), label).with_guard(guard));
         self
     }
 
@@ -615,12 +619,11 @@ mod tests {
 
     #[test]
     fn transition_with_action() {
-        let t = Transition::new(StateId::new("a"), StateId::new("b"), "go")
-            .with_action(|v| {
-                v.as_object_mut()
-                    .unwrap()
-                    .insert("visited".into(), json!(true));
-            });
+        let t = Transition::new(StateId::new("a"), StateId::new("b"), "go").with_action(|v| {
+            v.as_object_mut()
+                .unwrap()
+                .insert("visited".into(), json!(true));
+        });
         assert!(t.action.is_some());
     }
 
@@ -728,9 +731,7 @@ mod tests {
         m.add_state(StateId::new("b"));
         m.add_transition(
             Transition::new(StateId::new("a"), StateId::new("b"), "go").with_action(|v| {
-                v.as_object_mut()
-                    .unwrap()
-                    .insert("count".into(), json!(1));
+                v.as_object_mut().unwrap().insert("count".into(), json!(1));
             }),
         );
 
@@ -746,8 +747,16 @@ mod tests {
         m.add_state(StateId::new("c"));
 
         // First transition always matches
-        m.add_transition(Transition::new(StateId::new("a"), StateId::new("b"), "first"));
-        m.add_transition(Transition::new(StateId::new("a"), StateId::new("c"), "second"));
+        m.add_transition(Transition::new(
+            StateId::new("a"),
+            StateId::new("b"),
+            "first",
+        ));
+        m.add_transition(Transition::new(
+            StateId::new("a"),
+            StateId::new("c"),
+            "second",
+        ));
 
         let result = m.step(&mut json!({})).unwrap();
         assert_eq!(result, Some(StateId::new("b")));
@@ -760,10 +769,13 @@ mod tests {
         m.add_state(StateId::new("c"));
 
         m.add_transition(
-            Transition::new(StateId::new("a"), StateId::new("b"), "guarded")
-                .with_guard(|_| false),
+            Transition::new(StateId::new("a"), StateId::new("b"), "guarded").with_guard(|_| false),
         );
-        m.add_transition(Transition::new(StateId::new("a"), StateId::new("c"), "fallback"));
+        m.add_transition(Transition::new(
+            StateId::new("a"),
+            StateId::new("c"),
+            "fallback",
+        ));
 
         let result = m.step(&mut json!({})).unwrap();
         assert_eq!(result, Some(StateId::new("c")));
@@ -823,13 +835,14 @@ mod tests {
                 .with_guard(|v| v.get("count").and_then(|c| c.as_i64()).unwrap_or(0) >= 3),
         );
         m.add_transition(
-            Transition::new(StateId::new("check"), StateId::new("retry"), "retry")
-                .with_action(|v| {
+            Transition::new(StateId::new("check"), StateId::new("retry"), "retry").with_action(
+                |v| {
                     let count = v.get("count").and_then(|c| c.as_i64()).unwrap_or(0);
                     v.as_object_mut()
                         .unwrap()
                         .insert("count".into(), json!(count + 1));
-                }),
+                },
+            ),
         );
         m.add_transition(Transition::new(
             StateId::new("retry"),
@@ -1041,7 +1054,9 @@ mod tests {
         m.add_transition(Transition::new(StateId::new("a"), StateId::new("b"), "ab"));
 
         let err = StateMachineValidator::validate(&m).unwrap_err();
-        assert!(err.iter().any(|e| e.contains("orphan") && e.contains("not reachable")));
+        assert!(err
+            .iter()
+            .any(|e| e.contains("orphan") && e.contains("not reachable")));
     }
 
     #[test]
@@ -1161,20 +1176,22 @@ mod tests {
         m2.add_state(StateId::new("process"));
         m2.add_final_state(StateId::new("done"));
         m2.add_transition(
-            Transition::new(StateId::new("init"), StateId::new("process"), "start")
-                .with_action(|v| {
+            Transition::new(StateId::new("init"), StateId::new("process"), "start").with_action(
+                |v| {
                     v.as_object_mut()
                         .unwrap()
                         .insert("started".into(), json!(true));
-                }),
+                },
+            ),
         );
         m2.add_transition(
-            Transition::new(StateId::new("process"), StateId::new("done"), "complete")
-                .with_action(|v| {
+            Transition::new(StateId::new("process"), StateId::new("done"), "complete").with_action(
+                |v| {
                     v.as_object_mut()
                         .unwrap()
                         .insert("completed".into(), json!(true));
-                }),
+                },
+            ),
         );
 
         let mut ctx = json!({});

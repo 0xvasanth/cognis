@@ -118,9 +118,7 @@ impl VersionedPrompt {
             .versions
             .iter()
             .position(|v| v.version == version)
-            .ok_or_else(|| {
-                RustChainError::Other(format!("Version '{}' not found", version))
-            })?;
+            .ok_or_else(|| RustChainError::Other(format!("Version '{}' not found", version)))?;
         self.current_idx = idx;
         Ok(())
     }
@@ -288,7 +286,12 @@ impl PromptSectionComposer {
                 .iter()
                 .enumerate()
                 .map(|(i, (input, output))| {
-                    format!("Example {}:\n  Input: {}\n  Output: {}", i + 1, input, output)
+                    format!(
+                        "Example {}:\n  Input: {}\n  Output: {}",
+                        i + 1,
+                        input,
+                        output
+                    )
                 })
                 .collect();
             parts.push(format!("[Examples]\n{}", ex_lines.join("\n")));
@@ -369,11 +372,7 @@ impl FewShotSelector {
 
     /// Select up to `k` examples whose input shares the most words with
     /// `query` (simple keyword overlap scoring).
-    pub fn select_by_similarity<'a>(
-        &'a self,
-        query: &str,
-        k: usize,
-    ) -> Vec<&'a FewShotExample> {
+    pub fn select_by_similarity<'a>(&'a self, query: &str, k: usize) -> Vec<&'a FewShotExample> {
         let query_words: Vec<String> = query
             .to_lowercase()
             .split_whitespace()
@@ -444,7 +443,7 @@ impl PromptOptimizer {
     /// commonly cited average for English text with GPT-style tokenisers).
     pub fn estimate_tokens(prompt: &str) -> usize {
         let chars = prompt.len();
-        (chars + 3) / 4 // ceiling division
+        chars.div_ceil(4)
     }
 
     /// Truncate a prompt so that its estimated token count does not exceed

@@ -428,7 +428,10 @@ pub struct ReviewApprovalRequest {
 
 impl ReviewApprovalRequest {
     /// Create a new builder for a `ReviewApprovalRequest`.
-    pub fn builder(node_name: impl Into<String>, action_description: impl Into<String>) -> ReviewApprovalRequestBuilder {
+    pub fn builder(
+        node_name: impl Into<String>,
+        action_description: impl Into<String>,
+    ) -> ReviewApprovalRequestBuilder {
         ReviewApprovalRequestBuilder {
             node_name: node_name.into(),
             action_description: action_description.into(),
@@ -574,9 +577,12 @@ impl HumanReviewPoint {
 
     /// Generate an [`ReviewApprovalRequest`] for the given proposed value.
     pub fn request_approval(&self, value: &Value) -> ReviewApprovalRequest {
-        ReviewApprovalRequest::builder(&self.node_name, format!("Review action at node '{}'", self.node_name))
-            .proposed_value(value.clone())
-            .build()
+        ReviewApprovalRequest::builder(
+            &self.node_name,
+            format!("Review action at node '{}'", self.node_name),
+        )
+        .proposed_value(value.clone())
+        .build()
     }
 
     /// Apply a human decision to a proposed value, returning the final value
@@ -649,10 +655,7 @@ impl ReviewQueue {
     ///
     /// Returns an error if no request with the given ID is found.
     pub fn resolve(&mut self, id: &str, decision: HumanApproval) -> Result<(), String> {
-        let idx = self
-            .pending
-            .iter()
-            .position(|r| r.id == id);
+        let idx = self.pending.iter().position(|r| r.id == id);
 
         match idx {
             Some(i) => {
@@ -1465,24 +1468,27 @@ mod tests {
 
     #[test]
     fn test_policy_auto_approve_if_true() {
-        let policy =
-            ApprovalPolicy::AutoApproveIf(Box::new(|v| v.get("safe").and_then(|s| s.as_bool()).unwrap_or(false)));
+        let policy = ApprovalPolicy::AutoApproveIf(Box::new(|v| {
+            v.get("safe").and_then(|s| s.as_bool()).unwrap_or(false)
+        }));
         let result = policy.evaluate(&json!({"safe": true}));
         assert!(result.is_approved());
     }
 
     #[test]
     fn test_policy_auto_approve_if_false() {
-        let policy =
-            ApprovalPolicy::AutoApproveIf(Box::new(|v| v.get("safe").and_then(|s| s.as_bool()).unwrap_or(false)));
+        let policy = ApprovalPolicy::AutoApproveIf(Box::new(|v| {
+            v.get("safe").and_then(|s| s.as_bool()).unwrap_or(false)
+        }));
         let result = policy.evaluate(&json!({"safe": false}));
         assert!(matches!(result, HumanApproval::Timeout));
     }
 
     #[test]
     fn test_policy_auto_approve_if_missing_field() {
-        let policy =
-            ApprovalPolicy::AutoApproveIf(Box::new(|v| v.get("safe").and_then(|s| s.as_bool()).unwrap_or(false)));
+        let policy = ApprovalPolicy::AutoApproveIf(Box::new(|v| {
+            v.get("safe").and_then(|s| s.as_bool()).unwrap_or(false)
+        }));
         let result = policy.evaluate(&json!({}));
         assert!(matches!(result, HumanApproval::Timeout));
     }
@@ -1647,7 +1653,13 @@ mod tests {
         q.enqueue(r1);
         q.enqueue(r2);
 
-        q.resolve(&id2, HumanApproval::Rejected { reason: "no".to_string() }).unwrap();
+        q.resolve(
+            &id2,
+            HumanApproval::Rejected {
+                reason: "no".to_string(),
+            },
+        )
+        .unwrap();
         assert_eq!(q.pending_count(), 1);
         assert_eq!(q.resolved_count(), 1);
 
@@ -1671,7 +1683,10 @@ mod tests {
         let config = HumanInLoopConfig::default();
         assert_eq!(config.timeout_ms, 300_000);
         assert!(config.review_nodes.is_empty());
-        assert!(matches!(config.default_policy, ApprovalPolicy::RequireHuman));
+        assert!(matches!(
+            config.default_policy,
+            ApprovalPolicy::RequireHuman
+        ));
     }
 
     #[test]
@@ -1692,7 +1707,10 @@ mod tests {
             .default_policy(ApprovalPolicy::AlwaysApprove)
             .build();
 
-        assert!(matches!(config.default_policy, ApprovalPolicy::AlwaysApprove));
+        assert!(matches!(
+            config.default_policy,
+            ApprovalPolicy::AlwaysApprove
+        ));
     }
 
     #[test]
@@ -1720,24 +1738,25 @@ mod tests {
 
     #[test]
     fn test_human_feedback_with_reviewer() {
-        let fb = HumanFeedback::new("req-456", HumanApproval::Approved)
-            .with_reviewer("alice");
+        let fb = HumanFeedback::new("req-456", HumanApproval::Approved).with_reviewer("alice");
         assert_eq!(fb.reviewer, Some("alice".to_string()));
     }
 
     #[test]
     fn test_human_feedback_with_feedback_text() {
-        let fb = HumanFeedback::new("req-789", HumanApproval::Rejected {
-            reason: "bad".to_string(),
-        })
+        let fb = HumanFeedback::new(
+            "req-789",
+            HumanApproval::Rejected {
+                reason: "bad".to_string(),
+            },
+        )
         .with_feedback_text("Needs more context");
         assert_eq!(fb.feedback_text, Some("Needs more context".to_string()));
     }
 
     #[test]
     fn test_human_feedback_with_node_name() {
-        let fb = HumanFeedback::new("req-1", HumanApproval::Approved)
-            .with_node_name("tool_call");
+        let fb = HumanFeedback::new("req-1", HumanApproval::Approved).with_node_name("tool_call");
         assert_eq!(fb.node_name, Some("tool_call".to_string()));
     }
 
@@ -1755,10 +1774,15 @@ mod tests {
 
     #[test]
     fn test_human_feedback_builder_chain() {
-        let fb = HumanFeedback::new("r1", HumanApproval::Modified { new_value: json!(42) })
-            .with_reviewer("carol")
-            .with_feedback_text("changed value")
-            .with_node_name("compute");
+        let fb = HumanFeedback::new(
+            "r1",
+            HumanApproval::Modified {
+                new_value: json!(42),
+            },
+        )
+        .with_reviewer("carol")
+        .with_feedback_text("changed value")
+        .with_node_name("compute");
         assert_eq!(fb.request_id, "r1");
         assert_eq!(fb.reviewer, Some("carol".to_string()));
         assert_eq!(fb.feedback_text, Some("changed value".to_string()));
@@ -1781,9 +1805,12 @@ mod tests {
     fn test_feedback_log_record_and_len() {
         let mut log = FeedbackLog::new();
         log.record(HumanFeedback::new("r1", HumanApproval::Approved));
-        log.record(HumanFeedback::new("r2", HumanApproval::Rejected {
-            reason: "x".to_string(),
-        }));
+        log.record(HumanFeedback::new(
+            "r2",
+            HumanApproval::Rejected {
+                reason: "x".to_string(),
+            },
+        ));
         assert_eq!(log.len(), 2);
         assert!(!log.is_empty());
     }
@@ -1791,16 +1818,15 @@ mod tests {
     #[test]
     fn test_feedback_log_by_node() {
         let mut log = FeedbackLog::new();
+        log.record(HumanFeedback::new("r1", HumanApproval::Approved).with_node_name("nodeA"));
+        log.record(HumanFeedback::new("r2", HumanApproval::Approved).with_node_name("nodeB"));
         log.record(
-            HumanFeedback::new("r1", HumanApproval::Approved).with_node_name("nodeA"),
-        );
-        log.record(
-            HumanFeedback::new("r2", HumanApproval::Approved).with_node_name("nodeB"),
-        );
-        log.record(
-            HumanFeedback::new("r3", HumanApproval::Rejected {
-                reason: "r".to_string(),
-            })
+            HumanFeedback::new(
+                "r3",
+                HumanApproval::Rejected {
+                    reason: "r".to_string(),
+                },
+            )
             .with_node_name("nodeA"),
         );
 
@@ -1827,9 +1853,12 @@ mod tests {
     #[test]
     fn test_feedback_log_approval_rate_none_approved() {
         let mut log = FeedbackLog::new();
-        log.record(HumanFeedback::new("r1", HumanApproval::Rejected {
-            reason: "a".to_string(),
-        }));
+        log.record(HumanFeedback::new(
+            "r1",
+            HumanApproval::Rejected {
+                reason: "a".to_string(),
+            },
+        ));
         log.record(HumanFeedback::new("r2", HumanApproval::Timeout));
         assert!((log.approval_rate() - 0.0).abs() < f64::EPSILON);
     }
@@ -1838,9 +1867,12 @@ mod tests {
     fn test_feedback_log_approval_rate_mixed() {
         let mut log = FeedbackLog::new();
         log.record(HumanFeedback::new("r1", HumanApproval::Approved));
-        log.record(HumanFeedback::new("r2", HumanApproval::Rejected {
-            reason: "x".to_string(),
-        }));
+        log.record(HumanFeedback::new(
+            "r2",
+            HumanApproval::Rejected {
+                reason: "x".to_string(),
+            },
+        ));
         log.record(HumanFeedback::new("r3", HumanApproval::Approved));
         log.record(HumanFeedback::new("r4", HumanApproval::Timeout));
         assert!((log.approval_rate() - 0.5).abs() < f64::EPSILON);
@@ -1850,7 +1882,10 @@ mod tests {
     fn test_feedback_log_recent() {
         let mut log = FeedbackLog::new();
         for i in 0..5 {
-            log.record(HumanFeedback::new(format!("r{}", i), HumanApproval::Approved));
+            log.record(HumanFeedback::new(
+                format!("r{}", i),
+                HumanApproval::Approved,
+            ));
         }
         let recent = log.recent(3);
         assert_eq!(recent.len(), 3);
@@ -1877,9 +1912,12 @@ mod tests {
     fn test_feedback_log_to_json() {
         let mut log = FeedbackLog::new();
         log.record(HumanFeedback::new("r1", HumanApproval::Approved));
-        log.record(HumanFeedback::new("r2", HumanApproval::Rejected {
-            reason: "no".to_string(),
-        }));
+        log.record(HumanFeedback::new(
+            "r2",
+            HumanApproval::Rejected {
+                reason: "no".to_string(),
+            },
+        ));
 
         let j = log.to_json();
         assert_eq!(j["count"], 2);

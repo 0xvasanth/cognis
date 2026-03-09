@@ -202,7 +202,9 @@ impl ToolSpec {
     ///
     /// Checks that all required parameters are present in the JSON object.
     pub fn validate_args(&self, args: &Value) -> Result<(), String> {
-        let obj = args.as_object().ok_or_else(|| "args must be a JSON object".to_string())?;
+        let obj = args
+            .as_object()
+            .ok_or_else(|| "args must be a JSON object".to_string())?;
         for param in &self.parameters {
             if param.required && !obj.contains_key(&param.name) && param.default_value.is_none() {
                 return Err(format!("missing required parameter '{}'", param.name));
@@ -272,10 +274,7 @@ impl BuiltinTools {
 
         let handler: ToolHandler = Box::new(|args: Value| {
             let start = Instant::now();
-            let path = args
-                .get("path")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
             if path.is_empty() {
                 return ToolResult {
                     success: false,
@@ -328,11 +327,7 @@ impl BuiltinTools {
             // Simulated file write
             ToolResult {
                 success: true,
-                output: json!(format!(
-                    "Wrote {} bytes to {}",
-                    content.len(),
-                    path
-                )),
+                output: json!(format!("Wrote {} bytes to {}", content.len(), path)),
                 error: None,
                 duration_ms: start.elapsed().as_millis() as u64,
                 tool_name: "write_file".into(),
@@ -357,10 +352,7 @@ impl BuiltinTools {
 
         let handler: ToolHandler = Box::new(|args: Value| {
             let start = Instant::now();
-            let path = args
-                .get("path")
-                .and_then(|v| v.as_str())
-                .unwrap_or(".");
+            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
             // Simulated directory listing
             ToolResult {
                 success: true,
@@ -386,8 +378,7 @@ impl BuiltinTools {
                     .with_description("The text content to search in"),
             )
             .with_param(
-                ToolParam::new("pattern", "string")
-                    .with_description("The pattern to search for"),
+                ToolParam::new("pattern", "string").with_description("The pattern to search for"),
             )
             .with_returns("Array of matching lines with line numbers")
             .with_category(ToolCategory::Search);
@@ -439,16 +430,11 @@ impl BuiltinTools {
     pub fn calculate() -> (ToolSpec, ToolHandler) {
         let spec = ToolSpec::new("calculate")
             .with_description("Evaluate a simple math expression (+, -, *, /)")
+            .with_param(ToolParam::new("left", "number").with_description("Left operand"))
             .with_param(
-                ToolParam::new("left", "number").with_description("Left operand"),
+                ToolParam::new("operator", "string").with_description("Operator: +, -, *, /"),
             )
-            .with_param(
-                ToolParam::new("operator", "string")
-                    .with_description("Operator: +, -, *, /"),
-            )
-            .with_param(
-                ToolParam::new("right", "number").with_description("Right operand"),
-            )
+            .with_param(ToolParam::new("right", "number").with_description("Right operand"))
             .with_returns("The numeric result")
             .with_category(ToolCategory::Computation);
 
@@ -510,9 +496,7 @@ impl BuiltinTools {
     pub fn json_query() -> (ToolSpec, ToolHandler) {
         let spec = ToolSpec::new("json_query")
             .with_description("Extract data from a JSON value using dot-notation paths")
-            .with_param(
-                ToolParam::new("data", "json").with_description("The JSON data to query"),
-            )
+            .with_param(ToolParam::new("data", "json").with_description("The JSON data to query"))
             .with_param(
                 ToolParam::new("path", "string")
                     .with_description("Dot-notation path (e.g. 'user.name')"),
@@ -766,15 +750,16 @@ impl ToolUsageStats {
 
     /// Record a tool invocation.
     pub fn record(&mut self, tool_name: &str, duration_ms: u64, success: bool) {
-        let entry = self.stats.entry(tool_name.to_string()).or_insert_with(|| {
-            ToolUsageSummary {
+        let entry = self
+            .stats
+            .entry(tool_name.to_string())
+            .or_insert_with(|| ToolUsageSummary {
                 call_count: 0,
                 success_count: 0,
                 failure_count: 0,
                 total_duration_ms: 0,
                 avg_duration_ms: 0.0,
-            }
-        });
+            });
         entry.call_count += 1;
         if success {
             entry.success_count += 1;
@@ -874,10 +859,7 @@ mod tests {
     #[test]
     fn test_category_display() {
         assert_eq!(format!("{}", ToolCategory::Filesystem), "filesystem");
-        assert_eq!(
-            format!("{}", ToolCategory::Custom("agent".into())),
-            "agent"
-        );
+        assert_eq!(format!("{}", ToolCategory::Custom("agent".into())), "agent");
     }
 
     // -- ToolParam --
@@ -1334,7 +1316,10 @@ mod tests {
     #[test]
     fn test_chain_add_step() {
         let mut chain = ToolChain::new();
-        chain.add_step("calculate".into(), json!({"left": 1, "operator": "+", "right": 2}));
+        chain.add_step(
+            "calculate".into(),
+            json!({"left": 1, "operator": "+", "right": 2}),
+        );
         assert_eq!(chain.step_count(), 1);
     }
 

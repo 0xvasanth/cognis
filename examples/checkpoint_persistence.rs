@@ -20,8 +20,8 @@
 use std::collections::HashMap;
 
 use langgraph::checkpoint::persistence::{
-    CheckpointFilter, CheckpointHistory, CheckpointId, CheckpointManager,
-    InMemoryPersistentSaver, PersistentCheckpoint, PersistentCheckpointSaver,
+    CheckpointFilter, CheckpointHistory, CheckpointId, CheckpointManager, InMemoryPersistentSaver,
+    PersistentCheckpoint, PersistentCheckpointSaver,
 };
 use serde_json::json;
 
@@ -78,12 +78,18 @@ fn main() {
         .build();
 
     println!("\n  Child checkpoint:");
-    println!("    Parent:  {:?}", child_cp.parent_id.as_ref().map(|p| p.as_str()));
+    println!(
+        "    Parent:  {:?}",
+        child_cp.parent_id.as_ref().map(|p| p.as_str())
+    );
     println!("    Is root? {}", child_cp.is_root());
 
     // Serialize to JSON.
     let cp_json = child_cp.to_json();
-    println!("    JSON:    {}", serde_json::to_string_pretty(&cp_json).unwrap());
+    println!(
+        "    JSON:    {}",
+        serde_json::to_string_pretty(&cp_json).unwrap()
+    );
 
     // -----------------------------------------------------------------------
     // 3. InMemoryPersistentSaver CRUD Operations
@@ -92,7 +98,11 @@ fn main() {
     println!("Save, load, list, and delete checkpoints in memory.\n");
 
     let mut saver = InMemoryPersistentSaver::new();
-    println!("  Empty saver: len={}, is_empty={}", saver.len(), saver.is_empty());
+    println!(
+        "  Empty saver: len={}, is_empty={}",
+        saver.len(),
+        saver.is_empty()
+    );
 
     // Save checkpoints.
     let cp0 = PersistentCheckpoint::builder("session-1", json!({"step": "init"}))
@@ -118,14 +128,14 @@ fn main() {
 
     // Load by ID.
     let loaded = saver.load(&CheckpointId::from_str("s1-cp1")).unwrap();
-    println!(
-        "  Load 's1-cp1': state={}",
-        loaded.as_ref().unwrap().state
-    );
+    println!("  Load 's1-cp1': state={}", loaded.as_ref().unwrap().state);
 
     // Load latest for thread.
     let latest = saver.load_latest("session-1").unwrap().unwrap();
-    println!("  Latest 'session-1': step={}, state={}", latest.step, latest.state);
+    println!(
+        "  Latest 'session-1': step={}, state={}",
+        latest.step, latest.state
+    );
 
     // List all for thread (ordered by step).
     let all = saver.list("session-1").unwrap();
@@ -213,7 +223,10 @@ fn main() {
     let step1_children = history.get_children(&CheckpointId::from_str("h-step1"));
     println!(
         "  Children of 'h-step1' (branched): {:?}",
-        step1_children.iter().map(|c| c.as_str()).collect::<Vec<_>>()
+        step1_children
+            .iter()
+            .map(|c| c.as_str())
+            .collect::<Vec<_>>()
     );
 
     // -----------------------------------------------------------------------
@@ -245,7 +258,10 @@ fn main() {
     // Filter by thread.
     let thread_filter = CheckpointFilter::new().with_thread("workflow-A");
     let all_a = filter_saver.list("workflow-A").unwrap();
-    let matched: Vec<_> = all_a.iter().filter(|cp| thread_filter.matches(cp)).collect();
+    let matched: Vec<_> = all_a
+        .iter()
+        .filter(|cp| thread_filter.matches(cp))
+        .collect();
     println!("  Filter thread='workflow-A': {} matches", matched.len());
 
     // Filter by step range.
@@ -311,7 +327,10 @@ fn main() {
 
     // Restore by ID.
     let restored = manager.restore(&cp1_id).unwrap().unwrap();
-    println!("\n  Restored cp1: step={}, state={}", restored.step, restored.state);
+    println!(
+        "\n  Restored cp1: step={}, state={}",
+        restored.step, restored.state
+    );
 
     // Restore latest.
     let latest = manager.restore_latest("conv-1").unwrap().unwrap();
@@ -330,10 +349,7 @@ fn main() {
 
     // Lineage via history.
     let lineage = manager.history().get_lineage(&cp2_id);
-    println!(
-        "  Lineage to cp2 ({} ancestors):",
-        lineage.len()
-    );
+    println!("  Lineage to cp2 ({} ancestors):", lineage.len());
     for id in &lineage {
         println!("    {}", id);
     }
@@ -422,7 +438,10 @@ fn main() {
     println!("  Avg steps per thread:  {:.2}", stats.avg_steps_per_thread);
 
     let stats_json = stats.to_json();
-    println!("  Stats JSON: {}", serde_json::to_string_pretty(&stats_json).unwrap());
+    println!(
+        "  Stats JSON: {}",
+        serde_json::to_string_pretty(&stats_json).unwrap()
+    );
 
     println!("\n=== Checkpoint Persistence Example Complete ===");
 }

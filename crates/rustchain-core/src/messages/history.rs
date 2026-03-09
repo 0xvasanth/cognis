@@ -29,7 +29,7 @@ fn estimate_tokens(text: &str) -> usize {
     if text.is_empty() {
         0
     } else {
-        (text.len() + 3) / 4
+        text.len().div_ceil(4)
     }
 }
 
@@ -269,8 +269,9 @@ impl TokenBudgetHistory {
             match evict_idx {
                 Some(idx) => {
                     let removed = self.history.messages.remove(idx);
-                    self.current_tokens =
-                        self.current_tokens.saturating_sub(estimate_tokens(&removed.content));
+                    self.current_tokens = self
+                        .current_tokens
+                        .saturating_sub(estimate_tokens(&removed.content));
                 }
                 None => break, // Only system messages remain; cannot evict further.
             }
@@ -448,12 +449,9 @@ impl HistorySerializer {
 
         let mut history = MessageHistory::new();
         for (i, item) in arr.iter().enumerate() {
-            let role = item
-                .get("role")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| {
-                    RustChainError::Other(format!("Missing 'role' in message at index {}", i))
-                })?;
+            let role = item.get("role").and_then(|v| v.as_str()).ok_or_else(|| {
+                RustChainError::Other(format!("Missing 'role' in message at index {}", i))
+            })?;
             let content = item
                 .get("content")
                 .and_then(|v| v.as_str())
@@ -774,7 +772,10 @@ mod tests {
     fn test_token_budget_preserves_system() {
         let mut tb = TokenBudgetHistory::new(10);
         tb.add("system", "you are helpful");
-        tb.add("human", "a long human message that exceeds the budget easily");
+        tb.add(
+            "human",
+            "a long human message that exceeds the budget easily",
+        );
         tb.add("ai", "another long ai message that also exceeds the budget");
         // System messages should be preserved.
         let has_system = tb.messages().iter().any(|m| m.role == "system");

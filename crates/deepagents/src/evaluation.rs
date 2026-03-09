@@ -167,7 +167,9 @@ impl EvalMetric for ContainsMetric {
         let actual_str = Self::value_to_string(actual);
 
         let contained = if self.case_insensitive {
-            actual_str.to_lowercase().contains(&expected_str.to_lowercase())
+            actual_str
+                .to_lowercase()
+                .contains(&expected_str.to_lowercase())
         } else {
             actual_str.contains(&expected_str)
         };
@@ -639,8 +641,7 @@ mod tests {
 
     #[test]
     fn test_eval_score_with_detail() {
-        let score = EvalScore::new("m", 0.5)
-            .with_detail("key", json!("value"));
+        let score = EvalScore::new("m", 0.5).with_detail("key", json!("value"));
         assert_eq!(score.details["key"], json!("value"));
     }
 
@@ -659,8 +660,7 @@ mod tests {
 
     #[test]
     fn test_eval_score_to_json() {
-        let score = EvalScore::new("m", 0.9)
-            .with_detail("info", json!("ok"));
+        let score = EvalScore::new("m", 0.9).with_detail("info", json!("ok"));
         let j = score.to_json();
         assert_eq!(j["metric_name"], "m");
         assert_eq!(j["score"], 0.9);
@@ -952,17 +952,45 @@ mod tests {
     #[test]
     fn test_eval_suite_add_case() {
         let mut suite = EvalSuite::new("s");
-        suite.add_case(EvalCase::builder("c1").input(json!(1)).expected_output(json!(1)).build());
-        suite.add_case(EvalCase::builder("c2").input(json!(2)).expected_output(json!(2)).build());
+        suite.add_case(
+            EvalCase::builder("c1")
+                .input(json!(1))
+                .expected_output(json!(1))
+                .build(),
+        );
+        suite.add_case(
+            EvalCase::builder("c2")
+                .input(json!(2))
+                .expected_output(json!(2))
+                .build(),
+        );
         assert_eq!(suite.case_count(), 2);
     }
 
     #[test]
     fn test_eval_suite_by_tag() {
         let mut suite = EvalSuite::new("s");
-        suite.add_case(EvalCase::builder("c1").tag("math").input(json!(1)).expected_output(json!(1)).build());
-        suite.add_case(EvalCase::builder("c2").tag("text").input(json!(2)).expected_output(json!(2)).build());
-        suite.add_case(EvalCase::builder("c3").tag("math").input(json!(3)).expected_output(json!(3)).build());
+        suite.add_case(
+            EvalCase::builder("c1")
+                .tag("math")
+                .input(json!(1))
+                .expected_output(json!(1))
+                .build(),
+        );
+        suite.add_case(
+            EvalCase::builder("c2")
+                .tag("text")
+                .input(json!(2))
+                .expected_output(json!(2))
+                .build(),
+        );
+        suite.add_case(
+            EvalCase::builder("c3")
+                .tag("math")
+                .input(json!(3))
+                .expected_output(json!(3))
+                .build(),
+        );
 
         let math_cases = suite.by_tag("math");
         assert_eq!(math_cases.len(), 2);
@@ -979,8 +1007,18 @@ mod tests {
     #[test]
     fn test_eval_suite_run_all_pass() {
         let mut suite = EvalSuite::new("s");
-        suite.add_case(EvalCase::builder("c1").input(json!("a")).expected_output(json!("a")).build());
-        suite.add_case(EvalCase::builder("c2").input(json!(42)).expected_output(json!(42)).build());
+        suite.add_case(
+            EvalCase::builder("c1")
+                .input(json!("a"))
+                .expected_output(json!("a"))
+                .build(),
+        );
+        suite.add_case(
+            EvalCase::builder("c2")
+                .input(json!(42))
+                .expected_output(json!(42))
+                .build(),
+        );
 
         let metrics: Vec<Box<dyn EvalMetric>> = vec![Box::new(ExactMatchMetric)];
         let report = suite.run(&|input| input.clone(), &metrics);
@@ -993,7 +1031,12 @@ mod tests {
     #[test]
     fn test_eval_suite_run_all_fail() {
         let mut suite = EvalSuite::new("s");
-        suite.add_case(EvalCase::builder("c1").input(json!("a")).expected_output(json!("b")).build());
+        suite.add_case(
+            EvalCase::builder("c1")
+                .input(json!("a"))
+                .expected_output(json!("b"))
+                .build(),
+        );
 
         let metrics: Vec<Box<dyn EvalMetric>> = vec![Box::new(ExactMatchMetric)];
         let report = suite.run(&|input| input.clone(), &metrics);
@@ -1005,8 +1048,18 @@ mod tests {
     #[test]
     fn test_eval_suite_run_mixed() {
         let mut suite = EvalSuite::new("s");
-        suite.add_case(EvalCase::builder("pass").input(json!("x")).expected_output(json!("x")).build());
-        suite.add_case(EvalCase::builder("fail").input(json!("x")).expected_output(json!("y")).build());
+        suite.add_case(
+            EvalCase::builder("pass")
+                .input(json!("x"))
+                .expected_output(json!("x"))
+                .build(),
+        );
+        suite.add_case(
+            EvalCase::builder("fail")
+                .input(json!("x"))
+                .expected_output(json!("y"))
+                .build(),
+        );
 
         let metrics: Vec<Box<dyn EvalMetric>> = vec![Box::new(ExactMatchMetric)];
         let report = suite.run(&|input| input.clone(), &metrics);
@@ -1077,8 +1130,18 @@ mod tests {
     #[test]
     fn test_eval_report_failures() {
         let mut suite = EvalSuite::new("s");
-        suite.add_case(EvalCase::builder("pass").input(json!(1)).expected_output(json!(1)).build());
-        suite.add_case(EvalCase::builder("fail").input(json!(1)).expected_output(json!(2)).build());
+        suite.add_case(
+            EvalCase::builder("pass")
+                .input(json!(1))
+                .expected_output(json!(1))
+                .build(),
+        );
+        suite.add_case(
+            EvalCase::builder("fail")
+                .input(json!(1))
+                .expected_output(json!(2))
+                .build(),
+        );
 
         let metrics: Vec<Box<dyn EvalMetric>> = vec![Box::new(ExactMatchMetric)];
         let report = suite.run(&|input| input.clone(), &metrics);
@@ -1091,7 +1154,12 @@ mod tests {
     #[test]
     fn test_eval_report_to_json() {
         let mut suite = EvalSuite::new("my_suite");
-        suite.add_case(EvalCase::builder("c").input(json!(1)).expected_output(json!(1)).build());
+        suite.add_case(
+            EvalCase::builder("c")
+                .input(json!(1))
+                .expected_output(json!(1))
+                .build(),
+        );
 
         let metrics: Vec<Box<dyn EvalMetric>> = vec![Box::new(ExactMatchMetric)];
         let report = suite.run(&|input| input.clone(), &metrics);
@@ -1107,7 +1175,12 @@ mod tests {
     #[test]
     fn test_eval_report_duration() {
         let mut suite = EvalSuite::new("s");
-        suite.add_case(EvalCase::builder("c").input(json!(1)).expected_output(json!(1)).build());
+        suite.add_case(
+            EvalCase::builder("c")
+                .input(json!(1))
+                .expected_output(json!(1))
+                .build(),
+        );
         let metrics: Vec<Box<dyn EvalMetric>> = vec![Box::new(ExactMatchMetric)];
         let report = suite.run(&|input| input.clone(), &metrics);
         // Duration should be non-negative
@@ -1206,7 +1279,12 @@ mod tests {
     #[test]
     fn test_eval_suite_run_no_metrics() {
         let mut suite = EvalSuite::new("s");
-        suite.add_case(EvalCase::builder("c").input(json!(1)).expected_output(json!(1)).build());
+        suite.add_case(
+            EvalCase::builder("c")
+                .input(json!(1))
+                .expected_output(json!(1))
+                .build(),
+        );
 
         let metrics: Vec<Box<dyn EvalMetric>> = vec![];
         let report = suite.run(&|input| input.clone(), &metrics);

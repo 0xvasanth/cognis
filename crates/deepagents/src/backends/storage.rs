@@ -1222,7 +1222,7 @@ mod tests {
             "array": [1, 2, 3],
             "nested": {"a": {"b": true}},
             "string": "hello",
-            "number": 3.14,
+            "number": 3.09,
         });
         backend.save("complex", &complex).unwrap();
         assert_eq!(backend.load("complex").unwrap(), Some(complex));

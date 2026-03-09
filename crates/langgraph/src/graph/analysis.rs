@@ -92,20 +92,14 @@ impl GraphTopology {
     ///
     /// Returns 0 if the node does not exist.
     pub fn in_degree(&self, node: &str) -> usize {
-        self.reverse
-            .get(node)
-            .map(|v| v.len())
-            .unwrap_or(0)
+        self.reverse.get(node).map(|v| v.len()).unwrap_or(0)
     }
 
     /// Return the out-degree (number of outgoing edges) for a node.
     ///
     /// Returns 0 if the node does not exist.
     pub fn out_degree(&self, node: &str) -> usize {
-        self.forward
-            .get(node)
-            .map(|v| v.len())
-            .unwrap_or(0)
+        self.forward.get(node).map(|v| v.len()).unwrap_or(0)
     }
 
     /// Return source nodes (nodes with no incoming edges).
@@ -1027,10 +1021,7 @@ mod tests {
         let paths = pf.all_paths("a", "d");
         assert_eq!(paths.len(), 2);
         // Both paths: a->b->d and a->c->d
-        let path_strs: HashSet<String> = paths
-            .iter()
-            .map(|p| p.join("->"))
-            .collect();
+        let path_strs: HashSet<String> = paths.iter().map(|p| p.join("->")).collect();
         assert!(path_strs.contains("a->b->d"));
         assert!(path_strs.contains("a->c->d"));
     }

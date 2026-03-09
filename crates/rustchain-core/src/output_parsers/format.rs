@@ -34,7 +34,11 @@ pub struct ParseError {
 
 impl ParseError {
     /// Create a new `ParseError`.
-    pub fn new(message: impl Into<String>, raw_text: impl Into<String>, parser_type: impl Into<String>) -> Self {
+    pub fn new(
+        message: impl Into<String>,
+        raw_text: impl Into<String>,
+        parser_type: impl Into<String>,
+    ) -> Self {
         Self {
             message: message.into(),
             raw_text: raw_text.into(),
@@ -140,11 +144,12 @@ impl Default for ExtractingJsonParser {
 
 impl OutputParser for ExtractingJsonParser {
     fn parse(&self, text: &str) -> Result<Value> {
-        let json_str = Self::extract_json(text).ok_or_else(|| RustChainError::OutputParserError {
-            message: "No JSON object or array found in text".into(),
-            observation: Some(text.to_string()),
-            llm_output: None,
-        })?;
+        let json_str =
+            Self::extract_json(text).ok_or_else(|| RustChainError::OutputParserError {
+                message: "No JSON object or array found in text".into(),
+                observation: Some(text.to_string()),
+                llm_output: None,
+            })?;
 
         serde_json::from_str(json_str).map_err(|e| RustChainError::OutputParserError {
             message: format!("Failed to parse extracted JSON: {}", e),
@@ -546,11 +551,13 @@ impl RetryParser {
                 Err(e) => last_err = Some(e),
             }
         }
-        Err(last_err.unwrap_or_else(|| RustChainError::OutputParserError {
-            message: "RetryParser exhausted retries with no error captured".into(),
-            observation: Some(text.to_string()),
-            llm_output: None,
-        }))
+        Err(
+            last_err.unwrap_or_else(|| RustChainError::OutputParserError {
+                message: "RetryParser exhausted retries with no error captured".into(),
+                observation: Some(text.to_string()),
+                llm_output: None,
+            }),
+        )
     }
 
     /// Return the format instructions from the inner parser (if any),
@@ -695,9 +702,8 @@ fn balance_brackets(text: &str) -> String {
 impl OutputParser for OutputFixingParser {
     fn parse(&self, text: &str) -> Result<Value> {
         // First try as-is
-        match self.inner.parse(text) {
-            Ok(v) => return Ok(v),
-            Err(_) => {}
+        if let Ok(v) = self.inner.parse(text) {
+            return Ok(v);
         }
 
         // Try with fixes
@@ -763,7 +769,11 @@ mod tests {
         let err = ParseError::new("msg", "raw", "t");
         let rce: RustChainError = err.into();
         match rce {
-            RustChainError::OutputParserError { message, observation, .. } => {
+            RustChainError::OutputParserError {
+                message,
+                observation,
+                ..
+            } => {
                 assert_eq!(message, "msg");
                 assert_eq!(observation, Some("raw".to_string()));
             }
@@ -830,7 +840,10 @@ mod tests {
 
     #[test]
     fn test_extracting_json_parser_type() {
-        assert_eq!(ExtractingJsonParser::new().parser_type(), "extracting_json_parser");
+        assert_eq!(
+            ExtractingJsonParser::new().parser_type(),
+            "extracting_json_parser"
+        );
     }
 
     #[test]
@@ -952,7 +965,10 @@ mod tests {
 
     #[test]
     fn test_comma_parser_type() {
-        assert_eq!(CommaSeparatedParser::new().parser_type(), "comma_separated_parser");
+        assert_eq!(
+            CommaSeparatedParser::new().parser_type(),
+            "comma_separated_parser"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1003,7 +1019,10 @@ mod tests {
 
     #[test]
     fn test_datetime_parser_type() {
-        assert_eq!(DatetimeOutputParser::new(None).parser_type(), "datetime_output_parser");
+        assert_eq!(
+            DatetimeOutputParser::new(None).parser_type(),
+            "datetime_output_parser"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1064,8 +1083,7 @@ mod tests {
                 "b": {"type": "string"}
             }
         });
-        let parser = PydanticOutputParser::new(schema)
-            .with_required_fields(vec!["a".to_string()]);
+        let parser = PydanticOutputParser::new(schema).with_required_fields(vec!["a".to_string()]);
         // Missing "a"
         let result = parser.parse(r#"{"b": "hello"}"#);
         assert!(result.is_err());

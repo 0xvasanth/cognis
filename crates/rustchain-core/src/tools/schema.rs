@@ -560,11 +560,7 @@ impl SchemaValidator {
                 if s.len() < min_len {
                     errors.push(ValidationError::new(
                         field,
-                        format!(
-                            "String length {} is less than minimum {}",
-                            s.len(),
-                            min_len
-                        ),
+                        format!("String length {} is less than minimum {}", s.len(), min_len),
                         format!("length >= {}", min_len),
                         format!("length {}", s.len()),
                     ));
@@ -574,11 +570,7 @@ impl SchemaValidator {
                 if s.len() > max_len {
                     errors.push(ValidationError::new(
                         field,
-                        format!(
-                            "String length {} exceeds maximum {}",
-                            s.len(),
-                            max_len
-                        ),
+                        format!("String length {} exceeds maximum {}", s.len(), max_len),
                         format!("length <= {}", max_len),
                         format!("length {}", s.len()),
                     ));
@@ -986,8 +978,7 @@ mod tests {
 
     #[test]
     fn test_schema_object_no_required() {
-        let s = SchemaObject::new()
-            .with_property("opt", PropertySchema::string());
+        let s = SchemaObject::new().with_property("opt", PropertySchema::string());
 
         let j = s.to_json();
         assert!(j.get("required").is_none());
@@ -997,19 +988,21 @@ mod tests {
 
     #[test]
     fn test_tool_schema_to_openai_json() {
-        let schema = ToolSchema::new("search", "Search for docs")
-            .with_parameters(
-                SchemaObject::new()
-                    .with_property("query", PropertySchema::string())
-                    .with_required("query"),
-            );
+        let schema = ToolSchema::new("search", "Search for docs").with_parameters(
+            SchemaObject::new()
+                .with_property("query", PropertySchema::string())
+                .with_required("query"),
+        );
 
         let j = schema.to_json();
         assert_eq!(j["type"], "function");
         assert_eq!(j["function"]["name"], "search");
         assert_eq!(j["function"]["description"], "Search for docs");
         assert_eq!(j["function"]["parameters"]["type"], "object");
-        assert_eq!(j["function"]["parameters"]["properties"]["query"]["type"], "string");
+        assert_eq!(
+            j["function"]["parameters"]["properties"]["query"]["type"],
+            "string"
+        );
         // strict should not be present when false
         assert!(j["function"].get("strict").is_none());
     }
@@ -1025,18 +1018,20 @@ mod tests {
 
     #[test]
     fn test_tool_schema_to_anthropic_json() {
-        let schema = ToolSchema::new("calculator", "Do math")
-            .with_parameters(
-                SchemaObject::new()
-                    .with_property("expression", PropertySchema::string())
-                    .with_required("expression"),
-            );
+        let schema = ToolSchema::new("calculator", "Do math").with_parameters(
+            SchemaObject::new()
+                .with_property("expression", PropertySchema::string())
+                .with_required("expression"),
+        );
 
         let j = schema.to_anthropic_json();
         assert_eq!(j["name"], "calculator");
         assert_eq!(j["description"], "Do math");
         assert_eq!(j["input_schema"]["type"], "object");
-        assert_eq!(j["input_schema"]["properties"]["expression"]["type"], "string");
+        assert_eq!(
+            j["input_schema"]["properties"]["expression"]["type"],
+            "string"
+        );
         // Should NOT have "type": "function" wrapper
         assert!(j.get("type").is_none());
     }
@@ -1086,7 +1081,9 @@ mod tests {
 
         let input = json!({});
         let errs = SchemaValidator::validate(&schema, &input).unwrap_err();
-        assert!(errs.iter().any(|e| e.field == "name" && e.actual == "missing"));
+        assert!(errs
+            .iter()
+            .any(|e| e.field == "name" && e.actual == "missing"));
     }
 
     #[test]
@@ -1103,11 +1100,10 @@ mod tests {
 
     #[test]
     fn test_validate_enum_valid() {
-        let schema = SchemaObject::new()
-            .with_property(
-                "color",
-                PropertySchema::enum_type(vec!["red".into(), "green".into(), "blue".into()]),
-            );
+        let schema = SchemaObject::new().with_property(
+            "color",
+            PropertySchema::enum_type(vec!["red".into(), "green".into(), "blue".into()]),
+        );
 
         let input = json!({ "color": "red" });
         assert!(SchemaValidator::validate(&schema, &input).is_ok());
@@ -1115,11 +1111,10 @@ mod tests {
 
     #[test]
     fn test_validate_enum_invalid() {
-        let schema = SchemaObject::new()
-            .with_property(
-                "color",
-                PropertySchema::enum_type(vec!["red".into(), "green".into()]),
-            );
+        let schema = SchemaObject::new().with_property(
+            "color",
+            PropertySchema::enum_type(vec!["red".into(), "green".into()]),
+        );
 
         let input = json!({ "color": "yellow" });
         let errs = SchemaValidator::validate(&schema, &input).unwrap_err();
@@ -1130,8 +1125,8 @@ mod tests {
 
     #[test]
     fn test_validate_minimum() {
-        let schema = SchemaObject::new()
-            .with_property("age", PropertySchema::integer().with_minimum(0.0));
+        let schema =
+            SchemaObject::new().with_property("age", PropertySchema::integer().with_minimum(0.0));
 
         let input = json!({ "age": -1 });
         let errs = SchemaValidator::validate(&schema, &input).unwrap_err();
@@ -1140,8 +1135,8 @@ mod tests {
 
     #[test]
     fn test_validate_maximum() {
-        let schema = SchemaObject::new()
-            .with_property("pct", PropertySchema::number().with_maximum(100.0));
+        let schema =
+            SchemaObject::new().with_property("pct", PropertySchema::number().with_maximum(100.0));
 
         let input = json!({ "pct": 101.5 });
         let errs = SchemaValidator::validate(&schema, &input).unwrap_err();
@@ -1150,11 +1145,12 @@ mod tests {
 
     #[test]
     fn test_validate_range_ok() {
-        let schema = SchemaObject::new()
-            .with_property(
-                "temp",
-                PropertySchema::number().with_minimum(-273.15).with_maximum(1000.0),
-            );
+        let schema = SchemaObject::new().with_property(
+            "temp",
+            PropertySchema::number()
+                .with_minimum(-273.15)
+                .with_maximum(1000.0),
+        );
 
         let input = json!({ "temp": 22.5 });
         assert!(SchemaValidator::validate(&schema, &input).is_ok());
@@ -1164,8 +1160,8 @@ mod tests {
 
     #[test]
     fn test_validate_min_length() {
-        let schema = SchemaObject::new()
-            .with_property("name", PropertySchema::string().with_min_length(3));
+        let schema =
+            SchemaObject::new().with_property("name", PropertySchema::string().with_min_length(3));
 
         let input = json!({ "name": "ab" });
         let errs = SchemaValidator::validate(&schema, &input).unwrap_err();
@@ -1174,8 +1170,8 @@ mod tests {
 
     #[test]
     fn test_validate_max_length() {
-        let schema = SchemaObject::new()
-            .with_property("code", PropertySchema::string().with_max_length(5));
+        let schema =
+            SchemaObject::new().with_property("code", PropertySchema::string().with_max_length(5));
 
         let input = json!({ "code": "abcdef" });
         let errs = SchemaValidator::validate(&schema, &input).unwrap_err();
@@ -1186,8 +1182,10 @@ mod tests {
 
     #[test]
     fn test_validate_pattern_match() {
-        let schema = SchemaObject::new()
-            .with_property("email", PropertySchema::string().with_pattern(r"^.+@.+\..+$"));
+        let schema = SchemaObject::new().with_property(
+            "email",
+            PropertySchema::string().with_pattern(r"^.+@.+\..+$"),
+        );
 
         let input = json!({ "email": "a@b.com" });
         assert!(SchemaValidator::validate(&schema, &input).is_ok());
@@ -1195,8 +1193,10 @@ mod tests {
 
     #[test]
     fn test_validate_pattern_no_match() {
-        let schema = SchemaObject::new()
-            .with_property("email", PropertySchema::string().with_pattern(r"^.+@.+\..+$"));
+        let schema = SchemaObject::new().with_property(
+            "email",
+            PropertySchema::string().with_pattern(r"^.+@.+\..+$"),
+        );
 
         let input = json!({ "email": "invalid" });
         let errs = SchemaValidator::validate(&schema, &input).unwrap_err();
@@ -1207,8 +1207,7 @@ mod tests {
 
     #[test]
     fn test_validate_unknown_field_rejected() {
-        let schema = SchemaObject::new()
-            .with_property("name", PropertySchema::string());
+        let schema = SchemaObject::new().with_property("name", PropertySchema::string());
 
         let input = json!({ "name": "Alice", "extra": 42 });
         let errs = SchemaValidator::validate(&schema, &input).unwrap_err();
@@ -1450,8 +1449,7 @@ mod tests {
     #[test]
     fn test_nested_array_of_arrays() {
         let inner = PropertySchema::array(PropertySchema::integer());
-        let schema = SchemaObject::new()
-            .with_property("matrix", PropertySchema::array(inner));
+        let schema = SchemaObject::new().with_property("matrix", PropertySchema::array(inner));
 
         let input = json!({ "matrix": [[1, 2], [3, 4]] });
         assert!(SchemaValidator::validate(&schema, &input).is_ok());
@@ -1460,8 +1458,7 @@ mod tests {
     #[test]
     fn test_nested_array_of_arrays_invalid() {
         let inner = PropertySchema::array(PropertySchema::integer());
-        let schema = SchemaObject::new()
-            .with_property("matrix", PropertySchema::array(inner));
+        let schema = SchemaObject::new().with_property("matrix", PropertySchema::array(inner));
 
         let input = json!({ "matrix": [[1, "bad"], [3, 4]] });
         let errs = SchemaValidator::validate(&schema, &input).unwrap_err();

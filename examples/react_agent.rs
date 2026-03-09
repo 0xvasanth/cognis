@@ -88,7 +88,11 @@ fn main() {
     println!("\n--- 2. ToolCall Creation and Resolution ---");
     println!("ToolCalls track pending invocations and their results.\n");
 
-    let call = ToolCall::new("call-1", "calculator", json!({"a": 10, "b": 3, "op": "add"}));
+    let call = ToolCall::new(
+        "call-1",
+        "calculator",
+        json!({"a": 10, "b": 3, "op": "add"}),
+    );
     println!("  Created: id={}, tool={}", call.id, call.tool_name);
     println!("  Resolved? {}", call.is_resolved());
 
@@ -179,14 +183,8 @@ fn main() {
     let tools = vec![
         ToolDefinition::new("calculator", "Evaluate simple arithmetic", |input| {
             let obj = input.as_object().ok_or("expected JSON object")?;
-            let a = obj
-                .get("a")
-                .and_then(|v| v.as_f64())
-                .ok_or("missing 'a'")?;
-            let b = obj
-                .get("b")
-                .and_then(|v| v.as_f64())
-                .ok_or("missing 'b'")?;
+            let a = obj.get("a").and_then(|v| v.as_f64()).ok_or("missing 'a'")?;
+            let b = obj.get("b").and_then(|v| v.as_f64()).ok_or("missing 'b'")?;
             let op = obj
                 .get("op")
                 .and_then(|v| v.as_str())
@@ -218,10 +216,7 @@ fn main() {
     let agent = create_react_agent(tools, agent_config);
 
     println!("  Available tools: {:?}", agent.available_tools());
-    println!(
-        "  Config max_iterations: {}",
-        agent.config().max_iterations
-    );
+    println!("  Config max_iterations: {}", agent.config().max_iterations);
 
     // Invoke with a calculator tool call.
     let input = json!({
@@ -295,14 +290,8 @@ fn main() {
     let multi_tools = vec![
         ToolDefinition::new("calculator", "Arithmetic", |input| {
             let obj = input.as_object().ok_or("expected object")?;
-            let a = obj
-                .get("a")
-                .and_then(|v| v.as_f64())
-                .ok_or("missing 'a'")?;
-            let b = obj
-                .get("b")
-                .and_then(|v| v.as_f64())
-                .ok_or("missing 'b'")?;
+            let a = obj.get("a").and_then(|v| v.as_f64()).ok_or("missing 'a'")?;
+            let b = obj.get("b").and_then(|v| v.as_f64()).ok_or("missing 'b'")?;
             let op = obj
                 .get("op")
                 .and_then(|v| v.as_str())

@@ -18,11 +18,11 @@
 //!
 //! Run with: `cargo run -p rustchain-examples --example chain_composition`
 
+use rustchain::chains::composition::Handler;
 use rustchain::chains::{
     execute_with_metrics, ChainMetrics, ChainPipeline, ChainStep, CompositionConditionalChain,
     CompositionSequentialChain, CompositionTransformChain, MapChain, ParallelChain,
 };
-use rustchain::chains::composition::Handler;
 use serde_json::{json, Value};
 
 // ---------------------------------------------------------------------------
@@ -177,10 +177,7 @@ fn main() {
 
     let transform = CompositionTransformChain::new(Box::new(|v: Value| {
         // Extract words and build a summary object
-        let text = v
-            .get("text")
-            .and_then(|t| t.as_str())
-            .unwrap_or_default();
+        let text = v.get("text").and_then(|t| t.as_str()).unwrap_or_default();
         let words: Vec<&str> = text.split_whitespace().collect();
         Ok(json!({
             "original": text,
@@ -193,7 +190,10 @@ fn main() {
     let input = json!({"text": "the quick brown fox jumps"});
     let result = transform.execute(input.clone()).unwrap();
     println!("  Input:  {}", input);
-    println!("  Output: {}", serde_json::to_string_pretty(&result).unwrap());
+    println!(
+        "  Output: {}",
+        serde_json::to_string_pretty(&result).unwrap()
+    );
 
     // -----------------------------------------------------------------------
     // 5. MapChain — Process each element of a JSON array
@@ -227,7 +227,10 @@ fn main() {
     ]);
     let result = map_text.execute(input.clone()).unwrap();
     println!("  Input:  {}", input);
-    println!("  Output: {}", serde_json::to_string_pretty(&result).unwrap());
+    println!(
+        "  Output: {}",
+        serde_json::to_string_pretty(&result).unwrap()
+    );
 
     // -----------------------------------------------------------------------
     // 6. ConditionalChain — Route based on predicates
@@ -321,41 +324,46 @@ fn main() {
     let input = json!({"text": "  Hello WORLD from RustChain  "});
     let result = pipeline.execute(input.clone()).unwrap();
     println!("  Input:  {}", input);
-    println!("  Output: {}", serde_json::to_string_pretty(&result).unwrap());
+    println!(
+        "  Output: {}",
+        serde_json::to_string_pretty(&result).unwrap()
+    );
 
     // Pipeline with parallel stage
     println!("\n  Pipeline with parallel branches:");
-    let pipeline2 = ChainPipeline::new()
-        .parallel(vec![
-            (
-                "sum".to_string(),
-                Box::new(|v: Value| {
-                    let arr = v.get("numbers").and_then(|a| a.as_array()).unwrap();
-                    let total: i64 = arr.iter().filter_map(|n| n.as_i64()).sum();
-                    Ok(json!(total))
-                }) as Handler,
-            ),
-            (
-                "count".to_string(),
-                Box::new(|v: Value| {
-                    let arr = v.get("numbers").and_then(|a| a.as_array()).unwrap();
-                    Ok(json!(arr.len()))
-                }) as Handler,
-            ),
-            (
-                "max".to_string(),
-                Box::new(|v: Value| {
-                    let arr = v.get("numbers").and_then(|a| a.as_array()).unwrap();
-                    let max = arr.iter().filter_map(|n| n.as_i64()).max().unwrap_or(0);
-                    Ok(json!(max))
-                }) as Handler,
-            ),
-        ]);
+    let pipeline2 = ChainPipeline::new().parallel(vec![
+        (
+            "sum".to_string(),
+            Box::new(|v: Value| {
+                let arr = v.get("numbers").and_then(|a| a.as_array()).unwrap();
+                let total: i64 = arr.iter().filter_map(|n| n.as_i64()).sum();
+                Ok(json!(total))
+            }) as Handler,
+        ),
+        (
+            "count".to_string(),
+            Box::new(|v: Value| {
+                let arr = v.get("numbers").and_then(|a| a.as_array()).unwrap();
+                Ok(json!(arr.len()))
+            }) as Handler,
+        ),
+        (
+            "max".to_string(),
+            Box::new(|v: Value| {
+                let arr = v.get("numbers").and_then(|a| a.as_array()).unwrap();
+                let max = arr.iter().filter_map(|n| n.as_i64()).max().unwrap_or(0);
+                Ok(json!(max))
+            }) as Handler,
+        ),
+    ]);
 
     let input = json!({"numbers": [3, 7, 1, 9, 4]});
     let result = pipeline2.execute(input.clone()).unwrap();
     println!("  Input:  {}", input);
-    println!("  Output: {}", serde_json::to_string_pretty(&result).unwrap());
+    println!(
+        "  Output: {}",
+        serde_json::to_string_pretty(&result).unwrap()
+    );
 
     // -----------------------------------------------------------------------
     // 8. ChainMetrics — Track execution statistics
@@ -373,7 +381,9 @@ fn main() {
                     .get("raw")
                     .and_then(|r| r.as_str())
                     .ok_or_else(|| "missing raw".to_string())?;
-                let parsed: i64 = n.parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+                let parsed: i64 = n
+                    .parse()
+                    .map_err(|e: std::num::ParseIntError| e.to_string())?;
                 Ok(json!({ "value": parsed }))
             }))
             .build(),

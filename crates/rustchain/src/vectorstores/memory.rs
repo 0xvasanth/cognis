@@ -267,9 +267,7 @@ impl InMemoryVectorStore {
             .iter()
             .filter(|(_, entry)| {
                 if let Some(filter) = &query.metadata_filter {
-                    filter
-                        .iter()
-                        .all(|(k, v)| entry.metadata.get(k) == Some(v))
+                    filter.iter().all(|(k, v)| entry.metadata.get(k) == Some(v))
                 } else {
                     true
                 }
@@ -511,10 +509,7 @@ impl MaxMarginalRelevance {
                 let max_sim_to_selected = selected_indices
                     .iter()
                     .map(|&si| {
-                        cosine_similarity(
-                            &candidates[ci].1.embedding,
-                            &candidates[si].1.embedding,
-                        )
+                        cosine_similarity(&candidates[ci].1.embedding, &candidates[si].1.embedding)
                     })
                     .fold(f64::NEG_INFINITY, f64::max);
 
@@ -589,8 +584,10 @@ mod tests {
         document: &str,
         meta: &[(&str, Value)],
     ) -> VectorEntry {
-        let metadata: HashMap<String, Value> =
-            meta.iter().map(|(k, v)| (k.to_string(), v.clone())).collect();
+        let metadata: HashMap<String, Value> = meta
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect();
         VectorEntry::new(id, embedding, document, metadata)
     }
 
@@ -946,9 +943,9 @@ mod tests {
             .build();
         let results = store.search(&query);
         assert_eq!(results.len(), 2);
-        assert!(results.iter().all(|r| {
-            r.entry.metadata.get("source") == Some(&Value::String("wiki".into()))
-        }));
+        assert!(results
+            .iter()
+            .all(|r| { r.entry.metadata.get("source") == Some(&Value::String("wiki".into())) }));
     }
 
     #[test]
@@ -992,9 +989,7 @@ mod tests {
         let mut store = InMemoryVectorStore::new(SimilarityMetric::Cosine);
         store.add(make_entry("a", vec![0.0, 1.0], "doc"));
 
-        let query = SearchQuery::builder(vec![1.0, 0.0])
-            .min_score(0.99)
-            .build();
+        let query = SearchQuery::builder(vec![1.0, 0.0]).min_score(0.99).build();
         let results = store.search(&query);
         assert!(results.is_empty());
     }
@@ -1057,9 +1052,14 @@ mod tests {
         let results_diverse = MaxMarginalRelevance::search(&store, &[1.0, 0.0], 3, 0.0);
         let results_relevant = MaxMarginalRelevance::search(&store, &[1.0, 0.0], 3, 1.0);
 
-        let diverse_ids: Vec<&str> = results_diverse.iter().map(|r| r.entry.id.as_str()).collect();
-        let relevant_ids: Vec<&str> =
-            results_relevant.iter().map(|r| r.entry.id.as_str()).collect();
+        let diverse_ids: Vec<&str> = results_diverse
+            .iter()
+            .map(|r| r.entry.id.as_str())
+            .collect();
+        let relevant_ids: Vec<&str> = results_relevant
+            .iter()
+            .map(|r| r.entry.id.as_str())
+            .collect();
 
         // With lambda=0.0, "c" (the diverse pick) should appear in the top 2
         // because it's maximally different from the first selected entry.

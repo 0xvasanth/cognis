@@ -225,10 +225,7 @@ impl CallbackHandler for ConsoleCallbackHandler {
     fn on_event(&self, data: &CallbackData) {
         let line = format!(
             "[{}] {} run={} data={}",
-            data.timestamp,
-            data.phase,
-            data.run_id,
-            data.data,
+            data.timestamp, data.phase, data.run_id, data.data,
         );
         self.logs.lock().unwrap().push(line);
     }
@@ -327,17 +324,11 @@ impl CallbackHandler for MetricsCallbackHandler {
         let is_end = phase_str.ends_with("_end") || phase_str.ends_with("_error");
 
         if is_start {
-            inner
-                .pending
-                .insert(data.run_id.clone(), Instant::now());
+            inner.pending.insert(data.run_id.clone(), Instant::now());
         } else if is_end {
             if let Some(start) = inner.pending.remove(&data.run_id) {
                 let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-                inner
-                    .durations
-                    .entry(phase_str)
-                    .or_default()
-                    .push(elapsed);
+                inner.durations.entry(phase_str).or_default().push(elapsed);
             }
         }
     }
@@ -381,9 +372,7 @@ impl CallbackManager {
 
     /// Convenience method that constructs a [`CallbackData`] and emits it.
     pub fn emit_phase(&self, phase: CallbackPhase, run_id: impl Into<String>, data: Value) {
-        let cb = CallbackDataBuilder::new(phase, run_id)
-            .data(data)
-            .build();
+        let cb = CallbackDataBuilder::new(phase, run_id).data(data).build();
         self.emit(cb);
     }
 
@@ -540,10 +529,7 @@ mod tests {
     #[test]
     fn phase_display() {
         assert_eq!(format!("{}", CallbackPhase::ChainStart), "chain_start");
-        assert_eq!(
-            format!("{}", CallbackPhase::Custom("x".into())),
-            "x"
-        );
+        assert_eq!(format!("{}", CallbackPhase::Custom("x".into())), "x");
     }
 
     #[test]
@@ -586,8 +572,7 @@ mod tests {
 
     #[test]
     fn builder_minimal() {
-        let d = CallbackDataBuilder::new(CallbackPhase::ChainStart, "run-1")
-            .build();
+        let d = CallbackDataBuilder::new(CallbackPhase::ChainStart, "run-1").build();
         assert_eq!(d.phase, CallbackPhase::ChainStart);
         assert_eq!(d.run_id, "run-1");
         assert!(d.parent_run_id.is_none());
@@ -755,7 +740,10 @@ mod tests {
 
     #[test]
     fn metrics_name() {
-        assert_eq!(MetricsCallbackHandler::new().name(), "MetricsCallbackHandler");
+        assert_eq!(
+            MetricsCallbackHandler::new().name(),
+            "MetricsCallbackHandler"
+        );
     }
 
     #[test]
@@ -859,8 +847,12 @@ mod tests {
         let mgr = CallbackManager::new();
         struct AM(Arc<MetricsCallbackHandler>);
         impl CallbackHandler for AM {
-            fn on_event(&self, d: &CallbackData) { self.0.on_event(d); }
-            fn name(&self) -> &str { "AM" }
+            fn on_event(&self, d: &CallbackData) {
+                self.0.on_event(d);
+            }
+            fn name(&self) -> &str {
+                "AM"
+            }
         }
         mgr.add_handler(Box::new(AM(metrics.clone())));
 
@@ -888,8 +880,12 @@ mod tests {
         let mgr = CallbackManager::new();
         struct AM(Arc<MetricsCallbackHandler>);
         impl CallbackHandler for AM {
-            fn on_event(&self, d: &CallbackData) { self.0.on_event(d); }
-            fn name(&self) -> &str { "AM" }
+            fn on_event(&self, d: &CallbackData) {
+                self.0.on_event(d);
+            }
+            fn name(&self) -> &str {
+                "AM"
+            }
         }
         mgr.add_handler(Box::new(AM(metrics.clone())));
 
@@ -915,8 +911,12 @@ mod tests {
         let mgr = CallbackManager::new();
         struct AM(Arc<MetricsCallbackHandler>);
         impl CallbackHandler for AM {
-            fn on_event(&self, d: &CallbackData) { self.0.on_event(d); }
-            fn name(&self) -> &str { "AM" }
+            fn on_event(&self, d: &CallbackData) {
+                self.0.on_event(d);
+            }
+            fn name(&self) -> &str {
+                "AM"
+            }
         }
         mgr.add_handler(Box::new(AM(metrics.clone())));
 
@@ -940,8 +940,12 @@ mod tests {
         let mgr = CallbackManager::new();
         struct AC(Arc<ConsoleCallbackHandler>);
         impl CallbackHandler for AC {
-            fn on_event(&self, d: &CallbackData) { self.0.on_event(d); }
-            fn name(&self) -> &str { "AC" }
+            fn on_event(&self, d: &CallbackData) {
+                self.0.on_event(d);
+            }
+            fn name(&self) -> &str {
+                "AC"
+            }
         }
         mgr.add_handler(Box::new(AC(console.clone())));
 
@@ -968,8 +972,12 @@ mod tests {
         let console = Arc::new(ConsoleCallbackHandler::new());
         struct AC(Arc<ConsoleCallbackHandler>);
         impl CallbackHandler for AC {
-            fn on_event(&self, d: &CallbackData) { self.0.on_event(d); }
-            fn name(&self) -> &str { "AC" }
+            fn on_event(&self, d: &CallbackData) {
+                self.0.on_event(d);
+            }
+            fn name(&self) -> &str {
+                "AC"
+            }
         }
         let filtered = FilteredHandler::new(
             Box::new(AC(console.clone())),
@@ -986,13 +994,15 @@ mod tests {
         let console = Arc::new(ConsoleCallbackHandler::new());
         struct AC(Arc<ConsoleCallbackHandler>);
         impl CallbackHandler for AC {
-            fn on_event(&self, d: &CallbackData) { self.0.on_event(d); }
-            fn name(&self) -> &str { "AC" }
+            fn on_event(&self, d: &CallbackData) {
+                self.0.on_event(d);
+            }
+            fn name(&self) -> &str {
+                "AC"
+            }
         }
-        let filtered = FilteredHandler::new(
-            Box::new(AC(console.clone())),
-            vec![CallbackPhase::LlmStart],
-        );
+        let filtered =
+            FilteredHandler::new(Box::new(AC(console.clone())), vec![CallbackPhase::LlmStart]);
         mgr.add_handler(Box::new(filtered));
 
         mgr.emit_phase(CallbackPhase::ChainStart, "r1", json!({}));
@@ -1008,7 +1018,9 @@ mod tests {
         struct Named;
         impl CallbackHandler for Named {
             fn on_event(&self, _: &CallbackData) {}
-            fn name(&self) -> &str { "MyHandler" }
+            fn name(&self) -> &str {
+                "MyHandler"
+            }
         }
         let f = FilteredHandler::new(Box::new(Named), vec![]);
         assert_eq!(f.name(), "MyHandler");
@@ -1018,7 +1030,11 @@ mod tests {
     fn filtered_handler_multiple_phases() {
         let f = FilteredHandler::new(
             Box::new(ConsoleCallbackHandler::new()),
-            vec![CallbackPhase::ChainStart, CallbackPhase::ChainEnd, CallbackPhase::ChainError],
+            vec![
+                CallbackPhase::ChainStart,
+                CallbackPhase::ChainEnd,
+                CallbackPhase::ChainError,
+            ],
         );
         assert!(f.handles_phase(&CallbackPhase::ChainStart));
         assert!(f.handles_phase(&CallbackPhase::ChainEnd));
@@ -1028,10 +1044,7 @@ mod tests {
 
     #[test]
     fn filtered_handler_empty_phases_blocks_all() {
-        let f = FilteredHandler::new(
-            Box::new(ConsoleCallbackHandler::new()),
-            vec![],
-        );
+        let f = FilteredHandler::new(Box::new(ConsoleCallbackHandler::new()), vec![]);
         assert!(!f.handles_phase(&CallbackPhase::ChainStart));
         assert!(!f.handles_phase(&CallbackPhase::LlmEnd));
     }
@@ -1119,8 +1132,12 @@ mod tests {
         let mgr = CallbackManager::new();
         struct AC(Arc<ConsoleCallbackHandler>);
         impl CallbackHandler for AC {
-            fn on_event(&self, d: &CallbackData) { self.0.on_event(d); }
-            fn name(&self) -> &str { "AC" }
+            fn on_event(&self, d: &CallbackData) {
+                self.0.on_event(d);
+            }
+            fn name(&self) -> &str {
+                "AC"
+            }
         }
         mgr.add_handler(Box::new(AC(console.clone())));
 
@@ -1153,8 +1170,12 @@ mod tests {
         let mgr = CallbackManager::new();
         struct AC(Arc<ConsoleCallbackHandler>);
         impl CallbackHandler for AC {
-            fn on_event(&self, d: &CallbackData) { self.0.on_event(d); }
-            fn name(&self) -> &str { "AC" }
+            fn on_event(&self, d: &CallbackData) {
+                self.0.on_event(d);
+            }
+            fn name(&self) -> &str {
+                "AC"
+            }
         }
         mgr.add_handler(Box::new(AC(console.clone())));
         mgr.emit_phase(CallbackPhase::Custom("my_custom".into()), "r1", json!(42));

@@ -57,7 +57,11 @@ fn main() {
 
     let texts = vec!["rust", "python", "javascript", "go"];
     let batch_results = model.embed_batch(&texts).unwrap();
-    println!("Batch-embedded {} texts, each with {} dimensions", batch_results.len(), model.dimensions());
+    println!(
+        "Batch-embedded {} texts, each with {} dimensions",
+        batch_results.len(),
+        model.dimensions()
+    );
     for (text, vec) in texts.iter().zip(batch_results.iter()) {
         println!("  \"{}\": [{:.4}, {:.4}, ...]", text, vec[0], vec[1]);
     }
@@ -152,9 +156,13 @@ fn main() {
     println!("Query: {:?}", query);
     println!("Top 3 most similar:");
     for (idx, similarity) in &top3 {
-        println!("  #{}: \"{}\" (index {}) — cosine similarity: {:.6}",
+        println!(
+            "  #{}: \"{}\" (index {}) — cosine similarity: {:.6}",
             top3.iter().position(|(i, _)| i == idx).unwrap() + 1,
-            labels[*idx], idx, similarity);
+            labels[*idx],
+            idx,
+            similarity
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -191,7 +199,11 @@ fn main() {
     println!("Register and look up embedding models by name.\n");
 
     let mut registry = EmbeddingRegistry::new();
-    println!("Empty registry: len={}, is_empty={}", registry.len(), registry.is_empty());
+    println!(
+        "Empty registry: len={}, is_empty={}",
+        registry.len(),
+        registry.is_empty()
+    );
 
     // Register models
     registry.register("small", Box::new(FakeEmbeddingModel::new(64)));
@@ -206,13 +218,23 @@ fn main() {
 
     // Look up and use a model
     let medium = registry.get("medium").unwrap();
-    println!("\nLooked up 'medium': {} ({} dims)", medium.model_name(), medium.dimensions());
+    println!(
+        "\nLooked up 'medium': {} ({} dims)",
+        medium.model_name(),
+        medium.dimensions()
+    );
     let vec = medium.embed_text("test").unwrap();
-    println!("Embedded \"test\" via registry: vector of {} dimensions", vec.len());
+    println!(
+        "Embedded \"test\" via registry: vector of {} dimensions",
+        vec.len()
+    );
 
     // Missing model returns None
     let missing = registry.get("nonexistent");
-    println!("Looking up 'nonexistent': {:?}", missing.map(|m| m.model_name()));
+    println!(
+        "Looking up 'nonexistent': {:?}",
+        missing.map(|m| m.model_name())
+    );
 
     // -----------------------------------------------------------------------
     // 8. EmbeddingResult and EmbeddingUsage
@@ -247,7 +269,10 @@ fn main() {
         Some(EmbeddingUsage::new(8, 8)),
     );
     println!("\nEmbeddingResult with usage:");
-    println!("  JSON: {}", serde_json::to_string_pretty(&result_with_usage.to_json()).unwrap());
+    println!(
+        "  JSON: {}",
+        serde_json::to_string_pretty(&result_with_usage.to_json()).unwrap()
+    );
 
     println!("\n=== Embedding Models Example Complete ===");
 }

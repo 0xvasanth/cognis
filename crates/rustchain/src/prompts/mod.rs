@@ -17,15 +17,11 @@
 pub mod chat;
 pub mod few_shot;
 pub mod hub;
+pub mod management;
 pub mod registry;
 pub mod template;
-pub mod management;
 pub mod template_engine;
 
-pub use management::{
-    FewShotExample, FewShotSelector, PromptLibrary, PromptOptimizer, PromptSectionComposer,
-    PromptVersion, VersionedPrompt,
-};
 pub use chat::{
     extract_template_variables, messages_placeholder, ChatPromptTemplate, MessagePromptTemplate,
 };
@@ -35,6 +31,10 @@ pub use few_shot::{
     SemanticSimilaritySelectorBuilder,
 };
 pub use hub::{PromptEntry, PromptHub};
+pub use management::{
+    FewShotExample, FewShotSelector, PromptLibrary, PromptOptimizer, PromptSectionComposer,
+    PromptVersion, VersionedPrompt,
+};
 pub use registry::{PromptComposer, PromptExporter, PromptRegistry, RegisteredPrompt};
 pub use template::PromptTemplate;
 pub use template_engine::{
