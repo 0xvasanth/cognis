@@ -218,3 +218,27 @@ path = "../../examples/chain_composition.rs"
 [[example]]
 name = "checkpoint_persistence"
 path = "../../examples/checkpoint_persistence.rs"
+
+[[example]]
+name = "graph_analysis"
+path = "../../examples/graph_analysis.rs"
+
+[[example]]
+name = "state_machine"
+path = "../../examples/state_machine.rs"
+
+[[example]]
+name = "evaluation_framework"
+path = "../../examples/evaluation_framework.rs"
+
+[[example]]
+name = "callback_manager"
+path = "../../examples/callback_manager.rs"
+
+[[example]]
+name = "vector_store"
+path = "../../examples/vector_store.rs"
+
+[[example]]
+name = "tool_schema"
+path = "../../examples/tool_schema.rs"
