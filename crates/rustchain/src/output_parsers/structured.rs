@@ -18,8 +18,8 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use regex::Regex;
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json::Value;
 
 use rustchain_core::error::{Result, RustChainError};
@@ -1118,15 +1118,11 @@ impl StructuredParser {
     }
 
     /// Parse JSON from the input string, deserializing into the given type.
-    pub fn parse_json<T: DeserializeOwned>(
-        &self,
-        input: &str,
-    ) -> Result<ParseResult<Value>> {
+    pub fn parse_json<T: DeserializeOwned>(&self, input: &str) -> Result<ParseResult<Value>> {
         let start = Instant::now();
         let stripped = strip_code_fences(input);
-        let value: Value = serde_json::from_str(stripped).map_err(|e| {
-            parser_error(format!("Failed to parse JSON: {}", e), input)
-        })?;
+        let value: Value = serde_json::from_str(stripped)
+            .map_err(|e| parser_error(format!("Failed to parse JSON: {}", e), input))?;
         let duration = start.elapsed().as_micros() as u64;
         let mut result = ParseResult::new(value, input, OutputFormat::Json);
         result.parse_duration_us = duration;
@@ -1186,12 +1182,10 @@ impl StructuredParser {
             }
             // Skip separator rows like | --- | --- |
             let inner = &trimmed[1..trimmed.len() - 1];
-            let is_separator = inner
-                .split('|')
-                .all(|cell| {
-                    let c = cell.trim();
-                    c.chars().all(|ch| ch == '-' || ch == ':') && !c.is_empty()
-                });
+            let is_separator = inner.split('|').all(|cell| {
+                let c = cell.trim();
+                c.chars().all(|ch| ch == '-' || ch == ':') && !c.is_empty()
+            });
             if is_separator {
                 continue;
             }
@@ -1268,12 +1262,12 @@ impl OutputRepairer {
     /// This is a simplified approach that handles common LLM output patterns.
     fn replace_single_quotes(&self, input: &str) -> String {
         let mut result = String::with_capacity(input.len());
-        let mut chars = input.chars().peekable();
+        let chars = input.chars().peekable();
         let mut in_double_string = false;
         let mut in_single_string = false;
         let mut prev_was_escape = false;
 
-        while let Some(ch) = chars.next() {
+        for ch in chars {
             if prev_was_escape {
                 result.push(ch);
                 prev_was_escape = false;
@@ -1298,7 +1292,7 @@ impl OutputRepairer {
     }
 
     /// Extract text between a start and end delimiter.
-    pub fn extract_between<'a>(&self, input: &'a str, start: &str, end: &str) -> Option<String> {
+    pub fn extract_between(&self, input: &str, start: &str, end: &str) -> Option<String> {
         let start_idx = input.find(start)?;
         let after_start = start_idx + start.len();
         let rest = &input[after_start..];
@@ -1897,8 +1891,8 @@ mod tests {
 
     #[test]
     fn parse_result_to_json() {
-        let pr = ParseResult::new(json!({"a": 1}), "raw text", OutputFormat::Json)
-            .with_warning("w1");
+        let pr =
+            ParseResult::new(json!({"a": 1}), "raw text", OutputFormat::Json).with_warning("w1");
         let j = pr.to_json();
         assert_eq!(j["value"]["a"], 1);
         assert_eq!(j["raw_input"], "raw text");
@@ -2035,8 +2029,7 @@ mod tests {
 
     #[test]
     fn schema_enforcer_optional_default_applied() {
-        let enforcer = SchemaEnforcer::new()
-            .optional_field("status", json!("active"));
+        let enforcer = SchemaEnforcer::new().optional_field("status", json!("active"));
         let val = json!({"name": "Alice"});
         let result = enforcer.validate(&val).unwrap();
         assert_eq!(result["status"], "active");
@@ -2045,8 +2038,7 @@ mod tests {
 
     #[test]
     fn schema_enforcer_optional_default_not_overwritten() {
-        let enforcer = SchemaEnforcer::new()
-            .optional_field("status", json!("active"));
+        let enforcer = SchemaEnforcer::new().optional_field("status", json!("active"));
         let val = json!({"status": "inactive"});
         let result = enforcer.validate(&val).unwrap();
         assert_eq!(result["status"], "inactive");
@@ -2073,8 +2065,7 @@ mod tests {
 
     #[test]
     fn schema_enforcer_type_constraint_correct() {
-        let enforcer = SchemaEnforcer::new()
-            .require_type("tags", JsonType::Array);
+        let enforcer = SchemaEnforcer::new().require_type("tags", JsonType::Array);
         let val = json!({"tags": ["a", "b"]});
         assert!(enforcer.validate(&val).is_ok());
     }
@@ -2262,13 +2253,17 @@ mod tests {
     #[test]
     fn repairer_extract_between_not_found() {
         let repairer = OutputRepairer::new();
-        assert!(repairer.extract_between("no delimiters", "<<", ">>").is_none());
+        assert!(repairer
+            .extract_between("no delimiters", "<<", ">>")
+            .is_none());
     }
 
     #[test]
     fn repairer_extract_between_missing_end() {
         let repairer = OutputRepairer::new();
-        assert!(repairer.extract_between("<<start only", "<<", ">>").is_none());
+        assert!(repairer
+            .extract_between("<<start only", "<<", ">>")
+            .is_none());
     }
 
     #[test]

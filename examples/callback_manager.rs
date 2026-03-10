@@ -76,10 +76,7 @@ fn main() {
     }
 
     // Display trait
-    println!(
-        "\nDisplay formatting: {}",
-        CallbackPhase::ChainStart
-    );
+    println!("\nDisplay formatting: {}", CallbackPhase::ChainStart);
 
     // Equality and hashing
     assert_eq!(CallbackPhase::LlmStart, CallbackPhase::LlmStart);
@@ -230,7 +227,10 @@ fn main() {
 
     manager.add_handler(Box::new(SharedConsole(shared_console.clone())));
     manager.add_handler(Box::new(SharedMetrics(shared_metrics.clone())));
-    println!("Handler count after adding two: {}", manager.handler_count());
+    println!(
+        "Handler count after adding two: {}",
+        manager.handler_count()
+    );
 
     // Emit events through the manager
     manager.emit_phase(
@@ -293,11 +293,17 @@ fn main() {
             "scope-run-1".into(),
             json!({"chain": "my_chain"}),
         );
-        println!("  Inside scope: events so far = {}", scope_metrics.total_events());
+        println!(
+            "  Inside scope: events so far = {}",
+            scope_metrics.total_events()
+        );
         // Simulating work inside the chain scope
         println!("  (doing work inside the chain...)");
     }
-    println!("  After scope dropped: events = {}", scope_metrics.total_events());
+    println!(
+        "  After scope dropped: events = {}",
+        scope_metrics.total_events()
+    );
 
     println!("\nScope logs:");
     for log in &scope_console.logs() {
@@ -366,10 +372,22 @@ fn main() {
     );
 
     println!("Filter allows:");
-    println!("  LlmStart: {}", filtered.handles_phase(&CallbackPhase::LlmStart));
-    println!("  LlmEnd: {}", filtered.handles_phase(&CallbackPhase::LlmEnd));
-    println!("  ChainStart: {}", filtered.handles_phase(&CallbackPhase::ChainStart));
-    println!("  ToolStart: {}", filtered.handles_phase(&CallbackPhase::ToolStart));
+    println!(
+        "  LlmStart: {}",
+        filtered.handles_phase(&CallbackPhase::LlmStart)
+    );
+    println!(
+        "  LlmEnd: {}",
+        filtered.handles_phase(&CallbackPhase::LlmEnd)
+    );
+    println!(
+        "  ChainStart: {}",
+        filtered.handles_phase(&CallbackPhase::ChainStart)
+    );
+    println!(
+        "  ToolStart: {}",
+        filtered.handles_phase(&CallbackPhase::ToolStart)
+    );
 
     filter_manager.add_handler(Box::new(filtered));
 
@@ -391,10 +409,7 @@ fn main() {
 
     // Empty filter blocks everything
     let empty_console = Arc::new(ConsoleCallbackHandler::new());
-    let empty_filter = FilteredHandler::new(
-        Box::new(SharedConsole(empty_console.clone())),
-        vec![],
-    );
+    let empty_filter = FilteredHandler::new(Box::new(SharedConsole(empty_console.clone())), vec![]);
     println!("\nEmpty filter blocks all phases:");
     println!(
         "  ChainStart: {}",

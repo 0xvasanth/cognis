@@ -112,7 +112,10 @@ fn main() {
     );
 
     let s1 = contains_cs.evaluate(&json!("world"), &json!("hello world"));
-    println!("\n  expected=\"world\" in actual=\"hello world\" => {:.1}", s1.score);
+    println!(
+        "\n  expected=\"world\" in actual=\"hello world\" => {:.1}",
+        s1.score
+    );
 
     let s2 = contains_cs.evaluate(&json!("WORLD"), &json!("hello world"));
     println!(
@@ -122,10 +125,7 @@ fn main() {
 
     // Case-insensitive
     let contains_ci = ContainsMetric::new(true);
-    println!(
-        "\nMetric: '{}' (case_insensitive)",
-        contains_ci.name()
-    );
+    println!("\nMetric: '{}' (case_insensitive)", contains_ci.name());
 
     let s3 = contains_ci.evaluate(&json!("WORLD"), &json!("hello world"));
     println!(
@@ -160,7 +160,10 @@ fn main() {
     );
 
     let n1 = numeric.evaluate(&json!(50.0), &json!(50.0));
-    println!("\n  expected=50.0, actual=50.0 => {:.2} (exact match)", n1.score);
+    println!(
+        "\n  expected=50.0, actual=50.0 => {:.2} (exact match)",
+        n1.score
+    );
 
     let n2 = numeric.evaluate(&json!(50.0), &json!(55.0));
     println!(
@@ -201,11 +204,7 @@ fn main() {
     println!("Compares JSON structures and scores based on matching keys/values.\n");
 
     let json_sim = JsonSimilarityMetric;
-    println!(
-        "Metric: '{}' - {}",
-        json_sim.name(),
-        json_sim.description()
-    );
+    println!("Metric: '{}' - {}", json_sim.name(), json_sim.description());
 
     // Identical objects
     let j1 = json_sim.evaluate(
@@ -226,10 +225,7 @@ fn main() {
         &json!({"name": "Alice", "age": 30, "city": "NYC"}),
         &json!({"name": "Alice"}),
     );
-    println!(
-        "  Missing keys (1 of 3 present) => {:.2}",
-        j3.score
-    );
+    println!("  Missing keys (1 of 3 present) => {:.2}", j3.score);
 
     // Nested object comparison
     let j4 = json_sim.evaluate(
@@ -240,10 +236,7 @@ fn main() {
 
     // Array comparison
     let j5 = json_sim.evaluate(&json!([1, 2, 3, 4]), &json!([1, 2, 3, 99]));
-    println!(
-        "  Array (3 of 4 elements match) => {:.2}",
-        j5.score
-    );
+    println!("  Array (3 of 4 elements match) => {:.2}", j5.score);
 
     // Scalar comparison
     let j6 = json_sim.evaluate(&json!(42), &json!(42));
@@ -271,7 +264,10 @@ fn main() {
     println!("  Input: {}", case1.input);
     println!("  Expected: {}", case1.expected_output);
     println!("  Tags: {:?}", case1.tags);
-    println!("  Metadata keys: {:?}", case1.metadata.keys().collect::<Vec<_>>());
+    println!(
+        "  Metadata keys: {:?}",
+        case1.metadata.keys().collect::<Vec<_>>()
+    );
 
     let case2 = EvalCase::builder("json_extraction")
         .input(json!({"text": "Extract the name and age from: Alice is 30 years old"}))
@@ -350,12 +346,14 @@ fn main() {
 
     println!("\nResults per case:");
     for result in &report.results {
-        println!("  Case '{}': avg_score={:.2}, passed={}", result.case_name, result.avg_score(), result.passed);
+        println!(
+            "  Case '{}': avg_score={:.2}, passed={}",
+            result.case_name,
+            result.avg_score(),
+            result.passed
+        );
         for score in &result.scores {
-            println!(
-                "    - {}: {:.2}",
-                score.metric_name, score.score
-            );
+            println!("    - {}: {:.2}", score.metric_name, score.score);
         }
     }
 

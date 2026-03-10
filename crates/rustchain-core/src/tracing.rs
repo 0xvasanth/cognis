@@ -493,9 +493,7 @@ impl TraceExporter {
                 .map(|d| format!(" ({}ms)", d))
                 .unwrap_or_default();
             let status_str = format!(" [{}]", span.status);
-            lines.push(format!(
-                "{}{}{}{}", indent, span.name, dur_str, status_str
-            ));
+            lines.push(format!("{}{}{}{}", indent, span.name, dur_str, status_str));
         }
         lines.join("\n")
     }
@@ -634,7 +632,7 @@ fn epoch_secs_to_utc(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
 }
 
 fn is_leap_year(y: u64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
 }
 
 /// Parse an ISO-8601 timestamp (the format produced by [`current_timestamp`])
@@ -662,8 +660,8 @@ fn parse_timestamp_ms(s: &str) -> Option<u64> {
     } else {
         [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     };
-    for i in 0..(month as usize).saturating_sub(1) {
-        total_days += month_days[i];
+    for md in &month_days[..(month as usize).saturating_sub(1)] {
+        total_days += md;
     }
     total_days += day.saturating_sub(1);
 
@@ -914,8 +912,7 @@ mod tests {
 
     #[test]
     fn test_span_to_json_parent() {
-        let span = Span::new(TraceId::from_string("t"), "s")
-            .with_parent(SpanId::from_string("p1"));
+        let span = Span::new(TraceId::from_string("t"), "s").with_parent(SpanId::from_string("p1"));
         let j = span.to_json();
         assert_eq!(j["parent_id"], "p1");
     }
@@ -948,8 +945,7 @@ mod tests {
     fn test_trace_root_span() {
         let mut trace = Trace::new();
         let root = Span::new(trace.trace_id.clone(), "root");
-        let child = Span::new(trace.trace_id.clone(), "child")
-            .with_parent(root.span_id.clone());
+        let child = Span::new(trace.trace_id.clone(), "child").with_parent(root.span_id.clone());
         trace.add_span(root);
         trace.add_span(child);
         assert_eq!(trace.root_span().unwrap().name, "root");
@@ -1067,7 +1063,13 @@ mod tests {
     fn test_collector_start_child_span() {
         let mut c = TraceCollector::new();
         let tid = c.start_trace("root");
-        let root_sid = c.get_trace(&tid).unwrap().root_span().unwrap().span_id.clone();
+        let root_sid = c
+            .get_trace(&tid)
+            .unwrap()
+            .root_span()
+            .unwrap()
+            .span_id
+            .clone();
         let child_sid = c.start_child_span(&tid, &root_sid, "child").unwrap();
         let trace = c.get_trace(&tid).unwrap();
         let child = trace.get_span(&child_sid).unwrap();
@@ -1086,7 +1088,13 @@ mod tests {
     fn test_collector_finish_span() {
         let mut c = TraceCollector::new();
         let tid = c.start_trace("root");
-        let sid = c.get_trace(&tid).unwrap().root_span().unwrap().span_id.clone();
+        let sid = c
+            .get_trace(&tid)
+            .unwrap()
+            .root_span()
+            .unwrap()
+            .span_id
+            .clone();
         c.finish_span(&tid, &sid);
         let span = c.get_trace(&tid).unwrap().get_span(&sid).unwrap();
         assert!(span.is_finished());
@@ -1097,7 +1105,13 @@ mod tests {
     fn test_collector_set_span_status() {
         let mut c = TraceCollector::new();
         let tid = c.start_trace("root");
-        let sid = c.get_trace(&tid).unwrap().root_span().unwrap().span_id.clone();
+        let sid = c
+            .get_trace(&tid)
+            .unwrap()
+            .root_span()
+            .unwrap()
+            .span_id
+            .clone();
         c.set_span_status(&tid, &sid, SpanStatus::Error("boom".into()));
         let span = c.get_trace(&tid).unwrap().get_span(&sid).unwrap();
         assert!(matches!(span.status, SpanStatus::Error(ref s) if s == "boom"));
@@ -1107,7 +1121,13 @@ mod tests {
     fn test_collector_set_span_attribute() {
         let mut c = TraceCollector::new();
         let tid = c.start_trace("root");
-        let sid = c.get_trace(&tid).unwrap().root_span().unwrap().span_id.clone();
+        let sid = c
+            .get_trace(&tid)
+            .unwrap()
+            .root_span()
+            .unwrap()
+            .span_id
+            .clone();
         c.set_span_attribute(&tid, &sid, "model", json!("claude"));
         let span = c.get_trace(&tid).unwrap().get_span(&sid).unwrap();
         assert_eq!(span.attributes["model"], json!("claude"));
@@ -1172,8 +1192,7 @@ mod tests {
         root.start_time = "2026-01-01T00:00:00.000Z".into();
         root.end_time = Some("2026-01-01T00:00:02.000Z".into());
         let root_id = root.span_id.clone();
-        let mut child = Span::new(trace.trace_id.clone(), "child")
-            .with_parent(root_id.clone());
+        let mut child = Span::new(trace.trace_id.clone(), "child").with_parent(root_id.clone());
         child.start_time = "2026-01-01T00:00:00.500Z".into();
         child.end_time = Some("2026-01-01T00:00:01.500Z".into());
         trace.add_span(root);
@@ -1190,8 +1209,7 @@ mod tests {
         root.start_time = "2026-01-01T00:00:00.000Z".into();
         root.end_time = Some("2026-01-01T00:00:01.000Z".into());
         let root_id = root.span_id.clone();
-        let mut child = Span::new(trace.trace_id.clone(), "child")
-            .with_parent(root_id);
+        let mut child = Span::new(trace.trace_id.clone(), "child").with_parent(root_id);
         child.start_time = "2026-01-01T00:00:00.000Z".into();
         child.end_time = Some("2026-01-01T00:00:00.500Z".into());
         trace.add_span(root);
@@ -1227,7 +1245,9 @@ mod tests {
     fn test_parse_known_timestamp() {
         let ms = parse_timestamp_ms("2026-01-01T00:00:00.000Z").unwrap();
         // 2026-01-01 = days from 1970 to 2026: known value
-        let expected_days: u64 = (1970..2026).map(|y| if is_leap_year(y) { 366u64 } else { 365 }).sum();
+        let expected_days: u64 = (1970..2026)
+            .map(|y| if is_leap_year(y) { 366u64 } else { 365 })
+            .sum();
         assert_eq!(ms, expected_days * 86400 * 1000);
     }
 
@@ -1253,7 +1273,9 @@ mod tests {
     #[test]
     fn test_epoch_secs_to_utc_known_date() {
         // 2026-03-10T00:00:00Z
-        let days: u64 = (1970..2026).map(|y| if is_leap_year(y) { 366u64 } else { 365 }).sum();
+        let days: u64 = (1970..2026)
+            .map(|y| if is_leap_year(y) { 366u64 } else { 365 })
+            .sum();
         // Jan(31) + Feb(28) + 9 days (March 10 = day 69 of year, 0-indexed = 68)
         let day_of_year = 31 + 28 + 9; // = 68 days past Jan 1
         let secs = (days + day_of_year) * 86400;
@@ -1293,13 +1315,23 @@ mod tests {
     fn test_full_workflow() {
         let mut collector = TraceCollector::new();
         let tid = collector.start_trace("llm-call");
-        let root_sid = collector.get_trace(&tid).unwrap().root_span().unwrap().span_id.clone();
+        let root_sid = collector
+            .get_trace(&tid)
+            .unwrap()
+            .root_span()
+            .unwrap()
+            .span_id
+            .clone();
 
-        let child_sid = collector.start_child_span(&tid, &root_sid, "tokenize").unwrap();
+        let child_sid = collector
+            .start_child_span(&tid, &root_sid, "tokenize")
+            .unwrap();
         collector.set_span_attribute(&tid, &child_sid, "tokens", json!(128));
         collector.finish_span(&tid, &child_sid);
 
-        let child2_sid = collector.start_child_span(&tid, &root_sid, "generate").unwrap();
+        let child2_sid = collector
+            .start_child_span(&tid, &root_sid, "generate")
+            .unwrap();
         collector.set_span_status(&tid, &child2_sid, SpanStatus::Error("rate_limit".into()));
         collector.finish_span(&tid, &child2_sid);
 

@@ -255,7 +255,10 @@ pub struct TaskAssignmentBuilder {
 
 impl TaskAssignment {
     /// Start building a new task with the given ID and description.
-    pub fn builder(task_id: impl Into<String>, description: impl Into<String>) -> TaskAssignmentBuilder {
+    pub fn builder(
+        task_id: impl Into<String>,
+        description: impl Into<String>,
+    ) -> TaskAssignmentBuilder {
         TaskAssignmentBuilder {
             task_id: task_id.into(),
             agent_role: String::new(),
@@ -687,7 +690,10 @@ impl TeamComposition {
 
     /// Find all members that have the given capability.
     pub fn find_for_capability(&self, cap: &str) -> Vec<&AgentRole> {
-        self.members.iter().filter(|r| r.has_capability(cap)).collect()
+        self.members
+            .iter()
+            .filter(|r| r.has_capability(cap))
+            .collect()
     }
 
     /// Returns a reference to the team members.
@@ -909,7 +915,11 @@ mod tests {
     fn test_orchestrator_add_role_and_task() {
         let mut orch = Orchestrator::new();
         orch.add_role(AgentRole::builder("worker").build());
-        orch.add_task(TaskAssignment::builder("t1", "Work").agent_role("worker").build());
+        orch.add_task(
+            TaskAssignment::builder("t1", "Work")
+                .agent_role("worker")
+                .build(),
+        );
         assert!(!orch.is_complete());
         assert_eq!(orch.progress().total, 1);
     }
@@ -1027,11 +1037,7 @@ mod tests {
     fn test_orchestrator_progress() {
         let mut orch = Orchestrator::new();
         orch.add_task(TaskAssignment::builder("t1", "A").build());
-        orch.add_task(
-            TaskAssignment::builder("t2", "B")
-                .dependency("t1")
-                .build(),
-        );
+        orch.add_task(TaskAssignment::builder("t2", "B").dependency("t1").build());
         orch.add_task(TaskAssignment::builder("t3", "C").build());
 
         let p = orch.progress();
@@ -1291,7 +1297,11 @@ mod tests {
         let mut orch = Orchestrator::new();
 
         // Set up roles
-        orch.add_role(AgentRole::builder("researcher").capability("search").build());
+        orch.add_role(
+            AgentRole::builder("researcher")
+                .capability("search")
+                .build(),
+        );
         orch.add_role(AgentRole::builder("writer").capability("write").build());
 
         // Set up tasks with dependencies
@@ -1316,7 +1326,8 @@ mod tests {
         orch.assign_task("research", "researcher").unwrap();
         assert_eq!(orch.progress().in_progress, 1);
 
-        orch.complete_task("research", json!({"findings": "data"})).unwrap();
+        orch.complete_task("research", json!({"findings": "data"}))
+            .unwrap();
         assert_eq!(orch.progress().completed, 1);
 
         // Now write is ready
@@ -1325,7 +1336,8 @@ mod tests {
         assert_eq!(ready[0].task_id, "write");
 
         // Complete write
-        orch.complete_task("write", json!({"article": "done"})).unwrap();
+        orch.complete_task("write", json!({"article": "done"}))
+            .unwrap();
         assert!(orch.is_complete());
         assert!((orch.progress().completion_rate() - 1.0).abs() < f64::EPSILON);
     }

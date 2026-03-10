@@ -56,10 +56,10 @@ pub mod prompts;
 pub mod providers;
 pub mod retrievers;
 pub mod stores;
+pub mod streaming;
 pub mod text_splitter;
 pub mod text_splitters;
 pub mod tools;
-pub mod streaming;
 pub mod vectorstores;
 
 // Re-export core for convenience

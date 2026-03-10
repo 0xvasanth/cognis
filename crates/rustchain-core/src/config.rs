@@ -382,8 +382,7 @@ impl ConfigBuilder {
         for (key, value) in std::env::vars() {
             if let Some(suffix) = key.strip_prefix(&prefix_upper) {
                 let config_key = suffix.to_lowercase();
-                self.data
-                    .insert(config_key, ConfigValue::String(value));
+                self.data.insert(config_key, ConfigValue::String(value));
             }
         }
         self
@@ -461,8 +460,7 @@ impl ConfigValidator {
 
     /// Mark a key as required.
     pub fn required(mut self, key: impl Into<String>) -> Self {
-        self.rules
-            .push((key.into(), ValidationRule::Required));
+        self.rules.push((key.into(), ValidationRule::Required));
         self
     }
 
@@ -586,9 +584,19 @@ impl ConfigSnapshot {
 /// Describes a single difference between two [`ConfigSnapshot`]s.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConfigChange {
-    Added { key: String, value: ConfigValue },
-    Removed { key: String, value: ConfigValue },
-    Modified { key: String, old: ConfigValue, new: ConfigValue },
+    Added {
+        key: String,
+        value: ConfigValue,
+    },
+    Removed {
+        key: String,
+        value: ConfigValue,
+    },
+    Modified {
+        key: String,
+        old: ConfigValue,
+        new: ConfigValue,
+    },
 }
 
 // ===========================================================================
@@ -712,7 +720,10 @@ mod tests {
 
     #[test]
     fn config_type_string() {
-        assert_eq!(ConfigValue::String("x".into()).config_type(), ConfigType::String);
+        assert_eq!(
+            ConfigValue::String("x".into()).config_type(),
+            ConfigType::String
+        );
     }
 
     #[test]
@@ -737,7 +748,10 @@ mod tests {
 
     #[test]
     fn config_type_map() {
-        assert_eq!(ConfigValue::Map(HashMap::new()).config_type(), ConfigType::Map);
+        assert_eq!(
+            ConfigValue::Map(HashMap::new()).config_type(),
+            ConfigType::Map
+        );
     }
 
     // --- ConfigStore ---
@@ -759,13 +773,19 @@ mod tests {
     fn store_get_or_present() {
         let mut store = ConfigStore::new();
         store.set("k", 10i64);
-        assert_eq!(store.get_or("k", ConfigValue::Integer(99)), ConfigValue::Integer(10));
+        assert_eq!(
+            store.get_or("k", ConfigValue::Integer(99)),
+            ConfigValue::Integer(10)
+        );
     }
 
     #[test]
     fn store_get_or_missing() {
         let store = ConfigStore::new();
-        assert_eq!(store.get_or("k", ConfigValue::Integer(99)), ConfigValue::Integer(99));
+        assert_eq!(
+            store.get_or("k", ConfigValue::Integer(99)),
+            ConfigValue::Integer(99)
+        );
     }
 
     #[test]
@@ -854,7 +874,10 @@ mod tests {
         store.set("api.key", "secret");
 
         let view = store.with_prefix("db");
-        assert_eq!(view.get("host"), Some(&ConfigValue::String("localhost".into())));
+        assert_eq!(
+            view.get("host"),
+            Some(&ConfigValue::String("localhost".into()))
+        );
         assert_eq!(view.get("port"), Some(&ConfigValue::Integer(5432)));
         assert_eq!(view.get("key"), None); // not under "db."
     }
@@ -930,9 +953,7 @@ mod tests {
 
     #[test]
     fn builder_set_default_when_absent() {
-        let store = ConfigBuilder::new()
-            .set_default("k", "default")
-            .build();
+        let store = ConfigBuilder::new().set_default("k", "default").build();
         assert_eq!(store.get_str("k"), Some("default"));
     }
 
@@ -957,7 +978,9 @@ mod tests {
 
     #[test]
     fn builder_from_json_non_object_ignored() {
-        let store = ConfigBuilder::new().from_json(&json!("not an object")).build();
+        let store = ConfigBuilder::new()
+            .from_json(&json!("not an object"))
+            .build();
         assert!(store.is_empty());
     }
 
@@ -1047,7 +1070,11 @@ mod tests {
         let errs = result.unwrap_err();
         assert_eq!(errs.len(), 1);
         match &errs[0] {
-            ConfigError::WrongType { key, expected, actual } => {
+            ConfigError::WrongType {
+                key,
+                expected,
+                actual,
+            } => {
                 assert_eq!(key, "port");
                 assert_eq!(*expected, ConfigType::Integer);
                 assert_eq!(*actual, ConfigType::String);
@@ -1107,10 +1134,7 @@ mod tests {
         let e = ConfigError::MissingRequired {
             key: "api_key".into(),
         };
-        assert_eq!(
-            e.to_string(),
-            "missing required configuration key: api_key"
-        );
+        assert_eq!(e.to_string(), "missing required configuration key: api_key");
     }
 
     #[test]

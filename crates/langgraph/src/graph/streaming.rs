@@ -216,11 +216,7 @@ impl StreamCollector {
 
     /// Return a sorted, deduplicated list of node IDs that have produced chunks.
     pub fn node_ids(&self) -> Vec<String> {
-        let mut ids: Vec<String> = self
-            .chunks
-            .iter()
-            .map(|c| c.node_id.clone())
-            .collect();
+        let mut ids: Vec<String> = self.chunks.iter().map(|c| c.node_id.clone()).collect();
         ids.sort();
         ids.dedup();
         ids
@@ -328,7 +324,7 @@ impl StreamReplay {
     }
 
     /// Advance and return the next chunk, or `None` if exhausted.
-    pub fn next(&mut self) -> Option<&StreamChunk> {
+    pub fn next_chunk(&mut self) -> Option<&StreamChunk> {
         if self.position < self.chunks.len() {
             let chunk = &self.chunks[self.position];
             self.position += 1;
@@ -899,14 +895,14 @@ mod tests {
         assert_eq!(r.remaining(), 2);
         assert_eq!(r.current_position(), 0);
 
-        let c1 = r.next().unwrap();
+        let c1 = r.next_chunk().unwrap();
         assert_eq!(c1.node_id, "a");
         assert_eq!(c1.chunk_type, ChunkType::NodeStart);
 
-        let c2 = r.next().unwrap();
+        let c2 = r.next_chunk().unwrap();
         assert_eq!(c2.chunk_type, ChunkType::NodeEnd);
 
-        assert!(r.next().is_none());
+        assert!(r.next_chunk().is_none());
         assert_eq!(r.remaining(), 0);
     }
 
@@ -927,8 +923,8 @@ mod tests {
             chunk("b", ChunkType::NodeStart, json!({})),
         ];
         let mut r = StreamReplay::new(chunks);
-        r.next();
-        r.next();
+        r.next_chunk();
+        r.next_chunk();
         assert_eq!(r.remaining(), 0);
         r.reset();
         assert_eq!(r.remaining(), 2);
@@ -961,7 +957,7 @@ mod tests {
     #[test]
     fn test_replay_empty() {
         let mut r = StreamReplay::new(vec![]);
-        assert!(r.next().is_none());
+        assert!(r.next_chunk().is_none());
         assert!(r.peek().is_none());
         assert_eq!(r.remaining(), 0);
     }
@@ -1197,9 +1193,9 @@ mod tests {
 
         let mut replay = StreamReplay::new(filtered);
         assert_eq!(replay.remaining(), 3);
-        let first = replay.next().unwrap();
+        let first = replay.next_chunk().unwrap();
         assert_eq!(first.chunk_type, ChunkType::NodeStart);
-        let second = replay.next().unwrap();
+        let second = replay.next_chunk().unwrap();
         assert_eq!(second.data, json!({"v": 1}));
     }
 

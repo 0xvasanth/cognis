@@ -322,7 +322,7 @@ impl ContextCompressor {
         }
 
         // Remove the first half (oldest) of non-system entries.
-        let remove_count = (non_system_indices.len() + 1) / 2;
+        let remove_count = non_system_indices.len().div_ceil(2);
         let to_remove: Vec<usize> = non_system_indices.into_iter().take(remove_count).collect();
 
         // Build summary content from removed entries.
@@ -349,9 +349,10 @@ impl ContextCompressor {
             .position(|e| e.role != ContextRole::System)
             .unwrap_or(window.entries.len());
 
-        window
-            .entries
-            .insert(insert_pos, ContextEntry::new(ContextRole::Summary, summary_content));
+        window.entries.insert(
+            insert_pos,
+            ContextEntry::new(ContextRole::Summary, summary_content),
+        );
     }
 
     /// Returns the compression ratio (after / before). Lower is more compressed.
@@ -549,7 +550,7 @@ impl ContextStats {
 
 /// Rough token estimation: one token per 4 characters.
 fn estimate_tokens(s: &str) -> usize {
-    (s.len() + 3) / 4
+    s.len().div_ceil(4)
 }
 
 /// Generate a simple unique id based on an atomic counter.
@@ -571,10 +572,7 @@ fn now_iso8601() -> String {
     let hours = rem / 3600;
     let mins = (rem % 3600) / 60;
     let s = rem % 60;
-    format!(
-        "epoch+{}d-{:02}:{:02}:{:02}Z",
-        days, hours, mins, s
-    )
+    format!("epoch+{}d-{:02}:{:02}:{:02}Z", days, hours, mins, s)
 }
 
 // ---------------------------------------------------------------------------
@@ -986,7 +984,11 @@ mod tests {
         w.push(ContextEntry::new(ContextRole::Assistant, "response here"));
 
         compressor.compress(&mut w);
-        let summary = w.entries().iter().find(|e| e.role == ContextRole::Summary).unwrap();
+        let summary = w
+            .entries()
+            .iter()
+            .find(|e| e.role == ContextRole::Summary)
+            .unwrap();
         assert!(summary.content.contains("Summary"));
     }
 
@@ -1047,8 +1049,7 @@ mod tests {
     fn test_snapshot_roundtrip_preserves_metadata() {
         let mut w = ContextWindow::new(500);
         w.push(
-            ContextEntry::new(ContextRole::User, "test")
-                .with_metadata("key", Value::from("val")),
+            ContextEntry::new(ContextRole::User, "test").with_metadata("key", Value::from("val")),
         );
 
         let snap = ContextSnapshot::capture(&w);
@@ -1107,8 +1108,7 @@ mod tests {
     fn test_filter_by_metadata_key() {
         let mut w = ContextWindow::new(1000);
         w.push(
-            ContextEntry::new(ContextRole::User, "a")
-                .with_metadata("source", Value::from("web")),
+            ContextEntry::new(ContextRole::User, "a").with_metadata("source", Value::from("web")),
         );
         w.push(ContextEntry::new(ContextRole::User, "b"));
 
@@ -1228,7 +1228,10 @@ mod tests {
     #[test]
     fn test_stats_tool_role() {
         let mut w = ContextWindow::new(1000);
-        w.push(ContextEntry::new(ContextRole::Tool("calc".into()), "result"));
+        w.push(ContextEntry::new(
+            ContextRole::Tool("calc".into()),
+            "result",
+        ));
         let stats = ContextStats::from_window(&w);
         assert!(stats.tokens_by_role().contains_key("tool:calc"));
     }
@@ -1252,8 +1255,8 @@ mod tests {
 
     #[test]
     fn test_entry_serialize_deserialize() {
-        let entry = ContextEntry::new(ContextRole::User, "hello")
-            .with_metadata("k", Value::from(42));
+        let entry =
+            ContextEntry::new(ContextRole::User, "hello").with_metadata("k", Value::from(42));
         let json = serde_json::to_string(&entry).unwrap();
         let restored: ContextEntry = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.content, "hello");

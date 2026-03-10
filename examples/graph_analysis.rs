@@ -141,10 +141,7 @@ fn main() {
 
     // The pipeline graph is a DAG, so no cycles expected
     let cycles = CycleDetector::detect(&topo);
-    println!(
-        "Cycles in pipeline graph: {} (expected 0)",
-        cycles.len()
-    );
+    println!("Cycles in pipeline graph: {} (expected 0)", cycles.len());
 
     // Build a graph with a cycle: review -> approve -> publish -> review
     let mut cyclic = GraphTopology::new();

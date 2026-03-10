@@ -437,11 +437,17 @@ impl Default for StreamStats {
 // StreamRouter
 // ---------------------------------------------------------------------------
 
+/// Handler for string-based stream events (tokens, errors).
+type StringHandler = Box<dyn Fn(&str)>;
+
+/// Handler for structured stream events (tool calls).
+type EventHandler = Box<dyn Fn(&StreamEvent)>;
+
 /// Routes stream events to registered handler closures based on event type.
 pub struct StreamRouter {
-    token_handlers: Vec<Box<dyn Fn(&str)>>,
-    tool_call_handlers: Vec<Box<dyn Fn(&StreamEvent)>>,
-    error_handlers: Vec<Box<dyn Fn(&str)>>,
+    token_handlers: Vec<StringHandler>,
+    tool_call_handlers: Vec<EventHandler>,
+    error_handlers: Vec<StringHandler>,
 }
 
 impl StreamRouter {
@@ -659,10 +665,7 @@ mod tests {
 
     #[test]
     fn tool_call_arg_display() {
-        assert_eq!(
-            format!("{}", StreamEvent::ToolCallArg("x".into())),
-            "x"
-        );
+        assert_eq!(format!("{}", StreamEvent::ToolCallArg("x".into())), "x");
     }
 
     // ---- ToolCallAccumulator ----

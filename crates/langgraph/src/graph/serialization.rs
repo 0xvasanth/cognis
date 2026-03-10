@@ -207,7 +207,8 @@ impl SerializableGraphDefinition {
 
     /// Serialize to a pretty-printed JSON string.
     pub fn to_pretty_json(&self) -> String {
-        serde_json::to_string_pretty(self).expect("SerializableGraphDefinition is always serializable")
+        serde_json::to_string_pretty(self)
+            .expect("SerializableGraphDefinition is always serializable")
     }
 }
 
@@ -300,9 +301,8 @@ impl GraphFormat {
     pub fn serialize(&self, def: &SerializableGraphDefinition) -> Result<String> {
         match self {
             Self::Json => Ok(def.to_pretty_json()),
-            Self::Compact => serde_json::to_string(def).map_err(|e| {
-                LangGraphError::Other(format!("Failed to serialize (compact): {e}"))
-            }),
+            Self::Compact => serde_json::to_string(def)
+                .map_err(|e| LangGraphError::Other(format!("Failed to serialize (compact): {e}"))),
             Self::Yaml => {
                 // Minimal YAML-like representation built from JSON value.
                 let json = def.to_json();
@@ -318,9 +318,8 @@ impl GraphFormat {
     pub fn deserialize(&self, input: &str) -> Result<SerializableGraphDefinition> {
         match self {
             Self::Json | Self::Compact | Self::Yaml => {
-                let value: Value = serde_json::from_str(input).map_err(|e| {
-                    LangGraphError::Other(format!("Failed to parse input: {e}"))
-                })?;
+                let value: Value = serde_json::from_str(input)
+                    .map_err(|e| LangGraphError::Other(format!("Failed to parse input: {e}")))?;
                 SerializableGraphDefinition::from_json(&value)
             }
         }
@@ -414,10 +413,7 @@ impl GraphTemplate {
     pub fn from_definition(def: &SerializableGraphDefinition) -> Self {
         Self {
             name: def.name.clone(),
-            description: def
-                .description
-                .clone()
-                .unwrap_or_default(),
+            description: def.description.clone().unwrap_or_default(),
             definition: def.clone(),
             parameters: HashMap::new(),
         }
@@ -632,8 +628,14 @@ fn compute_diff(
     let old_set: std::collections::HashSet<&str> = old_edges.iter().map(|s| s.as_str()).collect();
     let new_set: std::collections::HashSet<&str> = new_edges.iter().map(|s| s.as_str()).collect();
 
-    let mut added_edges: Vec<String> = new_set.difference(&old_set).map(|s| s.to_string()).collect();
-    let mut removed_edges: Vec<String> = old_set.difference(&new_set).map(|s| s.to_string()).collect();
+    let mut added_edges: Vec<String> = new_set
+        .difference(&old_set)
+        .map(|s| s.to_string())
+        .collect();
+    let mut removed_edges: Vec<String> = old_set
+        .difference(&new_set)
+        .map(|s| s.to_string())
+        .collect();
 
     added_edges.sort();
     removed_edges.sort();
@@ -679,7 +681,11 @@ mod tests {
             .node(sample_node("agent"))
             .node(sample_node("tools"))
             .edge(SerializedEdge::direct("__start__", "agent"))
-            .edge(SerializedEdge::conditional("agent", "tools", "has_tool_call"))
+            .edge(SerializedEdge::conditional(
+                "agent",
+                "tools",
+                "has_tool_call",
+            ))
             .edge(SerializedEdge::direct("tools", "agent"))
             .entry_point("agent")
             .finish_point("__end__")
@@ -954,8 +960,7 @@ mod tests {
 
     #[test]
     fn test_template_with_parameter() {
-        let t = GraphTemplate::new("t", "d")
-            .with_parameter("model", json!("gpt-4"));
+        let t = GraphTemplate::new("t", "d").with_parameter("model", json!("gpt-4"));
         assert_eq!(t.parameters["model"], json!("gpt-4"));
     }
 
@@ -972,8 +977,10 @@ mod tests {
     #[test]
     fn test_template_parameter_substitution() {
         let mut node = SerializedNode::new("agent", "llm");
-        node.config.insert("model".to_string(), json!("{{model_name}}"));
-        node.config.insert("temperature".to_string(), json!("{{temp}}"));
+        node.config
+            .insert("model".to_string(), json!("{{model_name}}"));
+        node.config
+            .insert("temperature".to_string(), json!("{{temp}}"));
 
         let def = SerializableGraphDefinition::builder("tmpl", "1.0.0")
             .node(node)
@@ -995,7 +1002,8 @@ mod tests {
     #[test]
     fn test_template_default_parameter_used() {
         let mut node = SerializedNode::new("agent", "llm");
-        node.config.insert("model".to_string(), json!("{{model_name}}"));
+        node.config
+            .insert("model".to_string(), json!("{{model_name}}"));
 
         let def = SerializableGraphDefinition::builder("tmpl", "1.0.0")
             .node(node)
@@ -1013,7 +1021,8 @@ mod tests {
     #[test]
     fn test_template_substitution_in_metadata() {
         let mut node = SerializedNode::new("n", "t");
-        node.metadata.insert("owner".to_string(), json!("{{owner}}"));
+        node.metadata
+            .insert("owner".to_string(), json!("{{owner}}"));
 
         let def = SerializableGraphDefinition::builder("t", "1.0.0")
             .node(node)

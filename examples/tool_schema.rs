@@ -18,8 +18,7 @@
 //! Run with: `cargo run -p rustchain-examples --example tool_schema`
 
 use rustchain_core::tools::schema::{
-    PropertySchema, SchemaObject, SchemaRegistry, SchemaValidator, ToolSchema,
-    ToolSchemaGenerator,
+    PropertySchema, SchemaObject, SchemaRegistry, SchemaValidator, ToolSchema, ToolSchemaGenerator,
 };
 use serde_json::json;
 
@@ -51,17 +50,14 @@ fn main() {
     println!("Boolean property: {:?}", active_prop.to_json());
 
     // Enum type (string with allowed values)
-    let role_prop = PropertySchema::enum_type(vec![
-        "admin".into(),
-        "editor".into(),
-        "viewer".into(),
-    ])
-    .with_description("User role");
+    let role_prop =
+        PropertySchema::enum_type(vec!["admin".into(), "editor".into(), "viewer".into()])
+            .with_description("User role");
     println!("Enum property:    {:?}", role_prop.to_json());
 
     // Array of strings
-    let tags_prop = PropertySchema::array(PropertySchema::string())
-        .with_description("List of tags");
+    let tags_prop =
+        PropertySchema::array(PropertySchema::string()).with_description("List of tags");
     println!("Array property:   {:?}", tags_prop.to_json());
 
     // -----------------------------------------------------------------------
@@ -84,12 +80,8 @@ fn main() {
         )
         .with_property(
             "category",
-            PropertySchema::enum_type(vec![
-                "docs".into(),
-                "code".into(),
-                "issues".into(),
-            ])
-            .with_description("Category to search in"),
+            PropertySchema::enum_type(vec!["docs".into(), "code".into(), "issues".into()])
+                .with_description("Category to search in"),
         )
         .with_required("query")
         .with_required("max_results");
@@ -154,8 +146,7 @@ fn main() {
         )
         .with_property(
             "role",
-            PropertySchema::enum_type(vec!["admin".into(), "user".into()])
-                .with_description("Role"),
+            PropertySchema::enum_type(vec!["admin".into(), "user".into()]).with_description("Role"),
         )
         .with_required("name")
         .with_required("age");
@@ -253,7 +244,10 @@ fn main() {
         .build();
 
     println!("Generated tool schema (OpenAI):");
-    println!("{}", serde_json::to_string_pretty(&weather_tool.to_json()).unwrap());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&weather_tool.to_json()).unwrap()
+    );
 
     // Validate a call against the generated schema
     let valid_call = json!({

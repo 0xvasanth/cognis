@@ -323,10 +323,7 @@ impl InterruptQueue {
     ///
     /// Returns an error if no pending request with that ID exists.
     pub fn respond(&mut self, request_id: &str, response: InterruptResponse) -> Result<()> {
-        let exists = self
-            .pending
-            .iter()
-            .any(|r| r.id == request_id)
+        let exists = self.pending.iter().any(|r| r.id == request_id)
             || self.responses.contains_key(request_id);
 
         if !exists {
@@ -669,8 +666,8 @@ mod tests {
 
     #[test]
     fn test_request_to_json() {
-        let req = InterruptRequest::new("n1", InterruptType::Approval)
-            .with_context("key", json!("val"));
+        let req =
+            InterruptRequest::new("n1", InterruptType::Approval).with_context("key", json!("val"));
         let j = req.to_json();
         assert_eq!(j["node_id"], "n1");
         assert_eq!(j["interrupt_type"]["type"], "approval");
@@ -790,8 +787,7 @@ mod tests {
 
     #[test]
     fn test_policy_conditional_interrupt() {
-        let policy =
-            InterruptPolicy::new().conditional_interrupt("review", "needs_human_review");
+        let policy = InterruptPolicy::new().conditional_interrupt("review", "needs_human_review");
         assert!(policy.should_interrupt_before("review"));
         // conditional only triggers before
         assert!(!policy.should_interrupt_after("review"));
@@ -1211,12 +1207,18 @@ mod tests {
 
         // Create three requests
         let r1 = InterruptRequest::new("node_a", InterruptType::Approval);
-        let r2 = InterruptRequest::new("node_b", InterruptType::Input {
-            prompt: "Enter value".to_string(),
-        });
-        let r3 = InterruptRequest::new("node_a", InterruptType::Review {
-            data: json!({"doc": "content"}),
-        });
+        let r2 = InterruptRequest::new(
+            "node_b",
+            InterruptType::Input {
+                prompt: "Enter value".to_string(),
+            },
+        );
+        let r3 = InterruptRequest::new(
+            "node_a",
+            InterruptType::Review {
+                data: json!({"doc": "content"}),
+            },
+        );
 
         let id1 = r1.id.clone();
         let id2 = r2.id.clone();

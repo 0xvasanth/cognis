@@ -33,10 +33,10 @@
 pub mod agents;
 pub mod caches;
 pub mod callbacks;
-pub mod config;
 pub mod chat_history;
 pub mod chat_loaders;
 pub mod chat_sessions;
+pub mod config;
 pub mod document_loaders;
 pub mod documents;
 pub mod embeddings;

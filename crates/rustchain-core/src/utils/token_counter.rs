@@ -133,10 +133,6 @@ impl ModelTokenCounter {
     pub fn for_model(model_name: &str) -> Self {
         let chars_per_token = if model_name.contains("claude") {
             3.5
-        } else if model_name.contains("gpt-4") {
-            4.0
-        } else if model_name.contains("gemini") {
-            4.0
         } else {
             4.0
         };
@@ -725,9 +721,9 @@ mod tests {
         // Use chars_per_token=1.0 so token count = char count for simplicity.
         let counter = CharBasedCounter::new(1.0);
         let mut cw = ContextWindow::new(100, Box::new(counter));
-        cw.add("aaaa", Priority::Optional);  // 4 tokens
-        cw.add("bbbb", Priority::High);      // 4 tokens
-        cw.add("cccc", Priority::Normal);    // 4 tokens
+        cw.add("aaaa", Priority::Optional); // 4 tokens
+        cw.add("bbbb", Priority::High); // 4 tokens
+        cw.add("cccc", Priority::Normal); // 4 tokens
 
         // Shrink budget to force trimming
         cw.max_tokens = 8;
@@ -735,7 +731,10 @@ mod tests {
 
         // Optional item should have been removed
         assert_eq!(cw.content().len(), 2);
-        assert!(cw.content().iter().all(|i| i.priority != Priority::Optional));
+        assert!(cw
+            .content()
+            .iter()
+            .all(|i| i.priority != Priority::Optional));
     }
 
     #[test]
@@ -862,7 +861,7 @@ mod tests {
         let mut t = TokenUsageTracker::new();
         t.record("gpt-4", 100, 100); // 200
         t.record("gpt-4", 200, 200); // 400
-        // avg = 600 / 2 = 300
+                                     // avg = 600 / 2 = 300
         assert!((t.avg_per_request() - 300.0).abs() < f64::EPSILON);
     }
 
@@ -888,7 +887,7 @@ mod tests {
     fn count_messages_empty_content() {
         let c = CharBasedCounter::default();
         let msgs = vec![serde_json::json!({"role": "user"})]; // no content field
-        // 3 overhead + 0 content + 3 priming = 6
+                                                              // 3 overhead + 0 content + 3 priming = 6
         assert_eq!(c.count_messages(&msgs), 6);
     }
 

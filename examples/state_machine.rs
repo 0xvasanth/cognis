@@ -39,10 +39,7 @@ fn main() {
         "Equality check: idle == idle? {}",
         idle == StateId::new("idle")
     );
-    println!(
-        "Equality check: idle == done? {}",
-        idle == done
-    );
+    println!("Equality check: idle == done? {}", idle == done);
 
     // -----------------------------------------------------------------------
     // 2. Transition Creation with Guards and Actions
@@ -81,14 +78,12 @@ fn main() {
     );
 
     // Transition with an action that mutates context
-    let with_action =
-        Transition::new(StateId::new("init"), StateId::new("running"), "start").with_action(
-            |ctx| {
-                ctx.as_object_mut()
-                    .unwrap()
-                    .insert("started".into(), json!(true));
-            },
-        );
+    let with_action = Transition::new(StateId::new("init"), StateId::new("running"), "start")
+        .with_action(|ctx| {
+            ctx.as_object_mut()
+                .unwrap()
+                .insert("started".into(), json!(true));
+        });
     println!("\nTransition with action: {:?}", with_action);
 
     // -----------------------------------------------------------------------
@@ -124,15 +119,27 @@ fn main() {
 
     // Step 1: draft -> review
     let next = machine.step(&mut ctx).unwrap();
-    println!("After step 1:  {} (transitioned to {:?})", machine.current(), next);
+    println!(
+        "After step 1:  {} (transitioned to {:?})",
+        machine.current(),
+        next
+    );
 
     // Step 2: review -> approved
     let next = machine.step(&mut ctx).unwrap();
-    println!("After step 2:  {} (transitioned to {:?})", machine.current(), next);
+    println!(
+        "After step 2:  {} (transitioned to {:?})",
+        machine.current(),
+        next
+    );
 
     // Step 3: approved -> published
     let next = machine.step(&mut ctx).unwrap();
-    println!("After step 3:  {} (transitioned to {:?})", machine.current(), next);
+    println!(
+        "After step 3:  {} (transitioned to {:?})",
+        machine.current(),
+        next
+    );
 
     println!("Is finished:   {}", machine.is_finished());
 
@@ -160,21 +167,14 @@ fn main() {
 
     // If retries >= 3, move to done
     retry_machine.add_transition(
-        Transition::new(StateId::new("check"), StateId::new("done"), "succeed").with_guard(|ctx| {
-            ctx.get("retries")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0)
-                >= 3
-        }),
+        Transition::new(StateId::new("check"), StateId::new("done"), "succeed")
+            .with_guard(|ctx| ctx.get("retries").and_then(|v| v.as_i64()).unwrap_or(0) >= 3),
     );
 
     // Otherwise, retry and increment counter
     retry_machine.add_transition(
         Transition::new(StateId::new("check"), StateId::new("retry"), "retry").with_action(|ctx| {
-            let retries = ctx
-                .get("retries")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            let retries = ctx.get("retries").and_then(|v| v.as_i64()).unwrap_or(0);
             ctx.as_object_mut()
                 .unwrap()
                 .insert("retries".into(), json!(retries + 1));
@@ -213,7 +213,11 @@ fn main() {
     println!("Record and inspect a log of state transitions.\n");
 
     let mut history = StateHistory::new();
-    println!("Empty history: len={}, is_empty={}", history.len(), history.is_empty());
+    println!(
+        "Empty history: len={}, is_empty={}",
+        history.len(),
+        history.is_empty()
+    );
 
     // Simulate recording transitions from a workflow
     history.record(
@@ -244,7 +248,10 @@ fn main() {
     }
 
     // Serialize to JSON
-    println!("\nHistory as JSON:\n{}", serde_json::to_string_pretty(&history.to_json()).unwrap());
+    println!(
+        "\nHistory as JSON:\n{}",
+        serde_json::to_string_pretty(&history.to_json()).unwrap()
+    );
 
     // -----------------------------------------------------------------------
     // 6. StateMachineBuilder — Fluent API

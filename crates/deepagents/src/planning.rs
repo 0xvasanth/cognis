@@ -40,7 +40,10 @@ pub enum StepStatus {
 impl StepStatus {
     /// Returns `true` if the step is in a terminal state (completed, failed, or skipped).
     pub fn is_terminal(&self) -> bool {
-        matches!(self, StepStatus::Completed | StepStatus::Failed(_) | StepStatus::Skipped(_))
+        matches!(
+            self,
+            StepStatus::Completed | StepStatus::Failed(_) | StepStatus::Skipped(_)
+        )
     }
 
     /// Returns `true` if the step completed successfully.
@@ -129,7 +132,10 @@ impl PlanStep {
     /// step is still [`StepStatus::Pending`].
     pub fn is_ready(&self, completed_ids: &HashSet<String>) -> bool {
         self.status == StepStatus::Pending
-            && self.dependencies.iter().all(|dep| completed_ids.contains(dep))
+            && self
+                .dependencies
+                .iter()
+                .all(|dep| completed_ids.contains(dep))
     }
 
     /// Serialize the step to a JSON [`Value`].
@@ -230,7 +236,10 @@ impl Plan {
             .filter(|s| s.status.is_success())
             .map(|s| s.id.clone())
             .collect();
-        self.steps.iter().filter(|s| s.is_ready(&completed)).collect()
+        self.steps
+            .iter()
+            .filter(|s| s.is_ready(&completed))
+            .collect()
     }
 
     /// Return the first ready step (by insertion order).
@@ -267,7 +276,9 @@ impl Plan {
 
     /// Returns `true` if any step has failed.
     pub fn is_failed(&self) -> bool {
-        self.steps.iter().any(|s| matches!(s.status, StepStatus::Failed(_)))
+        self.steps
+            .iter()
+            .any(|s| matches!(s.status, StepStatus::Failed(_)))
     }
 
     /// Iterate over all steps.
@@ -343,11 +354,7 @@ impl PlanBuilder {
     }
 
     /// Add a step that depends on the given step ids.
-    pub fn step_with_deps(
-        mut self,
-        description: impl Into<String>,
-        deps: Vec<String>,
-    ) -> Self {
+    pub fn step_with_deps(mut self, description: impl Into<String>, deps: Vec<String>) -> Self {
         let mut s = PlanStep::new(description);
         s.dependencies = deps;
         self.steps.push(s);
@@ -536,6 +543,7 @@ impl PlanExecutor {
     }
 
     /// Push a replanned event.
+    #[allow(dead_code)]
     fn record_replan(&mut self, details: Option<Value>) {
         self.events.push(ExecutionEvent {
             step_id: String::new(),
@@ -586,12 +594,7 @@ impl Replanner {
 
     /// Insert a step immediately after `after_id`, adding a dependency. Returns
     /// the new step's id.
-    pub fn insert_after(
-        &mut self,
-        plan: &mut Plan,
-        after_id: &str,
-        step: PlanStep,
-    ) -> String {
+    pub fn insert_after(&mut self, plan: &mut Plan, after_id: &str, step: PlanStep) -> String {
         let id = plan.insert_after(after_id, step).unwrap_or_default();
         if !id.is_empty() {
             self.replan_count += 1;
@@ -679,7 +682,10 @@ mod tests {
 
     #[test]
     fn test_step_status_display_failed() {
-        assert_eq!(StepStatus::Failed("oops".into()).to_string(), "Failed: oops");
+        assert_eq!(
+            StepStatus::Failed("oops".into()).to_string(),
+            "Failed: oops"
+        );
     }
 
     #[test]
@@ -1109,7 +1115,10 @@ mod tests {
         let plan = PlanBuilder::new("e").step("a").step("b").build();
         let mut exec = PlanExecutor::new(plan);
         let id = exec.start_next().unwrap();
-        assert_eq!(exec.current_plan().get_step(&id).unwrap().status, StepStatus::InProgress);
+        assert_eq!(
+            exec.current_plan().get_step(&id).unwrap().status,
+            StepStatus::InProgress
+        );
         assert_eq!(exec.elapsed_steps(), 1);
     }
 
@@ -1119,7 +1128,12 @@ mod tests {
         let mut exec = PlanExecutor::new(plan);
         let id = exec.start_next().unwrap();
         exec.complete_step(&id, Some(json!("done")));
-        assert!(exec.current_plan().get_step(&id).unwrap().status.is_success());
+        assert!(exec
+            .current_plan()
+            .get_step(&id)
+            .unwrap()
+            .status
+            .is_success());
     }
 
     #[test]
@@ -1128,7 +1142,12 @@ mod tests {
         let mut exec = PlanExecutor::new(plan);
         let id = exec.start_next().unwrap();
         exec.fail_step(&id, "oops");
-        assert!(exec.current_plan().get_step(&id).unwrap().status.is_terminal());
+        assert!(exec
+            .current_plan()
+            .get_step(&id)
+            .unwrap()
+            .status
+            .is_terminal());
         assert!(exec.current_plan().is_failed());
     }
 
@@ -1273,11 +1292,7 @@ mod tests {
     #[test]
     fn test_full_plan_execution() {
         let plan = PlanBuilder::new("deploy")
-            .sequential(vec![
-                "build".into(),
-                "test".into(),
-                "deploy".into(),
-            ])
+            .sequential(vec!["build".into(), "test".into(), "deploy".into()])
             .build();
         let mut exec = PlanExecutor::new(plan);
 

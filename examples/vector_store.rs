@@ -337,10 +337,7 @@ fn main() {
     // Stats as JSON
     let stats_json = stats.to_json();
     println!("\nStats as JSON:");
-    println!(
-        "  {}",
-        serde_json::to_string_pretty(&stats_json).unwrap()
-    );
+    println!("  {}", serde_json::to_string_pretty(&stats_json).unwrap());
 
     // Stats for empty store
     let empty_store = InMemoryVectorStore::new(SimilarityMetric::Euclidean);
@@ -348,7 +345,10 @@ fn main() {
     println!("\nEmpty store stats:");
     println!("  total entries:        {}", empty_stats.total_entries);
     println!("  dimensions:           {:?}", empty_stats.dimensions);
-    println!("  avg vector magnitude: {:.4}", empty_stats.avg_vector_magnitude);
+    println!(
+        "  avg vector magnitude: {:.4}",
+        empty_stats.avg_vector_magnitude
+    );
 
     println!("\n=== Vector Store Example Complete ===");
 }

@@ -251,11 +251,7 @@ impl RequestBuilder {
             .base_url
             .as_deref()
             .unwrap_or("https://api.example.com");
-        let url = format!(
-            "{}{}",
-            base.trim_end_matches('/'),
-            endpoint.path
-        );
+        let url = format!("{}{}", base.trim_end_matches('/'), endpoint.path);
 
         let mut headers = config.headers.clone();
         headers.insert("Content-Type".to_string(), endpoint.content_type.clone());
@@ -653,8 +649,7 @@ mod tests {
 
     #[test]
     fn test_request_builder_basic() {
-        let config = ProviderConfig::new("openai")
-            .with_base_url("https://api.openai.com");
+        let config = ProviderConfig::new("openai").with_base_url("https://api.openai.com");
         let endpoint = ProviderEndpoint::chat_completions();
         let req = RequestBuilder::new(&config, &endpoint).build();
 
@@ -689,8 +684,7 @@ mod tests {
 
     #[test]
     fn test_request_builder_with_body() {
-        let config = ProviderConfig::new("openai")
-            .with_base_url("https://api.openai.com");
+        let config = ProviderConfig::new("openai").with_base_url("https://api.openai.com");
         let endpoint = ProviderEndpoint::chat_completions();
         let body = json!({"model": "gpt-4", "messages": []});
         let req = RequestBuilder::new(&config, &endpoint)
@@ -702,8 +696,7 @@ mod tests {
 
     #[test]
     fn test_request_builder_with_header() {
-        let config = ProviderConfig::new("test")
-            .with_base_url("https://api.test.com");
+        let config = ProviderConfig::new("test").with_base_url("https://api.test.com");
         let endpoint = ProviderEndpoint::chat_completions();
         let req = RequestBuilder::new(&config, &endpoint)
             .with_header("X-Request-Id", "abc-123")
@@ -714,8 +707,7 @@ mod tests {
 
     #[test]
     fn test_request_builder_with_query() {
-        let config = ProviderConfig::new("test")
-            .with_base_url("https://api.test.com");
+        let config = ProviderConfig::new("test").with_base_url("https://api.test.com");
         let endpoint = ProviderEndpoint::chat_completions();
         let req = RequestBuilder::new(&config, &endpoint)
             .with_query("api-version", "2024-01-01")
@@ -735,8 +727,7 @@ mod tests {
 
     #[test]
     fn test_request_builder_trailing_slash_base_url() {
-        let config = ProviderConfig::new("test")
-            .with_base_url("https://api.test.com/");
+        let config = ProviderConfig::new("test").with_base_url("https://api.test.com/");
         let endpoint = ProviderEndpoint::chat_completions();
         let req = RequestBuilder::new(&config, &endpoint).build();
 
@@ -861,7 +852,10 @@ mod tests {
     fn test_registry_configured_providers() {
         let mut reg = ProviderRegistry::new();
         reg.register("openai", ProviderConfig::new("openai").with_api_key("key"));
-        reg.register("local", ProviderConfig::new("local").with_base_url("http://localhost"));
+        reg.register(
+            "local",
+            ProviderConfig::new("local").with_base_url("http://localhost"),
+        );
         reg.register("unconfigured", ProviderConfig::new("unconfigured"));
 
         let configured = reg.configured_providers();
@@ -962,8 +956,14 @@ mod tests {
     #[test]
     fn test_provider_error_is_retryable() {
         assert!(!ProviderError::AuthenticationError("bad key".into()).is_retryable());
-        assert!(ProviderError::RateLimitError { retry_after_ms: Some(1000) }.is_retryable());
-        assert!(ProviderError::RateLimitError { retry_after_ms: None }.is_retryable());
+        assert!(ProviderError::RateLimitError {
+            retry_after_ms: Some(1000)
+        }
+        .is_retryable());
+        assert!(ProviderError::RateLimitError {
+            retry_after_ms: None
+        }
+        .is_retryable());
         assert!(ProviderError::ServerError("internal".into()).is_retryable());
         assert!(ProviderError::NetworkError("timeout".into()).is_retryable());
         assert!(!ProviderError::InvalidResponse("bad json".into()).is_retryable());
@@ -978,13 +978,17 @@ mod tests {
 
     #[test]
     fn test_provider_error_display_rate_limit_with_retry() {
-        let e = ProviderError::RateLimitError { retry_after_ms: Some(5000) };
+        let e = ProviderError::RateLimitError {
+            retry_after_ms: Some(5000),
+        };
         assert_eq!(e.to_string(), "rate limit exceeded (retry after 5000ms)");
     }
 
     #[test]
     fn test_provider_error_display_rate_limit_no_retry() {
-        let e = ProviderError::RateLimitError { retry_after_ms: None };
+        let e = ProviderError::RateLimitError {
+            retry_after_ms: None,
+        };
         assert_eq!(e.to_string(), "rate limit exceeded");
     }
 
@@ -1014,8 +1018,7 @@ mod tests {
 
     #[test]
     fn test_provider_error_is_std_error() {
-        let e: Box<dyn std::error::Error> =
-            Box::new(ProviderError::ConfigError("test".into()));
+        let e: Box<dyn std::error::Error> = Box::new(ProviderError::ConfigError("test".into()));
         assert!(e.to_string().contains("config error"));
     }
 
@@ -1031,8 +1034,7 @@ mod tests {
 
     #[test]
     fn test_request_builder_multiple_queries() {
-        let config = ProviderConfig::new("test")
-            .with_base_url("https://api.test.com");
+        let config = ProviderConfig::new("test").with_base_url("https://api.test.com");
         let endpoint = ProviderEndpoint::chat_completions();
         let req = RequestBuilder::new(&config, &endpoint)
             .with_query("a", "1")
