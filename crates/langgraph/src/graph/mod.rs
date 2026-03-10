@@ -100,6 +100,11 @@ pub use state_machine::{
 };
 pub use stream_events::{stream_graph_events, GraphEventCollector, GraphStreamEvent};
 pub use stream_writer::{FilteredStream, StreamChunk, StreamCollector, StreamReader, StreamWriter};
+pub use streaming::{
+    ChunkType, StreamAggregator as StreamingAggregator, StreamFilter, StreamMetrics, StreamMode,
+    StreamReplay, StreamSubscription,
+    StreamChunk as StreamingChunk, StreamCollector as StreamingCollector,
+};
 pub use subgraph::{
     GraphFn, NestedSubgraph, StateMapping, SubgraphBuilder, SubgraphConfig, SubgraphNode,
     SubgraphRegistry,
