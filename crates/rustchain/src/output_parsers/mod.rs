@@ -28,5 +28,7 @@ pub use fixing::OutputFixingParser;
 pub use retry::RetryOutputParser;
 pub use structured::{
     BooleanParser, CombiningParser, CommaSeparatedListParser, EnumParser, JsonOutputParser,
-    KeyValueParser, MarkdownListParser, RegexParser, StructuredOutputParser,
+    JsonType, KeyValueParser, MarkdownListParser, OutputFormat, OutputRepairer, ParseResult,
+    RegexParser, SchemaEnforcer, SchemaViolation, StructuredOutputParser, StructuredParser,
+    ViolationType,
 };
