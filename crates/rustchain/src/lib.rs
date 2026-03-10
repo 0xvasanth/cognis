@@ -59,6 +59,7 @@ pub mod stores;
 pub mod text_splitter;
 pub mod text_splitters;
 pub mod tools;
+pub mod streaming;
 pub mod vectorstores;
 
 // Re-export core for convenience
