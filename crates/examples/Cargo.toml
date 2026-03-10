@@ -242,3 +242,27 @@ path = "../../examples/vector_store.rs"
 [[example]]
 name = "tool_schema"
 path = "../../examples/tool_schema.rs"
+
+[[example]]
+name = "streaming_demo"
+path = "../../examples/streaming_demo.rs"
+
+[[example]]
+name = "structured_parsing_demo"
+path = "../../examples/structured_parsing_demo.rs"
+
+[[example]]
+name = "tracing_demo"
+path = "../../examples/tracing_demo.rs"
+
+[[example]]
+name = "graph_interrupts_demo"
+path = "../../examples/graph_interrupts_demo.rs"
+
+[[example]]
+name = "planning_demo"
+path = "../../examples/planning_demo.rs"
+
+[[example]]
+name = "context_management_demo"
+path = "../../examples/context_management_demo.rs"
