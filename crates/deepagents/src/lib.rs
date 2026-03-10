@@ -90,6 +90,7 @@ pub mod summarization;
 pub mod telemetry;
 pub mod tool_registry;
 pub mod tooling;
+pub mod planning;
 pub mod workflow;
 
 pub use agent::create_deep_agent;
