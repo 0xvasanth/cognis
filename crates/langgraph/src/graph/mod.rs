@@ -25,6 +25,7 @@ pub mod conditional;
 pub mod hooks;
 pub mod human_in_loop;
 pub mod interrupt;
+pub mod interrupts;
 pub mod mermaid;
 pub mod message;
 pub mod persistent;
@@ -70,6 +71,11 @@ pub use human_in_loop::{
     ApprovalPolicy, ApprovalRequest, FeedbackLog, HumanAction, HumanApproval, HumanFeedback,
     HumanInLoopConfig, HumanInLoopConfigBuilder, HumanInTheLoop, HumanInTheLoopResult,
     HumanReviewPoint, ReviewApprovalRequest, ReviewApprovalRequestBuilder, ReviewQueue,
+};
+pub use interrupts::{
+    InterruptAction, InterruptHandler as InterruptsHandler, InterruptLog as InterruptsLog,
+    InterruptPolicy, InterruptQueue, InterruptRequest, InterruptResponse,
+    InterruptType as InterruptsType, TimeoutPolicy,
 };
 pub use mermaid::{to_mermaid, to_mermaid_url};
 pub use message::{
