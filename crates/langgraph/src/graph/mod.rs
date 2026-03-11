@@ -43,6 +43,7 @@ pub mod streaming;
 pub mod subgraph;
 pub mod time_travel;
 pub mod ui;
+pub mod validation;
 pub mod validator;
 
 pub use annotations::{
@@ -116,6 +117,11 @@ pub use subgraph::{
 };
 pub use time_travel::TimeTravelEngine;
 pub use ui::{ui_message_reducer, AnyUIMessage, RemoveUIMessage, UIMessage};
+pub use validation::{
+    GraphValidator as StructuralGraphValidator, QuickCheck, SchemaValidator, StateRule,
+    StateValidator, ValidationCache, ValidationIssue as ValidationFinding, ValidationLevel,
+    ValidationReport,
+};
 pub use validator::{
     CycleDetector, GraphValidator, ReachabilityAnalyzer, ValidationIssue, ValidationResult,
     ValidationSeverity,
