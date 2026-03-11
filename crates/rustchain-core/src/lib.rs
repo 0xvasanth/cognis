@@ -40,6 +40,7 @@ pub mod config;
 pub mod document_loaders;
 pub mod documents;
 pub mod embeddings;
+pub mod events;
 pub mod embeddings_fake;
 pub mod error;
 pub mod globals;
