@@ -10,6 +10,7 @@ pub mod loading;
 pub mod message;
 pub mod string_formatter;
 pub mod structured;
+pub mod template;
 
 pub use base::{PartialValue, PromptTemplate};
 pub use chat::{ChatPromptTemplate, MessageLike};
