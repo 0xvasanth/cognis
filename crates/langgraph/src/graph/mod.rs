@@ -16,6 +16,7 @@
 
 pub mod analysis;
 pub mod annotations;
+pub mod debug;
 pub mod ascii;
 pub mod audit;
 pub mod branch;
@@ -54,6 +55,10 @@ pub use audit::{
     AuditTrail,
 };
 pub use branch::{AsyncBranch, AsyncRouterFn, Branch, RouterFn, RouterResult};
+pub use debug::{
+    BreakCondition as DebugBreakCondition, Breakpoint as DebugBreakpoint, DebugSession, DebugStep,
+    DeltaType, ExecutionProfiler, StateDelta, StateInspector, StateReport,
+};
 pub use breakpoint::{
     AutoApproveHandler, BreakpointAction, BreakpointEvent, BreakpointHandler, BreakpointManager,
     BreakpointState, BreakpointType, LoggingBreakpointHandler,
