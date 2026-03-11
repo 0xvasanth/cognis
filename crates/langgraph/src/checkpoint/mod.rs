@@ -14,7 +14,13 @@ pub mod memory;
 pub mod persistence;
 pub mod serialization;
 pub mod serializer;
+pub mod storage;
 pub mod store;
+
+pub use storage::{
+    InMemoryStorage, LayeredStorage, QuotaError, StorageBackend, StorageKey, StorageMigration,
+    StorageMetrics, StorageQuota, StorageValue,
+};
 
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
