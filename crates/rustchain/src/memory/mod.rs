@@ -26,6 +26,10 @@ pub mod vector;
 pub mod window;
 
 pub use buffer::ConversationBufferMemory;
+pub use conversation::{
+    BufferMemory, ConversationMessage, ConversationStore, MemorySearch, MemoryStats, MessageRole,
+    SummaryMemory, TokenBufferMemory as ConvTokenBufferMemory, WindowMemory,
+};
 pub use chat_history::{
     prune_by_count, prune_by_token_count, ChatHistoryMemory, ChatHistoryStore, FileChatHistory,
     InMemoryChatHistory,

@@ -1,871 +1,1167 @@
-//! Conversation memory with windowing, search, and branching capabilities.
+//! Conversation memory for LLM chains — storing and retrieving conversation
+//! history with different strategies.
 //!
-//! This module provides a rich conversation memory that stores the full
-//! conversation history as turns (human + AI pairs) and supports:
+//! This module provides:
 //!
-//! - **Windowing** — retrieve a subset of turns by count, token budget, or time
-//! - **Branching** — create named branches to explore alternative conversation paths
-//! - **Search** — find turns by keyword, metadata, or time range
+//! - [`ConversationMessage`] / [`MessageRole`] — individual messages with metadata
+//! - [`BufferMemory`] — unbounded message buffer
+//! - [`WindowMemory`] — sliding window of the last N message pairs
+//! - [`TokenBufferMemory`] — token-budget-aware buffer
+//! - [`SummaryMemory`] — running summary of older messages plus recent history
+//! - [`ConversationStore`] — persistent multi-session conversation storage
+//! - [`MemorySearch`] — search utilities over conversation history
+//! - [`MemoryStats`] — statistics about memory usage
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::fmt;
 
-use rustchain_core::error::{Result, RustChainError};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-/// A single conversation turn consisting of a human message and an AI response.
-#[derive(Debug, Clone)]
-pub struct ConversationTurn {
-    /// The human's message.
-    pub human: String,
-    /// The AI's response.
-    pub ai: String,
-    /// When this turn was created.
-    pub timestamp: Instant,
-    /// Arbitrary metadata attached to the turn.
-    pub metadata: HashMap<String, Value>,
-    /// Unique identifier for this turn.
-    pub turn_id: String,
+// ---------------------------------------------------------------------------
+// MessageRole
+// ---------------------------------------------------------------------------
+
+/// The role of a participant in a conversation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MessageRole {
+    /// A human / user message.
+    Human,
+    /// An AI / assistant message.
+    Ai,
+    /// A system prompt.
+    System,
+    /// A function / tool result.
+    Function {
+        /// The name of the function that produced this message.
+        name: String,
+    },
 }
 
-impl ConversationTurn {
-    /// Create a new conversation turn with an auto-generated turn ID.
-    pub fn new(human: impl Into<String>, ai: impl Into<String>) -> Self {
+impl MessageRole {
+    /// Return a string representation of the role.
+    pub fn as_str(&self) -> &str {
+        match self {
+            MessageRole::Human => "human",
+            MessageRole::Ai => "ai",
+            MessageRole::System => "system",
+            MessageRole::Function { .. } => "function",
+        }
+    }
+}
+
+impl fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MessageRole::Human => write!(f, "human"),
+            MessageRole::Ai => write!(f, "ai"),
+            MessageRole::System => write!(f, "system"),
+            MessageRole::Function { name } => write!(f, "function({})", name),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ConversationMessage
+// ---------------------------------------------------------------------------
+
+/// A single message in a conversation.
+#[derive(Debug, Clone)]
+pub struct ConversationMessage {
+    /// The role of the message author.
+    pub role: MessageRole,
+    /// The textual content of the message.
+    pub content: String,
+    /// An ISO-8601 (or arbitrary) timestamp string.
+    pub timestamp: String,
+    /// Estimated token count for the message content.
+    pub token_count: usize,
+    /// Arbitrary key-value metadata.
+    pub metadata: HashMap<String, Value>,
+}
+
+impl ConversationMessage {
+    /// Create a new message with an auto-generated timestamp and estimated token count.
+    pub fn new(role: MessageRole, content: impl Into<String>) -> Self {
+        let content = content.into();
+        let token_count = Self::estimate_tokens(&content);
         Self {
-            human: human.into(),
-            ai: ai.into(),
-            timestamp: Instant::now(),
+            role,
+            content,
+            timestamp: String::new(),
+            token_count,
             metadata: HashMap::new(),
-            turn_id: Uuid::new_v4().to_string(),
         }
     }
 
-    /// Add metadata to the turn (builder pattern).
+    /// Builder method — attach a metadata key-value pair.
     pub fn with_metadata(mut self, key: impl Into<String>, value: Value) -> Self {
         self.metadata.insert(key.into(), value);
         self
     }
 
-    /// Serialize the turn to a JSON value.
+    /// Serialize the message to a JSON value.
     pub fn to_json(&self) -> Value {
         json!({
-            "turn_id": self.turn_id,
-            "human": self.human,
-            "ai": self.ai,
+            "role": self.role.to_string(),
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "token_count": self.token_count,
             "metadata": self.metadata,
         })
     }
 
-    /// Check whether the query appears (case-insensitive) in either the human
-    /// or AI text.
-    pub fn contains(&self, query: &str) -> bool {
-        let q = query.to_lowercase();
-        self.human.to_lowercase().contains(&q) || self.ai.to_lowercase().contains(&q)
+    /// Rough token estimate: split on whitespace.
+    pub fn estimated_tokens(&self) -> usize {
+        self.token_count
     }
-}
 
-/// Strategy for selecting a window of conversation turns.
-#[derive(Debug, Clone)]
-pub enum ConversationWindow {
-    /// Return all turns.
-    All,
-    /// Return the last `n` turns.
-    Last(usize),
-    /// Return as many recent turns as fit within a character budget (rough
-    /// token proxy).
-    TokenBudget(usize),
-    /// Return turns created within the given duration from now.
-    TimeBased(Duration),
-}
-
-impl ConversationWindow {
-    /// Apply the windowing strategy to a slice of turns, returning references
-    /// to the selected subset.
-    pub fn apply<'a>(&self, turns: &'a [ConversationTurn]) -> Vec<&'a ConversationTurn> {
-        match self {
-            ConversationWindow::All => turns.iter().collect(),
-            ConversationWindow::Last(n) => {
-                let start = turns.len().saturating_sub(*n);
-                turns[start..].iter().collect()
-            }
-            ConversationWindow::TokenBudget(budget) => {
-                let mut remaining = *budget;
-                let mut selected: Vec<&ConversationTurn> = Vec::new();
-                for turn in turns.iter().rev() {
-                    let cost = turn.human.len() + turn.ai.len();
-                    if cost > remaining {
-                        break;
-                    }
-                    remaining -= cost;
-                    selected.push(turn);
-                }
-                selected.reverse();
-                selected
-            }
-            ConversationWindow::TimeBased(duration) => {
-                let now = Instant::now();
-                turns
-                    .iter()
-                    .filter(|t| now.duration_since(t.timestamp) <= *duration)
-                    .collect()
-            }
+    /// Internal helper for estimating tokens from a string.
+    fn estimate_tokens(text: &str) -> usize {
+        if text.is_empty() {
+            return 0;
         }
+        text.split_whitespace().count()
     }
 }
 
-/// A named branch of conversation that diverges from the main history at a
-/// specific turn index.
-#[derive(Debug, Clone)]
-pub struct ConversationBranch {
-    name: String,
-    branch_point: usize,
-    turns: Vec<ConversationTurn>,
+// ---------------------------------------------------------------------------
+// BufferMemory
+// ---------------------------------------------------------------------------
+
+/// Stores all messages without any limit (unbounded).
+#[derive(Debug, Default)]
+pub struct BufferMemory {
+    messages: Vec<ConversationMessage>,
 }
 
-impl ConversationBranch {
-    /// Create a new branch starting from the given turn index.
-    pub fn new(name: impl Into<String>, branch_point: usize) -> Self {
-        Self {
-            name: name.into(),
-            branch_point,
-            turns: Vec::new(),
-        }
-    }
-
-    /// The branch name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// The turn index in the main history where this branch diverges.
-    pub fn branch_point(&self) -> usize {
-        self.branch_point
-    }
-
-    /// The turns added on this branch (after the branch point).
-    pub fn turns(&self) -> &[ConversationTurn] {
-        &self.turns
-    }
-
-    /// Number of turns on this branch.
-    pub fn len(&self) -> usize {
-        self.turns.len()
-    }
-
-    /// Whether the branch has no turns of its own.
-    pub fn is_empty(&self) -> bool {
-        self.turns.is_empty()
-    }
-
-    /// Append a turn to this branch.
-    pub fn add_turn(&mut self, turn: ConversationTurn) {
-        self.turns.push(turn);
-    }
-}
-
-/// Main conversation memory store with windowing, branching, and search.
-#[derive(Debug)]
-pub struct ConversationMemory {
-    turns: Vec<ConversationTurn>,
-    branches: HashMap<String, ConversationBranch>,
-    current_branch: Option<String>,
-}
-
-impl ConversationMemory {
-    /// Create an empty conversation memory.
+impl BufferMemory {
+    /// Create a new empty buffer memory.
     pub fn new() -> Self {
         Self {
-            turns: Vec::new(),
-            branches: HashMap::new(),
-            current_branch: None,
+            messages: Vec::new(),
         }
     }
 
-    /// Add a conversation turn.
-    pub fn add_turn(&mut self, human: &str, ai: &str) {
-        let turn = ConversationTurn::new(human, ai);
-        if let Some(branch_name) = &self.current_branch {
-            if let Some(branch) = self.branches.get_mut(branch_name) {
-                branch.add_turn(turn);
-                return;
-            }
-        }
-        self.turns.push(turn);
+    /// Append a message to the buffer.
+    pub fn add_message(&mut self, msg: ConversationMessage) {
+        self.messages.push(msg);
     }
 
-    /// Add a conversation turn with metadata.
-    pub fn add_turn_with_metadata(
-        &mut self,
-        human: &str,
-        ai: &str,
-        metadata: HashMap<String, Value>,
-    ) {
-        let mut turn = ConversationTurn::new(human, ai);
-        turn.metadata = metadata;
-        if let Some(branch_name) = &self.current_branch {
-            if let Some(branch) = self.branches.get_mut(branch_name) {
-                branch.add_turn(turn);
-                return;
-            }
-        }
-        self.turns.push(turn);
+    /// Return all messages.
+    pub fn messages(&self) -> &[ConversationMessage] {
+        &self.messages
     }
 
-    /// Retrieve turns according to a windowing strategy.
-    pub fn get_turns(&self, window: &ConversationWindow) -> Vec<&ConversationTurn> {
-        let refs = self.effective_turn_refs();
-        match window {
-            ConversationWindow::All => refs,
-            ConversationWindow::Last(n) => {
-                let start = refs.len().saturating_sub(*n);
-                refs[start..].to_vec()
-            }
-            ConversationWindow::TokenBudget(budget) => {
-                let mut remaining = *budget;
-                let mut selected: Vec<&ConversationTurn> = Vec::new();
-                for turn in refs.iter().rev() {
-                    let cost = turn.human.len() + turn.ai.len();
-                    if cost > remaining {
-                        break;
-                    }
-                    remaining -= cost;
-                    selected.push(turn);
-                }
-                selected.reverse();
-                selected
-            }
-            ConversationWindow::TimeBased(duration) => {
-                let now = Instant::now();
-                refs.into_iter()
-                    .filter(|t| now.duration_since(t.timestamp) <= *duration)
-                    .collect()
-            }
-        }
-    }
-
-    /// Search for turns containing the query (case-insensitive).
-    pub fn search(&self, query: &str) -> Vec<&ConversationTurn> {
-        self.effective_turn_refs()
-            .into_iter()
-            .filter(|t| t.contains(query))
-            .collect()
-    }
-
-    /// Get a specific turn by index.
-    pub fn get_turn(&self, index: usize) -> Option<&ConversationTurn> {
-        self.effective_turn_refs().into_iter().nth(index)
-    }
-
-    /// Get the last turn.
-    pub fn last_turn(&self) -> Option<&ConversationTurn> {
-        self.effective_turn_refs().into_iter().last()
-    }
-
-    /// Clear the main conversation history (does not affect branches).
+    /// Remove all messages.
     pub fn clear(&mut self) {
-        self.turns.clear();
+        self.messages.clear();
     }
 
-    /// Number of turns in the current view (main or branch).
+    /// Number of stored messages.
     pub fn len(&self) -> usize {
-        self.effective_turn_refs().len()
+        self.messages.len()
     }
 
-    /// Whether the current view is empty.
+    /// Whether the buffer is empty.
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.messages.is_empty()
     }
 
-    /// Convert the windowed turns into a JSON array of message objects.
-    pub fn to_messages(&self, window: &ConversationWindow) -> Vec<Value> {
-        let turns = self.get_turns(window);
-        let mut messages = Vec::new();
-        for turn in turns {
-            messages.push(json!({ "role": "human", "content": turn.human }));
-            messages.push(json!({ "role": "ai", "content": turn.ai }));
+    /// Render all messages as a prompt string using the given prefixes for
+    /// human and AI messages.
+    pub fn to_prompt_string(&self, human_prefix: &str, ai_prefix: &str) -> String {
+        let mut parts = Vec::new();
+        for msg in &self.messages {
+            let prefix = match &msg.role {
+                MessageRole::Human => human_prefix,
+                MessageRole::Ai => ai_prefix,
+                MessageRole::System => "System",
+                MessageRole::Function { name } => name.as_str(),
+            };
+            parts.push(format!("{}: {}", prefix, msg.content));
         }
-        messages
+        parts.join("\n")
     }
+}
 
-    /// Create a named branch diverging from a specific turn index.
-    pub fn create_branch(&mut self, name: &str, from_turn: usize) -> Result<()> {
-        if self.branches.contains_key(name) {
-            return Err(RustChainError::Other(format!(
-                "Branch '{}' already exists",
-                name
-            )));
+// ---------------------------------------------------------------------------
+// WindowMemory
+// ---------------------------------------------------------------------------
+
+/// Keeps only the last `window_size` message pairs (i.e. `window_size * 2`
+/// individual messages if strictly alternating human/AI).
+///
+/// When the number of messages exceeds `window_size * 2`, the oldest messages
+/// are dropped.
+#[derive(Debug)]
+pub struct WindowMemory {
+    messages: Vec<ConversationMessage>,
+    window_size: usize,
+}
+
+impl WindowMemory {
+    /// Create a window memory that retains the last `window_size` message pairs.
+    pub fn new(window_size: usize) -> Self {
+        Self {
+            messages: Vec::new(),
+            window_size,
         }
-        if from_turn > self.turns.len() {
-            return Err(RustChainError::Other(format!(
-                "Branch point {} exceeds turn count {}",
-                from_turn,
-                self.turns.len()
-            )));
+    }
+
+    /// Add a message, trimming the oldest messages if the window is exceeded.
+    pub fn add_message(&mut self, msg: ConversationMessage) {
+        self.messages.push(msg);
+        let max_messages = self.window_size * 2;
+        if self.messages.len() > max_messages {
+            let excess = self.messages.len() - max_messages;
+            self.messages.drain(..excess);
         }
-        self.branches
-            .insert(name.to_string(), ConversationBranch::new(name, from_turn));
-        Ok(())
     }
 
-    /// Get a reference to a branch by name.
-    pub fn get_branch(&self, name: &str) -> Option<&ConversationBranch> {
-        self.branches.get(name)
+    /// Return the current messages within the window.
+    pub fn messages(&self) -> &[ConversationMessage] {
+        &self.messages
     }
 
-    /// Switch the active view to a named branch.
-    pub fn switch_branch(&mut self, name: &str) -> Result<()> {
-        if !self.branches.contains_key(name) {
-            return Err(RustChainError::Other(format!(
-                "Branch '{}' does not exist",
-                name
-            )));
+    /// The configured window size (in pairs).
+    pub fn window_size(&self) -> usize {
+        self.window_size
+    }
+
+    /// Remove all messages.
+    pub fn clear(&mut self) {
+        self.messages.clear();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TokenBufferMemory
+// ---------------------------------------------------------------------------
+
+/// Stores messages up to a cumulative token budget. When a new message would
+/// exceed the budget, the oldest messages are evicted until the budget is met.
+#[derive(Debug)]
+pub struct TokenBufferMemory {
+    messages: Vec<ConversationMessage>,
+    max_tokens: usize,
+    current_tokens: usize,
+}
+
+impl TokenBufferMemory {
+    /// Create a new token buffer memory with the given maximum token budget.
+    pub fn new(max_tokens: usize) -> Self {
+        Self {
+            messages: Vec::new(),
+            max_tokens,
+            current_tokens: 0,
         }
-        self.current_branch = Some(name.to_string());
-        Ok(())
     }
 
-    /// The currently active branch name, or `None` for the main line.
-    pub fn current_branch(&self) -> Option<&str> {
-        self.current_branch.as_deref()
+    /// Add a message, evicting oldest messages if the token budget would be exceeded.
+    pub fn add_message(&mut self, msg: ConversationMessage) {
+        let msg_tokens = msg.token_count;
+        // If a single message exceeds the budget, still store it (evict everything else).
+        while self.current_tokens + msg_tokens > self.max_tokens && !self.messages.is_empty() {
+            let removed = self.messages.remove(0);
+            self.current_tokens = self.current_tokens.saturating_sub(removed.token_count);
+        }
+        self.current_tokens += msg_tokens;
+        self.messages.push(msg);
     }
 
-    /// List all branch names.
-    pub fn branches(&self) -> Vec<&str> {
-        self.branches.keys().map(|k| k.as_str()).collect()
+    /// Return the stored messages.
+    pub fn messages(&self) -> &[ConversationMessage] {
+        &self.messages
     }
 
-    /// Export the entire memory (main + branches) as JSON.
-    pub fn export(&self) -> Value {
-        let main_turns: Vec<Value> = self.turns.iter().map(|t| t.to_json()).collect();
-        let branches: HashMap<&str, Value> = self
-            .branches
+    /// Current total token count across all stored messages.
+    pub fn total_tokens(&self) -> usize {
+        self.current_tokens
+    }
+
+    /// Remaining token budget.
+    pub fn remaining_tokens(&self) -> usize {
+        self.max_tokens.saturating_sub(self.current_tokens)
+    }
+
+    /// Remove all messages and reset the token count.
+    pub fn clear(&mut self) {
+        self.messages.clear();
+        self.current_tokens = 0;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SummaryMemory
+// ---------------------------------------------------------------------------
+
+/// Keeps a running textual summary of older messages plus a small buffer of
+/// recent messages. The caller is responsible for producing the summary (e.g.
+/// via an LLM call) and feeding it back with [`set_summary`](SummaryMemory::set_summary).
+#[derive(Debug, Default)]
+pub struct SummaryMemory {
+    summary: String,
+    recent: Vec<ConversationMessage>,
+}
+
+impl SummaryMemory {
+    /// Create a new empty summary memory.
+    pub fn new() -> Self {
+        Self {
+            summary: String::new(),
+            recent: Vec::new(),
+        }
+    }
+
+    /// Add a message to the recent buffer.
+    pub fn add_message(&mut self, msg: ConversationMessage) {
+        self.recent.push(msg);
+    }
+
+    /// Replace the running summary text.
+    pub fn set_summary(&mut self, summary: String) {
+        self.summary = summary;
+    }
+
+    /// Return the current running summary.
+    pub fn summary(&self) -> &str {
+        &self.summary
+    }
+
+    /// Return the recent (un-summarised) messages.
+    pub fn recent_messages(&self) -> &[ConversationMessage] {
+        &self.recent
+    }
+
+    /// Number of recent messages.
+    pub fn recent_count(&self) -> usize {
+        self.recent.len()
+    }
+
+    /// Render a prompt string that combines the summary and recent messages.
+    pub fn to_prompt_string(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.summary.is_empty() {
+            parts.push(format!("Summary: {}", self.summary));
+        }
+        for msg in &self.recent {
+            parts.push(format!("{}: {}", msg.role, msg.content));
+        }
+        parts.join("\n")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ConversationStore
+// ---------------------------------------------------------------------------
+
+/// A session record inside [`ConversationStore`].
+#[derive(Debug, Clone)]
+struct Session {
+    name: String,
+    messages: Vec<ConversationMessage>,
+}
+
+/// Persistent conversation storage with multiple named sessions.
+#[derive(Debug, Default)]
+pub struct ConversationStore {
+    sessions: HashMap<String, Session>,
+}
+
+impl ConversationStore {
+    /// Create a new empty store.
+    pub fn new() -> Self {
+        Self {
+            sessions: HashMap::new(),
+        }
+    }
+
+    /// Create a new session with the given name. Returns the session ID.
+    pub fn create_session(&mut self, name: impl Into<String>) -> String {
+        let id = Uuid::new_v4().to_string();
+        self.sessions.insert(
+            id.clone(),
+            Session {
+                name: name.into(),
+                messages: Vec::new(),
+            },
+        );
+        id
+    }
+
+    /// Get the messages for a session by ID.
+    pub fn get_session(&self, id: &str) -> Option<&Vec<ConversationMessage>> {
+        self.sessions.get(id).map(|s| &s.messages)
+    }
+
+    /// Add a message to a session.
+    pub fn add_to_session(&mut self, id: &str, msg: ConversationMessage) {
+        if let Some(session) = self.sessions.get_mut(id) {
+            session.messages.push(msg);
+        }
+    }
+
+    /// List all sessions as `(id, name)` pairs.
+    pub fn list_sessions(&self) -> Vec<(String, String)> {
+        self.sessions
             .iter()
-            .map(|(name, branch)| {
-                let branch_val = json!({
-                    "branch_point": branch.branch_point(),
-                    "turns": branch.turns().iter().map(|t| t.to_json()).collect::<Vec<_>>(),
-                });
-                (name.as_str(), branch_val)
-            })
-            .collect();
-        json!({
-            "turns": main_turns,
-            "branches": branches,
-            "current_branch": self.current_branch,
-        })
+            .map(|(id, s)| (id.clone(), s.name.clone()))
+            .collect()
     }
 
-    /// Produce a summary of the conversation memory state.
-    pub fn summary(&self) -> Value {
-        json!({
-            "total_turns": self.turns.len(),
-            "branch_count": self.branches.len(),
-            "current_branch": self.current_branch,
-            "branches": self.branches.keys().collect::<Vec<_>>(),
-        })
+    /// Delete a session by ID.
+    pub fn delete_session(&mut self, id: &str) {
+        self.sessions.remove(id);
     }
 
-    // -- internal helpers --
+    /// Number of sessions.
+    pub fn session_count(&self) -> usize {
+        self.sessions.len()
+    }
+}
 
-    /// Returns references to the effective turns for the current view.
-    fn effective_turn_refs(&self) -> Vec<&ConversationTurn> {
-        if let Some(branch_name) = &self.current_branch {
-            if let Some(branch) = self.branches.get(branch_name) {
-                let bp = branch.branch_point();
-                let mut refs: Vec<&ConversationTurn> = self.turns.iter().take(bp).collect();
-                refs.extend(branch.turns().iter());
-                return refs;
-            }
+// ---------------------------------------------------------------------------
+// MemorySearch
+// ---------------------------------------------------------------------------
+
+/// Utilities for searching through conversation history.
+#[derive(Debug, Default)]
+pub struct MemorySearch;
+
+impl MemorySearch {
+    /// Create a new search helper (stateless).
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Find messages whose content contains the query (case-insensitive).
+    pub fn search_by_content<'a>(
+        &self,
+        messages: &'a [ConversationMessage],
+        query: &str,
+    ) -> Vec<&'a ConversationMessage> {
+        let q = query.to_lowercase();
+        messages
+            .iter()
+            .filter(|m| m.content.to_lowercase().contains(&q))
+            .collect()
+    }
+
+    /// Find messages with a specific role.
+    pub fn search_by_role<'a>(
+        &self,
+        messages: &'a [ConversationMessage],
+        role: &MessageRole,
+    ) -> Vec<&'a ConversationMessage> {
+        messages.iter().filter(|m| &m.role == role).collect()
+    }
+
+    /// Find messages whose timestamp string falls within the inclusive range
+    /// `[from, to]` using simple lexicographic comparison (works correctly for
+    /// ISO-8601 timestamps).
+    pub fn search_by_time_range<'a>(
+        &self,
+        messages: &'a [ConversationMessage],
+        from: &str,
+        to: &str,
+    ) -> Vec<&'a ConversationMessage> {
+        messages
+            .iter()
+            .filter(|m| m.timestamp.as_str() >= from && m.timestamp.as_str() <= to)
+            .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MemoryStats
+// ---------------------------------------------------------------------------
+
+/// Aggregate statistics about a set of conversation messages.
+#[derive(Debug)]
+pub struct MemoryStats {
+    total_messages: usize,
+    total_tokens: usize,
+    role_counts: HashMap<String, usize>,
+    total_content_length: usize,
+}
+
+impl MemoryStats {
+    /// Compute statistics from a slice of messages.
+    pub fn from_messages(messages: &[ConversationMessage]) -> Self {
+        let mut role_counts: HashMap<String, usize> = HashMap::new();
+        let mut total_tokens = 0;
+        let mut total_content_length = 0;
+
+        for msg in messages {
+            *role_counts.entry(msg.role.to_string()).or_insert(0) += 1;
+            total_tokens += msg.token_count;
+            total_content_length += msg.content.len();
         }
-        self.turns.iter().collect()
+
+        Self {
+            total_messages: messages.len(),
+            total_tokens,
+            role_counts,
+            total_content_length,
+        }
+    }
+
+    /// Total number of messages.
+    pub fn total_messages(&self) -> usize {
+        self.total_messages
+    }
+
+    /// Total token count across all messages.
+    pub fn total_tokens(&self) -> usize {
+        self.total_tokens
+    }
+
+    /// Message counts keyed by role string.
+    pub fn messages_by_role(&self) -> &HashMap<String, usize> {
+        &self.role_counts
+    }
+
+    /// Average content length (in characters) per message, or 0 if empty.
+    pub fn average_message_length(&self) -> usize {
+        if self.total_messages == 0 {
+            0
+        } else {
+            self.total_content_length / self.total_messages
+        }
+    }
+
+    /// Serialize statistics to JSON.
+    pub fn to_json(&self) -> Value {
+        json!({
+            "total_messages": self.total_messages,
+            "total_tokens": self.total_tokens,
+            "messages_by_role": self.role_counts,
+            "average_message_length": self.average_message_length(),
+        })
     }
 }
 
-impl Default for ConversationMemory {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Advanced search utility over a [`ConversationMemory`].
-pub struct ConversationSearch<'a> {
-    memory: &'a ConversationMemory,
-}
-
-impl<'a> ConversationSearch<'a> {
-    /// Create a new search bound to the given memory.
-    pub fn new(memory: &'a ConversationMemory) -> Self {
-        Self { memory }
-    }
-
-    /// Find turns containing the keyword (case-insensitive).
-    pub fn by_keyword(&self, keyword: &str) -> Vec<&'a ConversationTurn> {
-        self.memory.search(keyword)
-    }
-
-    /// Find turns whose timestamp falls within the given time range from now.
-    ///
-    /// `start` and `end` are durations measured backward from now.
-    /// A turn matches if `start <= age <= end`.
-    pub fn by_time_range(&self, start: Duration, end: Duration) -> Vec<&'a ConversationTurn> {
-        let now = Instant::now();
-        self.memory
-            .effective_turn_refs()
-            .into_iter()
-            .filter(|t| {
-                let age = now.duration_since(t.timestamp);
-                age >= start && age <= end
-            })
-            .collect()
-    }
-
-    /// Find turns that have a specific metadata key-value pair.
-    pub fn by_metadata(&self, key: &str, value: &Value) -> Vec<&'a ConversationTurn> {
-        self.memory
-            .effective_turn_refs()
-            .into_iter()
-            .filter(|t| t.metadata.get(key) == Some(value))
-            .collect()
-    }
-
-    /// Return the most recent `n` turns.
-    pub fn recent(&self, n: usize) -> Vec<&'a ConversationTurn> {
-        let turns = self.memory.effective_turn_refs();
-        let start = turns.len().saturating_sub(n);
-        turns[start..].to_vec()
-    }
-}
+// ===========================================================================
+// Tests
+// ===========================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // ── ConversationTurn ──────────────────────────────────────────────
+    // ── helpers ──────────────────────────────────────────────────────────
+
+    fn human(content: &str) -> ConversationMessage {
+        ConversationMessage::new(MessageRole::Human, content)
+    }
+
+    fn ai(content: &str) -> ConversationMessage {
+        ConversationMessage::new(MessageRole::Ai, content)
+    }
+
+    fn system(content: &str) -> ConversationMessage {
+        ConversationMessage::new(MessageRole::System, content)
+    }
+
+    fn function_msg(name: &str, content: &str) -> ConversationMessage {
+        ConversationMessage::new(
+            MessageRole::Function {
+                name: name.to_string(),
+            },
+            content,
+        )
+    }
+
+    fn stamped(role: MessageRole, content: &str, ts: &str) -> ConversationMessage {
+        let mut m = ConversationMessage::new(role, content);
+        m.timestamp = ts.to_string();
+        m
+    }
+
+    // ── MessageRole ─────────────────────────────────────────────────────
 
     #[test]
-    fn test_turn_new() {
-        let turn = ConversationTurn::new("hello", "hi there");
-        assert_eq!(turn.human, "hello");
-        assert_eq!(turn.ai, "hi there");
-        assert!(!turn.turn_id.is_empty());
-        assert!(turn.metadata.is_empty());
+    fn test_role_as_str() {
+        assert_eq!(MessageRole::Human.as_str(), "human");
+        assert_eq!(MessageRole::Ai.as_str(), "ai");
+        assert_eq!(MessageRole::System.as_str(), "system");
+        assert_eq!(
+            MessageRole::Function {
+                name: "calc".into()
+            }
+            .as_str(),
+            "function"
+        );
     }
 
     #[test]
-    fn test_turn_unique_ids() {
-        let t1 = ConversationTurn::new("a", "b");
-        let t2 = ConversationTurn::new("c", "d");
-        assert_ne!(t1.turn_id, t2.turn_id);
+    fn test_role_display() {
+        assert_eq!(format!("{}", MessageRole::Human), "human");
+        assert_eq!(format!("{}", MessageRole::Ai), "ai");
+        assert_eq!(format!("{}", MessageRole::System), "system");
+        assert_eq!(
+            format!(
+                "{}",
+                MessageRole::Function {
+                    name: "calc".into()
+                }
+            ),
+            "function(calc)"
+        );
     }
 
     #[test]
-    fn test_turn_with_metadata() {
-        let turn = ConversationTurn::new("q", "a")
-            .with_metadata("topic", json!("science"))
-            .with_metadata("score", json!(0.95));
-        assert_eq!(turn.metadata.get("topic").unwrap(), &json!("science"));
-        assert_eq!(turn.metadata.get("score").unwrap(), &json!(0.95));
+    fn test_role_equality() {
+        assert_eq!(MessageRole::Human, MessageRole::Human);
+        assert_ne!(MessageRole::Human, MessageRole::Ai);
+        assert_eq!(
+            MessageRole::Function {
+                name: "f".into()
+            },
+            MessageRole::Function {
+                name: "f".into()
+            }
+        );
+        assert_ne!(
+            MessageRole::Function {
+                name: "a".into()
+            },
+            MessageRole::Function {
+                name: "b".into()
+            }
+        );
+    }
+
+    // ── ConversationMessage ─────────────────────────────────────────────
+
+    #[test]
+    fn test_message_new() {
+        let msg = human("hello world");
+        assert_eq!(msg.role, MessageRole::Human);
+        assert_eq!(msg.content, "hello world");
+        assert!(msg.metadata.is_empty());
     }
 
     #[test]
-    fn test_turn_to_json() {
-        let turn = ConversationTurn::new("hi", "hello").with_metadata("key", json!("val"));
-        let j = turn.to_json();
-        assert_eq!(j["human"], "hi");
-        assert_eq!(j["ai"], "hello");
-        assert_eq!(j["turn_id"], turn.turn_id);
-        assert_eq!(j["metadata"]["key"], "val");
+    fn test_message_token_count() {
+        let msg = human("one two three four");
+        assert_eq!(msg.token_count, 4);
+        assert_eq!(msg.estimated_tokens(), 4);
     }
 
     #[test]
-    fn test_turn_contains_case_insensitive() {
-        let turn = ConversationTurn::new("What is Rust?", "Rust is a systems language.");
-        assert!(turn.contains("rust"));
-        assert!(turn.contains("RUST"));
-        assert!(turn.contains("systems"));
-        assert!(!turn.contains("python"));
+    fn test_message_empty_content_tokens() {
+        let msg = human("");
+        assert_eq!(msg.estimated_tokens(), 0);
     }
 
     #[test]
-    fn test_turn_contains_in_human() {
-        let turn = ConversationTurn::new("Tell me about Paris", "Sure!");
-        assert!(turn.contains("paris"));
+    fn test_message_with_metadata() {
+        let msg = human("hi")
+            .with_metadata("key", json!("value"))
+            .with_metadata("num", json!(42));
+        assert_eq!(msg.metadata.get("key").unwrap(), &json!("value"));
+        assert_eq!(msg.metadata.get("num").unwrap(), &json!(42));
     }
 
     #[test]
-    fn test_turn_contains_in_ai() {
-        let turn = ConversationTurn::new("Hello", "Welcome to London!");
-        assert!(turn.contains("london"));
-    }
-
-    // ── ConversationWindow ────────────────────────────────────────────
-
-    fn make_turns(n: usize) -> Vec<ConversationTurn> {
-        (0..n)
-            .map(|i| ConversationTurn::new(format!("human {}", i), format!("ai {}", i)))
-            .collect()
+    fn test_message_to_json() {
+        let msg = human("test").with_metadata("k", json!("v"));
+        let j = msg.to_json();
+        assert_eq!(j["role"], "human");
+        assert_eq!(j["content"], "test");
+        assert_eq!(j["metadata"]["k"], "v");
+        assert!(j["token_count"].is_number());
     }
 
     #[test]
-    fn test_window_all() {
-        let turns = make_turns(5);
-        let result = ConversationWindow::All.apply(&turns);
-        assert_eq!(result.len(), 5);
+    fn test_message_to_json_function_role() {
+        let msg = function_msg("calculator", "42");
+        let j = msg.to_json();
+        assert_eq!(j["role"], "function(calculator)");
+    }
+
+    // ── BufferMemory ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_buffer_new_empty() {
+        let buf = BufferMemory::new();
+        assert!(buf.is_empty());
+        assert_eq!(buf.len(), 0);
+        assert!(buf.messages().is_empty());
     }
 
     #[test]
-    fn test_window_last() {
-        let turns = make_turns(10);
-        let result = ConversationWindow::Last(3).apply(&turns);
-        assert_eq!(result.len(), 3);
-        assert_eq!(result[0].human, "human 7");
-        assert_eq!(result[2].human, "human 9");
+    fn test_buffer_add_and_retrieve() {
+        let mut buf = BufferMemory::new();
+        buf.add_message(human("hi"));
+        buf.add_message(ai("hello"));
+        assert_eq!(buf.len(), 2);
+        assert_eq!(buf.messages()[0].content, "hi");
+        assert_eq!(buf.messages()[1].content, "hello");
     }
 
     #[test]
-    fn test_window_last_exceeds_len() {
-        let turns = make_turns(2);
-        let result = ConversationWindow::Last(10).apply(&turns);
-        assert_eq!(result.len(), 2);
+    fn test_buffer_clear() {
+        let mut buf = BufferMemory::new();
+        buf.add_message(human("a"));
+        buf.add_message(ai("b"));
+        buf.clear();
+        assert!(buf.is_empty());
     }
 
     #[test]
-    fn test_window_token_budget() {
-        // Each turn: "human X" (7 chars) + "ai X" (4 chars) = ~11 chars
-        let turns = make_turns(5);
-        let result = ConversationWindow::TokenBudget(25).apply(&turns);
-        // Should fit about 2 turns (22 chars) but not 3 (33)
-        assert_eq!(result.len(), 2);
+    fn test_buffer_to_prompt_string() {
+        let mut buf = BufferMemory::new();
+        buf.add_message(human("What is Rust?"));
+        buf.add_message(ai("A systems language."));
+        let prompt = buf.to_prompt_string("User", "Assistant");
+        assert!(prompt.contains("User: What is Rust?"));
+        assert!(prompt.contains("Assistant: A systems language."));
     }
 
     #[test]
-    fn test_window_token_budget_zero() {
-        let turns = make_turns(3);
-        let result = ConversationWindow::TokenBudget(0).apply(&turns);
-        assert!(result.is_empty());
+    fn test_buffer_prompt_string_system_and_function() {
+        let mut buf = BufferMemory::new();
+        buf.add_message(system("You are helpful."));
+        buf.add_message(function_msg("calc", "42"));
+        let prompt = buf.to_prompt_string("H", "A");
+        assert!(prompt.contains("System: You are helpful."));
+        assert!(prompt.contains("calc: 42"));
     }
 
     #[test]
-    fn test_window_time_based() {
-        let turns = make_turns(3);
-        // All turns just created, so all within 10 seconds
-        let result = ConversationWindow::TimeBased(Duration::from_secs(10)).apply(&turns);
-        assert_eq!(result.len(), 3);
+    fn test_buffer_default() {
+        let buf = BufferMemory::default();
+        assert!(buf.is_empty());
     }
 
     #[test]
-    fn test_window_empty_turns() {
-        let turns: Vec<ConversationTurn> = Vec::new();
-        assert!(ConversationWindow::All.apply(&turns).is_empty());
-        assert!(ConversationWindow::Last(5).apply(&turns).is_empty());
-        assert!(ConversationWindow::TokenBudget(100)
-            .apply(&turns)
-            .is_empty());
-        assert!(ConversationWindow::TimeBased(Duration::from_secs(10))
-            .apply(&turns)
-            .is_empty());
+    fn test_buffer_many_messages() {
+        let mut buf = BufferMemory::new();
+        for i in 0..100 {
+            buf.add_message(human(&format!("msg {}", i)));
+        }
+        assert_eq!(buf.len(), 100);
+        assert_eq!(buf.messages()[99].content, "msg 99");
     }
 
-    // ── ConversationBranch ────────────────────────────────────────────
+    // ── WindowMemory ────────────────────────────────────────────────────
 
     #[test]
-    fn test_branch_new() {
-        let branch = ConversationBranch::new("experiment", 3);
-        assert_eq!(branch.name(), "experiment");
-        assert_eq!(branch.branch_point(), 3);
-        assert!(branch.is_empty());
-        assert_eq!(branch.len(), 0);
+    fn test_window_new() {
+        let win = WindowMemory::new(3);
+        assert_eq!(win.window_size(), 3);
+        assert!(win.messages().is_empty());
     }
 
     #[test]
-    fn test_branch_add_turns() {
-        let mut branch = ConversationBranch::new("alt", 0);
-        branch.add_turn(ConversationTurn::new("h1", "a1"));
-        branch.add_turn(ConversationTurn::new("h2", "a2"));
-        assert_eq!(branch.len(), 2);
-        assert!(!branch.is_empty());
-        assert_eq!(branch.turns()[0].human, "h1");
-        assert_eq!(branch.turns()[1].human, "h2");
-    }
-
-    // ── ConversationMemory ────────────────────────────────────────────
-
-    #[test]
-    fn test_memory_new_empty() {
-        let mem = ConversationMemory::new();
-        assert!(mem.is_empty());
-        assert_eq!(mem.len(), 0);
-        assert!(mem.last_turn().is_none());
-        assert!(mem.current_branch().is_none());
+    fn test_window_within_limit() {
+        let mut win = WindowMemory::new(3);
+        win.add_message(human("h1"));
+        win.add_message(ai("a1"));
+        win.add_message(human("h2"));
+        win.add_message(ai("a2"));
+        // 4 messages, window_size=3 => max 6 messages, so all fit
+        assert_eq!(win.messages().len(), 4);
     }
 
     #[test]
-    fn test_memory_add_and_retrieve() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("hello", "hi");
-        mem.add_turn("how are you", "fine");
-        assert_eq!(mem.len(), 2);
-        assert_eq!(mem.get_turn(0).unwrap().human, "hello");
-        assert_eq!(mem.get_turn(1).unwrap().ai, "fine");
+    fn test_window_exceeds_limit() {
+        let mut win = WindowMemory::new(2); // max 4 messages
+        win.add_message(human("h1"));
+        win.add_message(ai("a1"));
+        win.add_message(human("h2"));
+        win.add_message(ai("a2"));
+        win.add_message(human("h3"));
+        win.add_message(ai("a3"));
+        // 6 messages added, max 4 kept
+        assert_eq!(win.messages().len(), 4);
+        assert_eq!(win.messages()[0].content, "h2");
+        assert_eq!(win.messages()[3].content, "a3");
     }
 
     #[test]
-    fn test_memory_last_turn() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("first", "1st");
-        mem.add_turn("second", "2nd");
-        assert_eq!(mem.last_turn().unwrap().human, "second");
+    fn test_window_clear() {
+        let mut win = WindowMemory::new(5);
+        win.add_message(human("x"));
+        win.clear();
+        assert!(win.messages().is_empty());
     }
 
     #[test]
-    fn test_memory_clear() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("a", "b");
-        mem.clear();
-        assert!(mem.is_empty());
+    fn test_window_size_one() {
+        let mut win = WindowMemory::new(1); // max 2 messages
+        win.add_message(human("h1"));
+        win.add_message(ai("a1"));
+        win.add_message(human("h2"));
+        win.add_message(ai("a2"));
+        assert_eq!(win.messages().len(), 2);
+        assert_eq!(win.messages()[0].content, "h2");
+    }
+
+    // ── TokenBufferMemory ───────────────────────────────────────────────
+
+    #[test]
+    fn test_token_buffer_new() {
+        let tb = TokenBufferMemory::new(100);
+        assert!(tb.messages().is_empty());
+        assert_eq!(tb.total_tokens(), 0);
+        assert_eq!(tb.remaining_tokens(), 100);
     }
 
     #[test]
-    fn test_memory_search() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("Tell me about Rust", "Rust is great");
-        mem.add_turn("Tell me about Python", "Python is popular");
-        mem.add_turn("What about Go?", "Go is fast");
-
-        let results = mem.search("rust");
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].human, "Tell me about Rust");
-
-        let results = mem.search("tell");
-        assert_eq!(results.len(), 2);
+    fn test_token_buffer_add_within_budget() {
+        let mut tb = TokenBufferMemory::new(100);
+        tb.add_message(human("one two three")); // 3 tokens
+        tb.add_message(ai("four five")); // 2 tokens
+        assert_eq!(tb.messages().len(), 2);
+        assert_eq!(tb.total_tokens(), 5);
+        assert_eq!(tb.remaining_tokens(), 95);
     }
 
     #[test]
-    fn test_memory_search_no_results() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("a", "b");
-        assert!(mem.search("nonexistent").is_empty());
+    fn test_token_buffer_eviction() {
+        let mut tb = TokenBufferMemory::new(5);
+        tb.add_message(human("one two three")); // 3 tokens
+        tb.add_message(ai("four five")); // 2 tokens => total 5
+        tb.add_message(human("six seven eight")); // 3 tokens => evict until fits
+        // After eviction: "four five" (2) + "six seven eight" (3) = 5
+        assert_eq!(tb.messages().len(), 2);
+        assert_eq!(tb.messages()[0].content, "four five");
+        assert_eq!(tb.messages()[1].content, "six seven eight");
+        assert_eq!(tb.total_tokens(), 5);
     }
 
     #[test]
-    fn test_memory_get_turn_out_of_bounds() {
-        let mem = ConversationMemory::new();
-        assert!(mem.get_turn(0).is_none());
-        assert!(mem.get_turn(100).is_none());
+    fn test_token_buffer_single_message_exceeds_budget() {
+        let mut tb = TokenBufferMemory::new(2);
+        tb.add_message(human("one two three four five")); // 5 tokens > budget 2
+        // Still stored — everything else is evicted
+        assert_eq!(tb.messages().len(), 1);
+        assert_eq!(tb.total_tokens(), 5);
     }
 
     #[test]
-    fn test_memory_add_turn_with_metadata() {
-        let mut mem = ConversationMemory::new();
-        let mut meta = HashMap::new();
-        meta.insert("topic".to_string(), json!("science"));
-        mem.add_turn_with_metadata("question", "answer", meta);
-        let turn = mem.get_turn(0).unwrap();
-        assert_eq!(turn.metadata.get("topic").unwrap(), &json!("science"));
+    fn test_token_buffer_clear() {
+        let mut tb = TokenBufferMemory::new(50);
+        tb.add_message(human("hello world"));
+        tb.clear();
+        assert!(tb.messages().is_empty());
+        assert_eq!(tb.total_tokens(), 0);
+        assert_eq!(tb.remaining_tokens(), 50);
+    }
+
+    // ── SummaryMemory ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_summary_new() {
+        let sm = SummaryMemory::new();
+        assert!(sm.summary().is_empty());
+        assert!(sm.recent_messages().is_empty());
+        assert_eq!(sm.recent_count(), 0);
     }
 
     #[test]
-    fn test_memory_to_messages() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("hi", "hello");
-        mem.add_turn("bye", "goodbye");
-        let msgs = mem.to_messages(&ConversationWindow::All);
-        assert_eq!(msgs.len(), 4);
-        assert_eq!(msgs[0]["role"], "human");
-        assert_eq!(msgs[0]["content"], "hi");
-        assert_eq!(msgs[1]["role"], "ai");
-        assert_eq!(msgs[1]["content"], "hello");
+    fn test_summary_add_messages() {
+        let mut sm = SummaryMemory::new();
+        sm.add_message(human("hi"));
+        sm.add_message(ai("hello"));
+        assert_eq!(sm.recent_count(), 2);
+        assert_eq!(sm.recent_messages()[0].content, "hi");
     }
 
     #[test]
-    fn test_memory_to_messages_windowed() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("a", "b");
-        mem.add_turn("c", "d");
-        mem.add_turn("e", "f");
-        let msgs = mem.to_messages(&ConversationWindow::Last(1));
+    fn test_summary_set_summary() {
+        let mut sm = SummaryMemory::new();
+        sm.set_summary("The user asked about Rust.".to_string());
+        assert_eq!(sm.summary(), "The user asked about Rust.");
+    }
+
+    #[test]
+    fn test_summary_to_prompt_string_with_summary() {
+        let mut sm = SummaryMemory::new();
+        sm.set_summary("Previous: user discussed Rust".to_string());
+        sm.add_message(human("What about async?"));
+        sm.add_message(ai("Async uses futures."));
+        let prompt = sm.to_prompt_string();
+        assert!(prompt.contains("Summary: Previous: user discussed Rust"));
+        assert!(prompt.contains("human: What about async?"));
+        assert!(prompt.contains("ai: Async uses futures."));
+    }
+
+    #[test]
+    fn test_summary_to_prompt_string_without_summary() {
+        let mut sm = SummaryMemory::new();
+        sm.add_message(human("hello"));
+        let prompt = sm.to_prompt_string();
+        assert!(!prompt.contains("Summary:"));
+        assert!(prompt.contains("human: hello"));
+    }
+
+    #[test]
+    fn test_summary_default() {
+        let sm = SummaryMemory::default();
+        assert!(sm.summary().is_empty());
+    }
+
+    // ── ConversationStore ───────────────────────────────────────────────
+
+    #[test]
+    fn test_store_new() {
+        let store = ConversationStore::new();
+        assert_eq!(store.session_count(), 0);
+        assert!(store.list_sessions().is_empty());
+    }
+
+    #[test]
+    fn test_store_create_session() {
+        let mut store = ConversationStore::new();
+        let id = store.create_session("test session");
+        assert!(!id.is_empty());
+        assert_eq!(store.session_count(), 1);
+    }
+
+    #[test]
+    fn test_store_get_session() {
+        let mut store = ConversationStore::new();
+        let id = store.create_session("my chat");
+        let session = store.get_session(&id);
+        assert!(session.is_some());
+        assert!(session.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_store_get_nonexistent_session() {
+        let store = ConversationStore::new();
+        assert!(store.get_session("fake-id").is_none());
+    }
+
+    #[test]
+    fn test_store_add_to_session() {
+        let mut store = ConversationStore::new();
+        let id = store.create_session("chat");
+        store.add_to_session(&id, human("hello"));
+        store.add_to_session(&id, ai("hi there"));
+        let msgs = store.get_session(&id).unwrap();
         assert_eq!(msgs.len(), 2);
-        assert_eq!(msgs[0]["content"], "e");
-    }
-
-    // ── Branching ─────────────────────────────────────────────────────
-
-    #[test]
-    fn test_memory_create_branch() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("a", "b");
-        mem.add_turn("c", "d");
-        mem.create_branch("alt", 1).unwrap();
-        assert!(mem.get_branch("alt").is_some());
-        assert_eq!(mem.get_branch("alt").unwrap().branch_point(), 1);
+        assert_eq!(msgs[0].content, "hello");
+        assert_eq!(msgs[1].content, "hi there");
     }
 
     #[test]
-    fn test_memory_create_duplicate_branch() {
-        let mut mem = ConversationMemory::new();
-        mem.create_branch("x", 0).unwrap();
-        let err = mem.create_branch("x", 0).unwrap_err();
-        assert!(err.to_string().contains("already exists"));
+    fn test_store_add_to_nonexistent_session() {
+        let mut store = ConversationStore::new();
+        // Should silently do nothing
+        store.add_to_session("nonexistent", human("msg"));
+        assert_eq!(store.session_count(), 0);
     }
 
     #[test]
-    fn test_memory_create_branch_out_of_bounds() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("a", "b");
-        let err = mem.create_branch("bad", 5).unwrap_err();
-        assert!(err.to_string().contains("exceeds"));
+    fn test_store_list_sessions() {
+        let mut store = ConversationStore::new();
+        let id1 = store.create_session("first");
+        let id2 = store.create_session("second");
+        let sessions = store.list_sessions();
+        assert_eq!(sessions.len(), 2);
+        let ids: Vec<&str> = sessions.iter().map(|(id, _)| id.as_str()).collect();
+        assert!(ids.contains(&id1.as_str()));
+        assert!(ids.contains(&id2.as_str()));
     }
 
     #[test]
-    fn test_memory_switch_branch() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("a", "b");
-        mem.create_branch("alt", 1).unwrap();
-        mem.switch_branch("alt").unwrap();
-        assert_eq!(mem.current_branch(), Some("alt"));
+    fn test_store_delete_session() {
+        let mut store = ConversationStore::new();
+        let id = store.create_session("doomed");
+        store.add_to_session(&id, human("msg"));
+        store.delete_session(&id);
+        assert_eq!(store.session_count(), 0);
+        assert!(store.get_session(&id).is_none());
     }
 
     #[test]
-    fn test_memory_switch_nonexistent_branch() {
-        let mut mem = ConversationMemory::new();
-        let err = mem.switch_branch("nope").unwrap_err();
-        assert!(err.to_string().contains("does not exist"));
+    fn test_store_delete_nonexistent() {
+        let mut store = ConversationStore::new();
+        store.delete_session("nope"); // should not panic
+        assert_eq!(store.session_count(), 0);
     }
 
     #[test]
-    fn test_memory_branch_isolation() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("shared1", "shared_a1");
-        mem.add_turn("shared2", "shared_a2");
-
-        mem.create_branch("alt", 1).unwrap();
-        mem.switch_branch("alt").unwrap();
-
-        // Add turn on branch — should not appear in main
-        mem.add_turn("branch_q", "branch_a");
-
-        // On branch: should see shared1 + branch_q = 2 turns
-        assert_eq!(mem.len(), 2);
-        assert_eq!(mem.get_turn(0).unwrap().human, "shared1");
-        assert_eq!(mem.get_turn(1).unwrap().human, "branch_q");
-
-        // Switch back to main
-        mem.current_branch = None;
-        assert_eq!(mem.len(), 2);
-        assert_eq!(mem.get_turn(1).unwrap().human, "shared2");
+    fn test_store_multiple_sessions_isolated() {
+        let mut store = ConversationStore::new();
+        let id1 = store.create_session("s1");
+        let id2 = store.create_session("s2");
+        store.add_to_session(&id1, human("in s1"));
+        store.add_to_session(&id2, human("in s2"));
+        assert_eq!(store.get_session(&id1).unwrap().len(), 1);
+        assert_eq!(store.get_session(&id2).unwrap().len(), 1);
+        assert_eq!(store.get_session(&id1).unwrap()[0].content, "in s1");
+        assert_eq!(store.get_session(&id2).unwrap()[0].content, "in s2");
     }
 
-    #[test]
-    fn test_memory_branches_list() {
-        let mut mem = ConversationMemory::new();
-        mem.create_branch("a", 0).unwrap();
-        mem.create_branch("b", 0).unwrap();
-        let mut names = mem.branches();
-        names.sort();
-        assert_eq!(names, vec!["a", "b"]);
-    }
-
-    // ── Export and Summary ────────────────────────────────────────────
+    // ── MemorySearch ────────────────────────────────────────────────────
 
     #[test]
-    fn test_memory_export() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("hi", "hello");
-        mem.create_branch("alt", 1).unwrap();
-        let export = mem.export();
-        assert!(export["turns"].is_array());
-        assert_eq!(export["turns"].as_array().unwrap().len(), 1);
-        assert!(export["branches"]["alt"].is_object());
-    }
-
-    #[test]
-    fn test_memory_summary() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("a", "b");
-        mem.add_turn("c", "d");
-        mem.create_branch("x", 0).unwrap();
-        let s = mem.summary();
-        assert_eq!(s["total_turns"], 2);
-        assert_eq!(s["branch_count"], 1);
-    }
-
-    // ── ConversationSearch ────────────────────────────────────────────
-
-    #[test]
-    fn test_search_by_keyword() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("Rust programming", "Great choice");
-        mem.add_turn("Python scripting", "Also good");
-        let search = ConversationSearch::new(&mem);
-        let results = search.by_keyword("rust");
-        assert_eq!(results.len(), 1);
-    }
-
-    #[test]
-    fn test_search_by_metadata() {
-        let mut mem = ConversationMemory::new();
-        let mut m1 = HashMap::new();
-        m1.insert("topic".to_string(), json!("math"));
-        mem.add_turn_with_metadata("2+2?", "4", m1);
-
-        let mut m2 = HashMap::new();
-        m2.insert("topic".to_string(), json!("history"));
-        mem.add_turn_with_metadata("When?", "1776", m2);
-
-        let search = ConversationSearch::new(&mem);
-        let results = search.by_metadata("topic", &json!("math"));
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].ai, "4");
-    }
-
-    #[test]
-    fn test_search_recent() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("a", "1");
-        mem.add_turn("b", "2");
-        mem.add_turn("c", "3");
-        let search = ConversationSearch::new(&mem);
-        let results = search.recent(2);
+    fn test_search_by_content() {
+        let msgs = vec![
+            human("Tell me about Rust"),
+            ai("Rust is great"),
+            human("What about Python?"),
+        ];
+        let search = MemorySearch::new();
+        let results = search.search_by_content(&msgs, "rust");
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].human, "b");
-        assert_eq!(results[1].human, "c");
     }
 
     #[test]
-    fn test_search_recent_exceeds() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("a", "1");
-        let search = ConversationSearch::new(&mem);
-        let results = search.recent(10);
+    fn test_search_by_content_no_match() {
+        let msgs = vec![human("hello"), ai("world")];
+        let search = MemorySearch::new();
+        let results = search.search_by_content(&msgs, "golang");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_search_by_content_case_insensitive() {
+        let msgs = vec![human("HELLO WORLD")];
+        let search = MemorySearch::new();
+        let results = search.search_by_content(&msgs, "hello");
         assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_search_by_role() {
+        let msgs = vec![
+            human("q1"),
+            ai("a1"),
+            human("q2"),
+            system("sys"),
+        ];
+        let search = MemorySearch::new();
+        let humans = search.search_by_role(&msgs, &MessageRole::Human);
+        assert_eq!(humans.len(), 2);
+        let systems = search.search_by_role(&msgs, &MessageRole::System);
+        assert_eq!(systems.len(), 1);
+    }
+
+    #[test]
+    fn test_search_by_role_function() {
+        let msgs = vec![
+            function_msg("calc", "42"),
+            function_msg("search", "results"),
+            human("ok"),
+        ];
+        let search = MemorySearch::new();
+        let results = search.search_by_role(
+            &msgs,
+            &MessageRole::Function {
+                name: "calc".into(),
+            },
+        );
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "42");
     }
 
     #[test]
     fn test_search_by_time_range() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("recent", "yes");
-        // All turns are just created, so age ≈ 0. Search for 0..10s should match.
-        let search = ConversationSearch::new(&mem);
-        let results = search.by_time_range(Duration::from_secs(0), Duration::from_secs(10));
-        assert_eq!(results.len(), 1);
+        let msgs = vec![
+            stamped(MessageRole::Human, "old", "2025-01-01T00:00:00Z"),
+            stamped(MessageRole::Ai, "mid", "2025-06-15T12:00:00Z"),
+            stamped(MessageRole::Human, "new", "2025-12-31T23:59:59Z"),
+        ];
+        let search = MemorySearch::new();
+        let results =
+            search.search_by_time_range(&msgs, "2025-06-01T00:00:00Z", "2025-12-31T23:59:59Z");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].content, "mid");
+        assert_eq!(results[1].content, "new");
     }
 
     #[test]
-    fn test_search_by_time_range_excludes_old() {
-        let mut mem = ConversationMemory::new();
-        mem.add_turn("recent", "yes");
-        // Search for turns between 60s and 120s old — should exclude recent turns.
-        let search = ConversationSearch::new(&mem);
-        let results = search.by_time_range(Duration::from_secs(60), Duration::from_secs(120));
+    fn test_search_by_time_range_empty_timestamps() {
+        let msgs = vec![human("no timestamp")];
+        let search = MemorySearch::new();
+        // Empty string < any ISO timestamp, so should not match "2025-..." range
+        let results = search.search_by_time_range(&msgs, "2025-01-01", "2025-12-31");
         assert!(results.is_empty());
     }
 
-    // ── Default trait ─────────────────────────────────────────────────
+    #[test]
+    fn test_search_by_time_range_no_match() {
+        let msgs = vec![
+            stamped(MessageRole::Human, "a", "2024-01-01T00:00:00Z"),
+        ];
+        let search = MemorySearch::new();
+        let results = search.search_by_time_range(&msgs, "2025-01-01", "2025-12-31");
+        assert!(results.is_empty());
+    }
+
+    // ── MemoryStats ─────────────────────────────────────────────────────
 
     #[test]
-    fn test_memory_default() {
-        let mem = ConversationMemory::default();
-        assert!(mem.is_empty());
+    fn test_stats_empty() {
+        let stats = MemoryStats::from_messages(&[]);
+        assert_eq!(stats.total_messages(), 0);
+        assert_eq!(stats.total_tokens(), 0);
+        assert_eq!(stats.average_message_length(), 0);
+        assert!(stats.messages_by_role().is_empty());
+    }
+
+    #[test]
+    fn test_stats_basic() {
+        let msgs = vec![
+            human("hello world"),       // 2 tokens, 11 chars
+            ai("hi there friend"),      // 3 tokens, 15 chars
+            human("bye"),               // 1 token, 3 chars
+        ];
+        let stats = MemoryStats::from_messages(&msgs);
+        assert_eq!(stats.total_messages(), 3);
+        assert_eq!(stats.total_tokens(), 6);
+        assert_eq!(*stats.messages_by_role().get("human").unwrap(), 2);
+        assert_eq!(*stats.messages_by_role().get("ai").unwrap(), 1);
+        // avg length: (11 + 15 + 3) / 3 = 9
+        assert_eq!(stats.average_message_length(), 9);
+    }
+
+    #[test]
+    fn test_stats_to_json() {
+        let msgs = vec![human("one two"), ai("three")];
+        let stats = MemoryStats::from_messages(&msgs);
+        let j = stats.to_json();
+        assert_eq!(j["total_messages"], 2);
+        assert!(j["total_tokens"].is_number());
+        assert!(j["messages_by_role"].is_object());
+        assert!(j["average_message_length"].is_number());
+    }
+
+    #[test]
+    fn test_stats_function_role() {
+        let msgs = vec![
+            function_msg("calc", "42"),
+            function_msg("search", "result"),
+        ];
+        let stats = MemoryStats::from_messages(&msgs);
+        // Each function role has a different Display string
+        assert_eq!(
+            *stats.messages_by_role().get("function(calc)").unwrap(),
+            1
+        );
+        assert_eq!(
+            *stats.messages_by_role().get("function(search)").unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_stats_all_roles() {
+        let msgs = vec![
+            system("sys"),
+            human("h"),
+            ai("a"),
+            function_msg("f", "r"),
+        ];
+        let stats = MemoryStats::from_messages(&msgs);
+        assert_eq!(stats.messages_by_role().len(), 4);
     }
 }
