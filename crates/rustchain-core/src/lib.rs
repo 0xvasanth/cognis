@@ -59,6 +59,7 @@ pub mod stores;
 pub mod structured_query;
 pub mod tools;
 pub mod tracers;
+pub mod types;
 pub mod tracing;
 pub mod utils;
 pub mod vectorstores;
