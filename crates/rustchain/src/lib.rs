@@ -54,6 +54,7 @@ pub mod memory;
 pub mod output_parsers;
 pub mod prompts;
 pub mod providers;
+pub mod resilience;
 pub mod retrievers;
 pub mod stores;
 pub mod streaming;
