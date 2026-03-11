@@ -67,6 +67,7 @@
 pub mod agent;
 pub mod backends;
 pub mod builder;
+pub mod collaboration;
 pub mod communication;
 pub mod config;
 pub mod context;
