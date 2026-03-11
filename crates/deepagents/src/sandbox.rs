@@ -595,6 +595,710 @@ impl Default for SandboxManager {
 }
 
 // ---------------------------------------------------------------------------
+// PathPattern (glob-like path matching)
+// ---------------------------------------------------------------------------
+
+/// Glob-like path pattern supporting `*` (single segment) and `**` (recursive).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PathPattern {
+    pattern: String,
+}
+
+impl PathPattern {
+    /// Create a new path pattern from a glob string.
+    pub fn new(pattern: &str) -> Self {
+        Self {
+            pattern: pattern.to_string(),
+        }
+    }
+
+    /// Return the underlying pattern string.
+    pub fn pattern(&self) -> &str {
+        &self.pattern
+    }
+
+    /// Test whether `path` matches this pattern.
+    ///
+    /// Matching rules:
+    /// - `*` matches exactly one path segment (no `/`)
+    /// - `**` matches zero or more segments (including `/`)
+    /// - Literal segments must match exactly
+    pub fn matches(&self, path: &str) -> bool {
+        let pat_parts: Vec<&str> = self.pattern.split('/').filter(|s| !s.is_empty()).collect();
+        let path_parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        Self::match_parts(&pat_parts, &path_parts)
+    }
+
+    fn match_parts(pat: &[&str], path: &[&str]) -> bool {
+        if pat.is_empty() {
+            return path.is_empty();
+        }
+        if pat[0] == "**" {
+            let rest_pat = &pat[1..];
+            for i in 0..=path.len() {
+                if Self::match_parts(rest_pat, &path[i..]) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if path.is_empty() {
+            return false;
+        }
+        let seg_match = pat[0] == "*" || pat[0] == path[0];
+        seg_match && Self::match_parts(&pat[1..], &path[1..])
+    }
+}
+
+impl fmt::Display for PathPattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.pattern)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Permission (fine-grained)
+// ---------------------------------------------------------------------------
+
+/// A fine-grained permission controlling a specific kind of resource access.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Permission {
+    /// Permission to read files matching a path pattern.
+    FileRead(PathPattern),
+    /// Permission to write files matching a path pattern.
+    FileWrite(PathPattern),
+    /// Permission to access specific network hosts.
+    NetworkAccess { hosts: Vec<String> },
+    /// Permission to execute specific shell commands.
+    ShellExec { commands: Vec<String> },
+    /// Permission to use specific tools.
+    ToolUse { tools: Vec<String> },
+    /// Permission to spawn sub-agents.
+    SubAgentSpawn,
+    /// Unrestricted access to everything.
+    All,
+}
+
+impl Permission {
+    /// Human-readable name for this permission variant.
+    pub fn name(&self) -> &str {
+        match self {
+            Permission::FileRead(_) => "file_read",
+            Permission::FileWrite(_) => "file_write",
+            Permission::NetworkAccess { .. } => "network_access",
+            Permission::ShellExec { .. } => "shell_exec",
+            Permission::ToolUse { .. } => "tool_use",
+            Permission::SubAgentSpawn => "sub_agent_spawn",
+            Permission::All => "all",
+        }
+    }
+
+    /// For file-based permissions, test whether `path` matches the pattern.
+    /// Returns `false` for non-file permissions.
+    pub fn matches_path(&self, path: &str) -> bool {
+        match self {
+            Permission::FileRead(pat) | Permission::FileWrite(pat) => pat.matches(path),
+            Permission::All => true,
+            _ => false,
+        }
+    }
+
+    /// Serialize this permission to a JSON value.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "type": self.name(),
+            "display": self.to_string(),
+        })
+    }
+}
+
+impl fmt::Display for Permission {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Permission::FileRead(pat) => write!(f, "FileRead({})", pat),
+            Permission::FileWrite(pat) => write!(f, "FileWrite({})", pat),
+            Permission::NetworkAccess { hosts } => write!(f, "NetworkAccess({:?})", hosts),
+            Permission::ShellExec { commands } => write!(f, "ShellExec({:?})", commands),
+            Permission::ToolUse { tools } => write!(f, "ToolUse({:?})", tools),
+            Permission::SubAgentSpawn => write!(f, "SubAgentSpawn"),
+            Permission::All => write!(f, "All"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PermissionSet
+// ---------------------------------------------------------------------------
+
+/// A collection of allowed and denied fine-grained permissions.
+#[derive(Debug, Clone)]
+pub struct PermissionSet {
+    allowed: Vec<Permission>,
+    denied: Vec<Permission>,
+}
+
+impl PermissionSet {
+    /// Create an empty permission set.
+    pub fn new() -> Self {
+        Self {
+            allowed: Vec::new(),
+            denied: Vec::new(),
+        }
+    }
+
+    /// Add an allowed permission.
+    pub fn allow(&mut self, permission: Permission) {
+        self.allowed.push(permission);
+    }
+
+    /// Add a denied permission.
+    pub fn deny(&mut self, permission: Permission) {
+        self.denied.push(permission);
+    }
+
+    /// Check whether `permission` is allowed by this set.
+    ///
+    /// Denied rules take precedence. If an explicit deny matches, the
+    /// permission is rejected. Otherwise it is allowed if any allow rule matches.
+    pub fn is_allowed(&self, permission: &Permission) -> bool {
+        for d in &self.denied {
+            if Self::permission_matches(d, permission) {
+                return false;
+            }
+        }
+        for a in &self.allowed {
+            if Self::permission_matches(a, permission) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Return all tool names that are explicitly allowed.
+    pub fn allowed_tools(&self) -> Vec<String> {
+        let mut tools = Vec::new();
+        for perm in &self.allowed {
+            match perm {
+                Permission::ToolUse { tools: t } => tools.extend(t.clone()),
+                Permission::All => {
+                    tools.push("*".to_string());
+                    break;
+                }
+                _ => {}
+            }
+        }
+        tools
+    }
+
+    /// Check whether reading the given path is allowed.
+    pub fn can_read(&self, path: &str) -> bool {
+        self.is_allowed(&Permission::FileRead(PathPattern::new(path)))
+    }
+
+    /// Check whether writing to the given path is allowed.
+    pub fn can_write(&self, path: &str) -> bool {
+        self.is_allowed(&Permission::FileWrite(PathPattern::new(path)))
+    }
+
+    /// Merge another permission set into this one.
+    pub fn merge(&mut self, other: &PermissionSet) {
+        self.allowed.extend(other.allowed.clone());
+        self.denied.extend(other.denied.clone());
+    }
+
+    /// Number of rules (allowed + denied).
+    pub fn len(&self) -> usize {
+        self.allowed.len() + self.denied.len()
+    }
+
+    /// Whether the set has no rules.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Serialize to JSON.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "allowed": self.allowed.iter().map(|p| p.to_json()).collect::<Vec<_>>(),
+            "denied": self.denied.iter().map(|p| p.to_json()).collect::<Vec<_>>(),
+        })
+    }
+
+    fn permission_matches(rule: &Permission, request: &Permission) -> bool {
+        match (rule, request) {
+            (Permission::All, _) => true,
+            (Permission::SubAgentSpawn, Permission::SubAgentSpawn) => true,
+            (Permission::FileRead(rule_pat), Permission::FileRead(req_pat)) => {
+                rule_pat.matches(req_pat.pattern())
+            }
+            (Permission::FileWrite(rule_pat), Permission::FileWrite(req_pat)) => {
+                rule_pat.matches(req_pat.pattern())
+            }
+            (
+                Permission::NetworkAccess { hosts: rule_hosts },
+                Permission::NetworkAccess { hosts: req_hosts },
+            ) => req_hosts.iter().all(|h| rule_hosts.contains(h)),
+            (
+                Permission::ShellExec {
+                    commands: rule_cmds,
+                },
+                Permission::ShellExec { commands: req_cmds },
+            ) => req_cmds.iter().all(|c| rule_cmds.contains(c)),
+            (
+                Permission::ToolUse {
+                    tools: rule_tools,
+                },
+                Permission::ToolUse { tools: req_tools },
+            ) => req_tools.iter().all(|t| rule_tools.contains(t)),
+            _ => false,
+        }
+    }
+}
+
+impl Default for PermissionSet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SandboxViolation
+// ---------------------------------------------------------------------------
+
+/// Records a sandbox policy violation.
+#[derive(Debug, Clone)]
+pub struct SandboxViolation {
+    /// Description of the denied permission.
+    pub permission_denied: String,
+    /// Timestamp string.
+    pub timestamp: String,
+    /// Optional additional context.
+    pub context: Option<String>,
+}
+
+impl SandboxViolation {
+    /// Create a new violation record.
+    pub fn new(denied: &str) -> Self {
+        Self {
+            permission_denied: denied.to_string(),
+            timestamp: format!("{:?}", std::time::SystemTime::now()),
+            context: None,
+        }
+    }
+
+    /// Attach context information.
+    pub fn with_context(mut self, ctx: &str) -> Self {
+        self.context = Some(ctx.to_string());
+        self
+    }
+
+    /// Serialize to JSON.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "permission_denied": self.permission_denied,
+            "timestamp": self.timestamp,
+            "context": self.context,
+        })
+    }
+}
+
+impl fmt::Display for SandboxViolation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SandboxViolation: {} at {}",
+            self.permission_denied, self.timestamp
+        )?;
+        if let Some(ctx) = &self.context {
+            write!(f, " ({})", ctx)?;
+        }
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SandboxConfig (for the enforcing sandbox)
+// ---------------------------------------------------------------------------
+
+/// Configuration for constructing an [`EnforcingSandbox`].
+#[derive(Debug, Clone)]
+pub struct SandboxConfig {
+    /// Human-readable name for this sandbox.
+    pub name: String,
+    /// The permission set governing allowed/denied actions.
+    pub permissions: PermissionSet,
+    /// Maximum memory in megabytes (advisory).
+    pub max_memory_mb: Option<usize>,
+    /// Maximum wall-clock duration in seconds.
+    pub max_duration_secs: Option<u64>,
+    /// Maximum number of tool calls allowed.
+    pub max_tool_calls: Option<usize>,
+}
+
+impl SandboxConfig {
+    /// Create a new sandbox config with the given name and empty permissions.
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            permissions: PermissionSet::new(),
+            max_memory_mb: None,
+            max_duration_secs: None,
+            max_tool_calls: None,
+        }
+    }
+
+    /// Add a permission and return self for chaining.
+    pub fn with_permission(mut self, perm: Permission) -> Self {
+        self.permissions.allow(perm);
+        self
+    }
+
+    /// Set the memory limit.
+    pub fn with_memory_limit(mut self, mb: usize) -> Self {
+        self.max_memory_mb = Some(mb);
+        self
+    }
+
+    /// Set the duration limit.
+    pub fn with_duration_limit(mut self, secs: u64) -> Self {
+        self.max_duration_secs = Some(secs);
+        self
+    }
+
+    /// Set the tool call limit.
+    pub fn with_tool_limit(mut self, n: usize) -> Self {
+        self.max_tool_calls = Some(n);
+        self
+    }
+
+    /// Serialize to JSON.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "name": self.name,
+            "permissions": self.permissions.to_json(),
+            "max_memory_mb": self.max_memory_mb,
+            "max_duration_secs": self.max_duration_secs,
+            "max_tool_calls": self.max_tool_calls,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EnforcingSandbox
+// ---------------------------------------------------------------------------
+
+/// A live sandbox that enforces constraints from its [`SandboxConfig`].
+///
+/// Tracks tool call counts, records violations, and checks expiration.
+pub struct EnforcingSandbox {
+    config: SandboxConfig,
+    tool_call_count: std::sync::atomic::AtomicUsize,
+    violations: std::sync::Mutex<Vec<SandboxViolation>>,
+    created_at: Instant,
+}
+
+impl EnforcingSandbox {
+    /// Create a new enforcing sandbox from the given configuration.
+    pub fn new(config: SandboxConfig) -> Self {
+        Self {
+            config,
+            tool_call_count: std::sync::atomic::AtomicUsize::new(0),
+            violations: std::sync::Mutex::new(Vec::new()),
+            created_at: Instant::now(),
+        }
+    }
+
+    /// Check whether a permission is allowed. Records a violation on denial.
+    pub fn check_permission(
+        &self,
+        permission: &Permission,
+    ) -> std::result::Result<(), SandboxViolation> {
+        if self.is_expired() {
+            let v = SandboxViolation::new("sandbox_expired")
+                .with_context("Sandbox duration limit exceeded");
+            self.violations.lock().unwrap().push(v.clone());
+            return Err(v);
+        }
+        if self.config.permissions.is_allowed(permission) {
+            Ok(())
+        } else {
+            let v = SandboxViolation::new(&format!("denied: {}", permission));
+            self.violations.lock().unwrap().push(v.clone());
+            Err(v)
+        }
+    }
+
+    /// Record a tool call. Returns `Err` if the tool call limit is exceeded.
+    pub fn record_tool_call(&self) -> std::result::Result<(), SandboxViolation> {
+        let count = self
+            .tool_call_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        if let Some(max) = self.config.max_tool_calls {
+            if count > max {
+                let v = SandboxViolation::new("tool_call_limit_exceeded")
+                    .with_context(&format!("Limit: {}, attempted: {}", max, count));
+                self.violations.lock().unwrap().push(v.clone());
+                return Err(v);
+            }
+        }
+        Ok(())
+    }
+
+    /// Number of remaining tool calls, or `None` if unlimited.
+    pub fn remaining_tool_calls(&self) -> Option<usize> {
+        self.config.max_tool_calls.map(|max| {
+            let used = self
+                .tool_call_count
+                .load(std::sync::atomic::Ordering::SeqCst);
+            max.saturating_sub(used)
+        })
+    }
+
+    /// Whether the sandbox has exceeded its duration limit.
+    pub fn is_expired(&self) -> bool {
+        if let Some(secs) = self.config.max_duration_secs {
+            self.created_at.elapsed().as_secs() >= secs
+        } else {
+            false
+        }
+    }
+
+    /// Return all recorded violations.
+    pub fn violations(&self) -> Vec<SandboxViolation> {
+        self.violations.lock().unwrap().clone()
+    }
+
+    /// Number of recorded violations.
+    pub fn violation_count(&self) -> usize {
+        self.violations.lock().unwrap().len()
+    }
+
+    /// Serialize sandbox state to JSON.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "config": self.config.to_json(),
+            "tool_calls": self.tool_call_count.load(std::sync::atomic::Ordering::SeqCst),
+            "violations": self.violations.lock().unwrap().iter().map(|v| v.to_json()).collect::<Vec<_>>(),
+            "elapsed_secs": self.created_at.elapsed().as_secs(),
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SandboxPreset
+// ---------------------------------------------------------------------------
+
+/// Predefined sandbox configurations for common use cases.
+pub struct SandboxPreset;
+
+impl SandboxPreset {
+    /// Minimal permissions — no access to anything.
+    pub fn restrictive() -> SandboxConfig {
+        SandboxConfig::new("restrictive")
+            .with_memory_limit(256)
+            .with_duration_limit(60)
+            .with_tool_limit(10)
+    }
+
+    /// Most permissions allowed.
+    pub fn permissive() -> SandboxConfig {
+        SandboxConfig::new("permissive").with_permission(Permission::All)
+    }
+
+    /// Only file access for the given path patterns.
+    pub fn file_only(paths: Vec<String>) -> SandboxConfig {
+        let mut config = SandboxConfig::new("file_only");
+        for p in &paths {
+            config
+                .permissions
+                .allow(Permission::FileRead(PathPattern::new(p)));
+            config
+                .permissions
+                .allow(Permission::FileWrite(PathPattern::new(p)));
+        }
+        config
+    }
+
+    /// Only network access for the given hosts.
+    pub fn network_only(hosts: Vec<String>) -> SandboxConfig {
+        SandboxConfig::new("network_only").with_permission(Permission::NetworkAccess { hosts })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SandboxAuditLog
+// ---------------------------------------------------------------------------
+
+/// Entry in the audit log.
+#[derive(Debug, Clone)]
+pub struct AuditEntry {
+    /// Description of the checked permission.
+    pub permission: String,
+    /// Whether the check was allowed.
+    pub allowed: bool,
+    /// Timestamp string.
+    pub timestamp: String,
+}
+
+/// Logs all permission checks for auditing.
+#[derive(Debug, Clone, Default)]
+pub struct SandboxAuditLog {
+    entries: Vec<AuditEntry>,
+}
+
+impl SandboxAuditLog {
+    /// Create an empty audit log.
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    /// Record a permission check.
+    pub fn record_check(&mut self, permission: &Permission, allowed: bool) {
+        self.entries.push(AuditEntry {
+            permission: format!("{}", permission),
+            allowed,
+            timestamp: format!("{:?}", std::time::SystemTime::now()),
+        });
+    }
+
+    /// Return all entries.
+    pub fn entries(&self) -> &[AuditEntry] {
+        &self.entries
+    }
+
+    /// Return only denied entries.
+    pub fn denied_entries(&self) -> Vec<&AuditEntry> {
+        self.entries.iter().filter(|e| !e.allowed).collect()
+    }
+
+    /// Total number of checks recorded.
+    pub fn total_checks(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Fraction of checks that were denied (0.0–1.0). Returns 0.0 if empty.
+    pub fn denial_rate(&self) -> f64 {
+        if self.entries.is_empty() {
+            return 0.0;
+        }
+        let denied = self.entries.iter().filter(|e| !e.allowed).count();
+        denied as f64 / self.entries.len() as f64
+    }
+
+    /// Serialize to JSON.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "total_checks": self.total_checks(),
+            "denial_rate": self.denial_rate(),
+            "entries": self.entries.iter().map(|e| serde_json::json!({
+                "permission": e.permission,
+                "allowed": e.allowed,
+                "timestamp": e.timestamp,
+            })).collect::<Vec<_>>(),
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ResourceTracker
+// ---------------------------------------------------------------------------
+
+/// Tracks resource usage within a sandbox.
+#[derive(Debug)]
+pub struct ResourceTracker {
+    peak_memory_bytes: std::sync::atomic::AtomicUsize,
+    current_memory_bytes: std::sync::atomic::AtomicUsize,
+    total_cpu_ms: std::sync::atomic::AtomicUsize,
+    total_io_bytes: std::sync::atomic::AtomicUsize,
+}
+
+impl ResourceTracker {
+    /// Create a new resource tracker with zero counters.
+    pub fn new() -> Self {
+        Self {
+            peak_memory_bytes: std::sync::atomic::AtomicUsize::new(0),
+            current_memory_bytes: std::sync::atomic::AtomicUsize::new(0),
+            total_cpu_ms: std::sync::atomic::AtomicUsize::new(0),
+            total_io_bytes: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    /// Record a memory usage sample in bytes.
+    pub fn record_memory_usage(&self, bytes: usize) {
+        self.current_memory_bytes
+            .store(bytes, std::sync::atomic::Ordering::SeqCst);
+        loop {
+            let peak = self
+                .peak_memory_bytes
+                .load(std::sync::atomic::Ordering::SeqCst);
+            if bytes <= peak {
+                break;
+            }
+            if self
+                .peak_memory_bytes
+                .compare_exchange(
+                    peak,
+                    bytes,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+                .is_ok()
+            {
+                break;
+            }
+        }
+    }
+
+    /// Record CPU time used in milliseconds.
+    pub fn record_cpu_time_ms(&self, ms: u64) {
+        self.total_cpu_ms
+            .fetch_add(ms as usize, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Record I/O bytes transferred.
+    pub fn record_io_bytes(&self, bytes: usize) {
+        self.total_io_bytes
+            .fetch_add(bytes, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Peak memory usage observed in bytes.
+    pub fn peak_memory(&self) -> usize {
+        self.peak_memory_bytes
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Total CPU time recorded in milliseconds.
+    pub fn total_cpu_ms(&self) -> u64 {
+        self.total_cpu_ms
+            .load(std::sync::atomic::Ordering::SeqCst) as u64
+    }
+
+    /// Total I/O bytes recorded.
+    pub fn total_io_bytes(&self) -> usize {
+        self.total_io_bytes
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Serialize to JSON.
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "peak_memory_bytes": self.peak_memory(),
+            "total_cpu_ms": self.total_cpu_ms(),
+            "total_io_bytes": self.total_io_bytes(),
+        })
+    }
+}
+
+impl Default for ResourceTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1095,5 +1799,619 @@ mod tests {
         assert_eq!(mgr.len(), 1);
         let sb = mgr.get("dup").unwrap();
         assert!(sb.policy().check_permission(&SandboxPermission::ShellExec));
+    }
+
+    // ===================================================================
+    // New sandbox system tests: PathPattern, Permission, PermissionSet,
+    // SandboxConfig, EnforcingSandbox, SandboxViolation, SandboxPreset,
+    // SandboxAuditLog, ResourceTracker
+    // ===================================================================
+
+    // -- PathPattern tests --
+
+    #[test]
+    fn test_path_pattern_exact_match() {
+        let p = PathPattern::new("src/main.rs");
+        assert!(p.matches("src/main.rs"));
+        assert!(!p.matches("src/lib.rs"));
+    }
+
+    #[test]
+    fn test_path_pattern_single_wildcard() {
+        // `*` matches exactly one path segment
+        let p = PathPattern::new("src/*");
+        assert!(p.matches("src/main.rs"));
+        assert!(p.matches("src/lib.rs"));
+        assert!(!p.matches("src/sub/main.rs"));
+    }
+
+    #[test]
+    fn test_path_pattern_double_wildcard() {
+        let p = PathPattern::new("src/**");
+        assert!(p.matches("src/main.rs"));
+        assert!(p.matches("src/sub/main.rs"));
+        assert!(p.matches("src/a/b/c/main.rs"));
+    }
+
+    #[test]
+    fn test_path_pattern_double_wildcard_prefix() {
+        let p = PathPattern::new("**/test.rs");
+        assert!(p.matches("test.rs"));
+        assert!(p.matches("src/test.rs"));
+        assert!(p.matches("a/b/c/test.rs"));
+        assert!(!p.matches("a/b/c/other.rs"));
+    }
+
+    #[test]
+    fn test_path_pattern_all_recursive() {
+        let p = PathPattern::new("**");
+        assert!(p.matches("anything"));
+        assert!(p.matches("a/b/c/d"));
+    }
+
+    #[test]
+    fn test_path_pattern_no_match_empty() {
+        let p = PathPattern::new("src/main.rs");
+        assert!(!p.matches(""));
+    }
+
+    #[test]
+    fn test_path_pattern_display() {
+        let p = PathPattern::new("src/**");
+        assert_eq!(format!("{}", p), "src/**");
+    }
+
+    #[test]
+    fn test_path_pattern_getter() {
+        let p = PathPattern::new("foo/bar");
+        assert_eq!(p.pattern(), "foo/bar");
+    }
+
+    #[test]
+    fn test_path_pattern_leading_slash() {
+        let p = PathPattern::new("/usr/local/bin");
+        assert!(p.matches("/usr/local/bin"));
+    }
+
+    // -- Permission (fine-grained) tests --
+
+    #[test]
+    fn test_fg_permission_name_variants() {
+        assert_eq!(Permission::FileRead(PathPattern::new("*")).name(), "file_read");
+        assert_eq!(Permission::FileWrite(PathPattern::new("*")).name(), "file_write");
+        assert_eq!(Permission::NetworkAccess { hosts: vec![] }.name(), "network_access");
+        assert_eq!(Permission::ShellExec { commands: vec![] }.name(), "shell_exec");
+        assert_eq!(Permission::ToolUse { tools: vec![] }.name(), "tool_use");
+        assert_eq!(Permission::SubAgentSpawn.name(), "sub_agent_spawn");
+        assert_eq!(Permission::All.name(), "all");
+    }
+
+    #[test]
+    fn test_fg_permission_matches_path_file_read() {
+        let perm = Permission::FileRead(PathPattern::new("src/**"));
+        assert!(perm.matches_path("src/main.rs"));
+        assert!(!perm.matches_path("tests/test.rs"));
+    }
+
+    #[test]
+    fn test_fg_permission_matches_path_file_write() {
+        let perm = Permission::FileWrite(PathPattern::new("output/*"));
+        assert!(perm.matches_path("output/result.txt"));
+        assert!(!perm.matches_path("output/sub/result.txt"));
+    }
+
+    #[test]
+    fn test_fg_permission_matches_path_all() {
+        assert!(Permission::All.matches_path("anything/at/all"));
+    }
+
+    #[test]
+    fn test_fg_permission_matches_path_non_file() {
+        let perm = Permission::NetworkAccess {
+            hosts: vec!["example.com".into()],
+        };
+        assert!(!perm.matches_path("some/path"));
+    }
+
+    #[test]
+    fn test_fg_permission_to_json() {
+        let perm = Permission::SubAgentSpawn;
+        let json = perm.to_json();
+        assert_eq!(json["type"], "sub_agent_spawn");
+    }
+
+    #[test]
+    fn test_fg_permission_display() {
+        let perm = Permission::FileRead(PathPattern::new("src/**"));
+        let s = format!("{}", perm);
+        assert!(s.contains("FileRead"));
+        assert!(s.contains("src/**"));
+    }
+
+    #[test]
+    fn test_fg_permission_display_network() {
+        let perm = Permission::NetworkAccess {
+            hosts: vec!["a.com".into()],
+        };
+        let s = format!("{}", perm);
+        assert!(s.contains("NetworkAccess"));
+    }
+
+    // -- PermissionSet tests --
+
+    #[test]
+    fn test_pset_empty_denies_all() {
+        let ps = PermissionSet::new();
+        assert!(!ps.is_allowed(&Permission::SubAgentSpawn));
+        assert!(!ps.can_read("anything"));
+    }
+
+    #[test]
+    fn test_pset_allow_and_check() {
+        let mut ps = PermissionSet::new();
+        ps.allow(Permission::SubAgentSpawn);
+        assert!(ps.is_allowed(&Permission::SubAgentSpawn));
+    }
+
+    #[test]
+    fn test_pset_deny_overrides_allow() {
+        let mut ps = PermissionSet::new();
+        ps.allow(Permission::All);
+        ps.deny(Permission::SubAgentSpawn);
+        assert!(!ps.is_allowed(&Permission::SubAgentSpawn));
+    }
+
+    #[test]
+    fn test_pset_can_read() {
+        let mut ps = PermissionSet::new();
+        ps.allow(Permission::FileRead(PathPattern::new("src/**")));
+        assert!(ps.can_read("src/main.rs"));
+        assert!(!ps.can_read("tests/test.rs"));
+    }
+
+    #[test]
+    fn test_pset_can_write() {
+        let mut ps = PermissionSet::new();
+        ps.allow(Permission::FileWrite(PathPattern::new("output/**")));
+        assert!(ps.can_write("output/result.txt"));
+        assert!(!ps.can_write("src/main.rs"));
+    }
+
+    #[test]
+    fn test_pset_allowed_tools() {
+        let mut ps = PermissionSet::new();
+        ps.allow(Permission::ToolUse {
+            tools: vec!["read".into(), "write".into()],
+        });
+        let tools = ps.allowed_tools();
+        assert_eq!(tools, vec!["read", "write"]);
+    }
+
+    #[test]
+    fn test_pset_allowed_tools_with_all() {
+        let mut ps = PermissionSet::new();
+        ps.allow(Permission::All);
+        assert_eq!(ps.allowed_tools(), vec!["*"]);
+    }
+
+    #[test]
+    fn test_pset_merge() {
+        let mut ps1 = PermissionSet::new();
+        ps1.allow(Permission::SubAgentSpawn);
+
+        let mut ps2 = PermissionSet::new();
+        ps2.allow(Permission::NetworkAccess {
+            hosts: vec!["example.com".into()],
+        });
+
+        ps1.merge(&ps2);
+        assert!(ps1.is_allowed(&Permission::SubAgentSpawn));
+        assert!(ps1.is_allowed(&Permission::NetworkAccess {
+            hosts: vec!["example.com".into()],
+        }));
+    }
+
+    #[test]
+    fn test_pset_len() {
+        let mut ps = PermissionSet::new();
+        assert_eq!(ps.len(), 0);
+        assert!(ps.is_empty());
+        ps.allow(Permission::SubAgentSpawn);
+        ps.deny(Permission::All);
+        assert_eq!(ps.len(), 2);
+        assert!(!ps.is_empty());
+    }
+
+    #[test]
+    fn test_pset_to_json() {
+        let ps = PermissionSet::new();
+        let json = ps.to_json();
+        assert!(json["allowed"].is_array());
+        assert!(json["denied"].is_array());
+    }
+
+    #[test]
+    fn test_pset_network_access_check() {
+        let mut ps = PermissionSet::new();
+        ps.allow(Permission::NetworkAccess {
+            hosts: vec!["a.com".into(), "b.com".into()],
+        });
+        assert!(ps.is_allowed(&Permission::NetworkAccess {
+            hosts: vec!["a.com".into()],
+        }));
+        assert!(!ps.is_allowed(&Permission::NetworkAccess {
+            hosts: vec!["c.com".into()],
+        }));
+    }
+
+    #[test]
+    fn test_pset_shell_exec_check() {
+        let mut ps = PermissionSet::new();
+        ps.allow(Permission::ShellExec {
+            commands: vec!["ls".into(), "cat".into()],
+        });
+        assert!(ps.is_allowed(&Permission::ShellExec {
+            commands: vec!["ls".into()],
+        }));
+        assert!(!ps.is_allowed(&Permission::ShellExec {
+            commands: vec!["rm".into()],
+        }));
+    }
+
+    #[test]
+    fn test_pset_deny_specific_path() {
+        let mut ps = PermissionSet::new();
+        ps.allow(Permission::FileRead(PathPattern::new("**")));
+        ps.deny(Permission::FileRead(PathPattern::new("secret/**")));
+        assert!(ps.can_read("src/main.rs"));
+        assert!(!ps.can_read("secret/key.pem"));
+    }
+
+    #[test]
+    fn test_pset_default() {
+        let ps = PermissionSet::default();
+        assert!(ps.is_empty());
+    }
+
+    // -- SandboxViolation tests --
+
+    #[test]
+    fn test_violation_new() {
+        let v = SandboxViolation::new("test_denied");
+        assert_eq!(v.permission_denied, "test_denied");
+        assert!(v.context.is_none());
+    }
+
+    #[test]
+    fn test_violation_with_context() {
+        let v = SandboxViolation::new("denied").with_context("extra info");
+        assert_eq!(v.context.as_deref(), Some("extra info"));
+    }
+
+    #[test]
+    fn test_violation_display() {
+        let v = SandboxViolation::new("denied").with_context("ctx");
+        let s = format!("{}", v);
+        assert!(s.contains("denied"));
+        assert!(s.contains("ctx"));
+    }
+
+    #[test]
+    fn test_violation_to_json() {
+        let v = SandboxViolation::new("test");
+        let json = v.to_json();
+        assert_eq!(json["permission_denied"], "test");
+    }
+
+    #[test]
+    fn test_violation_timestamp_populated() {
+        let v = SandboxViolation::new("test");
+        assert!(!v.timestamp.is_empty());
+    }
+
+    // -- SandboxConfig tests --
+
+    #[test]
+    fn test_sandbox_config_new() {
+        let cfg = SandboxConfig::new("test");
+        assert_eq!(cfg.name, "test");
+        assert!(cfg.max_memory_mb.is_none());
+        assert!(cfg.max_duration_secs.is_none());
+        assert!(cfg.max_tool_calls.is_none());
+    }
+
+    #[test]
+    fn test_sandbox_config_builder_chain() {
+        let cfg = SandboxConfig::new("test")
+            .with_permission(Permission::SubAgentSpawn)
+            .with_memory_limit(512)
+            .with_duration_limit(120)
+            .with_tool_limit(50);
+        assert_eq!(cfg.max_memory_mb, Some(512));
+        assert_eq!(cfg.max_duration_secs, Some(120));
+        assert_eq!(cfg.max_tool_calls, Some(50));
+        assert!(cfg.permissions.is_allowed(&Permission::SubAgentSpawn));
+    }
+
+    #[test]
+    fn test_sandbox_config_to_json() {
+        let cfg = SandboxConfig::new("json_test").with_memory_limit(128);
+        let json = cfg.to_json();
+        assert_eq!(json["name"], "json_test");
+        assert_eq!(json["max_memory_mb"], 128);
+    }
+
+    // -- EnforcingSandbox tests --
+
+    #[test]
+    fn test_enforcing_sandbox_check_allowed() {
+        let cfg = SandboxConfig::new("test").with_permission(Permission::SubAgentSpawn);
+        let sb = EnforcingSandbox::new(cfg);
+        assert!(sb.check_permission(&Permission::SubAgentSpawn).is_ok());
+    }
+
+    #[test]
+    fn test_enforcing_sandbox_check_denied() {
+        let cfg = SandboxConfig::new("test");
+        let sb = EnforcingSandbox::new(cfg);
+        assert!(sb.check_permission(&Permission::SubAgentSpawn).is_err());
+        assert_eq!(sb.violation_count(), 1);
+    }
+
+    #[test]
+    fn test_enforcing_sandbox_tool_calls() {
+        let cfg = SandboxConfig::new("test").with_tool_limit(2);
+        let sb = EnforcingSandbox::new(cfg);
+        assert!(sb.record_tool_call().is_ok());
+        assert_eq!(sb.remaining_tool_calls(), Some(1));
+        assert!(sb.record_tool_call().is_ok());
+        assert_eq!(sb.remaining_tool_calls(), Some(0));
+        assert!(sb.record_tool_call().is_err());
+    }
+
+    #[test]
+    fn test_enforcing_sandbox_unlimited_tool_calls() {
+        let cfg = SandboxConfig::new("test");
+        let sb = EnforcingSandbox::new(cfg);
+        assert_eq!(sb.remaining_tool_calls(), None);
+    }
+
+    #[test]
+    fn test_enforcing_sandbox_not_expired() {
+        let cfg = SandboxConfig::new("test");
+        let sb = EnforcingSandbox::new(cfg);
+        assert!(!sb.is_expired());
+    }
+
+    #[test]
+    fn test_enforcing_sandbox_violations_accumulate() {
+        let cfg = SandboxConfig::new("test");
+        let sb = EnforcingSandbox::new(cfg);
+        let _ = sb.check_permission(&Permission::SubAgentSpawn);
+        let _ = sb.check_permission(&Permission::SubAgentSpawn);
+        assert_eq!(sb.violation_count(), 2);
+        assert_eq!(sb.violations().len(), 2);
+    }
+
+    #[test]
+    fn test_enforcing_sandbox_to_json() {
+        let cfg = SandboxConfig::new("json_test").with_tool_limit(5);
+        let sb = EnforcingSandbox::new(cfg);
+        let json = sb.to_json();
+        assert_eq!(json["tool_calls"], 0);
+        assert!(json["config"].is_object());
+    }
+
+    #[test]
+    fn test_enforcing_sandbox_file_permissions() {
+        let cfg = SandboxConfig::new("file_sb")
+            .with_permission(Permission::FileRead(PathPattern::new("src/**")))
+            .with_permission(Permission::FileWrite(PathPattern::new("output/**")));
+        let sb = EnforcingSandbox::new(cfg);
+        assert!(sb
+            .check_permission(&Permission::FileRead(PathPattern::new("src/main.rs")))
+            .is_ok());
+        assert!(sb
+            .check_permission(&Permission::FileWrite(PathPattern::new("output/out.txt")))
+            .is_ok());
+        assert!(sb
+            .check_permission(&Permission::FileRead(PathPattern::new("secret/key.pem")))
+            .is_err());
+    }
+
+    #[test]
+    fn test_enforcing_sandbox_tool_use_permission() {
+        let cfg = SandboxConfig::new("tool_sb").with_permission(Permission::ToolUse {
+            tools: vec!["read".into(), "write".into()],
+        });
+        let sb = EnforcingSandbox::new(cfg);
+        assert!(sb
+            .check_permission(&Permission::ToolUse {
+                tools: vec!["read".into()],
+            })
+            .is_ok());
+        assert!(sb
+            .check_permission(&Permission::ToolUse {
+                tools: vec!["delete".into()],
+            })
+            .is_err());
+    }
+
+    // -- SandboxPreset tests --
+
+    #[test]
+    fn test_preset_restrictive() {
+        let cfg = SandboxPreset::restrictive();
+        assert_eq!(cfg.name, "restrictive");
+        assert_eq!(cfg.max_memory_mb, Some(256));
+        assert_eq!(cfg.max_duration_secs, Some(60));
+        assert_eq!(cfg.max_tool_calls, Some(10));
+        assert!(!cfg.permissions.is_allowed(&Permission::SubAgentSpawn));
+    }
+
+    #[test]
+    fn test_preset_permissive() {
+        let cfg = SandboxPreset::permissive();
+        assert_eq!(cfg.name, "permissive");
+        assert!(cfg.permissions.is_allowed(&Permission::SubAgentSpawn));
+        assert!(cfg.permissions.is_allowed(&Permission::NetworkAccess {
+            hosts: vec!["any.com".into()],
+        }));
+    }
+
+    #[test]
+    fn test_preset_file_only() {
+        let cfg = SandboxPreset::file_only(vec!["src/**".into(), "tests/**".into()]);
+        assert_eq!(cfg.name, "file_only");
+        assert!(cfg.permissions.can_read("src/main.rs"));
+        assert!(cfg.permissions.can_write("tests/test.rs"));
+        assert!(!cfg.permissions.can_read("data/file.txt"));
+        assert!(!cfg.permissions.is_allowed(&Permission::SubAgentSpawn));
+    }
+
+    #[test]
+    fn test_preset_network_only() {
+        let cfg = SandboxPreset::network_only(vec!["api.example.com".into()]);
+        assert_eq!(cfg.name, "network_only");
+        assert!(cfg.permissions.is_allowed(&Permission::NetworkAccess {
+            hosts: vec!["api.example.com".into()],
+        }));
+        assert!(!cfg.permissions.can_read("anything"));
+    }
+
+    // -- SandboxAuditLog tests --
+
+    #[test]
+    fn test_audit_log_empty() {
+        let log = SandboxAuditLog::new();
+        assert_eq!(log.total_checks(), 0);
+        assert_eq!(log.denial_rate(), 0.0);
+        assert!(log.entries().is_empty());
+    }
+
+    #[test]
+    fn test_audit_log_record_checks() {
+        let mut log = SandboxAuditLog::new();
+        log.record_check(&Permission::SubAgentSpawn, true);
+        log.record_check(&Permission::SubAgentSpawn, false);
+        assert_eq!(log.total_checks(), 2);
+    }
+
+    #[test]
+    fn test_audit_log_denied_entries() {
+        let mut log = SandboxAuditLog::new();
+        log.record_check(&Permission::SubAgentSpawn, true);
+        log.record_check(&Permission::SubAgentSpawn, false);
+        log.record_check(&Permission::All, false);
+        assert_eq!(log.denied_entries().len(), 2);
+    }
+
+    #[test]
+    fn test_audit_log_denial_rate() {
+        let mut log = SandboxAuditLog::new();
+        log.record_check(&Permission::SubAgentSpawn, true);
+        log.record_check(&Permission::SubAgentSpawn, false);
+        assert!((log.denial_rate() - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_audit_log_to_json() {
+        let mut log = SandboxAuditLog::new();
+        log.record_check(&Permission::All, true);
+        let json = log.to_json();
+        assert_eq!(json["total_checks"], 1);
+    }
+
+    #[test]
+    fn test_audit_log_entry_fields() {
+        let mut log = SandboxAuditLog::new();
+        log.record_check(&Permission::SubAgentSpawn, true);
+        let entry = &log.entries()[0];
+        assert!(entry.permission.contains("SubAgentSpawn"));
+        assert!(entry.allowed);
+    }
+
+    #[test]
+    fn test_audit_log_all_denied() {
+        let mut log = SandboxAuditLog::new();
+        log.record_check(&Permission::All, false);
+        log.record_check(&Permission::All, false);
+        assert!((log.denial_rate() - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_audit_log_all_allowed() {
+        let mut log = SandboxAuditLog::new();
+        log.record_check(&Permission::All, true);
+        log.record_check(&Permission::All, true);
+        assert!((log.denial_rate() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_audit_log_default() {
+        let log = SandboxAuditLog::default();
+        assert_eq!(log.total_checks(), 0);
+    }
+
+    // -- ResourceTracker tests --
+
+    #[test]
+    fn test_resource_tracker_new_zeroes() {
+        let rt = ResourceTracker::new();
+        assert_eq!(rt.peak_memory(), 0);
+        assert_eq!(rt.total_cpu_ms(), 0);
+        assert_eq!(rt.total_io_bytes(), 0);
+    }
+
+    #[test]
+    fn test_resource_tracker_memory_peak() {
+        let rt = ResourceTracker::new();
+        rt.record_memory_usage(1000);
+        rt.record_memory_usage(5000);
+        rt.record_memory_usage(3000);
+        assert_eq!(rt.peak_memory(), 5000);
+    }
+
+    #[test]
+    fn test_resource_tracker_cpu_accumulates() {
+        let rt = ResourceTracker::new();
+        rt.record_cpu_time_ms(100);
+        rt.record_cpu_time_ms(200);
+        assert_eq!(rt.total_cpu_ms(), 300);
+    }
+
+    #[test]
+    fn test_resource_tracker_io_accumulates() {
+        let rt = ResourceTracker::new();
+        rt.record_io_bytes(1024);
+        rt.record_io_bytes(2048);
+        assert_eq!(rt.total_io_bytes(), 3072);
+    }
+
+    #[test]
+    fn test_resource_tracker_to_json() {
+        let rt = ResourceTracker::new();
+        rt.record_memory_usage(4096);
+        rt.record_cpu_time_ms(50);
+        rt.record_io_bytes(512);
+        let json = rt.to_json();
+        assert_eq!(json["peak_memory_bytes"], 4096);
+        assert_eq!(json["total_cpu_ms"], 50);
+        assert_eq!(json["total_io_bytes"], 512);
+    }
+
+    #[test]
+    fn test_resource_tracker_default() {
+        let rt = ResourceTracker::default();
+        assert_eq!(rt.peak_memory(), 0);
+    }
+
+    #[test]
+    fn test_resource_tracker_memory_monotonic_decrease() {
+        let rt = ResourceTracker::new();
+        rt.record_memory_usage(10000);
+        rt.record_memory_usage(5000);
+        rt.record_memory_usage(1000);
+        assert_eq!(rt.peak_memory(), 10000);
     }
 }
