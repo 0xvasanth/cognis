@@ -76,6 +76,7 @@ pub mod evaluation;
 pub mod events;
 pub mod factory;
 pub mod health;
+pub mod lifecycle;
 pub mod logging;
 pub mod memory;
 pub mod middleware;
