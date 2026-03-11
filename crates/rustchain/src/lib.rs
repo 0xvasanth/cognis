@@ -41,6 +41,7 @@
 
 pub mod agents;
 pub mod cache;
+pub mod caching;
 pub mod callbacks;
 pub mod chains;
 pub mod chat_models;
