@@ -89,7 +89,11 @@ pub struct ValidationIssue {
 
 impl ValidationIssue {
     /// Create a new issue with the given level, code, and message.
-    pub fn new(level: ValidationLevel, code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(
+        level: ValidationLevel,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             level,
             code: code.into(),
@@ -180,7 +184,9 @@ impl ValidationReport {
 
     /// Whether the report contains any error-level issues.
     pub fn has_errors(&self) -> bool {
-        self.issues.iter().any(|i| i.level == ValidationLevel::Error)
+        self.issues
+            .iter()
+            .any(|i| i.level == ValidationLevel::Error)
     }
 
     /// Whether the report contains any warning-level issues.
@@ -205,7 +211,10 @@ impl ValidationReport {
         let issues: Vec<Value> = self.issues.iter().map(|i| i.to_json()).collect();
         let mut map = serde_json::Map::new();
         map.insert("valid".into(), Value::Bool(self.is_valid()));
-        map.insert("issue_count".into(), Value::Number(self.issue_count().into()));
+        map.insert(
+            "issue_count".into(),
+            Value::Number(self.issue_count().into()),
+        );
         map.insert("issues".into(), Value::Array(issues));
         Value::Object(map)
     }
@@ -250,6 +259,7 @@ impl fmt::Display for ValidationReport {
 
 /// Validates graph topology: unreachable nodes, missing entry/finish, dangling
 /// edges, self-loops, duplicate edges, and orphan nodes.
+#[derive(Default)]
 pub struct GraphValidator;
 
 impl GraphValidator {
@@ -576,6 +586,7 @@ impl StateRule {
 // ---------------------------------------------------------------------------
 
 /// Validates state transitions against a collection of [`StateRule`]s.
+#[derive(Default)]
 pub struct StateValidator {
     rules: Vec<StateRule>,
 }
@@ -583,7 +594,7 @@ pub struct StateValidator {
 impl StateValidator {
     /// Create a new, empty state validator.
     pub fn new() -> Self {
-        Self { rules: Vec::new() }
+        Self::default()
     }
 
     /// Add a rule.
@@ -616,7 +627,10 @@ impl StateValidator {
                                     "MISSING_REQUIRED_KEY",
                                     format!("Required key '{}' is missing from state", key),
                                 )
-                                .with_suggestion(format!("Ensure '{}' is present in the state", key)),
+                                .with_suggestion(format!(
+                                    "Ensure '{}' is present in the state",
+                                    key
+                                )),
                             );
                         }
                     } else {
@@ -698,6 +712,7 @@ fn json_type_name(v: &Value) -> &'static str {
 // ---------------------------------------------------------------------------
 
 /// Validates that connected nodes have compatible input/output key schemas.
+#[derive(Default)]
 pub struct SchemaValidator {
     /// node_id -> (input_keys, output_keys)
     schemas: HashMap<String, (Vec<String>, Vec<String>)>,
@@ -706,9 +721,7 @@ pub struct SchemaValidator {
 impl SchemaValidator {
     /// Create a new, empty schema validator.
     pub fn new() -> Self {
-        Self {
-            schemas: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// Register expected input and output keys for a node.
@@ -738,8 +751,7 @@ impl SchemaValidator {
 
             match (source_outputs, target_inputs) {
                 (Some(outputs), Some(inputs)) => {
-                    let output_set: HashSet<&str> =
-                        outputs.iter().map(String::as_str).collect();
+                    let output_set: HashSet<&str> = outputs.iter().map(String::as_str).collect();
                     for input_key in inputs {
                         if !output_set.contains(input_key.as_str()) {
                             report.add_issue(
@@ -795,6 +807,7 @@ impl SchemaValidator {
 // ---------------------------------------------------------------------------
 
 /// Caches [`ValidationReport`]s keyed by graph hash strings.
+#[derive(Default)]
 pub struct ValidationCache {
     cache: HashMap<String, ValidationReport>,
 }
@@ -802,9 +815,7 @@ pub struct ValidationCache {
 impl ValidationCache {
     /// Create a new, empty cache.
     pub fn new() -> Self {
-        Self {
-            cache: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// Store a report for the given graph hash.
@@ -1258,10 +1269,7 @@ mod tests {
         let n = nodes(&["a", "b"]);
         let e = edges(&[("a", "b"), ("a", "b")]);
         let report = gv.validate(&n, &e, Some("a"), Some("b"));
-        assert!(report
-            .warnings()
-            .iter()
-            .any(|i| i.code == "DUPLICATE_EDGE"));
+        assert!(report.warnings().iter().any(|i| i.code == "DUPLICATE_EDGE"));
     }
 
     #[test]
@@ -1279,10 +1287,7 @@ mod tests {
         let n = nodes(&["a", "b", "island"]);
         let e = edges(&[("a", "b"), ("island", "island")]);
         let report = gv.validate(&n, &e, Some("a"), Some("b"));
-        assert!(report
-            .errors()
-            .iter()
-            .any(|i| i.code == "UNREACHABLE_NODE"));
+        assert!(report.errors().iter().any(|i| i.code == "UNREACHABLE_NODE"));
     }
 
     #[test]
@@ -1291,10 +1296,7 @@ mod tests {
         let n = nodes(&["a", "b", "c"]);
         let e = edges(&[("a", "b"), ("b", "c")]);
         let report = gv.validate(&n, &e, Some("a"), Some("c"));
-        assert!(!report
-            .errors()
-            .iter()
-            .any(|i| i.code == "UNREACHABLE_NODE"));
+        assert!(!report.errors().iter().any(|i| i.code == "UNREACHABLE_NODE"));
     }
 
     #[test]
@@ -1388,10 +1390,7 @@ mod tests {
         let to = json!({"count": "not a number"});
         let report = sv.validate_transition(&from, &to);
         assert!(!report.is_valid());
-        assert!(report
-            .errors()
-            .iter()
-            .any(|i| i.code == "TYPE_MISMATCH"));
+        assert!(report.errors().iter().any(|i| i.code == "TYPE_MISMATCH"));
     }
 
     #[test]
@@ -1489,10 +1488,7 @@ mod tests {
         let e = edges(&[("a", "b")]);
         let report = sv.validate_connections(&e);
         assert!(!report.is_valid());
-        assert!(report
-            .errors()
-            .iter()
-            .any(|i| i.code == "SCHEMA_MISMATCH"));
+        assert!(report.errors().iter().any(|i| i.code == "SCHEMA_MISMATCH"));
     }
 
     #[test]

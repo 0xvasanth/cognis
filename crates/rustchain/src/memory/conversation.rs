@@ -616,20 +616,12 @@ mod tests {
         assert_eq!(MessageRole::Human, MessageRole::Human);
         assert_ne!(MessageRole::Human, MessageRole::Ai);
         assert_eq!(
-            MessageRole::Function {
-                name: "f".into()
-            },
-            MessageRole::Function {
-                name: "f".into()
-            }
+            MessageRole::Function { name: "f".into() },
+            MessageRole::Function { name: "f".into() }
         );
         assert_ne!(
-            MessageRole::Function {
-                name: "a".into()
-            },
-            MessageRole::Function {
-                name: "b".into()
-            }
+            MessageRole::Function { name: "a".into() },
+            MessageRole::Function { name: "b".into() }
         );
     }
 
@@ -827,7 +819,7 @@ mod tests {
         tb.add_message(human("one two three")); // 3 tokens
         tb.add_message(ai("four five")); // 2 tokens => total 5
         tb.add_message(human("six seven eight")); // 3 tokens => evict until fits
-        // After eviction: "four five" (2) + "six seven eight" (3) = 5
+                                                  // After eviction: "four five" (2) + "six seven eight" (3) = 5
         assert_eq!(tb.messages().len(), 2);
         assert_eq!(tb.messages()[0].content, "four five");
         assert_eq!(tb.messages()[1].content, "six seven eight");
@@ -838,7 +830,7 @@ mod tests {
     fn test_token_buffer_single_message_exceeds_budget() {
         let mut tb = TokenBufferMemory::new(2);
         tb.add_message(human("one two three four five")); // 5 tokens > budget 2
-        // Still stored — everything else is evicted
+                                                          // Still stored — everything else is evicted
         assert_eq!(tb.messages().len(), 1);
         assert_eq!(tb.total_tokens(), 5);
     }
@@ -1032,12 +1024,7 @@ mod tests {
 
     #[test]
     fn test_search_by_role() {
-        let msgs = vec![
-            human("q1"),
-            ai("a1"),
-            human("q2"),
-            system("sys"),
-        ];
+        let msgs = vec![human("q1"), ai("a1"), human("q2"), system("sys")];
         let search = MemorySearch::new();
         let humans = search.search_by_role(&msgs, &MessageRole::Human);
         assert_eq!(humans.len(), 2);
@@ -1089,9 +1076,7 @@ mod tests {
 
     #[test]
     fn test_search_by_time_range_no_match() {
-        let msgs = vec![
-            stamped(MessageRole::Human, "a", "2024-01-01T00:00:00Z"),
-        ];
+        let msgs = vec![stamped(MessageRole::Human, "a", "2024-01-01T00:00:00Z")];
         let search = MemorySearch::new();
         let results = search.search_by_time_range(&msgs, "2025-01-01", "2025-12-31");
         assert!(results.is_empty());
@@ -1111,9 +1096,9 @@ mod tests {
     #[test]
     fn test_stats_basic() {
         let msgs = vec![
-            human("hello world"),       // 2 tokens, 11 chars
-            ai("hi there friend"),      // 3 tokens, 15 chars
-            human("bye"),               // 1 token, 3 chars
+            human("hello world"),  // 2 tokens, 11 chars
+            ai("hi there friend"), // 3 tokens, 15 chars
+            human("bye"),          // 1 token, 3 chars
         ];
         let stats = MemoryStats::from_messages(&msgs);
         assert_eq!(stats.total_messages(), 3);
@@ -1137,16 +1122,10 @@ mod tests {
 
     #[test]
     fn test_stats_function_role() {
-        let msgs = vec![
-            function_msg("calc", "42"),
-            function_msg("search", "result"),
-        ];
+        let msgs = vec![function_msg("calc", "42"), function_msg("search", "result")];
         let stats = MemoryStats::from_messages(&msgs);
         // Each function role has a different Display string
-        assert_eq!(
-            *stats.messages_by_role().get("function(calc)").unwrap(),
-            1
-        );
+        assert_eq!(*stats.messages_by_role().get("function(calc)").unwrap(), 1);
         assert_eq!(
             *stats.messages_by_role().get("function(search)").unwrap(),
             1
@@ -1155,12 +1134,7 @@ mod tests {
 
     #[test]
     fn test_stats_all_roles() {
-        let msgs = vec![
-            system("sys"),
-            human("h"),
-            ai("a"),
-            function_msg("f", "r"),
-        ];
+        let msgs = vec![system("sys"), human("h"), ai("a"), function_msg("f", "r")];
         let stats = MemoryStats::from_messages(&msgs);
         assert_eq!(stats.messages_by_role().len(), 4);
     }

@@ -25,7 +25,11 @@ fn main() {
     println!("--- 1. AgentLifecycle State Transitions ---");
 
     let mut lifecycle = AgentLifecycle::new("agent-001".into());
-    println!("Created agent '{}' in state: {}", lifecycle.agent_id(), lifecycle.state());
+    println!(
+        "Created agent '{}' in state: {}",
+        lifecycle.agent_id(),
+        lifecycle.state()
+    );
 
     // Start the agent (Initializing -> Ready -> Running)
     lifecycle.start().unwrap();
@@ -50,7 +54,10 @@ fn main() {
     println!("After stop(): {}", lifecycle.state());
 
     // Print transition history
-    println!("\nTransition history ({} entries):", lifecycle.history().len());
+    println!(
+        "\nTransition history ({} entries):",
+        lifecycle.history().len()
+    );
     for t in lifecycle.history() {
         let reason = t.reason.as_deref().unwrap_or("-");
         println!("  {} -> {} (reason: {})", t.from, t.to, reason);
@@ -123,24 +130,43 @@ fn main() {
     health.record_heartbeat();
     health.record_step_completion();
     health.record_step_completion();
-    println!("After heartbeat + 2 steps: is_healthy={}, steps={}", health.is_healthy(), health.steps_completed());
+    println!(
+        "After heartbeat + 2 steps: is_healthy={}, steps={}",
+        health.is_healthy(),
+        health.steps_completed()
+    );
 
     // Record some errors
     health.record_error("connection timeout".into());
     health.record_error("rate limit exceeded".into());
-    println!("After 2 errors: consecutive_errors={}, error_rate={:.2}", health.consecutive_errors(), health.error_rate());
+    println!(
+        "After 2 errors: consecutive_errors={}, error_rate={:.2}",
+        health.consecutive_errors(),
+        health.error_rate()
+    );
 
     // A heartbeat resets the consecutive error counter
     health.record_heartbeat();
-    println!("After another heartbeat: consecutive_errors={}, is_healthy={}", health.consecutive_errors(), health.is_healthy());
+    println!(
+        "After another heartbeat: consecutive_errors={}, is_healthy={}",
+        health.consecutive_errors(),
+        health.is_healthy()
+    );
 
     // Trigger unhealthy state with 3 consecutive errors
     health.record_error("err1".into());
     health.record_error("err2".into());
     health.record_error("err3".into());
-    println!("After 3 consecutive errors: is_healthy={}, consecutive_errors={}", health.is_healthy(), health.consecutive_errors());
+    println!(
+        "After 3 consecutive errors: is_healthy={}, consecutive_errors={}",
+        health.is_healthy(),
+        health.consecutive_errors()
+    );
 
-    println!("Health JSON: {}", serde_json::to_string_pretty(&health.to_json()).unwrap());
+    println!(
+        "Health JSON: {}",
+        serde_json::to_string_pretty(&health.to_json()).unwrap()
+    );
 
     // -----------------------------------------------------------------------
     // 5. RestartPolicy
@@ -149,21 +175,35 @@ fn main() {
 
     // Never restart
     let never = RestartPolicy::never();
-    println!("Never policy: should_restart(0)={}, should_restart(1)={}", never.should_restart(0), never.should_restart(1));
+    println!(
+        "Never policy: should_restart(0)={}, should_restart(1)={}",
+        never.should_restart(0),
+        never.should_restart(1)
+    );
     println!("  Config: {}", never.to_json());
 
     // Always restart (up to 3 times)
     let always = RestartPolicy::always(3);
     println!("Always(3) policy:");
     for i in 0..=3 {
-        println!("  failure_count={}: should_restart={}, delay={}ms", i, always.should_restart(i), always.delay_ms(i));
+        println!(
+            "  failure_count={}: should_restart={}, delay={}ms",
+            i,
+            always.should_restart(i),
+            always.delay_ms(i)
+        );
     }
 
     // On failure with exponential backoff
     let on_failure = RestartPolicy::on_failure(5, 100);
     println!("OnFailure(max=5, backoff=100ms) policy:");
     for i in 0..=5 {
-        println!("  failure_count={}: should_restart={}, delay={}ms", i, on_failure.should_restart(i), on_failure.delay_ms(i));
+        println!(
+            "  failure_count={}: should_restart={}, delay={}ms",
+            i,
+            on_failure.should_restart(i),
+            on_failure.delay_ms(i)
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -239,11 +279,18 @@ fn main() {
 
     // Look up a specific agent
     if let Some(agent) = monitor.get("worker-1") {
-        println!("worker-1 state: {}, steps: {}", agent.state(), agent.uptime_steps());
+        println!(
+            "worker-1 state: {}, steps: {}",
+            agent.state(),
+            agent.uptime_steps()
+        );
     }
 
     println!("\nMonitor summary:");
-    println!("{}", serde_json::to_string_pretty(&monitor.to_json()).unwrap());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&monitor.to_json()).unwrap()
+    );
 
     println!("\n=== Agent Lifecycle Demo Complete ===");
 }

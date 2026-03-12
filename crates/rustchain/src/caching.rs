@@ -351,10 +351,8 @@ impl SemanticCache {
         let mut best: Option<(f64, usize)> = None;
         for (i, se) in self.entries.iter().enumerate() {
             let sim = cosine_similarity(&se.embedding, embedding);
-            if sim >= self.similarity_threshold {
-                if best.map_or(true, |(b, _)| sim > b) {
-                    best = Some((sim, i));
-                }
+            if sim >= self.similarity_threshold && best.is_none_or(|(b, _)| sim > b) {
+                best = Some((sim, i));
             }
         }
         best.map(|(_, idx)| &self.entries[idx].entry)
@@ -643,7 +641,12 @@ mod tests {
 
     #[test]
     fn cache_key_from_parts_basic() {
-        let key = CacheKey::from_parts("gpt-4", &[json!({"role":"user","content":"hi"})], None, None);
+        let key = CacheKey::from_parts(
+            "gpt-4",
+            &[json!({"role":"user","content":"hi"})],
+            None,
+            None,
+        );
         assert!(!key.as_str().is_empty());
     }
 
@@ -934,11 +937,7 @@ mod tests {
     #[test]
     fn semantic_cache_similar_vectors() {
         let mut sc = SemanticCache::new(0.95);
-        sc.put(
-            "q".into(),
-            vec![1.0, 0.0],
-            CacheEntry::new(json!("r"), "m"),
-        );
+        sc.put("q".into(), vec![1.0, 0.0], CacheEntry::new(json!("r"), "m"));
         // Slightly different but still close.
         let result = sc.get_similar(&[0.99, 0.01]);
         assert!(result.is_some());
@@ -947,11 +946,7 @@ mod tests {
     #[test]
     fn semantic_cache_orthogonal() {
         let mut sc = SemanticCache::new(0.5);
-        sc.put(
-            "q".into(),
-            vec![1.0, 0.0],
-            CacheEntry::new(json!("r"), "m"),
-        );
+        sc.put("q".into(), vec![1.0, 0.0], CacheEntry::new(json!("r"), "m"));
         // Orthogonal vector => cosine similarity ~0.
         assert!(sc.get_similar(&[0.0, 1.0]).is_none());
     }
@@ -1042,24 +1037,15 @@ mod tests {
     #[test]
     fn policy_skip_tools() {
         let policy = CachePolicy::new().skip_if_tools_used();
-        assert!(!policy.should_cache(
-            &json!({"tools": [{"name":"calc"}]}),
-            &json!({}),
-        ));
+        assert!(!policy.should_cache(&json!({"tools": [{"name":"calc"}]}), &json!({}),));
         assert!(policy.should_cache(&json!({"tools": []}), &json!({})));
     }
 
     #[test]
     fn policy_min_tokens() {
         let policy = CachePolicy::new().cache_if_tokens_above(100);
-        assert!(!policy.should_cache(
-            &json!({}),
-            &json!({"usage": {"total_tokens": 50}}),
-        ));
-        assert!(policy.should_cache(
-            &json!({}),
-            &json!({"usage": {"total_tokens": 200}}),
-        ));
+        assert!(!policy.should_cache(&json!({}), &json!({"usage": {"total_tokens": 50}}),));
+        assert!(policy.should_cache(&json!({}), &json!({"usage": {"total_tokens": 200}}),));
     }
 
     #[test]
@@ -1268,7 +1254,12 @@ mod tests {
         let mut stats = CacheStats::new();
         let policy = CachePolicy::new();
 
-        let key = CacheKey::from_parts("gpt-4", &[json!({"role":"user","content":"hello"})], Some(0.7), None);
+        let key = CacheKey::from_parts(
+            "gpt-4",
+            &[json!({"role":"user","content":"hello"})],
+            Some(0.7),
+            None,
+        );
         let request = json!({"model": "gpt-4"});
         let response = json!({"text": "world", "usage": {"total_tokens": 50}});
 

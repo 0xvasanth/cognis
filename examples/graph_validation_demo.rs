@@ -71,10 +71,10 @@ fn main() {
     let n2 = nodes(&["a", "b", "c", "orphan"]);
     let e2 = edges(&[
         ("a", "b"),
-        ("b", "ghost"),  // dangling edge — "ghost" is not a node
-        ("b", "b"),      // self-loop
-        // "c" is unreachable (no edge leading to it)
-        // "orphan" has no edges at all
+        ("b", "ghost"), // dangling edge — "ghost" is not a node
+        ("b", "b"),     // self-loop
+                        // "c" is unreachable (no edge leading to it)
+                        // "orphan" has no edges at all
     ]);
 
     // No entry, no finish
@@ -93,11 +93,26 @@ fn main() {
     let n3 = nodes(&["entry", "middle", "finish"]);
     let e3 = edges(&[("entry", "middle"), ("middle", "finish")]);
 
-    println!("  has_entry(\"entry\")  = {}", QuickCheck::has_entry(&n3, "entry"));
-    println!("  has_entry(\"nope\")   = {}", QuickCheck::has_entry(&n3, "nope"));
-    println!("  has_finish(\"finish\") = {}", QuickCheck::has_finish(&n3, "finish"));
-    println!("  is_connected        = {}", QuickCheck::is_connected(&n3, &e3));
-    println!("  has_cycles          = {}", QuickCheck::has_cycles(&n3, &e3));
+    println!(
+        "  has_entry(\"entry\")  = {}",
+        QuickCheck::has_entry(&n3, "entry")
+    );
+    println!(
+        "  has_entry(\"nope\")   = {}",
+        QuickCheck::has_entry(&n3, "nope")
+    );
+    println!(
+        "  has_finish(\"finish\") = {}",
+        QuickCheck::has_finish(&n3, "finish")
+    );
+    println!(
+        "  is_connected        = {}",
+        QuickCheck::is_connected(&n3, &e3)
+    );
+    println!(
+        "  has_cycles          = {}",
+        QuickCheck::has_cycles(&n3, &e3)
+    );
 
     // Add a cycle
     let e3_cycle = edges(&[
@@ -145,21 +160,24 @@ fn main() {
     // Register schemas: each node declares what keys it consumes and produces
     schema_validator.register_node_schema(
         "fetch",
-        vec![],                                           // no inputs (entry)
-        vec!["raw_text".into(), "metadata".into()],       // outputs
+        vec![],                                     // no inputs (entry)
+        vec!["raw_text".into(), "metadata".into()], // outputs
     );
     schema_validator.register_node_schema(
         "parse",
-        vec!["raw_text".into()],                          // needs raw_text
-        vec!["parsed_data".into(), "metadata".into()],    // outputs
+        vec!["raw_text".into()],                       // needs raw_text
+        vec!["parsed_data".into(), "metadata".into()], // outputs
     );
     schema_validator.register_node_schema(
         "summarize",
-        vec!["parsed_data".into(), "context".into()],     // needs parsed_data AND context
-        vec!["summary".into()],                           // outputs
+        vec!["parsed_data".into(), "context".into()], // needs parsed_data AND context
+        vec!["summary".into()],                       // outputs
     );
 
-    println!("  Registered {} node schema(s)\n", schema_validator.node_count());
+    println!(
+        "  Registered {} node schema(s)\n",
+        schema_validator.node_count()
+    );
 
     let schema_edges = edges(&[("fetch", "parse"), ("parse", "summarize")]);
     let schema_report = schema_validator.validate_connections(&schema_edges);

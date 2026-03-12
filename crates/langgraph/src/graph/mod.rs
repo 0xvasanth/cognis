@@ -16,13 +16,13 @@
 
 pub mod analysis;
 pub mod annotations;
-pub mod debug;
 pub mod ascii;
 pub mod audit;
 pub mod branch;
 pub mod breakpoint;
 pub mod compiled;
 pub mod conditional;
+pub mod debug;
 pub mod hooks;
 pub mod human_in_loop;
 pub mod interrupt;
@@ -56,10 +56,6 @@ pub use audit::{
     AuditTrail,
 };
 pub use branch::{AsyncBranch, AsyncRouterFn, Branch, RouterFn, RouterResult};
-pub use debug::{
-    BreakCondition as DebugBreakCondition, Breakpoint as DebugBreakpoint, DebugSession, DebugStep,
-    DeltaType, ExecutionProfiler, StateDelta, StateInspector, StateReport,
-};
 pub use breakpoint::{
     AutoApproveHandler, BreakpointAction, BreakpointEvent, BreakpointHandler, BreakpointManager,
     BreakpointState, BreakpointType, LoggingBreakpointHandler,
@@ -67,6 +63,10 @@ pub use breakpoint::{
 pub use compiled::{
     CompiledEdge, CompiledGraph, CompiledNode, ExecutionLog, GraphCompiler, GraphDefinitionBuilder,
     LogEntry,
+};
+pub use debug::{
+    BreakCondition as DebugBreakCondition, Breakpoint as DebugBreakpoint, DebugSession, DebugStep,
+    DeltaType, ExecutionProfiler, StateDelta, StateInspector, StateReport,
 };
 pub use hooks::{
     ExecutionHook, HookAction, HookContext, HookPhase, HookRegistry,

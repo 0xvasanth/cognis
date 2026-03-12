@@ -358,15 +358,12 @@ impl LoopBlock {
     /// Evaluates the loop by iterating over the list variable and rendering
     /// the body template for each item. Inside the body, `{{this}}` refers to
     /// the current item and `{{@index}}` to the zero-based index.
-    pub fn evaluate(
-        &self,
-        vars: &HashMap<String, TemplateValue>,
-    ) -> Result<String, TemplateError> {
-        let list = vars.get(&self.list_var).ok_or_else(|| {
-            TemplateError::MissingVariable {
+    pub fn evaluate(&self, vars: &HashMap<String, TemplateValue>) -> Result<String, TemplateError> {
+        let list = vars
+            .get(&self.list_var)
+            .ok_or_else(|| TemplateError::MissingVariable {
                 name: self.list_var.clone(),
-            }
-        })?;
+            })?;
 
         let items = match list {
             TemplateValue::List(items) => items,
@@ -380,7 +377,9 @@ impl LoopBlock {
 
         let mut parts = Vec::with_capacity(items.len());
         for (idx, item) in items.iter().enumerate() {
-            let mut rendered = self.body_template.replace("{{this}}", &item.as_string_lossy());
+            let mut rendered = self
+                .body_template
+                .replace("{{this}}", &item.as_string_lossy());
             rendered = rendered.replace("{{@index}}", &idx.to_string());
             parts.push(rendered);
         }
@@ -675,13 +674,7 @@ fn process_if_blocks(
 ) -> Result<String, TemplateError> {
     let mut output = template.to_string();
 
-    loop {
-        // Find innermost #if block to handle nesting
-        let if_start = match find_last_occurrence(&output, "{{#if ") {
-            Some(pos) => pos,
-            None => break,
-        };
-
+    while let Some(if_start) = find_last_occurrence(&output, "{{#if ") {
         // Find the matching /if after this #if
         let after_tag = match output[if_start + 6..].find("}}") {
             Some(pos) => if_start + 6 + pos + 2,
@@ -741,12 +734,7 @@ fn process_each_blocks(
 ) -> Result<String, TemplateError> {
     let mut output = template.to_string();
 
-    loop {
-        let each_start = match output.find("{{#each ") {
-            Some(pos) => pos,
-            None => break,
-        };
-
+    while let Some(each_start) = output.find("{{#each ") {
         let after_tag = match output[each_start + 8..].find("}}") {
             Some(pos) => each_start + 8 + pos + 2,
             None => {
@@ -957,15 +945,15 @@ mod tests {
 
     #[test]
     fn test_missing_variable_error() {
-        let err = PromptTemplate::new("Hello, {{name}}!").render().unwrap_err();
+        let err = PromptTemplate::new("Hello, {{name}}!")
+            .render()
+            .unwrap_err();
         assert!(matches!(err, TemplateError::MissingVariable { name } if name == "name"));
     }
 
     #[test]
     fn test_no_variables_plain_text() {
-        let result = PromptTemplate::new("No variables here.")
-            .render()
-            .unwrap();
+        let result = PromptTemplate::new("No variables here.").render().unwrap();
         assert_eq!(result, "No variables here.");
     }
 
@@ -978,8 +966,7 @@ mod tests {
 
     #[test]
     fn test_missing_variables_detection() {
-        let tmpl = PromptTemplate::new("{{a}} {{b}} {{c}}")
-            .with_variable("b", "set");
+        let tmpl = PromptTemplate::new("{{a}} {{b}} {{c}}").with_variable("b", "set");
         let missing = tmpl.missing_variables();
         assert!(missing.contains(&"a".to_string()));
         assert!(missing.contains(&"c".to_string()));
@@ -1000,8 +987,7 @@ mod tests {
 
     #[test]
     fn test_template_to_json() {
-        let tmpl = PromptTemplate::new("{{x}}")
-            .with_variable("x", "val");
+        let tmpl = PromptTemplate::new("{{x}}").with_variable("x", "val");
         let j = tmpl.to_json();
         assert_eq!(j["template"], "{{x}}");
         assert_eq!(j["variables"]["x"], "val");
@@ -1084,12 +1070,11 @@ mod tests {
 
     #[test]
     fn test_if_with_substitution() {
-        let result =
-            PromptTemplate::new("{{#if greet}}Hello, {{name}}!{{else}}Goodbye.{{/if}}")
-                .with_variable("greet", true)
-                .with_variable("name", "Alice")
-                .render()
-                .unwrap();
+        let result = PromptTemplate::new("{{#if greet}}Hello, {{name}}!{{else}}Goodbye.{{/if}}")
+            .with_variable("greet", true)
+            .with_variable("name", "Alice")
+            .render()
+            .unwrap();
         assert_eq!(result, "Hello, Alice!");
     }
 
@@ -1278,9 +1263,7 @@ mod tests {
     #[test]
     fn test_validator_balanced_blocks() {
         let v = TemplateValidator::new();
-        assert!(v
-            .validate("{{#if x}}a{{/if}}{{#each y}}b{{/each}}")
-            .is_ok());
+        assert!(v.validate("{{#if x}}a{{/if}}{{#each y}}b{{/each}}").is_ok());
     }
 
     #[test]
@@ -1347,13 +1330,12 @@ mod tests {
 
     #[test]
     fn test_if_false_hides_each() {
-        let result = PromptTemplate::new(
-            "{{#if show}}{{#each items}}{{this}}{{/each}}{{else}}none{{/if}}",
-        )
-        .with_variable("show", false)
-        .with_variable("items", TemplateValue::List(vec![]))
-        .render()
-        .unwrap();
+        let result =
+            PromptTemplate::new("{{#if show}}{{#each items}}{{this}}{{/each}}{{else}}none{{/if}}")
+                .with_variable("show", false)
+                .with_variable("items", TemplateValue::List(vec![]))
+                .render()
+                .unwrap();
         assert_eq!(result, "none");
     }
 

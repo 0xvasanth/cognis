@@ -845,9 +845,7 @@ impl PermissionSet {
                 Permission::ShellExec { commands: req_cmds },
             ) => req_cmds.iter().all(|c| rule_cmds.contains(c)),
             (
-                Permission::ToolUse {
-                    tools: rule_tools,
-                },
+                Permission::ToolUse { tools: rule_tools },
                 Permission::ToolUse { tools: req_tools },
             ) => req_tools.iter().all(|t| rule_tools.contains(t)),
             _ => false,
@@ -1272,8 +1270,7 @@ impl ResourceTracker {
 
     /// Total CPU time recorded in milliseconds.
     pub fn total_cpu_ms(&self) -> u64 {
-        self.total_cpu_ms
-            .load(std::sync::atomic::Ordering::SeqCst) as u64
+        self.total_cpu_ms.load(std::sync::atomic::Ordering::SeqCst) as u64
     }
 
     /// Total I/O bytes recorded.
@@ -1877,10 +1874,22 @@ mod tests {
 
     #[test]
     fn test_fg_permission_name_variants() {
-        assert_eq!(Permission::FileRead(PathPattern::new("*")).name(), "file_read");
-        assert_eq!(Permission::FileWrite(PathPattern::new("*")).name(), "file_write");
-        assert_eq!(Permission::NetworkAccess { hosts: vec![] }.name(), "network_access");
-        assert_eq!(Permission::ShellExec { commands: vec![] }.name(), "shell_exec");
+        assert_eq!(
+            Permission::FileRead(PathPattern::new("*")).name(),
+            "file_read"
+        );
+        assert_eq!(
+            Permission::FileWrite(PathPattern::new("*")).name(),
+            "file_write"
+        );
+        assert_eq!(
+            Permission::NetworkAccess { hosts: vec![] }.name(),
+            "network_access"
+        );
+        assert_eq!(
+            Permission::ShellExec { commands: vec![] }.name(),
+            "shell_exec"
+        );
         assert_eq!(Permission::ToolUse { tools: vec![] }.name(), "tool_use");
         assert_eq!(Permission::SubAgentSpawn.name(), "sub_agent_spawn");
         assert_eq!(Permission::All.name(), "all");

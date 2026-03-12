@@ -15,20 +15,11 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoercionError {
     /// The source type cannot be converted to the target type.
-    IncompatibleTypes {
-        from: String,
-        to: String,
-    },
+    IncompatibleTypes { from: String, to: String },
     /// The conversion would lose information and strict mode is enabled.
-    LossyConversion {
-        from: String,
-        to: String,
-    },
+    LossyConversion { from: String, to: String },
     /// The value is outside the representable range of the target type.
-    OutOfRange {
-        value: String,
-        target: String,
-    },
+    OutOfRange { value: String, target: String },
     /// A string-to-typed parse failed.
     ParseError(String),
 }
@@ -161,20 +152,16 @@ impl DynamicValue {
         match self {
             DynamicValue::String(s) => Value::String(s.clone()),
             DynamicValue::Integer(i) => Value::Number((*i).into()),
-            DynamicValue::Float(f) => {
-                serde_json::Number::from_f64(*f)
-                    .map(Value::Number)
-                    .unwrap_or(Value::Null)
-            }
+            DynamicValue::Float(f) => serde_json::Number::from_f64(*f)
+                .map(Value::Number)
+                .unwrap_or(Value::Null),
             DynamicValue::Bool(b) => Value::Bool(*b),
             DynamicValue::List(l) => Value::Array(l.iter().map(|v| v.to_json()).collect()),
             DynamicValue::Map(m) => {
                 let obj = m.iter().map(|(k, v)| (k.clone(), v.to_json())).collect();
                 Value::Object(obj)
             }
-            DynamicValue::Bytes(b) => {
-                Value::String(base64_encode(b))
-            }
+            DynamicValue::Bytes(b) => Value::String(base64_encode(b)),
             DynamicValue::Null => Value::Null,
         }
     }
@@ -198,7 +185,10 @@ impl DynamicValue {
                 DynamicValue::List(arr.iter().map(DynamicValue::from_json).collect())
             }
             Value::Object(obj) => {
-                let map = obj.iter().map(|(k, v)| (k.clone(), DynamicValue::from_json(v))).collect();
+                let map = obj
+                    .iter()
+                    .map(|(k, v)| (k.clone(), DynamicValue::from_json(v)))
+                    .collect();
                 DynamicValue::Map(map)
             }
         }
@@ -362,11 +352,9 @@ impl TypeCoercer {
                 Ok(i)
             }
             DynamicValue::Bool(b) => Ok(if *b { 1 } else { 0 }),
-            DynamicValue::String(s) => {
-                s.parse::<i64>().map_err(|_| CoercionError::ParseError(
-                    format!("cannot parse '{}' as integer", s),
-                ))
-            }
+            DynamicValue::String(s) => s
+                .parse::<i64>()
+                .map_err(|_| CoercionError::ParseError(format!("cannot parse '{}' as integer", s))),
             _ => Err(CoercionError::IncompatibleTypes {
                 from: val.type_name().to_owned(),
                 to: "Integer".to_owned(),
@@ -380,11 +368,9 @@ impl TypeCoercer {
             DynamicValue::Float(f) => Ok(*f),
             DynamicValue::Integer(i) => Ok(*i as f64),
             DynamicValue::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
-            DynamicValue::String(s) => {
-                s.parse::<f64>().map_err(|_| CoercionError::ParseError(
-                    format!("cannot parse '{}' as float", s),
-                ))
-            }
+            DynamicValue::String(s) => s
+                .parse::<f64>()
+                .map_err(|_| CoercionError::ParseError(format!("cannot parse '{}' as float", s))),
             _ => Err(CoercionError::IncompatibleTypes {
                 from: val.type_name().to_owned(),
                 to: "Float".to_owned(),
@@ -401,9 +387,10 @@ impl TypeCoercer {
             DynamicValue::String(s) => match s.to_lowercase().as_str() {
                 "true" | "1" | "yes" => Ok(true),
                 "false" | "0" | "no" => Ok(false),
-                _ => Err(CoercionError::ParseError(
-                    format!("cannot parse '{}' as bool", s),
-                )),
+                _ => Err(CoercionError::ParseError(format!(
+                    "cannot parse '{}' as bool",
+                    s
+                ))),
             },
             DynamicValue::Null => Ok(false),
             _ => Err(CoercionError::IncompatibleTypes {
@@ -493,23 +480,23 @@ impl ValueConstraint {
         match self {
             ValueConstraint::MinLength(min) => {
                 let len = value_length(val);
-                len.map_or(true, |l| l >= *min)
+                len.is_none_or(|l| l >= *min)
             }
             ValueConstraint::MaxLength(max) => {
                 let len = value_length(val);
-                len.map_or(true, |l| l <= *max)
+                len.is_none_or(|l| l <= *max)
             }
             ValueConstraint::MinValue(min) => {
                 let num = value_as_f64(val);
-                num.map_or(true, |n| n >= *min)
+                num.is_none_or(|n| n >= *min)
             }
             ValueConstraint::MaxValue(max) => {
                 let num = value_as_f64(val);
-                num.map_or(true, |n| n <= *max)
+                num.is_none_or(|n| n <= *max)
             }
             ValueConstraint::Pattern(pat) => {
                 if let DynamicValue::String(s) = val {
-                    regex::Regex::new(pat).map_or(false, |re| re.is_match(s))
+                    regex::Regex::new(pat).is_ok_and(|re| re.is_match(s))
                 } else {
                     true
                 }
@@ -879,7 +866,10 @@ mod tests {
 
     #[test]
     fn test_to_json_primitives() {
-        assert_eq!(DynamicValue::String("hello".into()).to_json(), json!("hello"));
+        assert_eq!(
+            DynamicValue::String("hello".into()).to_json(),
+            json!("hello")
+        );
         assert_eq!(DynamicValue::Integer(42).to_json(), json!(42));
         assert_eq!(DynamicValue::Float(3.14).to_json(), json!(3.14));
         assert_eq!(DynamicValue::Bool(true).to_json(), json!(true));
@@ -910,10 +900,22 @@ mod tests {
     #[test]
     fn test_from_json() {
         assert_eq!(DynamicValue::from_json(&json!(null)), DynamicValue::Null);
-        assert_eq!(DynamicValue::from_json(&json!(true)), DynamicValue::Bool(true));
-        assert_eq!(DynamicValue::from_json(&json!(42)), DynamicValue::Integer(42));
-        assert_eq!(DynamicValue::from_json(&json!(3.14)), DynamicValue::Float(3.14));
-        assert_eq!(DynamicValue::from_json(&json!("hi")), DynamicValue::String("hi".into()));
+        assert_eq!(
+            DynamicValue::from_json(&json!(true)),
+            DynamicValue::Bool(true)
+        );
+        assert_eq!(
+            DynamicValue::from_json(&json!(42)),
+            DynamicValue::Integer(42)
+        );
+        assert_eq!(
+            DynamicValue::from_json(&json!(3.14)),
+            DynamicValue::Float(3.14)
+        );
+        assert_eq!(
+            DynamicValue::from_json(&json!("hi")),
+            DynamicValue::String("hi".into())
+        );
     }
 
     #[test]
@@ -1085,7 +1087,10 @@ mod tests {
     #[test]
     fn test_coerce_to_integer_from_string() {
         let c = TypeCoercer::new();
-        assert_eq!(c.to_integer(&DynamicValue::String("123".into())).unwrap(), 123);
+        assert_eq!(
+            c.to_integer(&DynamicValue::String("123".into())).unwrap(),
+            123
+        );
     }
 
     #[test]
@@ -1110,7 +1115,10 @@ mod tests {
     #[test]
     fn test_coerce_to_float_from_string() {
         let c = TypeCoercer::new();
-        assert_eq!(c.to_float(&DynamicValue::String("3.14".into())).unwrap(), 3.14);
+        assert_eq!(
+            c.to_float(&DynamicValue::String("3.14".into())).unwrap(),
+            3.14
+        );
     }
 
     #[test]
@@ -1122,8 +1130,14 @@ mod tests {
     #[test]
     fn test_coerce_to_bool_from_string() {
         let c = TypeCoercer::new();
-        assert_eq!(c.to_bool(&DynamicValue::String("yes".into())).unwrap(), true);
-        assert_eq!(c.to_bool(&DynamicValue::String("false".into())).unwrap(), false);
+        assert_eq!(
+            c.to_bool(&DynamicValue::String("yes".into())).unwrap(),
+            true
+        );
+        assert_eq!(
+            c.to_bool(&DynamicValue::String("false".into())).unwrap(),
+            false
+        );
     }
 
     #[test]
@@ -1149,14 +1163,18 @@ mod tests {
     #[test]
     fn test_coerce_method_to_string() {
         let c = TypeCoercer::new();
-        let result = c.coerce(&DynamicValue::Integer(7), ValueType::String).unwrap();
+        let result = c
+            .coerce(&DynamicValue::Integer(7), ValueType::String)
+            .unwrap();
         assert_eq!(result, DynamicValue::String("7".into()));
     }
 
     #[test]
     fn test_coerce_to_list_incompatible() {
         let c = TypeCoercer::new();
-        assert!(c.coerce(&DynamicValue::Integer(1), ValueType::List).is_err());
+        assert!(c
+            .coerce(&DynamicValue::Integer(1), ValueType::List)
+            .is_err());
     }
 
     #[test]
@@ -1257,8 +1275,14 @@ mod tests {
 
     #[test]
     fn test_constraint_display() {
-        assert_eq!(format!("{}", ValueConstraint::MinLength(5)), "min_length(5)");
-        assert_eq!(format!("{}", ValueConstraint::MaxValue(10.0)), "max_value(10)");
+        assert_eq!(
+            format!("{}", ValueConstraint::MinLength(5)),
+            "min_length(5)"
+        );
+        assert_eq!(
+            format!("{}", ValueConstraint::MaxValue(10.0)),
+            "max_value(10)"
+        );
     }
 
     // -- ValueSchema --
@@ -1284,15 +1308,15 @@ mod tests {
 
     #[test]
     fn test_schema_validate_optional_null() {
-        let schema = ValueSchema::new(ValueType::String)
-            .optional(DynamicValue::String("default".into()));
+        let schema =
+            ValueSchema::new(ValueType::String).optional(DynamicValue::String("default".into()));
         assert!(schema.validate(&DynamicValue::Null).is_ok());
     }
 
     #[test]
     fn test_schema_with_constraint() {
-        let schema = ValueSchema::new(ValueType::String)
-            .with_constraint(ValueConstraint::MinLength(3));
+        let schema =
+            ValueSchema::new(ValueType::String).with_constraint(ValueConstraint::MinLength(3));
         assert!(schema.validate(&DynamicValue::String("abc".into())).is_ok());
         assert!(schema.validate(&DynamicValue::String("ab".into())).is_err());
     }
@@ -1364,10 +1388,7 @@ mod tests {
         let mut val = DynamicValue::Map(m);
         let p = ValuePath::new("name");
         assert!(p.set(&mut val, DynamicValue::String("new".into())));
-        assert_eq!(
-            p.get(&val),
-            Some(&DynamicValue::String("new".into()))
-        );
+        assert_eq!(p.get(&val), Some(&DynamicValue::String("new".into())));
     }
 
     #[test]

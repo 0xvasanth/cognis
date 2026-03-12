@@ -79,10 +79,7 @@ fn main() {
         MessageRole::Human,
         "one two three four",
     ));
-    tb.add_message(ConversationMessage::new(
-        MessageRole::Ai,
-        "five six seven",
-    ));
+    tb.add_message(ConversationMessage::new(MessageRole::Ai, "five six seven"));
 
     println!(
         "Token buffer: {} messages, {} tokens used, {} remaining",

@@ -55,30 +55,20 @@ impl AgentState {
     /// valid according to the lifecycle state machine.
     pub fn can_transition_to(&self, target: &AgentState) -> bool {
         match self {
-            AgentState::Initializing => matches!(
-                target,
-                AgentState::Ready | AgentState::Failed(_)
-            ),
+            AgentState::Initializing => matches!(target, AgentState::Ready | AgentState::Failed(_)),
             AgentState::Ready => matches!(
                 target,
                 AgentState::Running | AgentState::Stopped | AgentState::Failed(_)
             ),
             AgentState::Running => matches!(
                 target,
-                AgentState::Paused
-                    | AgentState::Stopping
-                    | AgentState::Failed(_)
+                AgentState::Paused | AgentState::Stopping | AgentState::Failed(_)
             ),
             AgentState::Paused => matches!(
                 target,
-                AgentState::Running
-                    | AgentState::Stopping
-                    | AgentState::Failed(_)
+                AgentState::Running | AgentState::Stopping | AgentState::Failed(_)
             ),
-            AgentState::Stopping => matches!(
-                target,
-                AgentState::Stopped | AgentState::Failed(_)
-            ),
+            AgentState::Stopping => matches!(target, AgentState::Stopped | AgentState::Failed(_)),
             AgentState::Stopped => false,
             AgentState::Failed(_) => false,
         }
@@ -286,11 +276,8 @@ impl AgentLifecycle {
         };
         // Record the initial creation transition.
         lifecycle.history.push(
-            LifecycleTransition::new(
-                AgentState::Initializing,
-                AgentState::Initializing,
-            )
-            .with_reason("created"),
+            LifecycleTransition::new(AgentState::Initializing, AgentState::Initializing)
+                .with_reason("created"),
         );
         lifecycle
     }
@@ -363,9 +350,8 @@ impl AgentLifecycle {
     pub fn fail(&mut self, reason: String) {
         let from = self.state.clone();
         let to = AgentState::Failed(reason.clone());
-        self.history.push(
-            LifecycleTransition::new(from, to.clone()).with_reason(reason),
-        );
+        self.history
+            .push(LifecycleTransition::new(from, to.clone()).with_reason(reason));
         self.state = to;
     }
 
@@ -423,7 +409,7 @@ pub struct HealthCheck {
     total_checks: usize,
     /// Maximum number of seconds between heartbeats before the agent is
     /// considered unhealthy.
-    heartbeat_threshold_secs: u64,
+    _heartbeat_threshold_secs: u64,
 }
 
 impl HealthCheck {
@@ -437,7 +423,7 @@ impl HealthCheck {
             consecutive_error_count: 0,
             steps_completed: 0,
             total_checks: 0,
-            heartbeat_threshold_secs: 30,
+            _heartbeat_threshold_secs: 30,
         }
     }
 
@@ -629,9 +615,7 @@ impl RestartPolicy {
     pub fn should_restart(&self, failure_count: usize) -> bool {
         match self.kind {
             RestartKind::Never => false,
-            RestartKind::Always | RestartKind::OnFailure => {
-                failure_count < self.max_restarts
-            }
+            RestartKind::Always | RestartKind::OnFailure => failure_count < self.max_restarts,
         }
     }
 
@@ -673,9 +657,7 @@ pub struct LifecycleMonitor {
 impl LifecycleMonitor {
     /// Creates a new empty monitor.
     pub fn new() -> Self {
-        Self {
-            agents: Vec::new(),
-        }
+        Self { agents: Vec::new() }
     }
 
     /// Registers an agent lifecycle for monitoring.
@@ -962,8 +944,8 @@ mod tests {
 
     #[test]
     fn test_transition_to_json() {
-        let t = LifecycleTransition::new(AgentState::Running, AgentState::Stopped)
-            .with_reason("done");
+        let t =
+            LifecycleTransition::new(AgentState::Running, AgentState::Stopped).with_reason("done");
         let j = t.to_json();
         assert_eq!(j["from"], "Running");
         assert_eq!(j["to"], "Stopped");
@@ -1042,10 +1024,7 @@ mod tests {
         let mut lc = AgentLifecycle::new("a1".into());
         lc.start().unwrap();
         lc.fail("something broke".into());
-        assert_eq!(
-            *lc.state(),
-            AgentState::Failed("something broke".into())
-        );
+        assert_eq!(*lc.state(), AgentState::Failed("something broke".into()));
     }
 
     #[test]
@@ -1146,7 +1125,7 @@ mod tests {
         let mut hc = HealthCheck::new("a1".into());
         hc.record_heartbeat(); // 1 check
         hc.record_error("e".into()); // 2 checks, 1 error
-        // error_rate = 1/2 = 0.5
+                                     // error_rate = 1/2 = 0.5
         assert!((hc.error_rate() - 0.5).abs() < 1e-9);
     }
 

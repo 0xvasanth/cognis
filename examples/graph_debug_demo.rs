@@ -29,16 +29,14 @@ fn main() {
 
     // Add breakpoints with different conditions
     let bp_always = Breakpoint::new("process").with_condition(BreakCondition::Always);
-    let bp_state_change =
-        Breakpoint::new("enrich").with_condition(BreakCondition::OnStateChange {
-            key: "data".to_string(),
-        });
+    let bp_state_change = Breakpoint::new("enrich").with_condition(BreakCondition::OnStateChange {
+        key: "data".to_string(),
+    });
     let bp_on_value = Breakpoint::new("validate").with_condition(BreakCondition::OnValue {
         key: "status".to_string(),
         expected: json!("error"),
     });
-    let bp_iteration =
-        Breakpoint::new("retry").with_condition(BreakCondition::OnIteration(3));
+    let bp_iteration = Breakpoint::new("retry").with_condition(BreakCondition::OnIteration(3));
 
     session.add_breakpoint(bp_always);
     session.add_breakpoint(bp_state_change);
@@ -64,23 +62,38 @@ fn main() {
 
     // "process" has Always condition — should always trigger
     let hit_process = session.is_breakpoint("process", &state_ok);
-    println!("  is_breakpoint(\"process\", status=ok)     = {}", hit_process);
+    println!(
+        "  is_breakpoint(\"process\", status=ok)     = {}",
+        hit_process
+    );
 
     // "validate" has OnValue(status == "error") — should not trigger for "ok"
     let hit_validate_ok = session.is_breakpoint("validate", &state_ok);
-    println!("  is_breakpoint(\"validate\", status=ok)    = {}", hit_validate_ok);
+    println!(
+        "  is_breakpoint(\"validate\", status=ok)    = {}",
+        hit_validate_ok
+    );
 
     // "validate" should trigger for "error"
     let hit_validate_err = session.is_breakpoint("validate", &state_err);
-    println!("  is_breakpoint(\"validate\", status=error) = {}", hit_validate_err);
+    println!(
+        "  is_breakpoint(\"validate\", status=error) = {}",
+        hit_validate_err
+    );
 
     // "enrich" has OnStateChange(data) — triggers when "data" key is present
     let hit_enrich = session.is_breakpoint("enrich", &state_ok);
-    println!("  is_breakpoint(\"enrich\", data present)   = {}", hit_enrich);
+    println!(
+        "  is_breakpoint(\"enrich\", data present)   = {}",
+        hit_enrich
+    );
 
     // A node with no breakpoint
     let hit_unknown = session.is_breakpoint("unknown_node", &state_ok);
-    println!("  is_breakpoint(\"unknown_node\")           = {}", hit_unknown);
+    println!(
+        "  is_breakpoint(\"unknown_node\")           = {}",
+        hit_unknown
+    );
     println!();
 
     // -----------------------------------------------------------------------
@@ -106,7 +119,10 @@ fn main() {
     let history = session.execution_history();
     println!("\n  Execution history:");
     for step in history {
-        println!("    Step {}: node=\"{}\", timestamp={}", step.step_number, step.node_id, step.timestamp);
+        println!(
+            "    Step {}: node=\"{}\", timestamp={}",
+            step.step_number, step.node_id, step.timestamp
+        );
         println!("      state_before = {}", step.state_before);
         println!("      state_after  = {:?}", step.state_after);
         println!("      duration_ms  = {:?}", step.duration_ms);
@@ -189,7 +205,10 @@ fn main() {
     println!("  Node execution times:");
     for (node_id, times) in &profiler.node_times() {
         let avg = profiler.average_time(node_id).unwrap_or(0.0);
-        println!("    {} — runs: {:?} ms, average: {:.2} ms", node_id, times, avg);
+        println!(
+            "    {} — runs: {:?} ms, average: {:.2} ms",
+            node_id, times, avg
+        );
     }
 
     println!(

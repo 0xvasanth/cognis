@@ -510,10 +510,7 @@ impl fmt::Display for QuotaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             QuotaError::KeyLimitExceeded { current, max } => {
-                write!(
-                    f,
-                    "key limit exceeded: current {current}, max {max}"
-                )
+                write!(f, "key limit exceeded: current {current}, max {max}")
             }
             QuotaError::ByteLimitExceeded {
                 current,
@@ -1281,24 +1278,15 @@ mod tests {
 
     #[test]
     fn test_quota_error_is_error() {
-        let err = QuotaError::KeyLimitExceeded {
-            current: 1,
-            max: 1,
-        };
+        let err = QuotaError::KeyLimitExceeded { current: 1, max: 1 };
         // Verify it implements std::error::Error by calling .to_string().
         let _ = err.to_string();
     }
 
     #[test]
     fn test_quota_error_equality() {
-        let a = QuotaError::KeyLimitExceeded {
-            current: 5,
-            max: 5,
-        };
-        let b = QuotaError::KeyLimitExceeded {
-            current: 5,
-            max: 5,
-        };
+        let a = QuotaError::KeyLimitExceeded { current: 5, max: 5 };
+        let b = QuotaError::KeyLimitExceeded { current: 5, max: 5 };
         assert_eq!(a, b);
     }
 

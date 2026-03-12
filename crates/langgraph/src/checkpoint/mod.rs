@@ -18,8 +18,8 @@ pub mod storage;
 pub mod store;
 
 pub use storage::{
-    InMemoryStorage, LayeredStorage, QuotaError, StorageBackend, StorageKey, StorageMigration,
-    StorageMetrics, StorageQuota, StorageValue,
+    InMemoryStorage, LayeredStorage, QuotaError, StorageBackend, StorageKey, StorageMetrics,
+    StorageMigration, StorageQuota, StorageValue,
 };
 
 #[cfg(feature = "sqlite")]

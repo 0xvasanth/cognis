@@ -351,11 +351,14 @@ impl EventLog {
 // EventHook
 // ---------------------------------------------------------------------------
 
+/// Callback type for event hook transformations.
+type HookCallback = Box<dyn Fn(&Value) -> Value>;
+
 /// Pre/post transformation hooks around an operation.
 pub struct EventHook {
     name: String,
-    before_cb: Option<Box<dyn Fn(&Value) -> Value>>,
-    after_cb: Option<Box<dyn Fn(&Value) -> Value>>,
+    before_cb: Option<HookCallback>,
+    after_cb: Option<HookCallback>,
 }
 
 impl EventHook {
@@ -576,10 +579,7 @@ mod tests {
     #[test]
     fn event_type_display() {
         assert_eq!(format!("{}", EventType::LlmStart), "llm_start");
-        assert_eq!(
-            format!("{}", EventType::Custom("foo".into())),
-            "foo"
-        );
+        assert_eq!(format!("{}", EventType::Custom("foo".into())), "foo");
     }
 
     #[test]
@@ -592,14 +592,8 @@ mod tests {
     fn event_type_equality() {
         assert_eq!(EventType::ChainStart, EventType::ChainStart);
         assert_ne!(EventType::ChainStart, EventType::ChainEnd);
-        assert_eq!(
-            EventType::Custom("x".into()),
-            EventType::Custom("x".into())
-        );
-        assert_ne!(
-            EventType::Custom("x".into()),
-            EventType::Custom("y".into())
-        );
+        assert_eq!(EventType::Custom("x".into()), EventType::Custom("x".into()));
+        assert_ne!(EventType::Custom("x".into()), EventType::Custom("y".into()));
     }
 
     #[test]
@@ -855,10 +849,8 @@ mod tests {
     #[test]
     fn filter_by_metadata() {
         let f = EventFilter::new().by_metadata("env", json!("prod"));
-        let e1 = Event::new(EventType::ChainStart, json!(null))
-            .with_metadata("env", json!("prod"));
-        let e2 = Event::new(EventType::ChainStart, json!(null))
-            .with_metadata("env", json!("dev"));
+        let e1 = Event::new(EventType::ChainStart, json!(null)).with_metadata("env", json!("prod"));
+        let e2 = Event::new(EventType::ChainStart, json!(null)).with_metadata("env", json!("dev"));
         assert!(f.matches(&e1));
         assert!(!f.matches(&e2));
     }
@@ -995,17 +987,16 @@ mod tests {
 
     #[test]
     fn hook_after_callback() {
-        let h = EventHook::new("h".into()).after(Box::new(|v| {
-            json!({"result": v.clone(), "processed": true})
-        }));
+        let h = EventHook::new("h".into()).after(Box::new(
+            |v| json!({"result": v.clone(), "processed": true}),
+        ));
         let out = h.run_after(&json!("data"));
         assert_eq!(out["processed"], json!(true));
     }
 
     #[test]
     fn hook_to_json() {
-        let h = EventHook::new("my_hook".into())
-            .before(Box::new(|v| v.clone()));
+        let h = EventHook::new("my_hook".into()).before(Box::new(|v| v.clone()));
         let j = h.to_json();
         assert_eq!(j["name"], "my_hook");
         assert_eq!(j["has_before"], true);
@@ -1065,22 +1056,16 @@ mod tests {
     #[test]
     fn registry_run_all_before() {
         let mut r = HookRegistry::new();
-        r.register(
-            EventHook::new("add_a".into())
-                .before(Box::new(|v| {
-                    let mut o = v.clone();
-                    o["a"] = json!(1);
-                    o
-                })),
-        );
-        r.register(
-            EventHook::new("add_b".into())
-                .before(Box::new(|v| {
-                    let mut o = v.clone();
-                    o["b"] = json!(2);
-                    o
-                })),
-        );
+        r.register(EventHook::new("add_a".into()).before(Box::new(|v| {
+            let mut o = v.clone();
+            o["a"] = json!(1);
+            o
+        })));
+        r.register(EventHook::new("add_b".into()).before(Box::new(|v| {
+            let mut o = v.clone();
+            o["b"] = json!(2);
+            o
+        })));
         let out = r.run_all_before(&json!({}));
         assert_eq!(out["a"], json!(1));
         assert_eq!(out["b"], json!(2));
@@ -1090,8 +1075,7 @@ mod tests {
     fn registry_run_all_after() {
         let mut r = HookRegistry::new();
         r.register(
-            EventHook::new("wrap".into())
-                .after(Box::new(|v| json!({"wrapped": v.clone()}))),
+            EventHook::new("wrap".into()).after(Box::new(|v| json!({"wrapped": v.clone()}))),
         );
         let out = r.run_all_after(&json!("data"));
         assert_eq!(out["wrapped"], json!("data"));
@@ -1153,10 +1137,7 @@ mod tests {
         m.record_event(&ct);
         m.record_processing_time(&ct, 50);
         assert_eq!(m.total_events(), 1);
-        assert_eq!(
-            m.average_processing_time(&ct),
-            Some(50.0)
-        );
+        assert_eq!(m.average_processing_time(&ct), Some(50.0));
     }
 
     #[test]
@@ -1222,13 +1203,10 @@ mod tests {
                     json!(n + 1)
                 })),
         );
-        reg.register(
-            EventHook::new("add_ten".into())
-                .before(Box::new(|v| {
-                    let n = v.as_i64().unwrap_or(0);
-                    json!(n + 10)
-                })),
-        );
+        reg.register(EventHook::new("add_ten".into()).before(Box::new(|v| {
+            let n = v.as_i64().unwrap_or(0);
+            json!(n + 10)
+        })));
         // before: 5 -> double(5)=10 -> add_ten(10)=20
         let result = reg.run_all_before(&json!(5));
         assert_eq!(result, json!(20));
@@ -1252,10 +1230,7 @@ mod tests {
             EventType::Custom("my_custom".into()),
             json!(null),
         ));
-        bus.publish(&Event::new(
-            EventType::Custom("other".into()),
-            json!(null),
-        ));
+        bus.publish(&Event::new(EventType::Custom("other".into()), json!(null)));
         assert_eq!(*counter.borrow(), 1);
     }
 
@@ -1274,9 +1249,7 @@ mod tests {
 
     #[test]
     fn filter_by_multiple_sources() {
-        let f = EventFilter::new()
-            .by_source("a")
-            .by_source("b");
+        let f = EventFilter::new().by_source("a").by_source("b");
         let e1 = Event::new(EventType::ChainStart, json!(null)).with_source("a");
         let e2 = Event::new(EventType::ChainStart, json!(null)).with_source("b");
         let e3 = Event::new(EventType::ChainStart, json!(null)).with_source("c");
@@ -1293,8 +1266,7 @@ mod tests {
         let e1 = Event::new(EventType::ChainStart, json!(null))
             .with_metadata("env", json!("prod"))
             .with_metadata("region", json!("us"));
-        let e2 = Event::new(EventType::ChainStart, json!(null))
-            .with_metadata("env", json!("prod"));
+        let e2 = Event::new(EventType::ChainStart, json!(null)).with_metadata("env", json!("prod"));
         assert!(f.matches(&e1));
         assert!(!f.matches(&e2)); // missing region
     }

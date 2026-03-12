@@ -45,9 +45,7 @@ impl BreakCondition {
                 // DebugSession.
                 state.get(key).is_some()
             }
-            BreakCondition::OnValue { key, expected } => {
-                state.get(key).map_or(false, |v| v == expected)
-            }
+            BreakCondition::OnValue { key, expected } => state.get(key) == Some(expected),
             BreakCondition::OnIteration(_) => {
                 // Iteration check is handled by Breakpoint::should_break.
                 true
@@ -702,10 +700,7 @@ mod tests {
     fn test_break_condition_display() {
         assert_eq!(BreakCondition::Always.to_string(), "Always");
         assert_eq!(
-            BreakCondition::OnStateChange {
-                key: "x".into()
-            }
-            .to_string(),
+            BreakCondition::OnStateChange { key: "x".into() }.to_string(),
             "OnStateChange(x)"
         );
         assert_eq!(BreakCondition::OnIteration(5).to_string(), "OnIteration(5)");

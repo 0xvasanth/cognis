@@ -317,10 +317,7 @@ impl DelegationStatus {
     /// Returns `true` if the status represents a terminal state
     /// (Completed, Rejected, or Failed).
     pub fn is_terminal(&self) -> bool {
-        matches!(
-            self,
-            Self::Completed | Self::Rejected(_) | Self::Failed(_)
-        )
+        matches!(self, Self::Completed | Self::Rejected(_) | Self::Failed(_))
     }
 }
 
@@ -439,7 +436,7 @@ impl ConsensusVote {
             decision,
             confidence: confidence.clamp(0.0, 1.0),
             timestamp: current_timestamp(),
-        reasoning: None,
+            reasoning: None,
         }
     }
 
@@ -678,7 +675,7 @@ impl Default for CollaborationLog {
 fn current_timestamp() -> String {
     // Using a simple counter-based approach since we avoid external crates.
     // In production this would use chrono or similar.
-    format!("2026-03-11T00:00:00Z")
+    "2026-03-11T00:00:00Z".to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -723,7 +720,10 @@ mod tests {
 
     #[test]
     fn test_protocol_round_robin_display() {
-        assert_eq!(format!("{}", CollaborationProtocol::RoundRobin), "RoundRobin");
+        assert_eq!(
+            format!("{}", CollaborationProtocol::RoundRobin),
+            "RoundRobin"
+        );
     }
 
     #[test]
@@ -776,8 +776,14 @@ mod tests {
 
     #[test]
     fn test_protocol_equality() {
-        assert_eq!(CollaborationProtocol::RoundRobin, CollaborationProtocol::RoundRobin);
-        assert_ne!(CollaborationProtocol::RoundRobin, CollaborationProtocol::Pipeline);
+        assert_eq!(
+            CollaborationProtocol::RoundRobin,
+            CollaborationProtocol::RoundRobin
+        );
+        assert_ne!(
+            CollaborationProtocol::RoundRobin,
+            CollaborationProtocol::Pipeline
+        );
     }
 
     // -- SharedWorkspace tests --
@@ -923,15 +929,13 @@ mod tests {
 
     #[test]
     fn test_delegation_request_with_context() {
-        let req = DelegationRequest::new("a", "b", "task")
-            .with_context("key", json!("val"));
+        let req = DelegationRequest::new("a", "b", "task").with_context("key", json!("val"));
         assert_eq!(req.context.get("key"), Some(&json!("val")));
     }
 
     #[test]
     fn test_delegation_request_with_deadline() {
-        let req = DelegationRequest::new("a", "b", "task")
-            .with_deadline("2026-12-31T23:59:59Z");
+        let req = DelegationRequest::new("a", "b", "task").with_deadline("2026-12-31T23:59:59Z");
         assert_eq!(req.deadline, Some("2026-12-31T23:59:59Z".to_string()));
     }
 

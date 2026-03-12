@@ -1083,17 +1083,14 @@ mod tests {
 
     #[test]
     fn policy_with_retry() {
-        let policy = ResiliencePolicy::new("p").with_retry(RetryConfig::new(
-            3,
-            RetryStrategy::Fixed { delay_ms: 100 },
-        ));
+        let policy = ResiliencePolicy::new("p")
+            .with_retry(RetryConfig::new(3, RetryStrategy::Fixed { delay_ms: 100 }));
         assert!(policy.retry_config.is_some());
     }
 
     #[test]
     fn policy_with_circuit_breaker_closed() {
-        let policy =
-            ResiliencePolicy::new("p").with_circuit_breaker(CircuitBreaker::new(5, 1000));
+        let policy = ResiliencePolicy::new("p").with_circuit_breaker(CircuitBreaker::new(5, 1000));
         assert!(policy.can_execute());
     }
 
@@ -1120,26 +1117,11 @@ mod tests {
 
     #[test]
     fn policy_record_success_resets_cb() {
-        let policy =
-            ResiliencePolicy::new("p").with_circuit_breaker(CircuitBreaker::new(2, 1000));
+        let policy = ResiliencePolicy::new("p").with_circuit_breaker(CircuitBreaker::new(2, 1000));
         policy.record_failure("e");
-        assert_eq!(
-            policy
-                .circuit_breaker
-                .as_ref()
-                .unwrap()
-                .failure_count(),
-            1
-        );
+        assert_eq!(policy.circuit_breaker.as_ref().unwrap().failure_count(), 1);
         policy.record_success();
-        assert_eq!(
-            policy
-                .circuit_breaker
-                .as_ref()
-                .unwrap()
-                .failure_count(),
-            0
-        );
+        assert_eq!(policy.circuit_breaker.as_ref().unwrap().failure_count(), 0);
     }
 
     #[test]
