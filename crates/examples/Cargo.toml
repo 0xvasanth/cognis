@@ -266,3 +266,27 @@ path = "../../examples/planning_demo.rs"
 [[example]]
 name = "context_management_demo"
 path = "../../examples/context_management_demo.rs"
+
+[[example]]
+name = "agent_lifecycle_demo"
+path = "../../examples/agent_lifecycle_demo.rs"
+
+[[example]]
+name = "resilience_demo"
+path = "../../examples/resilience_demo.rs"
+
+[[example]]
+name = "graph_validation_demo"
+path = "../../examples/graph_validation_demo.rs"
+
+[[example]]
+name = "graph_debug_demo"
+path = "../../examples/graph_debug_demo.rs"
+
+[[example]]
+name = "caching_demo"
+path = "../../examples/caching_demo.rs"
+
+[[example]]
+name = "event_system_demo"
+path = "../../examples/event_system_demo.rs"
