@@ -4,6 +4,7 @@
 
 pub mod env;
 pub mod formatting;
+pub mod hashing;
 pub mod function_calling;
 pub mod html;
 pub mod image;
