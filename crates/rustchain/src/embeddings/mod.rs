@@ -30,5 +30,6 @@ pub mod ollama;
 #[cfg(feature = "openai")]
 pub mod openai;
 pub mod router;
+pub mod similarity;
 
 pub use base::*;
