@@ -44,9 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // With Ollama, real model responses are streamed.
     println!("--- Part 2: Word-level streaming ---\n");
 
-    let model = shared::get_streaming_model(vec![
-        "The quick brown fox jumps over the lazy dog".into(),
-    ]);
+    let model =
+        shared::get_streaming_model(vec!["The quick brown fox jumps over the lazy dog".into()]);
 
     let messages = vec![Message::Human(HumanMessage::new("Tell me a sentence"))];
 

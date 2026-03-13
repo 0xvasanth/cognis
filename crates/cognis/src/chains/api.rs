@@ -6,7 +6,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{HumanMessage, Message};
 use cognis_core::runnables::base::Runnable;
@@ -221,12 +221,10 @@ impl APISpec {
     /// }
     /// ```
     pub fn from_json(value: &Value) -> Result<Self> {
-        let obj = value
-            .as_object()
-            .ok_or_else(|| CognisError::TypeMismatch {
-                expected: "JSON object".into(),
-                got: format!("{}", value),
-            })?;
+        let obj = value.as_object().ok_or_else(|| CognisError::TypeMismatch {
+            expected: "JSON object".into(),
+            got: format!("{}", value),
+        })?;
 
         let base_url = obj
             .get("base_url")
@@ -543,12 +541,10 @@ impl APIChain {
     /// Format the prompt template by replacing `{variable}` placeholders.
     fn format_prompt(&self, input: &Value) -> Result<String> {
         let re = Regex::new(r"\{(\w+)\}").unwrap();
-        let obj = input
-            .as_object()
-            .ok_or_else(|| CognisError::TypeMismatch {
-                expected: "JSON object".into(),
-                got: format!("{}", input),
-            })?;
+        let obj = input.as_object().ok_or_else(|| CognisError::TypeMismatch {
+            expected: "JSON object".into(),
+            got: format!("{}", input),
+        })?;
 
         let api_description = self.api_spec.to_description();
 
@@ -617,9 +613,8 @@ impl APIChain {
         }
 
         let json_slice = &json_str[start..end];
-        serde_json::from_str(json_slice).map_err(|e| {
-            CognisError::Other(format!("Failed to parse LLM response as JSON: {}", e))
-        })
+        serde_json::from_str(json_slice)
+            .map_err(|e| CognisError::Other(format!("Failed to parse LLM response as JSON: {}", e)))
     }
 
     /// Create a [`RequestValidator`] for this chain's configuration.
@@ -640,9 +635,7 @@ impl Runnable for APIChain {
             .and_then(|o| o.get("question"))
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                CognisError::InvalidKey(
-                    "Input must be a JSON object with a 'question' key".into(),
-                )
+                CognisError::InvalidKey("Input must be a JSON object with a 'question' key".into())
             })?
             .to_string();
 

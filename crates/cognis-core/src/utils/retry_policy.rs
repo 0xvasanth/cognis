@@ -21,24 +21,19 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Strategy for computing delays between retry attempts.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum BackoffStrategy {
     /// Constant delay between retries.
     Fixed,
     /// Delay increases linearly: `initial_delay * attempt`.
     Linear,
     /// Delay doubles each attempt: `initial_delay * multiplier^(attempt-1)`.
+    #[default]
     Exponential,
     /// Exponential with random jitter added (up to the computed delay).
     ExponentialWithJitter,
     /// Custom delay sequence. Falls back to the last value when exhausted.
     Custom(Vec<u64>),
-}
-
-impl Default for BackoffStrategy {
-    fn default() -> Self {
-        Self::Exponential
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -513,7 +508,7 @@ impl RetryPolicy {
                         }
                     }
 
-                    if ctx.attempt >= self.max_retries + 1 {
+                    if ctx.attempt > self.max_retries {
                         return RetryOutcome::Exhausted {
                             attempts: ctx.attempt,
                             last_error: ctx.last_error.clone().unwrap_or_default(),
@@ -1270,10 +1265,12 @@ mod tests {
     #[test]
     fn test_execute_exhausted() {
         let policy = RetryPolicy::builder().max_retries(2).build();
-        let result: RetryOutcome<i32> =
-            policy.execute(|_| Err("fail".into()), &AlwaysRetry, None);
+        let result: RetryOutcome<i32> = policy.execute(|_| Err("fail".into()), &AlwaysRetry, None);
         match result {
-            RetryOutcome::Exhausted { attempts, last_error } => {
+            RetryOutcome::Exhausted {
+                attempts,
+                last_error,
+            } => {
                 assert_eq!(attempts, 3); // 1 initial + 2 retries
                 assert_eq!(last_error, "fail");
             }
@@ -1299,8 +1296,7 @@ mod tests {
         let policy = RetryPolicy::new();
         let mut cb = CircuitBreaker::new(1, Duration::from_secs(60));
         cb.record_failure(); // trip the breaker
-        let result: RetryOutcome<i32> =
-            policy.execute(|_| Ok(1), &AlwaysRetry, Some(&mut cb));
+        let result: RetryOutcome<i32> = policy.execute(|_| Ok(1), &AlwaysRetry, Some(&mut cb));
         assert_eq!(result, RetryOutcome::CircuitOpen);
     }
 
@@ -1334,8 +1330,7 @@ mod tests {
     #[test]
     fn test_execute_zero_retries() {
         let policy = RetryPolicy::builder().max_retries(0).build();
-        let result: RetryOutcome<i32> =
-            policy.execute(|_| Err("fail".into()), &AlwaysRetry, None);
+        let result: RetryOutcome<i32> = policy.execute(|_| Err("fail".into()), &AlwaysRetry, None);
         match result {
             RetryOutcome::Exhausted { attempts, .. } => assert_eq!(attempts, 1),
             other => panic!("Expected Exhausted, got {:?}", other),
@@ -1363,7 +1358,10 @@ mod tests {
         // Second call: "permanent error" -> not retryable, stop.
         assert_eq!(call_count, 2);
         match result {
-            RetryOutcome::Exhausted { attempts, last_error } => {
+            RetryOutcome::Exhausted {
+                attempts,
+                last_error,
+            } => {
                 assert_eq!(attempts, 2);
                 assert_eq!(last_error, "permanent error");
             }
@@ -1375,7 +1373,12 @@ mod tests {
     fn test_pseudo_random_fraction_bounded() {
         for n in 0..100 {
             let f = DelayCalculator::pseudo_random_fraction(n);
-            assert!(f >= 0.0 && f < 1.0, "fraction {} out of range for n={}", f, n);
+            assert!(
+                f >= 0.0 && f < 1.0,
+                "fraction {} out of range for n={}",
+                f,
+                n
+            );
         }
     }
 

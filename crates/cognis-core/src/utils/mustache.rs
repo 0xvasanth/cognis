@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 /// Render a mustache template with the given data.
 pub fn render(template: &str, data: &Value) -> Result<String> {

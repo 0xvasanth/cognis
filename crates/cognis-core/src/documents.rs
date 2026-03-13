@@ -173,8 +173,7 @@ impl Blob {
             Some(BlobData::Text(s)) => Ok(s.as_bytes().to_vec()),
             None => {
                 if let Some(path) = &self.path {
-                    std::fs::read(path)
-                        .map_err(|e| crate::error::CognisError::Other(e.to_string()))
+                    std::fs::read(path).map_err(|e| crate::error::CognisError::Other(e.to_string()))
                 } else {
                     Err(crate::error::CognisError::Other(
                         "Blob has no data or path".into(),

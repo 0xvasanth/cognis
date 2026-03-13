@@ -4,7 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 use super::base::Runnable;
 use super::config::RunnableConfig;
@@ -32,9 +32,7 @@ impl Runnable for RouterRunnable {
         let key = input
             .get("key")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                CognisError::InvalidKey("Input must have a string 'key' field".into())
-            })?
+            .ok_or_else(|| CognisError::InvalidKey("Input must have a string 'key' field".into()))?
             .to_string();
 
         let inner_input = input.get("input").cloned().unwrap_or(Value::Null);

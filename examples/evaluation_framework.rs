@@ -17,6 +17,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example evaluation_framework`
 
+mod shared;
 use cognisagent::evaluation::{
     ContainsMetric, EvalCase, EvalMetric, EvalScore, EvalSuite, ExactMatchMetric,
     JsonSimilarityMetric, NumericDistanceMetric,

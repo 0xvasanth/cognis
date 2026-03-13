@@ -11,6 +11,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example streaming_demo`
 
+mod shared;
 use cognis::streaming::{
     FilterTransformer, StreamBuffer, StreamEvent, StreamStats, StreamTransformer, TokenAggregator,
 };

@@ -9,6 +9,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example structured_parsing_demo`
 
+mod shared;
 use cognis::output_parsers::structured::{
     JsonType, OutputRepairer, SchemaEnforcer, StructuredParser,
 };

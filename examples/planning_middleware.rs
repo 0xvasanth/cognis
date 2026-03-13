@@ -8,6 +8,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example planning_middleware`
 
+mod shared;
 use std::sync::Arc;
 
 use serde_json::json;

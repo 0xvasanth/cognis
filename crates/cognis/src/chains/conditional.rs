@@ -847,9 +847,7 @@ mod tests {
     async fn test_branch_error_propagation() {
         let chain = BranchChain::builder()
             .branch(
-                ClosureCondition::new(|_v: &Value| {
-                    Err(CognisError::Other("branch error".into()))
-                }),
+                ClosureCondition::new(|_v: &Value| Err(CognisError::Other("branch error".into()))),
                 upper_lambda(),
             )
             .build();

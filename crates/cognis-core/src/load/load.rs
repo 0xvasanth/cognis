@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 /// A reviver processes serialized dictionaries back into values.
 ///

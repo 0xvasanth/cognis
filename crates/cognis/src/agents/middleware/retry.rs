@@ -214,10 +214,7 @@ mod tests {
     #[test]
     fn test_should_retry_any_error() {
         let cond = RetryCondition::AnyError;
-        assert!(should_retry(
-            &CognisError::Other("timeout".into()),
-            &cond
-        ));
+        assert!(should_retry(&CognisError::Other("timeout".into()), &cond));
         assert!(should_retry(
             &CognisError::ToolException("bad".into()),
             &cond
@@ -239,8 +236,7 @@ mod tests {
 
     #[test]
     fn test_should_retry_custom() {
-        let cond =
-            RetryCondition::Custom(Arc::new(|e| matches!(e, CognisError::HttpError { .. })));
+        let cond = RetryCondition::Custom(Arc::new(|e| matches!(e, CognisError::HttpError { .. })));
         assert!(should_retry(
             &CognisError::HttpError {
                 status: 500,

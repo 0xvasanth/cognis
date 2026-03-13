@@ -1,6 +1,6 @@
 //! JSON parsing utilities.
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 use serde_json::Value;
 
 /// Parse potentially incomplete JSON string (useful for streaming).

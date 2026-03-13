@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::{
     BaseChatModel, ChatStream, ModelProfile, ToolChoice,
 };

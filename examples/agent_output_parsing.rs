@@ -7,6 +7,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example agent_output_parsing`
 
+mod shared;
 use cognis::agents::{
     AgentOutputParser, JsonOutputParser, ReActOutputParser, ToolCallOutputParser, XmlOutputParser,
 };

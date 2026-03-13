@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use regex::Regex;
 use cognis_core::documents::Document;
+use regex::Regex;
 use serde_json::Value;
 
 use super::code::Language;

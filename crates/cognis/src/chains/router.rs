@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use cognis_core::embeddings::Embeddings;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{HumanMessage, Message};
 use cognis_core::vectorstores::base::cosine_similarity;

@@ -4,7 +4,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 use super::base::Runnable;
 use super::config::RunnableConfig;

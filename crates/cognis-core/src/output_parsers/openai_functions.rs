@@ -8,7 +8,7 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 use crate::outputs::Generation;
 use crate::runnables::base::Runnable;
 use crate::runnables::config::RunnableConfig;
@@ -167,13 +167,13 @@ impl Runnable for OutputFunctionsParser {
                 // Try to find function_call in the value directly
                 if let Some(fc) = other.get("function_call") {
                     if self.args_only {
-                        fc.get("arguments").cloned().ok_or_else(|| {
-                            CognisError::OutputParserError {
+                        fc.get("arguments")
+                            .cloned()
+                            .ok_or_else(|| CognisError::OutputParserError {
                                 message: "Function call missing 'arguments' key".into(),
                                 observation: Some(other.to_string()),
                                 llm_output: None,
-                            }
-                        })
+                            })
                     } else {
                         Ok(fc.clone())
                     }
@@ -532,13 +532,11 @@ impl OutputParser for SchemaOutputFunctionsParser {
         let raw = base.parse(text)?;
 
         if self.args_only {
-            let args_str = raw
-                .as_str()
-                .ok_or_else(|| CognisError::OutputParserError {
-                    message: "Expected arguments to be a string".into(),
-                    observation: Some(raw.to_string()),
-                    llm_output: None,
-                })?;
+            let args_str = raw.as_str().ok_or_else(|| CognisError::OutputParserError {
+                message: "Expected arguments to be a string".into(),
+                observation: Some(raw.to_string()),
+                llm_output: None,
+            })?;
             let parsed: Value =
                 serde_json::from_str(args_str).map_err(|e| CognisError::OutputParserError {
                     message: format!("Failed to parse arguments JSON: {}", e),
@@ -589,13 +587,14 @@ impl OutputParser for SchemaOutputFunctionsParser {
             args_only: self.args_only,
         };
         let raw = if self.args_only {
-            func_call.get("arguments").cloned().ok_or_else(|| {
-                CognisError::OutputParserError {
+            func_call
+                .get("arguments")
+                .cloned()
+                .ok_or_else(|| CognisError::OutputParserError {
                     message: "Function call missing 'arguments' key".into(),
                     observation: Some(func_call.to_string()),
                     llm_output: None,
-                }
-            })?
+                })?
         } else {
             // Keep the base_parser reference alive to suppress the warning
             let _ = &base_parser;
@@ -603,13 +602,11 @@ impl OutputParser for SchemaOutputFunctionsParser {
         };
 
         if self.args_only {
-            let args_str = raw
-                .as_str()
-                .ok_or_else(|| CognisError::OutputParserError {
-                    message: "Expected arguments to be a string".into(),
-                    observation: Some(raw.to_string()),
-                    llm_output: None,
-                })?;
+            let args_str = raw.as_str().ok_or_else(|| CognisError::OutputParserError {
+                message: "Expected arguments to be a string".into(),
+                observation: Some(raw.to_string()),
+                llm_output: None,
+            })?;
             let parsed: Value =
                 serde_json::from_str(args_str).map_err(|e| CognisError::OutputParserError {
                     message: format!("Failed to parse arguments JSON: {}", e),

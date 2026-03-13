@@ -82,7 +82,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use cognis_core::documents::Document;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use serde_json::Value;
 
 use crate::text_splitters::TextSplitter;
@@ -314,9 +314,9 @@ impl InMemoryJsonLoader {
 
         let mut current = root;
         for key in &keys {
-            current = current.get(*key).ok_or_else(|| {
-                CognisError::Other(format!("JSON path key '{}' not found", key))
-            })?;
+            current = current
+                .get(*key)
+                .ok_or_else(|| CognisError::Other(format!("JSON path key '{}' not found", key)))?;
         }
         Ok(current)
     }
@@ -426,8 +426,7 @@ impl DocumentLoader for InMemoryCsvLoader {
         let mut docs = Vec::new();
 
         for (row_idx, result) in reader.records().enumerate() {
-            let record =
-                result.map_err(|e| CognisError::Other(format!("CSV row error: {}", e)))?;
+            let record = result.map_err(|e| CognisError::Other(format!("CSV row error: {}", e)))?;
 
             let row_map: HashMap<&str, &str> = headers
                 .iter()
@@ -538,8 +537,7 @@ impl InMemoryDirectoryLoader {
 
         let mut files = Vec::new();
         for entry in entries {
-            let path =
-                entry.map_err(|e| CognisError::Other(format!("Glob entry error: {}", e)))?;
+            let path = entry.map_err(|e| CognisError::Other(format!("Glob entry error: {}", e)))?;
             if path.is_file() {
                 files.push(path);
             }

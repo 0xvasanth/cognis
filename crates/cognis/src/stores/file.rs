@@ -8,7 +8,7 @@ use std::fs;
 use std::io::Write as IoWrite;
 use std::path::{Path, PathBuf};
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 use super::Store;
 

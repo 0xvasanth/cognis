@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 // ---------------------------------------------------------------------------
 // TemplateVariable
@@ -566,9 +566,10 @@ impl TemplateEngine {
                     }
                 }
                 TemplateBlock::Partial(name) => {
-                    let partial_template = self.partials.get(name).ok_or_else(|| {
-                        CognisError::Other(format!("Unknown partial '{}'", name))
-                    })?;
+                    let partial_template = self
+                        .partials
+                        .get(name)
+                        .ok_or_else(|| CognisError::Other(format!("Unknown partial '{}'", name)))?;
                     let rendered = self.render(partial_template, context)?;
                     output.push_str(&rendered);
                 }

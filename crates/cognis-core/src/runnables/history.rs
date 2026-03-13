@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::chat_history::BaseChatMessageHistory;
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 use crate::messages::Message;
 use crate::runnables::base::Runnable;
 use crate::runnables::config::RunnableConfig;
@@ -125,9 +125,7 @@ impl RunnableWithMessageHistory {
     /// Extract the session ID from a `RunnableConfig`.
     fn get_session_id(&self, config: Option<&RunnableConfig>) -> Result<String> {
         let config = config.ok_or_else(|| {
-            CognisError::Other(
-                "RunnableConfig is required with session_id in configurable".into(),
-            )
+            CognisError::Other("RunnableConfig is required with session_id in configurable".into())
         })?;
 
         for spec in &self.history_factory_config {

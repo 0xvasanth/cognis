@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 /// Generates a simple ISO-like timestamp string from the current system time.
 fn now_timestamp() -> String {

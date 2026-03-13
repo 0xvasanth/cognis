@@ -6,6 +6,7 @@
 //!
 //! No API keys required -- uses deterministic fake embeddings.
 
+mod shared;
 use std::io::Write;
 use std::sync::Arc;
 

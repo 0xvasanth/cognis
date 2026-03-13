@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::Semaphore;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 use super::base::Runnable;
 use super::config::RunnableConfig;

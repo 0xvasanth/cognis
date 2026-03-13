@@ -15,6 +15,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example graph_interrupts_demo`
 
+mod shared;
 use cognisgraph::graph::interrupts::{
     InterruptLog, InterruptPolicy, InterruptQueue, InterruptRequest, InterruptResponse,
     InterruptType, TimeoutPolicy,

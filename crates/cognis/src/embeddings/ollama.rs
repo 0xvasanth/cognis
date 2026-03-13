@@ -10,7 +10,7 @@ use reqwest::Client;
 use serde_json::{json, Value};
 
 use cognis_core::embeddings::Embeddings;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 /// Builder for constructing an [`OllamaEmbeddings`] instance.
 #[derive(Debug)]
@@ -132,9 +132,9 @@ impl OllamaEmbeddings {
 
         let mut embeddings: Vec<Vec<f32>> = Vec::with_capacity(embeddings_arr.len());
         for item in embeddings_arr {
-            let vec_arr = item.as_array().ok_or_else(|| {
-                CognisError::Other("Expected array for embedding vector".into())
-            })?;
+            let vec_arr = item
+                .as_array()
+                .ok_or_else(|| CognisError::Other("Expected array for embedding vector".into()))?;
 
             let vec: Vec<f32> = vec_arr
                 .iter()

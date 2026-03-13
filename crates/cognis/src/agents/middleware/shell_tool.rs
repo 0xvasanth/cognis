@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 use super::types::{AgentMiddleware, AgentState};
 

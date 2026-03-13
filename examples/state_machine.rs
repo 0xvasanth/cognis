@@ -16,6 +16,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example state_machine`
 
+mod shared;
 use cognisgraph::graph::{
     StateHistory, StateId, StateMachine, StateMachineBuilder, StateMachineValidator, Transition,
 };

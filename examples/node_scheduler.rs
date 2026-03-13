@@ -20,6 +20,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example node_scheduler`
 
+mod shared;
 use std::collections::HashSet;
 use std::time::Duration;
 

@@ -15,7 +15,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::tools::base::BaseTool;
 
 /// A thread-safe function that generates plan text from a template string.
@@ -385,12 +385,12 @@ impl PlanAndExecuteAgentBuilder {
 
     /// Build the [`PlanAndExecuteAgent`].
     pub fn build(self) -> Result<PlanAndExecuteAgent> {
-        let planner = self.planner.ok_or_else(|| {
-            CognisError::Other("PlanAndExecuteAgent requires a planner".into())
-        })?;
-        let executor = self.executor.ok_or_else(|| {
-            CognisError::Other("PlanAndExecuteAgent requires an executor".into())
-        })?;
+        let planner = self
+            .planner
+            .ok_or_else(|| CognisError::Other("PlanAndExecuteAgent requires a planner".into()))?;
+        let executor = self
+            .executor
+            .ok_or_else(|| CognisError::Other("PlanAndExecuteAgent requires an executor".into()))?;
         Ok(PlanAndExecuteAgent {
             planner,
             executor,

@@ -12,6 +12,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example event_system_demo`
 
+mod shared;
 use cognis_core::events::{
     Event, EventBus, EventFilter, EventHook, EventLog, EventMetrics, EventType, HookRegistry,
 };

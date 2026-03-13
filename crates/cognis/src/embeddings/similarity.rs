@@ -187,9 +187,7 @@ impl PairwiseSimilarityMatrix {
             .map(|row| {
                 row.iter()
                     .enumerate()
-                    .max_by(|(_, a), (_, b)| {
-                        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-                    })
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                     .map(|(idx, &score)| (idx, score))
                     .unwrap_or((0, 0.0))
             })
@@ -204,9 +202,7 @@ impl PairwiseSimilarityMatrix {
                     .iter()
                     .enumerate()
                     .map(|(i, row)| (i, row[j]))
-                    .max_by(|(_, a), (_, b)| {
-                        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-                    })
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                     .unwrap_or((0, 0.0))
             })
             .collect()
@@ -318,9 +314,7 @@ impl ClusterAssignment {
                     .iter()
                     .enumerate()
                     .map(|(ci, c)| (ci, distance::compute_similarity(metric, emb, c)))
-                    .max_by(|(_, a), (_, b)| {
-                        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-                    })
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                     .map(|(ci, _)| ci)
                     .unwrap()
             })
@@ -491,7 +485,11 @@ impl DimensionalityReducer {
                 state ^= state >> 7;
                 state ^= state << 17;
                 // Map to {-1, +1} scaled.
-                let val = if state % 2 == 0 { scale } else { -scale };
+                let val = if state.is_multiple_of(2) {
+                    scale
+                } else {
+                    -scale
+                };
                 row.push(val);
             }
             projection.push(row);
@@ -903,11 +901,7 @@ mod tests {
 
     #[test]
     fn test_cluster_assignment_members() {
-        let embeddings = vec![
-            vec![1.0, 0.0],
-            vec![0.9, 0.1],
-            vec![0.0, 1.0],
-        ];
+        let embeddings = vec![vec![1.0, 0.0], vec![0.9, 0.1], vec![0.0, 1.0]];
         let centroids = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
         let ca = ClusterAssignment::assign(&embeddings, &centroids, DistanceMetric::Cosine);
         let members_0 = ca.members(0);
@@ -1058,7 +1052,10 @@ mod tests {
         let p2 = r2.project(&v);
         // With different seeds, projections should differ
         let any_diff = p1.iter().zip(p2.iter()).any(|(a, b)| !approx_eq(*a, *b));
-        assert!(any_diff, "different seeds should produce different projections");
+        assert!(
+            any_diff,
+            "different seeds should produce different projections"
+        );
     }
 
     #[test]
@@ -1158,9 +1155,9 @@ mod tests {
         let threshold = SimilarityThreshold::new(0.5);
         let query = vec![1.0, 0.0];
         let candidates = vec![
-            vec![1.0, 0.0],   // sim = 1.0
-            vec![0.0, 1.0],   // sim = 0.0
-            vec![0.7, 0.7],   // sim ~ 0.707
+            vec![1.0, 0.0], // sim = 1.0
+            vec![0.0, 1.0], // sim = 0.0
+            vec![0.7, 0.7], // sim ~ 0.707
         ];
         let results = threshold.search(&query, &candidates, DistanceMetric::Cosine);
         assert_eq!(results.len(), 2); // only 1.0 and ~0.707 pass

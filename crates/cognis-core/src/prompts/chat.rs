@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 use crate::messages::Message;
 use crate::prompt_values::{ChatPromptValue, PromptValue};
 use crate::runnables::base::Runnable;

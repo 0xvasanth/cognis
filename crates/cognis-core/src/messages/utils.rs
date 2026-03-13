@@ -9,7 +9,7 @@ use super::{
     AIMessage, AIMessageChunk, ChatMessage, FunctionMessage, HumanMessage, Message, SystemMessage,
     ToolMessage,
 };
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 // ---------------------------------------------------------------------------
 // get_buffer_string

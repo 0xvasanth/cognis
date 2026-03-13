@@ -6,7 +6,7 @@
 //! via the included `MockHttpClient`.
 
 use async_trait::async_trait;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::tools::base::BaseTool;
 use cognis_core::tools::types::{ToolInput, ToolOutput};
 use serde::{Deserialize, Serialize};
@@ -380,9 +380,7 @@ impl RequestsTool {
     fn validate_domain(&self, url: &str) -> Result<()> {
         if let Some(ref allowed) = self.config.allowed_domains {
             let host = extract_host(url).ok_or_else(|| {
-                CognisError::ToolValidationError(format!(
-                    "Could not extract host from URL: {url}"
-                ))
+                CognisError::ToolValidationError(format!("Could not extract host from URL: {url}"))
             })?;
             if !allowed
                 .iter()

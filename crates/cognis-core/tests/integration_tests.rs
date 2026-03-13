@@ -5,7 +5,7 @@ use cognis_core::callbacks::{CallbackHandler, CallbackManager};
 use cognis_core::chat_history::{BaseChatMessageHistory, InMemoryChatMessageHistory};
 use cognis_core::documents::BaseDocumentCompressor;
 use cognis_core::documents::Document;
-use cognis_core::error::{ErrorCode, CognisError};
+use cognis_core::error::{CognisError, ErrorCode};
 use cognis_core::messages::*;
 use cognis_core::outputs::{
     merge_chat_generation_chunks, ChatGeneration, ChatGenerationChunk, ChatResult, Generation,

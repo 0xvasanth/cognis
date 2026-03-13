@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::messages::Message;
 use cognis_core::runnables::base::Runnable;
 use cognis_core::runnables::config::RunnableConfig;
@@ -374,12 +374,10 @@ fn parse_single_message(value: &Value) -> Result<Message> {
     }
 
     // Fall back to role/content format
-    let obj = value
-        .as_object()
-        .ok_or_else(|| CognisError::TypeMismatch {
-            expected: "Object (message)".into(),
-            got: format!("{}", value),
-        })?;
+    let obj = value.as_object().ok_or_else(|| CognisError::TypeMismatch {
+        expected: "Object (message)".into(),
+        got: format!("{}", value),
+    })?;
 
     let role = obj
         .get("role")

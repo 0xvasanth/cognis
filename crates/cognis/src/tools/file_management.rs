@@ -6,7 +6,7 @@
 //! traversal attacks.
 
 use async_trait::async_trait;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::tools::base::{BaseTool, BaseToolkit};
 use cognis_core::tools::types::{ToolInput, ToolOutput};
 use serde::{Deserialize, Serialize};
@@ -459,9 +459,10 @@ impl BaseTool for SearchFilesTool {
         let full_pattern_str = full_pattern.to_string_lossy().to_string();
 
         let mut matches = Vec::new();
-        let canonical_root = self.config.root_dir.canonicalize().map_err(|e| {
-            CognisError::ToolException(format!("Failed to resolve root_dir: {e}"))
-        })?;
+        let canonical_root =
+            self.config.root_dir.canonicalize().map_err(|e| {
+                CognisError::ToolException(format!("Failed to resolve root_dir: {e}"))
+            })?;
 
         for entry in glob::glob(&full_pattern_str)
             .map_err(|e| CognisError::ToolException(format!("Invalid glob pattern: {e}")))?

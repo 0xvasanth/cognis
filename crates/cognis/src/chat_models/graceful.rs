@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::{
     BaseChatModel, ChatStream, ModelProfile, ToolChoice,
 };
@@ -105,9 +105,9 @@ impl BaseChatModel for GracefulChatModel {
                     callback(&e);
                 }
                 // Return a single-item stream with the fallback
-                use futures::stream;
                 use cognis_core::messages::AIMessageChunk;
                 use cognis_core::outputs::ChatGenerationChunk;
+                use futures::stream;
                 let chunk = ChatGenerationChunk {
                     text: self.fallback_message.clone(),
                     message: AIMessageChunk::new(&self.fallback_message),

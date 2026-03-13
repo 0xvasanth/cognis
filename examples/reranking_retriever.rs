@@ -15,6 +15,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example reranking_retriever`
 
+mod shared;
 use std::collections::HashMap;
 
 use cognis::retrievers::reranking::{

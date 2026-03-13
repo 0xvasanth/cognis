@@ -10,7 +10,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 use super::base::PromptTemplate;
 use super::chat::ChatPromptTemplate;
@@ -142,12 +142,10 @@ fn load_template(var_name: &str, config: &mut serde_json::Map<String, Value>) ->
             )));
         }
 
-        let path_str = path_val
-            .as_str()
-            .ok_or_else(|| CognisError::TypeMismatch {
-                expected: "String".into(),
-                got: format!("{}", path_val),
-            })?;
+        let path_str = path_val.as_str().ok_or_else(|| CognisError::TypeMismatch {
+            expected: "String".into(),
+            got: format!("{}", path_val),
+        })?;
 
         let path = Path::new(path_str);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -265,12 +263,10 @@ fn load_few_shot_config(config: &serde_json::Map<String, Value>) -> Result<Loade
                 "Only one of example_prompt and example_prompt_path should be specified.".into(),
             ));
         }
-        let path_str = path_val
-            .as_str()
-            .ok_or_else(|| CognisError::TypeMismatch {
-                expected: "String".into(),
-                got: format!("{}", path_val),
-            })?;
+        let path_str = path_val.as_str().ok_or_else(|| CognisError::TypeMismatch {
+            expected: "String".into(),
+            got: format!("{}", path_val),
+        })?;
         match load_prompt(path_str)? {
             LoadedPrompt::Prompt(pt) => pt,
             _ => {

@@ -10,9 +10,8 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example memory_types`
 
-use cognis::memory::token_buffer::{
-    CharBasedTokenCounter, SimpleTokenCounter, TokenBufferMemory,
-};
+mod shared;
+use cognis::memory::token_buffer::{CharBasedTokenCounter, SimpleTokenCounter, TokenBufferMemory};
 use cognis::memory::{
     BaseMemory, ConversationBufferMemory, ConversationWindowMemory, EntityMemory,
 };

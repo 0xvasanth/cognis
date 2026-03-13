@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::RwLock;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::messages::{count_tokens_approximately, Message};
 
 use super::BaseMemory;

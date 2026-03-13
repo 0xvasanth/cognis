@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::base::BaseTool;
 use super::types::{ErrorHandler, ResponseFormat, ToolInput, ToolOutput};
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 /// A sync function that takes a single string and returns a string.
 type SimpleSyncFn = Arc<dyn Fn(&str) -> Result<String> + Send + Sync>;

@@ -4,8 +4,8 @@
 
 pub mod env;
 pub mod formatting;
-pub mod hashing;
 pub mod function_calling;
+pub mod hashing;
 pub mod html;
 pub mod image;
 pub mod input;
@@ -14,9 +14,9 @@ pub mod json;
 pub mod json_schema;
 pub mod merge;
 pub mod mustache;
+pub mod retry_policy;
 pub mod strings;
 pub mod token_counter;
-pub mod retry_policy;
 pub mod tokens;
 pub mod usage;
 pub mod uuid;

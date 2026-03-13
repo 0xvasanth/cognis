@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::RwLock;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::messages::Message;
 
 // ---------------------------------------------------------------------------
@@ -453,10 +453,11 @@ impl SessionManager {
 
     /// Add a message to a session.
     pub async fn add_message(&self, session_id: &str, message: Message) -> Result<()> {
-        let mut session =
-            self.storage.load(session_id).await?.ok_or_else(|| {
-                CognisError::Other(format!("Session not found: {}", session_id))
-            })?;
+        let mut session = self
+            .storage
+            .load(session_id)
+            .await?
+            .ok_or_else(|| CognisError::Other(format!("Session not found: {}", session_id)))?;
         session.messages.push(message);
         session.auto_trim();
         session.updated_at = now_iso();
@@ -465,10 +466,11 @@ impl SessionManager {
 
     /// Get all messages in a session.
     pub async fn get_messages(&self, session_id: &str) -> Result<Vec<Message>> {
-        let session =
-            self.storage.load(session_id).await?.ok_or_else(|| {
-                CognisError::Other(format!("Session not found: {}", session_id))
-            })?;
+        let session = self
+            .storage
+            .load(session_id)
+            .await?
+            .ok_or_else(|| CognisError::Other(format!("Session not found: {}", session_id)))?;
         Ok(session.messages)
     }
 
@@ -488,10 +490,11 @@ impl SessionManager {
 
     /// Clear all messages in a session (session itself remains).
     pub async fn clear_messages(&self, session_id: &str) -> Result<()> {
-        let mut session =
-            self.storage.load(session_id).await?.ok_or_else(|| {
-                CognisError::Other(format!("Session not found: {}", session_id))
-            })?;
+        let mut session = self
+            .storage
+            .load(session_id)
+            .await?
+            .ok_or_else(|| CognisError::Other(format!("Session not found: {}", session_id)))?;
         session.messages.clear();
         session.updated_at = now_iso();
         self.storage.save(&session).await

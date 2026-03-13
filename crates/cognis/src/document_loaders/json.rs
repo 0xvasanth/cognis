@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use futures::stream;
 use cognis_core::document_loaders::BaseLoader;
 use cognis_core::document_loaders::DocumentStream;
 use cognis_core::documents::Document;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
+use futures::stream;
 use serde_json::Value;
 
 /// Loads a JSON file as one or more [`Document`]s.
@@ -81,9 +81,9 @@ impl JsonLoader {
 
         let mut current = root;
         for key in &keys {
-            current = current.get(*key).ok_or_else(|| {
-                CognisError::Other(format!("JSON path key '{}' not found", key))
-            })?;
+            current = current
+                .get(*key)
+                .ok_or_else(|| CognisError::Other(format!("JSON path key '{}' not found", key)))?;
         }
         Ok(current)
     }

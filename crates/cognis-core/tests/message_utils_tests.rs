@@ -593,9 +593,7 @@ fn message_chunk_to_message_system_chunk() {
 #[test]
 fn message_chunk_to_message_tool_chunk() {
     let chunk = Message::ToolChunk(ToolMessageChunk {
-        base: cognis_core::messages::BaseMessageFields::new(MessageContent::Text(
-            "result".into(),
-        )),
+        base: cognis_core::messages::BaseMessageFields::new(MessageContent::Text("result".into())),
         tool_call_id: "tc-1".into(),
         tool_call_chunks: Vec::new(),
         artifact: None,

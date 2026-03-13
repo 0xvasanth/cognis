@@ -25,7 +25,7 @@ use serde_json::Value;
 
 use cognis_core::callbacks::base::CallbackHandler;
 use cognis_core::callbacks::manager::CallbackManager;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{Message, ToolMessage};
 use cognis_core::runnables::base::Runnable;
@@ -576,9 +576,8 @@ fn parse_agent_input(input: Value) -> Result<Vec<Message>> {
             .map_err(|e| CognisError::Other(format!("Failed to deserialize messages: {e}"))),
         Value::Object(ref map) => {
             if let Some(msgs) = map.get("messages") {
-                serde_json::from_value(msgs.clone()).map_err(|e| {
-                    CognisError::Other(format!("Failed to deserialize messages: {e}"))
-                })
+                serde_json::from_value(msgs.clone())
+                    .map_err(|e| CognisError::Other(format!("Failed to deserialize messages: {e}")))
             } else if let Some(text) = map.get("input").and_then(|v| v.as_str()) {
                 Ok(vec![Message::human(text)])
             } else {

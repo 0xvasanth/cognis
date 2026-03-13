@@ -10,6 +10,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example plan_and_execute`
 
+mod shared;
 use cognis::agents::plan_and_execute::{
     PlanAndExecuteAgent, PlanStep, PlanStepStatus, Planner, SimplePlanner, TemplatePlanner,
     ToolStepExecutor,

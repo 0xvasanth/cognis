@@ -7,7 +7,7 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::{
     BaseChatModel, ChatStream, ModelProfile, ToolChoice,
 };
@@ -109,9 +109,8 @@ impl BaseChatModel for StructuredOutputChatModel {
                 let structured_output = self.extract_tool_call_output(&result)?;
 
                 // Build a new AIMessage with the structured JSON as content
-                let json_string = serde_json::to_string(&structured_output).map_err(|e| {
-                    CognisError::Other(format!("JSON serialization error: {}", e))
-                })?;
+                let json_string = serde_json::to_string(&structured_output)
+                    .map_err(|e| CognisError::Other(format!("JSON serialization error: {}", e)))?;
 
                 let mut ai_message = AIMessage::new(&json_string);
 

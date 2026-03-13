@@ -4,7 +4,7 @@
 //! whitelisting and configurable timeout.
 
 use async_trait::async_trait;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::tools::base::BaseTool;
 use cognis_core::tools::types::{ToolInput, ToolOutput};
 use serde_json::{json, Value};
@@ -83,9 +83,7 @@ impl BaseTool for ShellTool {
                     self.timeout_secs
                 ))
             })?
-            .map_err(|e| {
-                CognisError::ToolException(format!("Failed to execute command: {e}"))
-            })?;
+            .map_err(|e| CognisError::ToolException(format!("Failed to execute command: {e}")))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);

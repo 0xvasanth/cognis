@@ -20,6 +20,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example chat_model_registry`
 
+mod shared;
 use cognis::chat_models::registry::{
     ChatRequest, ChatResponse, ModelCapability, ModelConfig, ModelInfo, ModelRegistry,
     ModelSelector, TokenUsage,

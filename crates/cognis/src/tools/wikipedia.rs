@@ -4,7 +4,7 @@
 //! configurable language editions.
 
 use async_trait::async_trait;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::tools::base::BaseTool;
 use cognis_core::tools::types::{ToolInput, ToolOutput};
 use serde::Deserialize;

@@ -10,6 +10,7 @@
 //!
 //! Run with: cargo run -p cognis-examples --example graph_with_checkpoints
 
+mod shared;
 use std::sync::Arc;
 
 use serde_json::{json, Value};

@@ -17,6 +17,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example tool_schema`
 
+mod shared;
 use cognis_core::tools::schema::{
     PropertySchema, SchemaObject, SchemaRegistry, SchemaValidator, ToolSchema, ToolSchemaGenerator,
 };

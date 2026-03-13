@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 use super::types::AgentMiddleware;
 

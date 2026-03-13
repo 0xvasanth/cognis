@@ -17,6 +17,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example summary_buffer_memory`
 
+mod shared;
 use cognis::memory::summary_buffer::{
     SimpleSummarizer, SummaryBufferMemory, SummaryStrategy, TemplateSummarizer,
 };

@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::messages::ToolCall;
 use cognis_core::tools::base::{BaseTool, ToolSchema};
 use cognis_core::tools::types::{ToolInput, ToolOutput};

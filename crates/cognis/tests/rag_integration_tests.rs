@@ -12,9 +12,7 @@ use std::sync::Arc;
 use cognis::chains::conversation_retrieval::ConversationalRetrievalChain;
 use cognis::chains::retrieval::RetrievalQAChain;
 use cognis::document_loaders::text::TextLoader;
-use cognis::text_splitter::{
-    CharacterTextSplitter, RecursiveCharacterTextSplitter, TextSplitter,
-};
+use cognis::text_splitter::{CharacterTextSplitter, RecursiveCharacterTextSplitter, TextSplitter};
 use cognis::vectorstores::in_memory::InMemoryVectorStore;
 use cognis_core::document_loaders::BaseLoader;
 use cognis_core::documents::Document;

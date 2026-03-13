@@ -9,7 +9,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde_json::{json, Value};
 
 use cognis_core::embeddings::Embeddings;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 /// Builder for constructing an [`OpenAIEmbeddings`] instance.
 #[derive(Debug)]

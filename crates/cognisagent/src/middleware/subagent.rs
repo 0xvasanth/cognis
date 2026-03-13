@@ -156,9 +156,9 @@ impl BaseTool for SubAgentTool {
              Maximum iterations: {}",
             self.max_iterations
         );
-        messages.push(Message::System(
-            cognis_core::messages::SystemMessage::new(&system_content),
-        ));
+        messages.push(Message::System(cognis_core::messages::SystemMessage::new(
+            &system_content,
+        )));
 
         let mut user_content = task.clone();
         if let Some(ctx) = context {
@@ -198,9 +198,9 @@ impl BaseTool for SubAgentTool {
                     }
                 }
 
-                Err(cognis_core::error::CognisError::ToolException(
-                    format!("Sub-agent failed: {e}"),
-                ))
+                Err(cognis_core::error::CognisError::ToolException(format!(
+                    "Sub-agent failed: {e}"
+                )))
             }
         }
     }

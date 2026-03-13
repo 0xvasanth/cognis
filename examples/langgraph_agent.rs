@@ -13,10 +13,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use cognisgraph::prebuilt::create_react_agent;
 use cognis_core::messages::Message;
 use cognis_core::tools::types::{ToolInput, ToolOutput};
 use cognis_core::tools::BaseTool;
+use cognisgraph::prebuilt::create_react_agent;
 
 /// A simple lookup tool that returns a hardcoded answer.
 ///

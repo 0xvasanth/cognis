@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use cognis_core::documents::Document;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::retrievers::BaseRetriever;
 use cognis_core::tools::base::BaseTool;
 use cognis_core::tools::types::{ErrorHandler, ResponseFormat, ToolInput, ToolOutput};
@@ -549,10 +549,7 @@ impl BaseTool for MultiRetrieverTool {
                     if let Some((_, retriever)) = self.retrievers.iter().find(|(n, _)| n == name) {
                         all_docs = retriever.get_relevant_documents(&query).await?;
                     } else {
-                        return Err(CognisError::Other(format!(
-                            "Unknown retriever: {}",
-                            name
-                        )));
+                        return Err(CognisError::Other(format!("Unknown retriever: {}", name)));
                     }
                 } else {
                     // Fall back to All

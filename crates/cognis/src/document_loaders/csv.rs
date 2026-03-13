@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use futures::stream;
 use cognis_core::document_loaders::BaseLoader;
 use cognis_core::document_loaders::DocumentStream;
 use cognis_core::documents::Document;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
+use futures::stream;
 use serde_json::Value;
 
 /// Loads a CSV file, creating one [`Document`] per row.
@@ -98,8 +98,7 @@ impl BaseLoader for CsvLoader {
         let mut docs: Vec<Result<Document>> = Vec::new();
 
         for (row_idx, result) in reader.records().enumerate() {
-            let record =
-                result.map_err(|e| CognisError::Other(format!("CSV row error: {}", e)))?;
+            let record = result.map_err(|e| CognisError::Other(format!("CSV row error: {}", e)))?;
 
             // Build a map of column_name -> value for this row.
             let row_map: HashMap<&str, &str> = headers

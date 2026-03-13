@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 /// Represents the action a middleware hook returns to control flow.
 #[derive(Debug, Clone)]

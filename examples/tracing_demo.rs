@@ -16,6 +16,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example tracing_demo`
 
+mod shared;
 use cognis_core::tracing::{
     Span, SpanEvent, SpanStatus, Trace, TraceCollector, TraceExporter, TraceId,
 };

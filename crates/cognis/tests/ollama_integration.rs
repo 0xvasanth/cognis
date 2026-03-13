@@ -203,9 +203,9 @@ async fn test_multi_turn_conversation() {
 
     // Turn 2: ask the model to recall — include the full conversation history
     let mut messages_turn2 = messages_turn1.clone();
-    messages_turn2.push(Message::Ai(
-        cognis_core::messages::AIMessage::new(&ai_response1),
-    ));
+    messages_turn2.push(Message::Ai(cognis_core::messages::AIMessage::new(
+        &ai_response1,
+    )));
     messages_turn2.push(Message::Human(HumanMessage::new("What is my name?")));
 
     let result2 = model._generate(&messages_turn2, None).await.unwrap();
@@ -275,9 +275,7 @@ async fn test_buffer_memory_with_llm() {
     memory.save_context(&human1, &ai1).await.unwrap();
 
     // Turn 2: ask to recall — build context from memory
-    let human2 = Message::Human(HumanMessage::new(
-        "What was the secret code I told you?",
-    ));
+    let human2 = Message::Human(HumanMessage::new("What was the secret code I told you?"));
 
     // Load memory and build full context
     let mem_vars = memory.load_memory_variables().await.unwrap();
@@ -339,9 +337,7 @@ async fn test_window_memory_truncation() {
 
     // Turn 2: different topic — this pushes turn 1 out of the window
     let h2 = Message::Human(HumanMessage::new("What color is the sky?"));
-    let a2 = Message::Ai(cognis_core::messages::AIMessage::new(
-        "The sky is blue.",
-    ));
+    let a2 = Message::Ai(cognis_core::messages::AIMessage::new("The sky is blue."));
     memory.save_context(&h2, &a2).await.unwrap();
 
     // Verify: memory should only contain the last turn (2 messages)
@@ -395,7 +391,10 @@ Tokio is the most popular async runtime for Rust.";
 
     // Verify all key content is preserved across chunks
     let combined: String = chunks.iter().map(|d| d.page_content.clone()).collect();
-    assert!(combined.contains("borrow checker"), "Should contain 'borrow checker'");
+    assert!(
+        combined.contains("borrow checker"),
+        "Should contain 'borrow checker'"
+    );
     assert!(combined.contains("Cargo"), "Should contain 'Cargo'");
     assert!(combined.contains("Tokio"), "Should contain 'Tokio'");
 }
@@ -433,8 +432,8 @@ async fn test_json_output_format() {
     let text = &result.generations[0].text;
 
     // Verify it's valid JSON
-    let parsed: serde_json::Value =
-        serde_json::from_str(text).unwrap_or_else(|_| panic!("Response should be valid JSON, got: {text}"));
+    let parsed: serde_json::Value = serde_json::from_str(text)
+        .unwrap_or_else(|_| panic!("Response should be valid JSON, got: {text}"));
 
     // Verify expected keys
     assert_eq!(
@@ -574,8 +573,8 @@ async fn test_usage_metadata() {
     // Verify llm_output has eval metadata from Ollama
     if let Some(llm_output) = &result.llm_output {
         // Ollama returns eval_count, prompt_eval_count, etc.
-        let has_eval = llm_output.get("eval_count").is_some()
-            || llm_output.get("total_duration").is_some();
+        let has_eval =
+            llm_output.get("eval_count").is_some() || llm_output.get("total_duration").is_some();
         if has_eval {
             println!("LLM output metadata: {llm_output:?}");
         }
@@ -670,9 +669,15 @@ async fn test_batch_generation() {
     let model = build_model();
 
     let questions = vec![
-        ("What is the chemical symbol for water?", &["H2O", "h2o"][..]),
+        (
+            "What is the chemical symbol for water?",
+            &["H2O", "h2o"][..],
+        ),
         ("What planet is known as the Red Planet?", &["Mars", "mars"]),
-        ("What is the largest ocean on Earth?", &["Pacific", "pacific"]),
+        (
+            "What is the largest ocean on Earth?",
+            &["Pacific", "pacific"],
+        ),
     ];
 
     for (question, expected_keywords) in questions {
@@ -718,7 +723,9 @@ async fn test_streaming_roundtrip() {
     assert!(!full_response.is_empty(), "Response should not be empty");
     assert_contains_any(
         &full_response,
-        &["light", "plant", "sun", "energy", "carbon", "oxygen", "glucose"],
+        &[
+            "light", "plant", "sun", "energy", "carbon", "oxygen", "glucose",
+        ],
         "photosynthesis response",
     );
 }
@@ -856,10 +863,7 @@ async fn test_multi_variable_chain() {
     .unwrap();
 
     let result = chain
-        .invoke(
-            json!({"language": "Python", "feature": "simplicity"}),
-            None,
-        )
+        .invoke(json!({"language": "Python", "feature": "simplicity"}), None)
         .await
         .unwrap();
     let text = result.as_str().unwrap_or("");

@@ -11,7 +11,7 @@ use reqwest::Client;
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{json, Value};
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::{
     BaseChatModel, ChatStream, ModelProfile, ToolChoice,
 };
@@ -411,9 +411,9 @@ impl ChatOpenAI {
                 CognisError::Other("Missing 'choices' array in OpenAI response".into())
             })?;
 
-        let choice = choices.first().ok_or_else(|| {
-            CognisError::Other("Empty 'choices' array in OpenAI response".into())
-        })?;
+        let choice = choices
+            .first()
+            .ok_or_else(|| CognisError::Other("Empty 'choices' array in OpenAI response".into()))?;
 
         let message = choice
             .get("message")

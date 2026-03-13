@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 // ---------------------------------------------------------------------------
 // ParamType

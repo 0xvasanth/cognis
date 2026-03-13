@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 // ---------------------------------------------------------------------------
 // PromptVersion

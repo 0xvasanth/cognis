@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::base::BaseTool;
 use super::types::{ErrorHandler, ResponseFormat, ToolInput, ToolOutput};
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 /// An async function that takes structured arguments and returns a JSON value.
 type StructuredFn = Box<

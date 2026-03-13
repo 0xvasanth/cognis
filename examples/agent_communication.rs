@@ -17,6 +17,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example agent_communication`
 
+mod shared;
 use cognisagent::communication::{
     AgentMessage, Channel, CommunicationHub, Mailbox, MessageFilter, MessagePriority, SharedState,
 };

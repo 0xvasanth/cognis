@@ -12,6 +12,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example agent_lifecycle_demo`
 
+mod shared;
 use cognisagent::lifecycle::{
     AgentLifecycle, GracefulShutdown, HealthCheck, LifecycleMonitor, RestartPolicy,
 };

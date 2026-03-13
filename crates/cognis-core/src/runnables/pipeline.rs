@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 /// A single stage in a pipeline with optional error handling and conditional execution.
 #[allow(clippy::type_complexity)]
@@ -463,19 +463,15 @@ mod tests {
 
     #[test]
     fn test_stage_execute_failure_no_handler() {
-        let stage = PipelineStage::new("fail", |_v: Value| {
-            Err(CognisError::Other("boom".into()))
-        });
+        let stage = PipelineStage::new("fail", |_v: Value| Err(CognisError::Other("boom".into())));
         let result = stage.execute(json!(1));
         assert!(result.is_err());
     }
 
     #[test]
     fn test_stage_execute_failure_with_handler() {
-        let stage = PipelineStage::new("fail", |_v: Value| {
-            Err(CognisError::Other("boom".into()))
-        })
-        .with_error_handler(|e| json!({"error": e.to_string()}));
+        let stage = PipelineStage::new("fail", |_v: Value| Err(CognisError::Other("boom".into())))
+            .with_error_handler(|e| json!({"error": e.to_string()}));
 
         let result = stage.execute(json!(1)).unwrap();
         assert_eq!(result["error"], json!("boom"));

@@ -12,6 +12,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example context_management_demo`
 
+mod shared;
 use cognisagent::context::{
     ContextCompressor, ContextEntry, ContextFilter, ContextPolicy, ContextRole, ContextSnapshot,
     ContextStats, ContextWindow,

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{json, Value};
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{HumanMessage, Message};
 use cognis_core::output_parsers::base::OutputParser;
@@ -165,12 +165,10 @@ impl StructuredOutputChain {
     /// values from the input JSON object, then append format instructions.
     fn format_prompt(&self, input: &Value) -> Result<String> {
         let re = Regex::new(r"\{(\w+)\}").unwrap();
-        let obj = input
-            .as_object()
-            .ok_or_else(|| CognisError::TypeMismatch {
-                expected: "JSON object".into(),
-                got: format!("{}", input),
-            })?;
+        let obj = input.as_object().ok_or_else(|| CognisError::TypeMismatch {
+            expected: "JSON object".into(),
+            got: format!("{}", input),
+        })?;
 
         let mut missing: Vec<String> = Vec::new();
         let result = re.replace_all(&self.prompt_template, |caps: &regex::Captures| {

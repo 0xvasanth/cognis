@@ -12,7 +12,7 @@ use regex::Regex;
 use serde_json::Value;
 
 use cognis_core::agents::{AgentAction, AgentFinish};
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 // ---------------------------------------------------------------------------
 // Core types
@@ -170,12 +170,11 @@ impl JsonOutputParser {
 
 impl AgentOutputParser for JsonOutputParser {
     fn parse(&self, text: &str) -> Result<AgentOutput> {
-        let json_str =
-            Self::extract_json(text).ok_or_else(|| CognisError::OutputParserError {
-                message: "Could not find a JSON object in the LLM output".to_string(),
-                observation: None,
-                llm_output: Some(text.to_string()),
-            })?;
+        let json_str = Self::extract_json(text).ok_or_else(|| CognisError::OutputParserError {
+            message: "Could not find a JSON object in the LLM output".to_string(),
+            observation: None,
+            llm_output: Some(text.to_string()),
+        })?;
 
         let parsed: Value =
             serde_json::from_str(json_str).map_err(|e| CognisError::OutputParserError {

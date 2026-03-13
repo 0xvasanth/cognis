@@ -10,6 +10,7 @@
 //!
 //! Run with: cargo run -p cognis-examples --example graph_visualization
 
+mod shared;
 use std::collections::HashMap;
 use std::sync::Arc;
 

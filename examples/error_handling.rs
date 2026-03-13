@@ -18,6 +18,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example error_handling`
 
+mod shared;
 use std::thread;
 use std::time::Duration;
 

@@ -16,6 +16,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example plugin_system`
 
+mod shared;
 use cognisagent::plugins::{Plugin, PluginCapability, PluginRegistry, SimplePlugin};
 
 fn main() {

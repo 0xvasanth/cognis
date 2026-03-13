@@ -12,6 +12,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example execution_hooks`
 
+mod shared;
 use std::sync::Arc;
 
 use cognisgraph::graph::hooks::{

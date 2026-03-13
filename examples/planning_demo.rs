@@ -10,6 +10,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example planning_demo`
 
+mod shared;
 use cognisagent::planning::{PlanBuilder, PlanExecutor, PlanStep, Replanner};
 use serde_json::json;
 

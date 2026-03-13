@@ -365,7 +365,12 @@ impl AgentProfiler {
     }
 
     /// Record a completed duration for a category.
-    pub fn record(&mut self, category: ProfileCategory, label: impl Into<String>, duration: Duration) {
+    pub fn record(
+        &mut self,
+        category: ProfileCategory,
+        label: impl Into<String>,
+        duration: Duration,
+    ) {
         self.entries.push(ProfileEntry {
             category,
             duration,
@@ -377,7 +382,8 @@ impl AgentProfiler {
     pub fn start_timer(&mut self, category: ProfileCategory, label: impl Into<String>) -> String {
         let label = label.into();
         let key = format!("{}:{}", category, label);
-        self.active_timers.insert(key.clone(), (category, Instant::now()));
+        self.active_timers
+            .insert(key.clone(), (category, Instant::now()));
         key
     }
 
@@ -385,7 +391,7 @@ impl AgentProfiler {
     pub fn stop_timer(&mut self, key: &str) -> Option<Duration> {
         if let Some((category, start)) = self.active_timers.remove(key) {
             let duration = start.elapsed();
-            let label = key.splitn(2, ':').nth(1).unwrap_or(key).to_string();
+            let label = key.split_once(':').map(|x| x.1).unwrap_or(key).to_string();
             self.entries.push(ProfileEntry {
                 category,
                 duration,
@@ -502,10 +508,7 @@ impl ProfileReport {
     /// Format the report as a human-readable string.
     pub fn to_summary(&self) -> String {
         let mut out = String::new();
-        out.push_str(&format!(
-            "Profile Report for agent '{}'\n",
-            self.agent_id
-        ));
+        out.push_str(&format!("Profile Report for agent '{}'\n", self.agent_id));
         out.push_str(&format!(
             "Wall duration: {:.3}ms\n",
             self.wall_duration.as_secs_f64() * 1000.0
@@ -1223,7 +1226,10 @@ mod tests {
         p.record(ProfileCategory::Llm, "call-2", Duration::from_millis(200));
         p.record(ProfileCategory::Tool, "search", Duration::from_millis(50));
 
-        assert_eq!(p.total_for_category(ProfileCategory::Llm), Duration::from_millis(300));
+        assert_eq!(
+            p.total_for_category(ProfileCategory::Llm),
+            Duration::from_millis(300)
+        );
         assert_eq!(p.count_for_category(ProfileCategory::Llm), 2);
         assert_eq!(p.count_for_category(ProfileCategory::Tool), 1);
         assert_eq!(p.count_for_category(ProfileCategory::Middleware), 0);

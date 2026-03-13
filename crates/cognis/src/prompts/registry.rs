@@ -10,7 +10,7 @@ use std::sync::{Arc, RwLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 // ---------------------------------------------------------------------------
 // RegisteredPrompt

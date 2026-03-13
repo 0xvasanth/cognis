@@ -4,6 +4,8 @@
 //! If Ollama is running, returns a real `ChatOllama` model.
 //! Otherwise, falls back to `FakeListChatModel` with predefined responses.
 
+#![allow(dead_code)]
+
 use std::sync::Arc;
 
 use cognis::chat_models::ollama::ChatOllama;

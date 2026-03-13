@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{json, Value};
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::{BaseChatModel, ChatStream};
 use cognis_core::messages::{HumanMessage, Message, SystemMessage};
 use cognis_core::runnables::base::Runnable;

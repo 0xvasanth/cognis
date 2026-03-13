@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use cognis_core::documents::Document;
 use cognis_core::embeddings::Embeddings;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::vectorstores::base::VectorStore;
 
 // ---------------------------------------------------------------------------

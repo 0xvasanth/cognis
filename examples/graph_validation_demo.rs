@@ -13,6 +13,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example graph_validation_demo`
 
+mod shared;
 use cognisgraph::graph::validation::{
     GraphValidator, QuickCheck, SchemaValidator, StateRule, StateValidator, ValidationReport,
 };

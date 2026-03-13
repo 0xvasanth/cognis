@@ -17,9 +17,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use cognis_core::callbacks::base::CallbackHandler;
-use cognis_core::callbacks::handlers::{
-    LogLevel, LoggingCallbackHandler, MetricsCallbackHandler,
-};
+use cognis_core::callbacks::handlers::{LogLevel, LoggingCallbackHandler, MetricsCallbackHandler};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{HumanMessage, Message};
 use cognis_core::outputs::LLMResult;
@@ -148,7 +146,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     println!("--- Step 4: Collecting streamed output ---\n");
 
-    let collect_model = shared::get_streaming_model(vec!["Ownership, borrowing, and lifetimes.".into()]);
+    let collect_model =
+        shared::get_streaming_model(vec!["Ownership, borrowing, and lifetimes.".into()]);
     let messages = vec![Message::Human(HumanMessage::new("Key Rust concepts?"))];
 
     let stream = collect_model._stream(&messages, None).await?;

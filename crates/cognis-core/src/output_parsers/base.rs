@@ -63,13 +63,14 @@ pub async fn default_transform_stream(
     }
 
     let accumulated = chunks.join("");
-    let parsed = parser.parse(&accumulated).map_err(|e| {
-        crate::error::CognisError::OutputParserError {
-            message: format!("{} transform failed: {}", parser_type, e),
-            observation: Some(accumulated),
-            llm_output: None,
-        }
-    })?;
+    let parsed =
+        parser
+            .parse(&accumulated)
+            .map_err(|e| crate::error::CognisError::OutputParserError {
+                message: format!("{} transform failed: {}", parser_type, e),
+                observation: Some(accumulated),
+                llm_output: None,
+            })?;
 
     Ok(Box::pin(futures::stream::once(async { Ok(parsed) })))
 }

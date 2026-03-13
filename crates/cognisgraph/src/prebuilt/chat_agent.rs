@@ -256,8 +256,7 @@ impl ChatAgent {
                 let tool_call_id = tc.id.clone().unwrap_or_default();
 
                 let output = if let Some(tool) = self.tools.get(&tc.name) {
-                    let input =
-                        cognis_core::tools::types::ToolInput::Structured(tc.args.clone());
+                    let input = cognis_core::tools::types::ToolInput::Structured(tc.args.clone());
                     match tool.run(input, Some(&tool_call_id)).await {
                         Ok(v) => v.to_string(),
                         Err(e) => {
@@ -391,8 +390,7 @@ impl ChatAgent {
                 });
 
                 let output = if let Some(tool) = self.tools.get(&tc.name) {
-                    let input =
-                        cognis_core::tools::types::ToolInput::Structured(tc.args.clone());
+                    let input = cognis_core::tools::types::ToolInput::Structured(tc.args.clone());
                     match tool.run(input, Some(&tool_call_id)).await {
                         Ok(v) => v.to_string(),
                         Err(e) => format!("Error: {e}"),

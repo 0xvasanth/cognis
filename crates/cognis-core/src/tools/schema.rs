@@ -11,7 +11,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 // ---------------------------------------------------------------------------
 // PropertySchema
@@ -795,9 +795,10 @@ impl SchemaRegistry {
 
     /// Validate a tool call by name and input.
     pub fn validate_call(&self, name: &str, input: &Value) -> Result<()> {
-        let schema = self.schemas.get(name).ok_or_else(|| {
-            CognisError::ToolValidationError(format!("Unknown tool '{}'", name))
-        })?;
+        let schema = self
+            .schemas
+            .get(name)
+            .ok_or_else(|| CognisError::ToolValidationError(format!("Unknown tool '{}'", name)))?;
 
         schema.validate_input(input).map_err(|errs| {
             let messages: Vec<String> = errs.iter().map(|e| e.to_string()).collect();

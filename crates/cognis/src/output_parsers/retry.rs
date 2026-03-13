@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::BaseChatModel;
 use cognis_core::messages::{HumanMessage, Message, SystemMessage};
 use cognis_core::output_parsers::OutputParser;

@@ -12,6 +12,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example graph_debug_demo`
 
+mod shared;
 use cognisgraph::graph::debug::{
     BreakCondition, Breakpoint, DebugSession, ExecutionProfiler, StateInspector,
 };

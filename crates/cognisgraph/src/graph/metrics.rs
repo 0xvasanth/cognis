@@ -93,9 +93,7 @@ impl NodeMetrics {
         }
         let mut sorted: Vec<Duration> = self.durations.clone();
         sorted.sort();
-        let idx = ((p / 100.0) * (sorted.len() as f64 - 1.0))
-            .round()
-            .max(0.0) as usize;
+        let idx = ((p / 100.0) * (sorted.len() as f64 - 1.0)).round().max(0.0) as usize;
         let idx = idx.min(sorted.len() - 1);
         sorted[idx]
     }

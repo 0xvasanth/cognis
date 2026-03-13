@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 use crate::messages::{AIMessage, ChatMessage, HumanMessage, Message, SystemMessage};
 
 use super::base::PromptTemplate;

@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use cognis_core::chain;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::{ChatModelRunnable, FakeListChatModel};
 use cognis_core::output_parsers::{JsonOutputParser, StrOutputParser};
 use cognis_core::prompts::base::PromptTemplate;

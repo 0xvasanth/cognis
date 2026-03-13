@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 /// Template format types supported by prompt templates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

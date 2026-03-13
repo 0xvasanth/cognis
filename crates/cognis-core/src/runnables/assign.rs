@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use serde_json::{Map, Value};
 use tokio::task::JoinSet;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 use super::base::Runnable;
 use super::config::{ensure_config, RunnableConfig};
@@ -84,12 +84,10 @@ impl Runnable for RunnableAssign {
     }
 
     async fn invoke(&self, input: Value, config: Option<&RunnableConfig>) -> Result<Value> {
-        let obj = input
-            .as_object()
-            .ok_or_else(|| CognisError::TypeMismatch {
-                expected: "Object".into(),
-                got: value_type_name(&input).to_string(),
-            })?;
+        let obj = input.as_object().ok_or_else(|| CognisError::TypeMismatch {
+            expected: "Object".into(),
+            got: value_type_name(&input).to_string(),
+        })?;
 
         let cfg = ensure_config(config);
         let mut join_set = JoinSet::new();
@@ -148,12 +146,10 @@ impl Runnable for RunnablePick {
     }
 
     async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let obj = input
-            .as_object()
-            .ok_or_else(|| CognisError::TypeMismatch {
-                expected: "Object".into(),
-                got: value_type_name(&input).to_string(),
-            })?;
+        let obj = input.as_object().ok_or_else(|| CognisError::TypeMismatch {
+            expected: "Object".into(),
+            got: value_type_name(&input).to_string(),
+        })?;
 
         if self.keys.len() == 1 {
             Ok(obj.get(&self.keys[0]).cloned().unwrap_or(Value::Null))

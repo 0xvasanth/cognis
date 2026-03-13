@@ -496,9 +496,7 @@ async fn test_runnable_retry_succeeds_on_second_try() {
         async move {
             let count = c.fetch_add(1, Ordering::SeqCst);
             if count == 0 {
-                Err(cognis_core::error::CognisError::Other(
-                    "transient".into(),
-                ))
+                Err(cognis_core::error::CognisError::Other("transient".into()))
             } else {
                 Ok(input)
             }
@@ -513,9 +511,7 @@ async fn test_runnable_retry_succeeds_on_second_try() {
 #[tokio::test]
 async fn test_runnable_retry_exhausts_attempts() {
     let lambda = RunnableLambda::new("always_fail", |_input| async {
-        Err::<serde_json::Value, _>(cognis_core::error::CognisError::Other(
-            "permanent".into(),
-        ))
+        Err::<serde_json::Value, _>(cognis_core::error::CognisError::Other("permanent".into()))
     });
     let retry = RunnableRetry::new(Arc::new(lambda), 2).with_wait(1, 10);
     let result = retry.invoke(json!("hello"), None).await;

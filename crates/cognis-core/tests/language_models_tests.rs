@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use serde_json::json;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::*;
 use cognis_core::messages::{AIMessage, HumanMessage, Message};
 use cognis_core::outputs::*;

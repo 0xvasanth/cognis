@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use futures::stream;
-use regex::Regex;
 use cognis_core::document_loaders::BaseLoader;
 use cognis_core::document_loaders::DocumentStream;
 use cognis_core::documents::Document;
 use cognis_core::error::Result;
+use futures::stream;
+use regex::Regex;
 use serde_json::Value;
 
 /// Extract metadata from `<meta>` tags in the HTML.

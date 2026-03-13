@@ -17,6 +17,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example checkpoint_persistence`
 
+mod shared;
 use std::collections::HashMap;
 
 use cognisgraph::checkpoint::persistence::{

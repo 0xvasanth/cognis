@@ -10,6 +10,7 @@
 //!
 //! Run with: cargo run -p cognis-examples --example text_splitting
 
+mod shared;
 use cognis::text_splitter::{
     Language, RecursiveCharacterTextSplitter, SentenceTextSplitter, TextSplitter,
 };

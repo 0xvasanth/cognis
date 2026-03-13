@@ -8,7 +8,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::tools::base::BaseTool;
 
 use super::types::AgentMiddleware;
@@ -233,8 +233,10 @@ impl AgentMiddleware for ToolRetryMiddleware {
         }
 
         match &self.on_failure {
-            OnToolFailure::Error => Err(last_error
-                .unwrap_or_else(|| CognisError::Other("Unknown tool retry error".into()))),
+            OnToolFailure::Error => {
+                Err(last_error
+                    .unwrap_or_else(|| CognisError::Other("Unknown tool retry error".into())))
+            }
             OnToolFailure::Continue => {
                 let error = last_error
                     .unwrap_or_else(|| CognisError::Other("Unknown tool retry error".into()));

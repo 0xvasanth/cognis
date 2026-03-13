@@ -17,6 +17,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example graph_analysis`
 
+mod shared;
 use cognisgraph::graph::analysis::{
     CycleDetector, GraphMetrics, GraphTopology, GraphVisualizer, PathFinder, SubgraphExtractor,
 };

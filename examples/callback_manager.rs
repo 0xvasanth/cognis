@@ -16,6 +16,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example callback_manager`
 
+mod shared;
 use cognis::callbacks::manager::{
     CallbackDataBuilder, CallbackHandler, CallbackManager, CallbackPhase, CallbackScope,
     ConsoleCallbackHandler, FilteredHandler, MetricsCallbackHandler,

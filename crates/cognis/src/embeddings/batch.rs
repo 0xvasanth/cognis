@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use tokio::sync::{Mutex, Semaphore};
 
 use cognis_core::embeddings::Embeddings;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 /// Configuration for batch embedding processing.
 #[derive(Debug, Clone)]
@@ -287,9 +287,7 @@ impl ParallelEmbedder {
                 let indices: Vec<usize> = group.iter().map(|(i, _)| *i).collect();
                 let batch: Vec<String> = group.into_iter().map(|(_, t)| t).collect();
                 let embs = provider.embed_documents(batch).await?;
-                Ok::<Vec<(usize, Vec<f32>)>, CognisError>(
-                    indices.into_iter().zip(embs).collect(),
-                )
+                Ok::<Vec<(usize, Vec<f32>)>, CognisError>(indices.into_iter().zip(embs).collect())
             });
             handles.push(handle);
         }

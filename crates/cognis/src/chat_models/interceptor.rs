@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use regex::Regex;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::{
     BaseChatModel, ChatStream, ModelProfile, ToolChoice,
 };
@@ -236,8 +236,8 @@ pub struct ContentFilter {
 impl ContentFilter {
     /// Create a filter that replaces occurrences of `pattern` with `replacement`.
     pub fn new(pattern: &str, replacement: impl Into<String>) -> Result<Self> {
-        let re = Regex::new(pattern)
-            .map_err(|e| CognisError::Other(format!("Invalid regex: {e}")))?;
+        let re =
+            Regex::new(pattern).map_err(|e| CognisError::Other(format!("Invalid regex: {e}")))?;
         Ok(Self {
             pattern: re,
             replacement: replacement.into(),

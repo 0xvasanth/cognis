@@ -11,6 +11,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example error_recovery`
 
+mod shared;
 use std::time::Duration;
 
 use cognisagent::recovery::{

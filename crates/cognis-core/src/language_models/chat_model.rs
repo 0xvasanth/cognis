@@ -7,7 +7,7 @@ use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 use crate::messages::{AIMessage, HumanMessage, Message};
 use crate::outputs::{ChatGenerationChunk, ChatResult};
 use crate::runnables::base::Runnable;
@@ -299,9 +299,8 @@ fn parse_chat_input(input: Value) -> Result<Vec<Message>> {
         Value::Object(ref map) => {
             // If has "messages" key, use that
             if let Some(msgs) = map.get("messages") {
-                serde_json::from_value(msgs.clone()).map_err(|e| {
-                    CognisError::Other(format!("Failed to deserialize messages: {e}"))
-                })
+                serde_json::from_value(msgs.clone())
+                    .map_err(|e| CognisError::Other(format!("Failed to deserialize messages: {e}")))
             } else if let Some(text) = map.get("input").and_then(|v| v.as_str()) {
                 Ok(vec![Message::Human(HumanMessage::new(text))])
             } else {

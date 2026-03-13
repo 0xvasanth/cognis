@@ -4,6 +4,7 @@
 //! execution based on input values. All chains use RunnableLambda functions
 //! as branches -- no LLM or API keys required.
 
+mod shared;
 use std::sync::Arc;
 
 use serde_json::{json, Value};

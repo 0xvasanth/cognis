@@ -12,6 +12,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example document_compression`
 
+mod shared;
 use std::collections::HashMap;
 
 use cognis::retrievers::compression::{

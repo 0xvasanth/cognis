@@ -6,7 +6,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{HumanMessage, Message};
 use cognis_core::runnables::base::Runnable;
@@ -458,12 +458,10 @@ impl TextToSQLChain {
     /// Format the prompt template by replacing `{variable}` placeholders.
     fn format_prompt(&self, input: &Value) -> Result<String> {
         let re = Regex::new(r"\{(\w+)\}").unwrap();
-        let obj = input
-            .as_object()
-            .ok_or_else(|| CognisError::TypeMismatch {
-                expected: "JSON object".into(),
-                got: format!("{}", input),
-            })?;
+        let obj = input.as_object().ok_or_else(|| CognisError::TypeMismatch {
+            expected: "JSON object".into(),
+            got: format!("{}", input),
+        })?;
 
         let schema_ddl = if self.include_schema_in_prompt {
             self.schema.to_ddl()
@@ -524,9 +522,7 @@ impl Runnable for TextToSQLChain {
             .and_then(|o| o.get("question"))
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                CognisError::InvalidKey(
-                    "Input must be a JSON object with a 'question' key".into(),
-                )
+                CognisError::InvalidKey("Input must be a JSON object with a 'question' key".into())
             })?
             .to_string();
 

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use cognis_core::embeddings::Embeddings;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 /// Configuration for an embedding provider implementation.
 #[derive(Debug, Clone)]

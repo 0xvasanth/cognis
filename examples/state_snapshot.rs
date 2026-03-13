@@ -11,6 +11,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example state_snapshot`
 
+mod shared;
 use cognisgraph::graph::{
     SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot, TimeTravelDebugger,
 };

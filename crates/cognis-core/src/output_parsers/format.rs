@@ -15,7 +15,7 @@ use serde_json::Value;
 use std::fmt;
 
 use super::base::OutputParser;
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 // ---------------------------------------------------------------------------
 // ParseError
@@ -144,12 +144,11 @@ impl Default for ExtractingJsonParser {
 
 impl OutputParser for ExtractingJsonParser {
     fn parse(&self, text: &str) -> Result<Value> {
-        let json_str =
-            Self::extract_json(text).ok_or_else(|| CognisError::OutputParserError {
-                message: "No JSON object or array found in text".into(),
-                observation: Some(text.to_string()),
-                llm_output: None,
-            })?;
+        let json_str = Self::extract_json(text).ok_or_else(|| CognisError::OutputParserError {
+            message: "No JSON object or array found in text".into(),
+            observation: Some(text.to_string()),
+            llm_output: None,
+        })?;
 
         serde_json::from_str(json_str).map_err(|e| CognisError::OutputParserError {
             message: format!("Failed to parse extracted JSON: {}", e),
@@ -551,13 +550,11 @@ impl RetryParser {
                 Err(e) => last_err = Some(e),
             }
         }
-        Err(
-            last_err.unwrap_or_else(|| CognisError::OutputParserError {
-                message: "RetryParser exhausted retries with no error captured".into(),
-                observation: Some(text.to_string()),
-                llm_output: None,
-            }),
-        )
+        Err(last_err.unwrap_or_else(|| CognisError::OutputParserError {
+            message: "RetryParser exhausted retries with no error captured".into(),
+            observation: Some(text.to_string()),
+            llm_output: None,
+        }))
     }
 
     /// Return the format instructions from the inner parser (if any),

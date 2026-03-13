@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use futures::stream;
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 use crate::messages::{AIMessage, AIMessageChunk, Message};
 use crate::outputs::{ChatGeneration, ChatGenerationChunk, ChatResult, Generation, LLMResult};
 

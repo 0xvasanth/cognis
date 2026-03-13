@@ -19,6 +19,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example message_graph`
 
+mod shared;
 use cognisgraph::graph::{
     GraphMessage, MessageGraph, MessageGraphBuilder, MessageNode, MessageRole, MessageState,
 };

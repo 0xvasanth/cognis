@@ -11,6 +11,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example knowledge_graph_memory`
 
+mod shared;
 use cognis::memory::knowledge_graph::{
     KnowledgeGraph, KnowledgeGraphMemory, KnowledgeTriple, RegexTripleExtractor, TripleExtractor,
 };

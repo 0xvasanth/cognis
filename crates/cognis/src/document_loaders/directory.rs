@@ -3,11 +3,11 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use futures::stream;
 use cognis_core::document_loaders::BaseLoader;
 use cognis_core::document_loaders::DocumentStream;
 use cognis_core::documents::Document;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
+use futures::stream;
 
 use super::csv::CsvLoader;
 use super::html::HTMLLoader;
@@ -79,8 +79,7 @@ impl DirectoryLoader {
             .map_err(|e| CognisError::Other(format!("Invalid glob pattern: {}", e)))?;
 
         for entry in entries {
-            let path =
-                entry.map_err(|e| CognisError::Other(format!("Glob entry error: {}", e)))?;
+            let path = entry.map_err(|e| CognisError::Other(format!("Glob entry error: {}", e)))?;
             if path.is_file() {
                 files.push(path);
             }

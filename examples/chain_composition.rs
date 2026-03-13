@@ -18,6 +18,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example chain_composition`
 
+mod shared;
 use cognis::chains::composition::Handler;
 use cognis::chains::{
     execute_with_metrics, ChainMetrics, ChainPipeline, ChainStep, CompositionConditionalChain,

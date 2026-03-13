@@ -47,15 +47,15 @@ impl GraphVersion {
                 s
             )));
         }
-        let major = parts[0].parse::<u32>().map_err(|_| {
-            LangGraphError::Other(format!("Invalid major version in '{}'", s))
-        })?;
-        let minor = parts[1].parse::<u32>().map_err(|_| {
-            LangGraphError::Other(format!("Invalid minor version in '{}'", s))
-        })?;
-        let patch = parts[2].parse::<u32>().map_err(|_| {
-            LangGraphError::Other(format!("Invalid patch version in '{}'", s))
-        })?;
+        let major = parts[0]
+            .parse::<u32>()
+            .map_err(|_| LangGraphError::Other(format!("Invalid major version in '{}'", s)))?;
+        let minor = parts[1]
+            .parse::<u32>()
+            .map_err(|_| LangGraphError::Other(format!("Invalid minor version in '{}'", s)))?;
+        let patch = parts[2]
+            .parse::<u32>()
+            .map_err(|_| LangGraphError::Other(format!("Invalid patch version in '{}'", s)))?;
         Ok(Self {
             major,
             minor,
@@ -154,9 +154,8 @@ impl VersionedGraph {
 
     /// Serialize to JSON.
     pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string_pretty(self).map_err(|e| {
-            LangGraphError::Other(format!("Failed to serialize versioned graph: {e}"))
-        })
+        serde_json::to_string_pretty(self)
+            .map_err(|e| LangGraphError::Other(format!("Failed to serialize versioned graph: {e}")))
     }
 
     /// Deserialize from JSON.
@@ -182,7 +181,7 @@ fn current_timestamp() -> String {
 /// Trait for transforming a graph definition from one version to another.
 pub trait GraphMigration {
     /// The source version this migration applies to.
-    fn from_version(&self) -> &GraphVersion;
+    fn source_version(&self) -> &GraphVersion;
 
     /// The target version this migration produces.
     fn to_version(&self) -> &GraphVersion;
@@ -230,7 +229,7 @@ impl fmt::Debug for MigrationStep {
 }
 
 impl GraphMigration for MigrationStep {
-    fn from_version(&self) -> &GraphVersion {
+    fn source_version(&self) -> &GraphVersion {
         &self.from
     }
 
@@ -469,10 +468,7 @@ impl GraphDiff {
                 .flat_map(|c| c.targets.iter().map(|t| t.as_str()))
                 .collect();
             if old_cond_targets != new_cond_targets {
-                modified_nodes.push((
-                    node.to_string(),
-                    ModificationType::ConditionalEdgesChanged,
-                ));
+                modified_nodes.push((node.to_string(), ModificationType::ConditionalEdgesChanged));
             }
         }
 
@@ -508,7 +504,11 @@ impl GraphDiff {
             parts.push(format!("removed nodes: {}", self.removed_nodes.join(", ")));
         }
         if !self.modified_nodes.is_empty() {
-            let names: Vec<&str> = self.modified_nodes.iter().map(|(n, _)| n.as_str()).collect();
+            let names: Vec<&str> = self
+                .modified_nodes
+                .iter()
+                .map(|(n, _)| n.as_str())
+                .collect();
             parts.push(format!("modified nodes: {}", names.join(", ")));
         }
         if !self.added_edges.is_empty() {
@@ -615,17 +615,13 @@ impl VersionHistory {
     }
 
     /// Get the diff between two versions in the history.
-    pub fn diff_versions(
-        &self,
-        from: &GraphVersion,
-        to: &GraphVersion,
-    ) -> Result<GraphDiff> {
+    pub fn diff_versions(&self, from: &GraphVersion, to: &GraphVersion) -> Result<GraphDiff> {
         let from_graph = self.get_version(from).ok_or_else(|| {
             LangGraphError::Other(format!("Version {} not found in history", from))
         })?;
-        let to_graph = self.get_version(to).ok_or_else(|| {
-            LangGraphError::Other(format!("Version {} not found in history", to))
-        })?;
+        let to_graph = self
+            .get_version(to)
+            .ok_or_else(|| LangGraphError::Other(format!("Version {} not found in history", to)))?;
         Ok(GraphDiff::compute(
             &from_graph.definition,
             &to_graph.definition,
@@ -634,9 +630,8 @@ impl VersionHistory {
 
     /// Serialize to JSON.
     pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string_pretty(self).map_err(|e| {
-            LangGraphError::Other(format!("Failed to serialize version history: {e}"))
-        })
+        serde_json::to_string_pretty(self)
+            .map_err(|e| LangGraphError::Other(format!("Failed to serialize version history: {e}")))
     }
 
     /// Deserialize from JSON.
@@ -676,16 +671,10 @@ impl CompatibilityChecker {
         let mut issues = Vec::new();
 
         if !diff.added_nodes.is_empty() {
-            issues.push(format!(
-                "New nodes added: {}",
-                diff.added_nodes.join(", ")
-            ));
+            issues.push(format!("New nodes added: {}", diff.added_nodes.join(", ")));
         }
         if !diff.removed_nodes.is_empty() {
-            issues.push(format!(
-                "Nodes removed: {}",
-                diff.removed_nodes.join(", ")
-            ));
+            issues.push(format!("Nodes removed: {}", diff.removed_nodes.join(", ")));
         }
         if diff.entry_point_changed {
             issues.push(format!(
@@ -766,22 +755,12 @@ impl VersionConstraint {
             }
             let min_str = parts[0].trim();
             let max_str = parts[1].trim();
-            let min = min_str
-                .strip_prefix(">=")
-                .ok_or_else(|| {
-                    LangGraphError::Other(format!(
-                        "Range min must start with '>=' in '{}'",
-                        s
-                    ))
-                })?;
-            let max = max_str
-                .strip_prefix('<')
-                .ok_or_else(|| {
-                    LangGraphError::Other(format!(
-                        "Range max must start with '<' in '{}'",
-                        s
-                    ))
-                })?;
+            let min = min_str.strip_prefix(">=").ok_or_else(|| {
+                LangGraphError::Other(format!("Range min must start with '>=' in '{}'", s))
+            })?;
+            let max = max_str.strip_prefix('<').ok_or_else(|| {
+                LangGraphError::Other(format!("Range max must start with '<' in '{}'", s))
+            })?;
             return Ok(Self::Range {
                 min: GraphVersion::parse(min.trim())?,
                 max: GraphVersion::parse(max.trim())?,
@@ -827,11 +806,7 @@ impl fmt::Display for VersionConstraint {
 // Helper: create a sample graph definition for tests
 // ---------------------------------------------------------------------------
 
-fn _make_graph(
-    nodes: Vec<&str>,
-    edges: Vec<(&str, &str)>,
-    entry: &str,
-) -> GraphDefinition {
+fn _make_graph(nodes: Vec<&str>, edges: Vec<(&str, &str)>, entry: &str) -> GraphDefinition {
     GraphDefinition {
         nodes: nodes.into_iter().map(|s| s.to_string()).collect(),
         edges: edges
@@ -974,11 +949,7 @@ mod tests {
 
     #[test]
     fn test_versioned_graph_new() {
-        let graph = VersionedGraph::new(
-            GraphVersion::new(1, 0, 0),
-            simple_graph(),
-            "alice",
-        );
+        let graph = VersionedGraph::new(GraphVersion::new(1, 0, 0), simple_graph(), "alice");
         assert_eq!(graph.version, GraphVersion::new(1, 0, 0));
         assert_eq!(graph.author, "alice");
         assert!(graph.description.is_none());
@@ -986,24 +957,16 @@ mod tests {
 
     #[test]
     fn test_versioned_graph_with_description() {
-        let graph = VersionedGraph::new(
-            GraphVersion::new(1, 0, 0),
-            simple_graph(),
-            "alice",
-        )
-        .with_description("Initial version");
+        let graph = VersionedGraph::new(GraphVersion::new(1, 0, 0), simple_graph(), "alice")
+            .with_description("Initial version");
         assert_eq!(graph.description.as_deref(), Some("Initial version"));
     }
 
     #[test]
     fn test_versioned_graph_json_round_trip() {
-        let graph = VersionedGraph::new(
-            GraphVersion::new(1, 0, 0),
-            simple_graph(),
-            "alice",
-        )
-        .with_description("test")
-        .with_timestamp("2025-01-01T00:00:00Z");
+        let graph = VersionedGraph::new(GraphVersion::new(1, 0, 0), simple_graph(), "alice")
+            .with_description("test")
+            .with_timestamp("2025-01-01T00:00:00Z");
 
         let json = graph.to_json().unwrap();
         let restored = VersionedGraph::from_json(&json).unwrap();
@@ -1015,12 +978,8 @@ mod tests {
 
     #[test]
     fn test_versioned_graph_with_timestamp() {
-        let graph = VersionedGraph::new(
-            GraphVersion::new(1, 0, 0),
-            simple_graph(),
-            "bob",
-        )
-        .with_timestamp("2025-06-15T12:00:00Z");
+        let graph = VersionedGraph::new(GraphVersion::new(1, 0, 0), simple_graph(), "bob")
+            .with_timestamp("2025-06-15T12:00:00Z");
         assert_eq!(graph.created_at, "2025-06-15T12:00:00Z");
     }
 
@@ -1033,7 +992,7 @@ mod tests {
             GraphVersion::new(1, 1, 0),
             |def| Ok(def),
         );
-        assert_eq!(*step.from_version(), GraphVersion::new(1, 0, 0));
+        assert_eq!(*step.source_version(), GraphVersion::new(1, 0, 0));
         assert_eq!(*step.to_version(), GraphVersion::new(1, 1, 0));
     }
 
@@ -1265,8 +1224,7 @@ mod tests {
         assert!(diff
             .modified_nodes
             .iter()
-            .any(|(n, t)| n == "agent"
-                && *t == ModificationType::ConditionalEdgesChanged));
+            .any(|(n, t)| n == "agent" && *t == ModificationType::ConditionalEdgesChanged));
     }
 
     #[test]
@@ -1372,10 +1330,8 @@ mod tests {
     #[test]
     fn test_history_diff_version_not_found() {
         let history = VersionHistory::new("test");
-        let result = history.diff_versions(
-            &GraphVersion::new(1, 0, 0),
-            &GraphVersion::new(2, 0, 0),
-        );
+        let result =
+            history.diff_versions(&GraphVersion::new(1, 0, 0), &GraphVersion::new(2, 0, 0));
         assert!(result.is_err());
     }
 
@@ -1554,10 +1510,7 @@ mod tests {
     #[test]
     fn test_constraint_parse_lt() {
         let c = VersionConstraint::parse("<2.0.0").unwrap();
-        assert_eq!(
-            c,
-            VersionConstraint::LessThan(GraphVersion::new(2, 0, 0))
-        );
+        assert_eq!(c, VersionConstraint::LessThan(GraphVersion::new(2, 0, 0)));
     }
 
     #[test]
@@ -1575,10 +1528,7 @@ mod tests {
     #[test]
     fn test_constraint_parse_compatible() {
         let c = VersionConstraint::parse("~=1.2.0").unwrap();
-        assert_eq!(
-            c,
-            VersionConstraint::Compatible(GraphVersion::new(1, 2, 0))
-        );
+        assert_eq!(c, VersionConstraint::Compatible(GraphVersion::new(1, 2, 0)));
     }
 
     #[test]

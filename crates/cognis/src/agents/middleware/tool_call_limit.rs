@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 
 use super::types::{AgentMiddleware, AgentState};
 

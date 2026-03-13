@@ -15,14 +15,14 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use cognisagent::agent::create_deep_agent;
-use cognisagent::config::DeepAgentConfig;
-use cognisagent::middleware::subagent::SubAgentMiddleware;
-use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
 use cognis_core::language_models::FakeMessagesListChatModel;
 use cognis_core::messages::tool_types::ToolCall;
 use cognis_core::messages::{AIMessage, Message};
 use cognis_core::tools::BaseTool;
+use cognisagent::agent::create_deep_agent;
+use cognisagent::config::DeepAgentConfig;
+use cognisagent::middleware::subagent::SubAgentMiddleware;
+use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,7 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The sub-agent model (used by SubAgentMiddleware) returns fact-checked content.
     let subagent_model = shared::get_chat_model(vec![
         "Fact-check result: Rust was first released in 2010 by Mozilla Research. \
-         It reached version 1.0 in May 2015. The borrow checker is a key innovation.".into(),
+         It reached version 1.0 in May 2015. The borrow checker is a key innovation."
+            .into(),
     ]);
 
     let subagent_mw = SubAgentMiddleware::new(subagent_model.clone(), 3);
@@ -110,7 +111,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
          system that enforces strict ownership rules. This eliminates entire classes of \
          bugs (use-after-free, data races) without the overhead of garbage collection.\n\n\
          The developer community has embraced Rust enthusiastically, voting it the 'most \
-         loved programming language' in Stack Overflow surveys for multiple consecutive years.".into(),
+         loved programming language' in Stack Overflow surveys for multiple consecutive years."
+            .into(),
     ]);
 
     let writer_config = DeepAgentConfig::default().with_system_prompt(

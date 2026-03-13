@@ -6,6 +6,7 @@
 //!
 //! No API keys required -- uses document formatting only (no LLM calls).
 
+mod shared;
 use std::collections::HashMap;
 
 use serde_json::json;

@@ -13,7 +13,7 @@ use std::sync::{Arc, RwLock};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::{BaseChatModel, ChatStream, ToolChoice};
 use cognis_core::messages::Message;
 use cognis_core::outputs::ChatResult;
@@ -157,13 +157,17 @@ pub struct RoutingContext {
 // RoutingRule
 // ---------------------------------------------------------------------------
 
+/// Predicate function for routing rules.
+pub type RoutingPredicate =
+    Box<dyn Fn(&RoutingContext, &RoutingModelProfile) -> bool + Send + Sync>;
+
 /// A conditional routing rule that can override the default strategy.
 pub struct RoutingRule {
     /// Human-readable name of this rule.
     pub name: String,
     /// Predicate: given the context and a candidate profile, return `true` if
     /// the candidate should be considered.
-    pub predicate: Box<dyn Fn(&RoutingContext, &RoutingModelProfile) -> bool + Send + Sync>,
+    pub predicate: RoutingPredicate,
 }
 
 impl RoutingRule {
@@ -195,18 +199,17 @@ impl RoutingRule {
 
     /// Built-in: max cost per 1K input tokens.
     pub fn max_input_cost(max_cost: f64) -> Self {
-        Self::new(format!("max_input_cost({})", max_cost), move |_ctx, profile| {
-            profile.cost_per_1k_input_tokens <= max_cost
-        })
+        Self::new(
+            format!("max_input_cost({})", max_cost),
+            move |_ctx, profile| profile.cost_per_1k_input_tokens <= max_cost,
+        )
     }
 
     /// Built-in: only include models whose context length exceeds the estimated tokens.
     pub fn context_fits() -> Self {
-        Self::new("context_fits", |ctx, profile| {
-            match ctx.estimated_tokens {
-                Some(t) => profile.max_context_length >= t,
-                None => true,
-            }
+        Self::new("context_fits", |ctx, profile| match ctx.estimated_tokens {
+            Some(t) => profile.max_context_length >= t,
+            None => true,
         })
     }
 }
@@ -425,11 +428,17 @@ impl ModelRouter {
             .enumerate()
             .filter(|(_, rm)| {
                 // Must satisfy required capabilities from context.
-                if !rm.profile.capabilities.satisfies(context.required_capabilities) {
+                if !rm
+                    .profile
+                    .capabilities
+                    .satisfies(context.required_capabilities)
+                {
                     return false;
                 }
                 // Must pass all routing rules.
-                self.rules.iter().all(|rule| (rule.predicate)(context, &rm.profile))
+                self.rules
+                    .iter()
+                    .all(|rule| (rule.predicate)(context, &rm.profile))
             })
             .map(|(i, _)| i)
             .collect();
@@ -441,32 +450,26 @@ impl ModelRouter {
         }
 
         let chosen = match &self.strategy {
-            RoutingStrategy::CostOptimized => {
-                *candidate_indices
-                    .iter()
-                    .min_by(|&&a, &&b| {
-                        let ca = self.models[a].profile.cost_per_1k_input_tokens;
-                        let cb = self.models[b].profile.cost_per_1k_input_tokens;
-                        ca.partial_cmp(&cb).unwrap_or(std::cmp::Ordering::Equal)
-                    })
-                    .unwrap()
-            }
-            RoutingStrategy::LatencyOptimized => {
-                *candidate_indices
-                    .iter()
-                    .min_by_key(|&&i| self.models[i].profile.avg_latency_ms)
-                    .unwrap()
-            }
-            RoutingStrategy::QualityOptimized => {
-                *candidate_indices
-                    .iter()
-                    .max_by(|&&a, &&b| {
-                        let qa = self.models[a].profile.quality_score;
-                        let qb = self.models[b].profile.quality_score;
-                        qa.partial_cmp(&qb).unwrap_or(std::cmp::Ordering::Equal)
-                    })
-                    .unwrap()
-            }
+            RoutingStrategy::CostOptimized => *candidate_indices
+                .iter()
+                .min_by(|&&a, &&b| {
+                    let ca = self.models[a].profile.cost_per_1k_input_tokens;
+                    let cb = self.models[b].profile.cost_per_1k_input_tokens;
+                    ca.partial_cmp(&cb).unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .unwrap(),
+            RoutingStrategy::LatencyOptimized => *candidate_indices
+                .iter()
+                .min_by_key(|&&i| self.models[i].profile.avg_latency_ms)
+                .unwrap(),
+            RoutingStrategy::QualityOptimized => *candidate_indices
+                .iter()
+                .max_by(|&&a, &&b| {
+                    let qa = self.models[a].profile.quality_score;
+                    let qb = self.models[b].profile.quality_score;
+                    qa.partial_cmp(&qb).unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .unwrap(),
             RoutingStrategy::RoundRobin => {
                 let idx = self.rr_counter.fetch_add(1, Ordering::Relaxed);
                 candidate_indices[idx % candidate_indices.len()]
@@ -534,10 +537,16 @@ impl ModelRouter {
             .iter()
             .enumerate()
             .filter(|(_, rm)| {
-                if !rm.profile.capabilities.satisfies(context.required_capabilities) {
+                if !rm
+                    .profile
+                    .capabilities
+                    .satisfies(context.required_capabilities)
+                {
                     return false;
                 }
-                self.rules.iter().all(|rule| (rule.predicate)(context, &rm.profile))
+                self.rules
+                    .iter()
+                    .all(|rule| (rule.predicate)(context, &rm.profile))
             })
             .map(|(i, _)| i)
             .collect();
@@ -558,8 +567,7 @@ impl ModelRouter {
                 });
             }
             RoutingStrategy::LatencyOptimized => {
-                candidate_indices
-                    .sort_by_key(|&i| self.models[i].profile.avg_latency_ms);
+                candidate_indices.sort_by_key(|&i| self.models[i].profile.avg_latency_ms);
             }
             RoutingStrategy::QualityOptimized => {
                 candidate_indices.sort_by(|&a, &b| {
@@ -616,11 +624,7 @@ impl BaseChatModel for ModelRouter {
         "model_router"
     }
 
-    async fn _stream(
-        &self,
-        messages: &[Message],
-        stop: Option<&[String]>,
-    ) -> Result<ChatStream> {
+    async fn _stream(&self, messages: &[Message], stop: Option<&[String]>) -> Result<ChatStream> {
         let mut context = RoutingContext::default();
         context
             .required_capabilities
@@ -704,7 +708,9 @@ impl ModelRouterBuilder {
             models: self.models,
             strategy: self.strategy,
             rules: self.rules,
-            metrics: self.metrics.unwrap_or_else(|| Arc::new(RoutingMetrics::new())),
+            metrics: self
+                .metrics
+                .unwrap_or_else(|| Arc::new(RoutingMetrics::new())),
             rr_counter: AtomicUsize::new(0),
         })
     }
@@ -975,9 +981,7 @@ mod tests {
 
     #[test]
     fn test_custom_rule() {
-        let rule = RoutingRule::new("only_premium", |_ctx, profile| {
-            profile.quality_score > 0.9
-        });
+        let rule = RoutingRule::new("only_premium", |_ctx, profile| profile.quality_score > 0.9);
         let ctx = RoutingContext::default();
         assert!(!(rule.predicate)(&ctx, &cheap_profile("c")));
         assert!((rule.predicate)(&ctx, &premium_profile("p")));
@@ -1232,7 +1236,10 @@ mod tests {
     #[tokio::test]
     async fn test_metrics_failure_tracked() {
         let router = ModelRouter::builder()
-            .add_model(cheap_profile("fail_model"), StubModel::failing("fail_model"))
+            .add_model(
+                cheap_profile("fail_model"),
+                StubModel::failing("fail_model"),
+            )
             .strategy(RoutingStrategy::CostOptimized)
             .build()
             .unwrap();
@@ -1335,7 +1342,10 @@ mod tests {
     #[tokio::test]
     async fn test_route_with_fallback_falls_through() {
         let router = ModelRouter::builder()
-            .add_model(cheap_profile("fail_cheap"), StubModel::failing("fail_cheap"))
+            .add_model(
+                cheap_profile("fail_cheap"),
+                StubModel::failing("fail_cheap"),
+            )
             .add_model(mid_profile("ok_mid"), StubModel::new("ok_mid"))
             .strategy(RoutingStrategy::CostOptimized)
             .build()
@@ -1346,7 +1356,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(name, "ok_mid");
-        assert!(router.metrics().fallback_activations.load(Ordering::Relaxed) > 0);
+        assert!(
+            router
+                .metrics()
+                .fallback_activations
+                .load(Ordering::Relaxed)
+                > 0
+        );
     }
 
     #[tokio::test]
@@ -1566,11 +1582,15 @@ mod tests {
     async fn test_latency_fallback_ordering() {
         let router = ModelRouter::builder()
             .add_model(
-                RoutingModelProfile::new("slow").with_latency(500).with_cost(0.01, 0.01),
+                RoutingModelProfile::new("slow")
+                    .with_latency(500)
+                    .with_cost(0.01, 0.01),
                 StubModel::failing("slow"),
             )
             .add_model(
-                RoutingModelProfile::new("fast").with_latency(50).with_cost(0.01, 0.01),
+                RoutingModelProfile::new("fast")
+                    .with_latency(50)
+                    .with_cost(0.01, 0.01),
                 StubModel::new("fast"),
             )
             .strategy(RoutingStrategy::LatencyOptimized)

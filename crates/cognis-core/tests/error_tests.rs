@@ -1,4 +1,4 @@
-use cognis_core::error::{ErrorCode, CognisError};
+use cognis_core::error::{CognisError, ErrorCode};
 
 #[test]
 fn error_code_as_str() {

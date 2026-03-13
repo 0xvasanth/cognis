@@ -16,6 +16,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example document_store`
 
+mod shared;
 use std::collections::HashMap;
 
 use cognis::stores::docstore::{

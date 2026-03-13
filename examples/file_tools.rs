@@ -5,6 +5,7 @@
 //!
 //! No API keys required -- operates on a local temp directory.
 
+mod shared;
 use std::collections::HashMap;
 
 use serde_json::{json, Value};

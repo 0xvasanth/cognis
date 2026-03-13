@@ -15,6 +15,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example topic_channels`
 
+mod shared;
 use cognisgraph::channels::topic::{
     DeadLetterQueue, TopicBus, TopicChannel, TopicFilter, TopicMessage, TopicRouter,
 };

@@ -14,6 +14,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example conversation_memory`
 
+mod shared;
 use cognis::memory::conversation::{
     BufferMemory, ConversationMessage, ConversationStore, MemorySearch, MemoryStats, MessageRole,
     SummaryMemory, TokenBufferMemory, WindowMemory,

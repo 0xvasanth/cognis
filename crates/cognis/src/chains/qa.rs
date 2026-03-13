@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use cognis_core::documents::Document;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::retrievers::BaseRetriever;
 use cognis_core::runnables::base::Runnable;
 use cognis_core::runnables::config::RunnableConfig;
@@ -306,9 +306,7 @@ impl QAChain {
     /// Source documents are included based on the config.
     pub fn answer(&self, question: &str, documents: &[Document]) -> Result<QAResult> {
         if question.is_empty() {
-            return Err(CognisError::Other(
-                "Question must not be empty".to_string(),
-            ));
+            return Err(CognisError::Other("Question must not be empty".to_string()));
         }
 
         let max_docs = self.config.max_source_docs.min(documents.len());
@@ -336,9 +334,7 @@ impl QAChain {
     /// Returns the formatted prompt string.
     pub fn answer_with_context(&self, question: &str, context: &str) -> Result<String> {
         if question.is_empty() {
-            return Err(CognisError::Other(
-                "Question must not be empty".to_string(),
-            ));
+            return Err(CognisError::Other("Question must not be empty".to_string()));
         }
         Ok(self.format_qa_prompt(context, question))
     }

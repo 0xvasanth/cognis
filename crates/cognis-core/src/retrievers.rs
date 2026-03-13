@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::documents::Document;
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 use crate::runnables::base::Runnable;
 use crate::runnables::config::RunnableConfig;
 

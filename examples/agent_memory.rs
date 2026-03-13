@@ -19,6 +19,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example agent_memory`
 
+mod shared;
 use cognisagent::memory::{
     LongTermMemory, MemoryCategory, MemoryEntry, MemoryIndex, MemoryManager, ShortTermMemory,
 };

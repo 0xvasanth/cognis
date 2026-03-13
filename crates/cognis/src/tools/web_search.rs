@@ -5,7 +5,7 @@
 //! DuckDuckGo instant answer API (no API key required).
 
 use async_trait::async_trait;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::tools::base::BaseTool;
 use cognis_core::tools::types::{ToolInput, ToolOutput};
 use secrecy::{ExposeSecret, SecretString};
@@ -140,9 +140,10 @@ impl BaseTool for WebSearchTool {
             req = req.header("Authorization", format!("Bearer {}", key.expose_secret()));
         }
 
-        let resp = req.send().await.map_err(|e| {
-            CognisError::ToolException(format!("Web search request failed: {e}"))
-        })?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| CognisError::ToolException(format!("Web search request failed: {e}")))?;
 
         if !resp.status().is_success() {
             return Err(CognisError::ToolException(format!(
@@ -289,9 +290,7 @@ impl BaseTool for DuckDuckGoSearchTool {
             ])
             .send()
             .await
-            .map_err(|e| {
-                CognisError::ToolException(format!("DuckDuckGo request failed: {e}"))
-            })?;
+            .map_err(|e| CognisError::ToolException(format!("DuckDuckGo request failed: {e}")))?;
 
         if !resp.status().is_success() {
             return Err(CognisError::ToolException(format!(

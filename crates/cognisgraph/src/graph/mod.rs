@@ -28,8 +28,8 @@ pub mod human_in_loop;
 pub mod interrupt;
 pub mod interrupts;
 pub mod mermaid;
-pub mod metrics;
 pub mod message;
+pub mod metrics;
 pub mod persistent;
 pub mod runner;
 pub mod send;
@@ -86,13 +86,13 @@ pub use interrupts::{
     InterruptType as InterruptsType, TimeoutPolicy,
 };
 pub use mermaid::{to_mermaid, to_mermaid_url};
-pub use metrics::{
-    EdgeMetrics, ExecutionProfile, GraphMetrics, InMemoryMetricsCollector, MetricsAggregator,
-    MetricsCollector, MetricsExporter, MetricsReport, NodeMetrics, NodeSummary, ProfileEntry,
-};
 pub use message::{
     add_messages, message_graph, GraphMessage, MessageEdge, MessageGraph, MessageGraphBuilder,
     MessageNode, MessageRole, MessageState,
+};
+pub use metrics::{
+    EdgeMetrics, ExecutionProfile, GraphMetrics, InMemoryMetricsCollector, MetricsAggregator,
+    MetricsCollector, MetricsExporter, MetricsReport, NodeMetrics, NodeSummary, ProfileEntry,
 };
 pub use persistent::PersistentGraph;
 pub use runner::{GraphRunner, LoggingHook, MetricsHook, RunConfig, StepEvent, StepHook};

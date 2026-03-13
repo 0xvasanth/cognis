@@ -109,18 +109,18 @@ pub fn simhash(text: &str, ngram_size: usize) -> u64 {
         let shingle: String = words[i..end].join(" ");
         let hash = fnv1a(shingle.as_bytes());
 
-        for bit in 0..64 {
+        for (bit, val) in v.iter_mut().enumerate() {
             if (hash >> bit) & 1 == 1 {
-                v[bit] += 1;
+                *val += 1;
             } else {
-                v[bit] -= 1;
+                *val -= 1;
             }
         }
     }
 
     let mut result: u64 = 0;
-    for bit in 0..64 {
-        if v[bit] > 0 {
+    for (bit, val) in v.iter().enumerate() {
+        if *val > 0 {
             result |= 1u64 << bit;
         }
     }
@@ -436,10 +436,7 @@ impl HashBuilder {
         }
 
         if self.normalize_whitespace {
-            let normalized: String = result
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
+            let normalized: String = result.split_whitespace().collect::<Vec<_>>().join(" ");
             result = std::borrow::Cow::Owned(normalized);
         }
 
@@ -631,7 +628,10 @@ mod tests {
     #[test]
     fn test_simhash_different_texts() {
         let a = simhash("the quick brown fox jumps over the lazy dog", 3);
-        let b = simhash("completely unrelated text about quantum physics and mathematics", 3);
+        let b = simhash(
+            "completely unrelated text about quantum physics and mathematics",
+            3,
+        );
         let dist = hamming_distance(a, b);
         // Very different texts often have larger distance
         assert!(dist > 0, "expected non-zero distance");
@@ -645,7 +645,10 @@ mod tests {
 
     #[test]
     fn test_simhash_default() {
-        assert_eq!(simhash_default("test text here"), simhash("test text here", 3));
+        assert_eq!(
+            simhash_default("test text here"),
+            simhash("test text here", 3)
+        );
     }
 
     #[test]

@@ -12,6 +12,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example caching_demo`
 
+mod shared;
 use cognis::caching::{
     CacheEntry, CacheKey, CachePolicy, CacheStats, CacheStore, CacheWarmer, InMemoryCache,
     SemanticCache,

@@ -18,6 +18,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example text_splitters`
 
+mod shared;
 use std::collections::HashMap;
 
 use cognis::text_splitters::{

@@ -22,7 +22,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::output_parsers::OutputParser;
 use cognis_core::runnables::base::Runnable;
 use cognis_core::runnables::config::RunnableConfig;

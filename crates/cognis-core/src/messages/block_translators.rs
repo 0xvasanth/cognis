@@ -5,7 +5,7 @@
 
 use serde_json::{json, Value};
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 
 /// Trait for translating between LangChain and provider message formats.
 #[allow(clippy::wrong_self_convention)]

@@ -11,6 +11,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example health_monitoring`
 
+mod shared;
 use std::sync::Arc;
 use std::time::Duration;
 

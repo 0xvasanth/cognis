@@ -21,9 +21,10 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Policy to apply when a rate limit is exceeded.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum RateLimitPolicy {
     /// Reject the request immediately with an error.
+    #[default]
     Reject,
     /// Queue the request until capacity is available.
     Queue,
@@ -41,12 +42,6 @@ pub enum RateLimitPolicy {
         /// The reduced rate (requests per second) to enforce.
         reduced_rate: f64,
     },
-}
-
-impl Default for RateLimitPolicy {
-    fn default() -> Self {
-        Self::Reject
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +76,12 @@ impl RateLimitResult {
     }
 
     /// Convenience constructor for a denied result.
-    pub fn denied(wait_time: Duration, remaining_tokens: f64, cost_remaining: f64, reason: impl Into<String>) -> Self {
+    pub fn denied(
+        wait_time: Duration,
+        remaining_tokens: f64,
+        cost_remaining: f64,
+        reason: impl Into<String>,
+    ) -> Self {
         Self {
             allowed: false,
             wait_time,
@@ -251,7 +251,13 @@ impl SlidingWindowLimiter {
     /// Add a window constraint.
     pub fn add_window(&self, window: TimeWindow, limit: u64) {
         let mut windows = self.windows.lock().unwrap();
-        windows.push((window, WindowState { limit, timestamps: Vec::new() }));
+        windows.push((
+            window,
+            WindowState {
+                limit,
+                timestamps: Vec::new(),
+            },
+        ));
     }
 
     /// Prune expired timestamps from all windows.
@@ -291,15 +297,17 @@ impl SlidingWindowLimiter {
                         }
                     }
                 }
-                denied_reason = Some(format!(
-                    "{:?} limit of {} exceeded",
-                    tw, state.limit
-                ));
+                denied_reason = Some(format!("{:?} limit of {} exceeded", tw, state.limit));
             }
         }
 
         if let Some(reason) = denied_reason {
-            return RateLimitResult::denied(worst_wait, min_remaining as f64, f64::INFINITY, reason);
+            return RateLimitResult::denied(
+                worst_wait,
+                min_remaining as f64,
+                f64::INFINITY,
+                reason,
+            );
         }
 
         // Record the request.
@@ -393,7 +401,10 @@ impl CostBasedLimiter {
                 Duration::ZERO,
                 f64::INFINITY,
                 remaining,
-                format!("budget exceeded: spent ${:.4} of ${:.4}", spent, self.budget),
+                format!(
+                    "budget exceeded: spent ${:.4} of ${:.4}",
+                    spent, self.budget
+                ),
             )
         }
     }
@@ -416,7 +427,10 @@ impl CostBasedLimiter {
                 Duration::ZERO,
                 f64::INFINITY,
                 remaining,
-                format!("budget exceeded: spent ${:.4} of ${:.4}", *spent, self.budget),
+                format!(
+                    "budget exceeded: spent ${:.4} of ${:.4}",
+                    *spent, self.budget
+                ),
             )
         }
     }
@@ -939,7 +953,9 @@ impl QuotaManager {
         if let Some(entry) = quotas.get_mut(key) {
             entry.maybe_reset();
             if entry.current >= entry.max_requests {
-                let remaining_window = entry.window.checked_sub(entry.window_start.elapsed())
+                let remaining_window = entry
+                    .window
+                    .checked_sub(entry.window_start.elapsed())
                     .unwrap_or(Duration::ZERO);
                 return RateLimitResult::denied(
                     remaining_window,
@@ -982,7 +998,9 @@ impl QuotaManager {
         if let Some(entry) = quotas.get_mut(key) {
             entry.maybe_reset();
             if entry.current >= entry.max_requests {
-                let remaining_window = entry.window.checked_sub(entry.window_start.elapsed())
+                let remaining_window = entry
+                    .window
+                    .checked_sub(entry.window_start.elapsed())
                     .unwrap_or(Duration::ZERO);
                 return RateLimitResult::denied(
                     remaining_window,
@@ -1171,7 +1189,11 @@ mod tests {
             multiplier: 2.0,
         };
         match policy {
-            RateLimitPolicy::Backoff { base_delay, max_delay, multiplier } => {
+            RateLimitPolicy::Backoff {
+                base_delay,
+                max_delay,
+                multiplier,
+            } => {
                 assert_eq!(base_delay, Duration::from_millis(100));
                 assert_eq!(max_delay, Duration::from_secs(10));
                 assert!((multiplier - 2.0).abs() < f64::EPSILON);
@@ -1446,7 +1468,11 @@ mod tests {
         limiter.record_cost(0.8);
         let result = limiter.check(0.5);
         assert!(!result.allowed);
-        assert!(result.reason.as_deref().unwrap().contains("budget exceeded"));
+        assert!(result
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("budget exceeded"));
     }
 
     #[test]
@@ -1514,7 +1540,11 @@ mod tests {
     fn test_composite_all_pass() {
         let mut composite = CompositeLimiter::new();
         composite.add_limiter(Box::new(TokenBucket::new(10.0, 1.0)));
-        composite.add_limiter(Box::new(CostBasedLimiter::new(100.0, 0.01, RateLimitPolicy::Reject)));
+        composite.add_limiter(Box::new(CostBasedLimiter::new(
+            100.0,
+            0.01,
+            RateLimitPolicy::Reject,
+        )));
 
         let result = composite.check_all();
         assert!(result.allowed);
@@ -1526,7 +1556,11 @@ mod tests {
         let bucket = TokenBucket::new(1.0, 0.0);
         bucket.try_acquire(1.0); // Drain it.
         composite.add_limiter(Box::new(bucket));
-        composite.add_limiter(Box::new(CostBasedLimiter::new(100.0, 0.01, RateLimitPolicy::Reject)));
+        composite.add_limiter(Box::new(CostBasedLimiter::new(
+            100.0,
+            0.01,
+            RateLimitPolicy::Reject,
+        )));
 
         let result = composite.check_all();
         assert!(!result.allowed);
@@ -1680,7 +1714,11 @@ mod tests {
         assert!(r1.allowed);
         let r2 = qm.check_and_record("gpt-4", 0.3);
         assert!(!r2.allowed);
-        assert!(r2.reason.as_deref().unwrap().contains("cost quota exceeded"));
+        assert!(r2
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("cost quota exceeded"));
     }
 
     #[test]

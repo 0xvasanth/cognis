@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use cognis_core::documents::Document;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{HumanMessage, Message, SystemMessage};
 
@@ -537,13 +537,12 @@ impl ExtractionChain {
 
         match self.output_format {
             OutputFormat::Json => {
-                let parsed: Value = serde_json::from_str(cleaned).map_err(|e| {
-                    CognisError::OutputParserError {
+                let parsed: Value =
+                    serde_json::from_str(cleaned).map_err(|e| CognisError::OutputParserError {
                         message: format!("Failed to parse extraction JSON: {}", e),
                         observation: Some(raw.to_string()),
                         llm_output: None,
-                    }
-                })?;
+                    })?;
                 match parsed {
                     Value::Array(arr) => Ok(arr),
                     Value::Object(_) => Ok(vec![parsed]),

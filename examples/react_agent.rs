@@ -17,6 +17,7 @@
 //!
 //! Run with: `cargo run -p cognis-examples --example react_agent`
 
+mod shared;
 use cognisgraph::prebuilt::agents::{
     create_react_agent, create_tool_node, AgentState, ReactAgentConfig, ToolCall, ToolChoice,
     ToolDefinition,

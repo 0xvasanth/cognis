@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::error::{Result, CognisError};
+use crate::error::{CognisError, Result};
 use crate::outputs::ChatGeneration;
 use crate::runnables::base::Runnable;
 use crate::runnables::config::RunnableConfig;

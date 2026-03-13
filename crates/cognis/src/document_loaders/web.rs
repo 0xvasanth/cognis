@@ -7,13 +7,13 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use async_trait::async_trait;
-use futures::stream;
-use regex::Regex;
-use reqwest::Client;
 use cognis_core::document_loaders::BaseLoader;
 use cognis_core::document_loaders::DocumentStream;
 use cognis_core::documents::Document;
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
+use futures::stream;
+use regex::Regex;
+use reqwest::Client;
 use serde_json::Value;
 
 use super::html::{extract_text_from_html, extract_title};
@@ -326,12 +326,10 @@ impl WebLoader {
 
         let mut header_map = reqwest::header::HeaderMap::new();
         for (k, v) in &self.headers {
-            let name = reqwest::header::HeaderName::from_bytes(k.as_bytes()).map_err(|e| {
-                CognisError::Other(format!("Invalid header name '{}': {}", k, e))
-            })?;
-            let val = reqwest::header::HeaderValue::from_str(v).map_err(|e| {
-                CognisError::Other(format!("Invalid header value '{}': {}", v, e))
-            })?;
+            let name = reqwest::header::HeaderName::from_bytes(k.as_bytes())
+                .map_err(|e| CognisError::Other(format!("Invalid header name '{}': {}", k, e)))?;
+            let val = reqwest::header::HeaderValue::from_str(v)
+                .map_err(|e| CognisError::Other(format!("Invalid header value '{}': {}", v, e)))?;
             header_map.insert(name, val);
         }
         builder = builder.default_headers(header_map);
@@ -373,16 +371,14 @@ impl WebLoader {
 
     /// Fetch a single URL and build a document.
     async fn fetch_url(&self, client: &Client, url: &str) -> Result<Document> {
-        let response = client.get(url).send().await.map_err(|e| {
-            CognisError::Other(format!("HTTP request to '{}' failed: {}", url, e))
-        })?;
+        let response =
+            client.get(url).send().await.map_err(|e| {
+                CognisError::Other(format!("HTTP request to '{}' failed: {}", url, e))
+            })?;
 
         let status = response.status();
         if !status.is_success() {
-            return Err(CognisError::Other(format!(
-                "HTTP {} for '{}'",
-                status, url
-            )));
+            return Err(CognisError::Other(format!("HTTP {} for '{}'", status, url)));
         }
 
         let raw_html = response.text().await.map_err(|e| {

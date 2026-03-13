@@ -25,7 +25,7 @@ use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 
 /// Configuration for creating a chat model instance.
@@ -648,9 +648,7 @@ mod tests {
         let mut factory = ChatModelFactory::new();
         factory.register(
             "failing",
-            Box::new(|_config: ModelConfig| {
-                Err(CognisError::Other("construction failed".into()))
-            }),
+            Box::new(|_config: ModelConfig| Err(CognisError::Other("construction failed".into()))),
         );
 
         let config = ModelConfig::new("failing", "model");

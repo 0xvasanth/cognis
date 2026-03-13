@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 
-use cognis_core::error::{Result, CognisError};
+use cognis_core::error::{CognisError, Result};
 use cognis_core::messages::Message;
 
 use super::retry::{should_retry, OnFailure, RetryCondition, RetryConfig};
