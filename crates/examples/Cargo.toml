@@ -1,16 +1,16 @@
 [package]
-name = "rustchain-examples"
+name = "cognis-examples"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Example programs for the RustChain workspace"
+description = "Example programs for the Cognis workspace"
 
 [dependencies]
-rustchain-core.workspace = true
-rustchain = { workspace = true, features = ["all-providers"] }
-langgraph.workspace = true
-deepagents.workspace = true
+cognis-core.workspace = true
+cognis = { workspace = true, features = ["all-providers"] }
+cognisgraph.workspace = true
+cognisagent.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

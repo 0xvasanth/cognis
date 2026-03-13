@@ -1,7 +1,7 @@
 //! ReAct Agent Example (Prebuilt Agents)
 //!
 //! Demonstrates the standalone prebuilt agent primitives from
-//! `langgraph::prebuilt::agents`, which provide a lightweight tool-calling
+//! `cognisgraph::prebuilt::agents`, which provide a lightweight tool-calling
 //! workflow without requiring a full `BaseChatModel` implementation.
 //!
 //! Features shown:
@@ -15,9 +15,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example react_agent`
+//! Run with: `cargo run -p cognis-examples --example react_agent`
 
-use langgraph::prebuilt::agents::{
+use cognisgraph::prebuilt::agents::{
     create_react_agent, create_tool_node, AgentState, ReactAgentConfig, ToolCall, ToolChoice,
     ToolDefinition,
 };
@@ -319,11 +319,11 @@ fn main() {
 
     let multi_input = json!({
         "messages": [
-            {"role": "human", "content": "Compute 100 + 200 and reverse 'rustchain'"}
+            {"role": "human", "content": "Compute 100 + 200 and reverse 'cognis'"}
         ],
         "tool_calls": [
             {"id": "m1", "tool_name": "calculator", "arguments": {"a": 100, "b": 200, "op": "add"}},
-            {"id": "m2", "tool_name": "reverse", "arguments": "rustchain"}
+            {"id": "m2", "tool_name": "reverse", "arguments": "cognis"}
         ]
     });
 

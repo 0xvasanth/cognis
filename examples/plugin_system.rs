@@ -14,9 +14,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example plugin_system`
+//! Run with: `cargo run -p cognis-examples --example plugin_system`
 
-use deepagents::plugins::{Plugin, PluginCapability, PluginRegistry, SimplePlugin};
+use cognisagent::plugins::{Plugin, PluginCapability, PluginRegistry, SimplePlugin};
 
 fn main() {
     println!("=== Plugin System Example ===\n");
@@ -29,12 +29,12 @@ fn main() {
 
     let tool_plugin = SimplePlugin::new("web-search", "1.0.0")
         .with_capability(PluginCapability::ToolProvider)
-        .with_author("RustChain Team")
+        .with_author("Cognis Team")
         .with_description("Provides web search tools for information retrieval");
 
     let middleware_plugin = SimplePlugin::new("rate-limiter", "0.5.0")
         .with_capability(PluginCapability::MiddlewareProvider)
-        .with_author("RustChain Team")
+        .with_author("Cognis Team")
         .with_description("Rate limiting middleware for API calls");
 
     let multi_plugin = SimplePlugin::new("observability", "2.0.0")

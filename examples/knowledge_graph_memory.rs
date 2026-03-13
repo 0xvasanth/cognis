@@ -9,13 +9,13 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example knowledge_graph_memory`
+//! Run with: `cargo run -p cognis-examples --example knowledge_graph_memory`
 
-use rustchain::memory::knowledge_graph::{
+use cognis::memory::knowledge_graph::{
     KnowledgeGraph, KnowledgeGraphMemory, KnowledgeTriple, RegexTripleExtractor, TripleExtractor,
 };
-use rustchain::memory::BaseMemory;
-use rustchain_core::messages::Message;
+use cognis::memory::BaseMemory;
+use cognis_core::messages::Message;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     graph.add_triple(KnowledgeTriple::new("Alice", "lives in", "San Francisco"));
     graph.add_triple(KnowledgeTriple::new("Bob", "manages", "Project Alpha").with_confidence(0.9));
     graph.add_triple(
-        KnowledgeTriple::new("Charlie", "created", "RustChain")
+        KnowledgeTriple::new("Charlie", "created", "Cognis")
             .with_confidence(0.95)
             .with_source("Internal docs"),
     );
@@ -145,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .memory_key("chat_history")
         .knowledge_key("knowledge_context")
         .initial_triples(vec![KnowledgeTriple::new(
-            "RustChain",
+            "Cognis",
             "is",
             "an LLM framework",
         )])

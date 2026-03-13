@@ -8,9 +8,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example plan_and_execute`
+//! Run with: `cargo run -p cognis-examples --example plan_and_execute`
 
-use rustchain::agents::plan_and_execute::{
+use cognis::agents::plan_and_execute::{
     PlanAndExecuteAgent, PlanStep, PlanStepStatus, Planner, SimplePlanner, TemplatePlanner,
     ToolStepExecutor,
 };

@@ -1,6 +1,6 @@
 //! Graph Analysis Example
 //!
-//! Demonstrates the graph analysis utilities provided by the `langgraph::graph::analysis`
+//! Demonstrates the graph analysis utilities provided by the `cognisgraph::graph::analysis`
 //! module for inspecting, measuring, and visualizing directed graph structures.
 //!
 //! Features shown:
@@ -15,9 +15,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example graph_analysis`
+//! Run with: `cargo run -p cognis-examples --example graph_analysis`
 
-use langgraph::graph::analysis::{
+use cognisgraph::graph::analysis::{
     CycleDetector, GraphMetrics, GraphTopology, GraphVisualizer, PathFinder, SubgraphExtractor,
 };
 

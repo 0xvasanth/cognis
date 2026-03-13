@@ -9,12 +9,12 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example health_monitoring`
+//! Run with: `cargo run -p cognis-examples --example health_monitoring`
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use deepagents::health::{
+use cognisagent::health::{
     BackendHealthCheck, ComponentHealth, DiskSpaceCheck, HealthCheck, HealthEndpoint,
     HealthMonitor, HealthStatus, MemoryHealthCheck, ToolHealthCheck,
 };

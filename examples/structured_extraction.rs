@@ -6,16 +6,16 @@
 //!
 //! No API keys required -- uses GenericFakeChatModel.
 //!
-//! Run with: cargo run -p rustchain-examples --example structured_extraction
+//! Run with: cargo run -p cognis-examples --example structured_extraction
+
+mod shared;
 
 use std::sync::Arc;
 
 use serde_json::json;
 
-use rustchain::chains::structured_output::StructuredOutputChain;
-use rustchain_core::language_models::GenericFakeChatModel;
-use rustchain_core::messages::AIMessage;
-use rustchain_core::runnables::Runnable;
+use cognis::chains::structured_output::StructuredOutputChain;
+use cognis_core::runnables::Runnable;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -52,15 +52,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Each response is a valid JSON object matching the schema.
     // In production, a real LLM would generate these from the input text.
 
-    let model = Arc::new(GenericFakeChatModel::from_messages(vec![
-        AIMessage::new(
-            r#"{"name": "Alice Johnson", "age": 32, "occupation": "Software Engineer"}"#,
-        ),
-        AIMessage::new(r#"{"name": "Dr. Robert Chen", "age": 45, "occupation": "Neurosurgeon"}"#),
-        AIMessage::new(r#"{"name": "Maria Garcia", "age": 28, "occupation": "Data Scientist"}"#),
-    ]));
+    let model = shared::get_chat_model(vec![
+        r#"{"name": "Alice Johnson", "age": 32, "occupation": "Software Engineer"}"#.into(),
+        r#"{"name": "Dr. Robert Chen", "age": 45, "occupation": "Neurosurgeon"}"#.into(),
+        r#"{"name": "Maria Garcia", "age": 28, "occupation": "Data Scientist"}"#.into(),
+    ]);
 
-    println!("Step 2: Created GenericFakeChatModel with 3 predefined responses\n");
+    println!("Step 2: Created chat model with 3 predefined responses\n");
 
     // -------------------------------------------------------------------------
     // Step 3: Build the StructuredOutputChain
@@ -116,9 +114,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     println!("--- Step 5: Extraction with output key ---\n");
 
-    let wrapped_model = Arc::new(GenericFakeChatModel::from_messages(vec![AIMessage::new(
-        r#"{"name": "Eve Park", "age": 38, "occupation": "Architect"}"#,
-    )]));
+    let wrapped_model = shared::get_chat_model(vec![
+        r#"{"name": "Eve Park", "age": 38, "occupation": "Architect"}"#.into(),
+    ]);
 
     let wrapped_chain = StructuredOutputChain::builder()
         .model(wrapped_model)
@@ -171,9 +169,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "required": ["event_name", "date"]
     });
 
-    let event_model = Arc::new(GenericFakeChatModel::from_messages(vec![AIMessage::new(
-        r#"{"event_name": "RustConf 2025", "date": "2025-09-15", "location": {"city": "Portland", "country": "USA"}, "attendees": ["Alice", "Bob", "Carol"]}"#,
-    )]));
+    let event_model = shared::get_chat_model(vec![
+        r#"{"event_name": "RustConf 2025", "date": "2025-09-15", "location": {"city": "Portland", "country": "USA"}, "attendees": ["Alice", "Bob", "Carol"]}"#.into(),
+    ]);
 
     let event_chain = StructuredOutputChain::builder()
         .model(event_model)

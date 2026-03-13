@@ -1,6 +1,6 @@
 //! Streaming Utilities Demo
 //!
-//! Demonstrates the streaming utilities from `rustchain::streaming`:
+//! Demonstrates the streaming utilities from `cognis::streaming`:
 //! - StreamEvent variants (Token, ToolCallStart, ToolCallArg, ToolCallEnd, Done)
 //! - StreamBuffer for collecting events and extracting tokens/tool calls
 //! - FilterTransformer for filtering events by type
@@ -9,9 +9,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example streaming_demo`
+//! Run with: `cargo run -p cognis-examples --example streaming_demo`
 
-use rustchain::streaming::{
+use cognis::streaming::{
     FilterTransformer, StreamBuffer, StreamEvent, StreamStats, StreamTransformer, TokenAggregator,
 };
 

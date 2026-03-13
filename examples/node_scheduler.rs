@@ -18,12 +18,12 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example node_scheduler`
+//! Run with: `cargo run -p cognis-examples --example node_scheduler`
 
 use std::collections::HashSet;
 use std::time::Duration;
 
-use langgraph::pregel::scheduler::{
+use cognisgraph::pregel::scheduler::{
     NodePriority, ResourceAwareScheduler, ResourcePool, ScheduledNode, Scheduler, SchedulerMetrics,
     SchedulingStrategy,
 };

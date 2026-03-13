@@ -1,15 +1,15 @@
 //! Structured Output Parsing Demo
 //!
-//! Demonstrates structured output parsing from `rustchain::output_parsers::structured`:
+//! Demonstrates structured output parsing from `cognis::output_parsers::structured`:
 //! - StructuredParser for parsing JSON blocks, key-value pairs, and lists
 //! - SchemaEnforcer for validating parsed output against a schema
 //! - OutputRepairer for fixing malformed JSON
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example structured_parsing_demo`
+//! Run with: `cargo run -p cognis-examples --example structured_parsing_demo`
 
-use rustchain::output_parsers::structured::{
+use cognis::output_parsers::structured::{
     JsonType, OutputRepairer, SchemaEnforcer, StructuredParser,
 };
 

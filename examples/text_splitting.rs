@@ -8,12 +8,12 @@
 //!
 //! No API keys required.
 //!
-//! Run with: cargo run -p rustchain-examples --example text_splitting
+//! Run with: cargo run -p cognis-examples --example text_splitting
 
-use rustchain::text_splitter::{
+use cognis::text_splitter::{
     Language, RecursiveCharacterTextSplitter, SentenceTextSplitter, TextSplitter,
 };
-use rustchain_core::documents::Document;
+use cognis_core::documents::Document;
 
 /// Sample long-form text for demonstrating recursive splitting.
 const SAMPLE_TEXT: &str = r#"Rust is a multi-paradigm, general-purpose programming language that emphasizes performance, type safety, and concurrency. It enforces memory safety without a garbage collector. Rust was originally designed by Graydon Hoare at Mozilla Research, with contributions from Dave Herman and others. The designers refined the language while working on the experimental Servo browser engine and the Rust compiler itself.

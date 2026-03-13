@@ -15,12 +15,12 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example summary_buffer_memory`
+//! Run with: `cargo run -p cognis-examples --example summary_buffer_memory`
 
-use rustchain::memory::summary_buffer::{
+use cognis::memory::summary_buffer::{
     SimpleSummarizer, SummaryBufferMemory, SummaryStrategy, TemplateSummarizer,
 };
-use rustchain_core::messages::Message;
+use cognis_core::messages::Message;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let summary =
-        rustchain::memory::summary_buffer::Summarizer::summarize(&summarizer, &messages, None)?;
+        cognis::memory::summary_buffer::Summarizer::summarize(&summarizer, &messages, None)?;
     println!("Summary (no prior context):");
     println!("{}\n", summary);
 
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Message::human("What about Spain?"),
         Message::ai("The capital of Spain is Madrid."),
     ];
-    let summary_with_prior = rustchain::memory::summary_buffer::Summarizer::summarize(
+    let summary_with_prior = cognis::memory::summary_buffer::Summarizer::summarize(
         &summarizer,
         &new_messages,
         Some(&summary),
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "=== Conversation Summary ===\nPrior: {existing_summary}\n\nRecent:\n{messages}",
     );
 
-    let template_summary = rustchain::memory::summary_buffer::Summarizer::summarize(
+    let template_summary = cognis::memory::summary_buffer::Summarizer::summarize(
         &template_summarizer,
         &messages,
         Some("User asked about European capitals."),

@@ -8,15 +8,15 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example memory_types`
+//! Run with: `cargo run -p cognis-examples --example memory_types`
 
-use rustchain::memory::token_buffer::{
+use cognis::memory::token_buffer::{
     CharBasedTokenCounter, SimpleTokenCounter, TokenBufferMemory,
 };
-use rustchain::memory::{
+use cognis::memory::{
     BaseMemory, ConversationBufferMemory, ConversationWindowMemory, EntityMemory,
 };
-use rustchain_core::messages::Message;
+use cognis_core::messages::Message;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

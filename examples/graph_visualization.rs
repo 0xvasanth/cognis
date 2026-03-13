@@ -8,13 +8,13 @@
 //!
 //! No API keys required.
 //!
-//! Run with: cargo run -p rustchain-examples --example graph_visualization
+//! Run with: cargo run -p cognis-examples --example graph_visualization
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use langgraph::graph::branch::RouterResult;
-use langgraph::graph::state::{AsyncNodeAction, StateGraph};
+use cognisgraph::graph::branch::RouterResult;
+use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
 use serde_json::{json, Value};
 
 /// A no-op async node action for demonstration purposes.
@@ -123,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     println!("--- Part 4: Compact ASCII Rendering ---\n");
 
-    let compact_opts = langgraph::graph::ascii::AsciiRenderOptions {
+    let compact_opts = cognisgraph::graph::ascii::AsciiRenderOptions {
         compact: true,
         ..Default::default()
     };

@@ -1,6 +1,6 @@
 //! Caching System Demo
 //!
-//! Demonstrates the caching system from `rustchain::caching`:
+//! Demonstrates the caching system from `cognis::caching`:
 //! - CacheKey creation from model/messages/temperature
 //! - InMemoryCache for storing and retrieving cached entries
 //! - TTL expiration behavior
@@ -10,9 +10,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example caching_demo`
+//! Run with: `cargo run -p cognis-examples --example caching_demo`
 
-use rustchain::caching::{
+use cognis::caching::{
     CacheEntry, CacheKey, CachePolicy, CacheStats, CacheStore, CacheWarmer, InMemoryCache,
     SemanticCache,
 };

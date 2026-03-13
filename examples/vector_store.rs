@@ -14,11 +14,11 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example vector_store`
+//! Run with: `cargo run -p cognis-examples --example vector_store`
 
 use std::collections::HashMap;
 
-use rustchain::vectorstores::memory::{
+use cognis::vectorstores::memory::{
     InMemoryVectorStore, MaxMarginalRelevance, SearchQuery, SimilarityMetric, VectorEntry,
     VectorStoreStats,
 };

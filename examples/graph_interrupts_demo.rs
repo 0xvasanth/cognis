@@ -1,6 +1,6 @@
 //! Graph Interrupts Demo
 //!
-//! Demonstrates the interrupt/resume system from `langgraph::graph::interrupts`
+//! Demonstrates the interrupt/resume system from `cognisgraph::graph::interrupts`
 //! for human-in-the-loop workflows.
 //!
 //! Features shown:
@@ -13,9 +13,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example graph_interrupts_demo`
+//! Run with: `cargo run -p cognis-examples --example graph_interrupts_demo`
 
-use langgraph::graph::interrupts::{
+use cognisgraph::graph::interrupts::{
     InterruptLog, InterruptPolicy, InterruptQueue, InterruptRequest, InterruptResponse,
     InterruptType, TimeoutPolicy,
 };

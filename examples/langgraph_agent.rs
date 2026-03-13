@@ -4,20 +4,19 @@
 //! LangGraph's create_react_agent. The agent alternates between calling a
 //! chat model and executing tools until done.
 //!
-//! No API keys required -- uses FakeMessagesListChatModel.
+//! No API keys required -- auto-detects Ollama, falls back to fake model.
 
-use std::collections::HashMap;
+mod shared;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::json;
 
-use langgraph::prebuilt::create_react_agent;
-use rustchain_core::language_models::FakeMessagesListChatModel;
-use rustchain_core::messages::tool_types::ToolCall;
-use rustchain_core::messages::{AIMessage, Message};
-use rustchain_core::tools::types::{ToolInput, ToolOutput};
-use rustchain_core::tools::BaseTool;
+use cognisgraph::prebuilt::create_react_agent;
+use cognis_core::messages::Message;
+use cognis_core::tools::types::{ToolInput, ToolOutput};
+use cognis_core::tools::BaseTool;
 
 /// A simple lookup tool that returns a hardcoded answer.
 ///
@@ -35,7 +34,7 @@ impl BaseTool for LookupTool {
         "Look up information about a topic"
     }
 
-    async fn _run(&self, input: ToolInput) -> rustchain_core::error::Result<ToolOutput> {
+    async fn _run(&self, input: ToolInput) -> cognis_core::error::Result<ToolOutput> {
         // Extract the query from the tool input.
         let query = match &input {
             ToolInput::Text(s) => s.clone(),
@@ -62,30 +61,12 @@ impl BaseTool for LookupTool {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== LangGraph ReAct Agent Example ===\n");
 
-    // Step 1: Prepare the fake model responses.
+    // Step 1: Create the chat model.
     //
-    // The FakeMessagesListChatModel cycles through predefined Message responses.
-    // First response: an AI message with a tool call to "lookup".
-    // Second response: a final AI message with the answer.
-    let mut ai_with_tool_call = AIMessage::new("Let me look that up for you.");
-    ai_with_tool_call.tool_calls.push(ToolCall {
-        name: "lookup".to_string(),
-        args: {
-            let mut m = HashMap::new();
-            m.insert("query".to_string(), json!("capital of France"));
-            m
-        },
-        id: Some("call_abc123".to_string()),
-    });
-
-    let ai_final = AIMessage::new(
-        "The capital of France is Paris, with a population of about 2.1 million people.",
-    );
-
-    let model = Arc::new(FakeMessagesListChatModel::new(vec![
-        Message::Ai(ai_with_tool_call),
-        Message::Ai(ai_final),
-    ]));
+    // Auto-detects Ollama; falls back to a fake model with a canned response.
+    let model = shared::get_chat_model(vec![
+        "The capital of France is Paris, with a population of about 2.1 million people.".into(),
+    ]);
 
     // Step 2: Create the tools.
     let tool: Arc<dyn BaseTool> = Arc::new(LookupTool);

@@ -10,11 +10,11 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example execution_hooks`
+//! Run with: `cargo run -p cognis-examples --example execution_hooks`
 
 use std::sync::Arc;
 
-use langgraph::graph::hooks::{
+use cognisgraph::graph::hooks::{
     HookAction, HookContext, HookPhase, HookRegistry, LoggingHook, StateSnapshotHook,
     StateValidationHook, TimingHook,
 };

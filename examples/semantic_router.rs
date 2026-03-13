@@ -7,15 +7,15 @@
 //!
 //! No API keys required -- uses DeterministicFakeEmbedding and FakeListChatModel.
 //!
-//! Run with: cargo run -p rustchain-examples --example semantic_router
+//! Run with: cargo run -p cognis-examples --example semantic_router
+
+mod shared;
 
 use std::sync::Arc;
 
-use rustchain::chains::router::{Route, RouterChain, SemanticRouter};
-use rustchain_core::embeddings::Embeddings;
-use rustchain_core::embeddings_fake::DeterministicFakeEmbedding;
-use rustchain_core::language_models::chat_model::BaseChatModel;
-use rustchain_core::language_models::FakeListChatModel;
+use cognis::chains::router::{Route, RouterChain, SemanticRouter};
+use cognis_core::embeddings::Embeddings;
+use cognis_core::embeddings_fake::DeterministicFakeEmbedding;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -87,11 +87,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // formatted prompt to the model.
     println!("--- RouterChain (Route + LLM) ---\n");
 
-    let llm: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
+    let llm = shared::get_chat_model(vec![
         "The quadratic formula is x = (-b +/- sqrt(b^2 - 4ac)) / 2a. This solves any equation of the form ax^2 + bx + c = 0.".into(),
         "Atoms bond through ionic bonds (electron transfer), covalent bonds (electron sharing), and metallic bonds. The type depends on electronegativity differences.".into(),
         "The Western Roman Empire fell in 476 AD when Odoacer deposed the last emperor, Romulus Augustulus. Contributing factors included economic decline, military overextension, and barbarian invasions.".into(),
-    ]));
+    ]);
 
     let chain = RouterChain::new(router, llm);
 

@@ -1,6 +1,6 @@
 //! Resilience Patterns Demo
 //!
-//! Demonstrates the `rustchain::resilience` module:
+//! Demonstrates the `cognis::resilience` module:
 //! - `RetryStrategy` variants (Fixed, Exponential, Linear) with delay calculations
 //! - `RetryConfig` with retryable error filtering
 //! - `CircuitBreaker` with state transitions (Closed -> Open -> HalfOpen)
@@ -11,9 +11,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example resilience_demo`
+//! Run with: `cargo run -p cognis-examples --example resilience_demo`
 
-use rustchain::resilience::{
+use cognis::resilience::{
     Bulkhead, CircuitBreaker, FallbackChain, ResilienceMetrics, ResiliencePolicy, RetryConfig,
     RetryStrategy,
 };

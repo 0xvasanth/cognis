@@ -9,16 +9,20 @@
 //!
 //! No API keys required -- uses DeterministicFakeEmbedding.
 //!
-//! Run with: cargo run -p rustchain-examples --example vector_store_search
+//! Run with: cargo run -p cognis-examples --example vector_store_search
+
+// This example uses embeddings only (no chat model), so shared::get_chat_model
+// is not applicable here. The shared module is included for consistency.
+mod shared;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use rustchain_core::documents::Document;
-use rustchain_core::embeddings::Embeddings;
-use rustchain_core::embeddings_fake::DeterministicFakeEmbedding;
-use rustchain_core::vectorstores::base::VectorStore;
-use rustchain_core::vectorstores::in_memory::InMemoryVectorStore;
+use cognis_core::documents::Document;
+use cognis_core::embeddings::Embeddings;
+use cognis_core::embeddings_fake::DeterministicFakeEmbedding;
+use cognis_core::vectorstores::base::VectorStore;
+use cognis_core::vectorstores::in_memory::InMemoryVectorStore;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

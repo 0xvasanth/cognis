@@ -16,10 +16,10 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example chain_composition`
+//! Run with: `cargo run -p cognis-examples --example chain_composition`
 
-use rustchain::chains::composition::Handler;
-use rustchain::chains::{
+use cognis::chains::composition::Handler;
+use cognis::chains::{
     execute_with_metrics, ChainMetrics, ChainPipeline, ChainStep, CompositionConditionalChain,
     CompositionSequentialChain, CompositionTransformChain, MapChain, ParallelChain,
 };
@@ -321,7 +321,7 @@ fn main() {
             }))
         }));
 
-    let input = json!({"text": "  Hello WORLD from RustChain  "});
+    let input = json!({"text": "  Hello WORLD from Cognis  "});
     let result = pipeline.execute(input.clone()).unwrap();
     println!("  Input:  {}", input);
     println!(

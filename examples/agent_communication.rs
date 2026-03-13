@@ -15,9 +15,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example agent_communication`
+//! Run with: `cargo run -p cognis-examples --example agent_communication`
 
-use deepagents::communication::{
+use cognisagent::communication::{
     AgentMessage, Channel, CommunicationHub, Mailbox, MessageFilter, MessagePriority, SharedState,
 };
 use serde_json::json;

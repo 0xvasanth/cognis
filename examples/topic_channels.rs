@@ -13,9 +13,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example topic_channels`
+//! Run with: `cargo run -p cognis-examples --example topic_channels`
 
-use langgraph::channels::topic::{
+use cognisgraph::channels::topic::{
     DeadLetterQueue, TopicBus, TopicChannel, TopicFilter, TopicMessage, TopicRouter,
 };
 use serde_json::{json, Value};
