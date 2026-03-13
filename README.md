@@ -4,6 +4,8 @@
 
 **Build LLM apps in Rust. Fast, type-safe, composable.**
 
+[![crates.io](https://img.shields.io/crates/v/cognis.svg)](https://crates.io/crates/cognis)
+[![docs.rs](https://docs.rs/cognis/badge.svg)](https://docs.rs/cognis)
 [![CI](https://img.shields.io/github/actions/workflow/status/0xvasanth/cognis/ci.yml?branch=main)](https://github.com/0xvasanth/cognis/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
@@ -28,8 +30,8 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cognis = { git = "https://github.com/0xvasanth/cognis", features = ["openai"] }
-cognis-core = { git = "https://github.com/0xvasanth/cognis" }
+cognis = { version = "0.1", features = ["openai"] }
+cognis-core = "0.1"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 ```
@@ -161,13 +163,13 @@ Enable only what you need via feature flags:
 
 ```toml
 # Pick your providers
-cognis = { git = "https://github.com/0xvasanth/cognis", features = ["anthropic", "openai"] }
+cognis = { version = "0.1", features = ["anthropic", "openai"] }
 
 # Or enable everything
-cognis = { git = "https://github.com/0xvasanth/cognis", features = ["all-providers"] }
+cognis = { version = "0.1", features = ["all-providers"] }
 
 # Graph workflows with persistence
-cognisgraph = { git = "https://github.com/0xvasanth/cognis", features = ["sqlite"] }
+cognisgraph = { version = "0.1", features = ["sqlite"] }
 ```
 
 | Flag                                                    | Provider                             |

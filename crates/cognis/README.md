@@ -1,37 +1,28 @@
+<div align="center">
+
 # cognis
 
-Implementation layer for the Cognis LLM framework. Provides concrete chat model
-integrations, agent execution, chains, memory, document loaders, text splitters,
-embedding providers, and built-in tools.
+**LLM providers, chains, agents, memory, and tools for Rust.**
 
-## Chat Model Providers
+[![crates.io](https://img.shields.io/crates/v/cognis.svg)](https://crates.io/crates/cognis)
+[![docs.rs](https://docs.rs/cognis/badge.svg)](https://docs.rs/cognis)
+[![MIT](https://img.shields.io/crates/l/cognis.svg)](https://opensource.org/licenses/MIT)
 
-Each provider is behind a feature flag to keep compile times and dependencies minimal.
+[Workspace](https://github.com/0xvasanth/cognis) | [API Docs](https://docs.rs/cognis)
 
-| Feature | Provider | Module |
-|---------|----------|--------|
-| `anthropic` | Anthropic Claude | `chat_models::anthropic` |
-| `openai` | OpenAI GPT | `chat_models::openai` |
-| `google` | Google Gemini | `chat_models::google` |
-| `ollama` | Ollama (local) | `chat_models::ollama` |
-| `azure` | Azure OpenAI | `chat_models::azure` |
-| `all-providers` | All of the above | -- |
+</div>
 
-## Key Modules
+---
 
-- **agents** -- Agent executor with middleware pipeline (retry, PII redaction, summarization, human-in-the-loop, tool selection, and more)
-- **chains** -- LLM chain, conversation chain, sequential chain
-- **memory** -- Buffer, window, and summary memory strategies
-- **document_loaders** -- Text, CSV, JSON, and directory loaders
-- **text_splitter** -- Character, recursive, markdown, HTML, JSON, code, and token splitters
-- **embeddings** -- OpenAI and Ollama embedding providers
-- **tools** -- Calculator, shell command, and JSON query tools
+`cognis` is the implementation layer of the [Cognis](https://github.com/0xvasanth/cognis) framework. It provides concrete LLM provider integrations, agent execution, composable chains, conversation memory, document processing, and built-in tools — all behind feature flags so you only compile what you use.
 
-## Usage
+## Quick Start
 
 ```toml
 [dependencies]
-cognis = { path = "../cognis", features = ["anthropic"] }
+cognis = { version = "0.1", features = ["anthropic"] }
+cognis-core = "0.1"
+tokio = { version = "1", features = ["full"] }
 ```
 
 ```rust,ignore
@@ -40,16 +31,58 @@ use cognis_core::runnables::Runnable;
 use serde_json::json;
 
 let model = ChatAnthropic::new("claude-sonnet-4-20250514");
-let result = model.invoke(json!({"messages": []}), None).await.unwrap();
+let result = model.invoke(json!({"messages": []}), None).await?;
 ```
 
-## Feature Flags
+## LLM Providers
 
-| Feature | Adds |
-|---------|------|
-| `openai` | `reqwest`, `secrecy` |
-| `anthropic` | `reqwest`, `secrecy` |
-| `google` | `reqwest`, `secrecy` |
-| `ollama` | `reqwest` |
-| `azure` | `reqwest`, `secrecy` |
-| `all-providers` | All provider features |
+Enable only what you need:
+
+```toml
+cognis = { version = "0.1", features = ["openai", "anthropic"] }  # pick providers
+cognis = { version = "0.1", features = ["all-providers"] }         # or grab everything
+```
+
+| Feature | Provider |
+|---------|----------|
+| `anthropic` | Anthropic Claude |
+| `openai` | OpenAI GPT |
+| `google` | Google Gemini |
+| `ollama` | Ollama (local models) |
+| `azure` | Azure OpenAI |
+
+## What's Inside
+
+**Agents** — Executor with a pluggable middleware pipeline: retry, PII redaction, tool selection, human-in-the-loop, summarization, and more.
+
+**Chains** — LLM chain, conversation chain, sequential chain, extraction chain, structured output chain, router chain, retrieval QA chain.
+
+**Memory** — Buffer, window, summary, and entity memory strategies for multi-turn conversations.
+
+**Document Loaders** — Text, CSV, JSON, and directory loaders for ingesting data.
+
+**Text Splitters** — Character, recursive, markdown, HTML, JSON, code, and token-aware splitters for chunking documents.
+
+**Embeddings** — OpenAI and Ollama embedding providers with batch support.
+
+**Retrievers** — Caching, reranking, query translation, and multi-query retrievers.
+
+**Tools** — Calculator, shell command, and JSON query tools out of the box.
+
+## Additional Feature Flags
+
+| Feature | What it adds |
+|---------|-------------|
+| `pdf` | PDF document loader |
+| `yaml` | YAML document loader |
+| `toml-loader` | TOML document loader |
+| `sqlite` | SQLite-backed stores |
+
+## Part of the Cognis Workspace
+
+| Crate | Role |
+|-------|------|
+| [cognis-core](https://crates.io/crates/cognis-core) | Foundation traits and types |
+| **cognis** | LLM providers, chains, memory, tools (you are here) |
+| [cognisgraph](https://crates.io/crates/cognisgraph) | State graph orchestration engine |
+| [cognisagent](https://crates.io/crates/cognisagent) | High-level agent framework |

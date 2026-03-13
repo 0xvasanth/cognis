@@ -1,55 +1,91 @@
+<div align="center">
+
 # cognisgraph
 
-Orchestration layer for building stateful, multi-actor agent workflows as directed
-graphs. Inspired by Pregel and Apache Beam, this crate provides a `StateGraph` builder
-that compiles into an executable graph with checkpointing, streaming, human-in-the-loop
-interrupts, and subgraph composition.
+**Stateful, multi-actor agent workflows as executable graphs.**
 
-## Key Types
+[![crates.io](https://img.shields.io/crates/v/cognisgraph.svg)](https://crates.io/crates/cognisgraph)
+[![docs.rs](https://docs.rs/cognisgraph/badge.svg)](https://docs.rs/cognisgraph)
+[![MIT](https://img.shields.io/crates/l/cognisgraph.svg)](https://opensource.org/licenses/MIT)
 
-| Type | Module | Description |
-|------|--------|-------------|
-| `StateGraph` | `graph::state` | Builder for defining nodes, edges, and branches |
-| `CompiledStateGraph` | `graph::state` | Executable graph produced by `StateGraph::compile` |
-| `CheckpointSaver` | `checkpoint` | Trait for persisting execution state |
-| `Runtime` | `runtime` | Tokio-based async runtime utilities |
-| `StreamUpdate` | `types` | Updates emitted during streaming execution |
+[Workspace](https://github.com/0xvasanth/cognis) | [API Docs](https://docs.rs/cognisgraph)
 
-## Features
+</div>
 
-- **Conditional routing** -- `add_conditional_edges` with router functions
-- **Streaming** -- `stream` method with `StreamMode::Values`, `Updates`, or `Debug`
-- **Checkpointing** -- Save and resume graph execution (SQLite backend via `sqlite` feature)
-- **Human-in-the-loop** -- `InterruptType::Before` / `After` for approval workflows
-- **Subgraphs** -- Compose graphs within graphs
-- **Prebuilt agents** -- `create_react_agent` for tool-calling ReAct loops
-- **Retry and caching** -- Per-node `RetryPolicy` and `CachePolicy`
+---
 
-## Usage
+`cognisgraph` is the orchestration layer of the [Cognis](https://github.com/0xvasanth/cognis) framework. Build agent workflows as directed graphs with conditional branching, checkpointing, streaming, human-in-the-loop interrupts, and subgraph composition. Inspired by Pregel and Apache Beam.
+
+## Quick Start
 
 ```toml
 [dependencies]
-cognisgraph = { path = "../cognisgraph" }
-# For SQLite checkpoints:
-# cognisgraph = { path = "../cognisgraph", features = ["sqlite"] }
+cognisgraph = "0.1"
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
 ```
 
 ```rust,ignore
-use cognisgraph::graph::state::StateGraph;
-use cognisgraph::{START, END};
+use std::sync::Arc;
+use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
 use serde_json::{json, Value};
 
-let mut graph = StateGraph::new();
-graph.add_node("greet", |state: Value| Ok(json!({"response": "Hello!"})));
-graph.add_edge(START, "greet");
-graph.add_edge("greet", END);
+let classify: AsyncNodeAction = Arc::new(|state: Value| {
+    Box::pin(async move {
+        let input = state["input"].as_str().unwrap_or("");
+        let category = if input.contains("error") { "issue" } else { "general" };
+        Ok(json!({ "category": category }))
+    })
+});
 
-let compiled = graph.compile(None).unwrap();
-let result = compiled.invoke(json!({})).await.unwrap();
+let respond: AsyncNodeAction = Arc::new(|state: Value| {
+    Box::pin(async move {
+        let cat = state["category"].as_str().unwrap_or("unknown");
+        Ok(json!({ "response": format!("Handling as: {cat}") }))
+    })
+});
+
+let graph = StateGraph::new()
+    .add_node("classify", classify)
+    .add_node("respond", respond)
+    .add_edge("__start__", "classify")
+    .add_edge("classify", "respond")
+    .add_edge("respond", "__end__")
+    .compile()?;
+
+let result = graph.invoke(json!({ "input": "There is an error" })).await?;
 ```
+
+## Capabilities
+
+**State Graphs** — Define nodes as async functions, connect them with edges, add conditional routing with `add_conditional_edges`.
+
+**Pregel Execution** — Superstep-based execution engine that processes nodes in parallel where the graph allows.
+
+**Checkpointing** — Save and resume graph execution. SQLite and Postgres backends available behind feature flags.
+
+**Streaming** — Stream execution updates with `StreamMode::Values`, `Updates`, or `Debug`.
+
+**Human-in-the-Loop** — Pause execution at any node with `InterruptType::Before` or `After` for approval workflows.
+
+**Subgraphs** — Compose graphs within graphs for modular workflow design.
+
+**Prebuilt Agents** — `create_react_agent` gives you a tool-calling ReAct loop out of the box.
+
+**Retry & Caching** — Per-node `RetryPolicy` and `CachePolicy` for resilient execution.
 
 ## Feature Flags
 
-| Feature | Description |
-|---------|-------------|
-| `sqlite` | SQLite checkpoint persistence via `sqlx` |
+```toml
+cognisgraph = { version = "0.1", features = ["sqlite"] }    # SQLite checkpoints
+cognisgraph = { version = "0.1", features = ["postgres"] }   # Postgres checkpoints
+```
+
+## Part of the Cognis Workspace
+
+| Crate | Role |
+|-------|------|
+| [cognis-core](https://crates.io/crates/cognis-core) | Foundation traits and types |
+| [cognis](https://crates.io/crates/cognis) | LLM providers, chains, memory, tools |
+| **cognisgraph** | State graph orchestration engine (you are here) |
+| [cognisagent](https://crates.io/crates/cognisagent) | High-level agent framework |

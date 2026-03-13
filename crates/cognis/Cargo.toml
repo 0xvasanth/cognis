@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 description = "LLM application framework built on cognis-core"
 repository = "https://github.com/0xvasanth/cognis"
+readme = "README.md"
 
 [dependencies]
 cognis-core.workspace = true

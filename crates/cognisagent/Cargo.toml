@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 description = "Batteries-included agent framework built on cognis and cognisgraph"
 repository = "https://github.com/0xvasanth/cognis"
+readme = "README.md"
 
 [dependencies]
 cognis-core.workspace = true
