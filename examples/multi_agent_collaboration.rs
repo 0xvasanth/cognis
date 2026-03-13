@@ -1,26 +1,28 @@
 //! Multi-Agent Collaboration Example
 //!
-//! Demonstrates creating multiple agents using deepagents with SubAgentMiddleware.
+//! Demonstrates creating multiple agents using cognisagent with SubAgentMiddleware.
 //! A researcher agent and a writer agent collaborate through a coordinated pipeline
 //! built on top of LangGraph's StateGraph.
 //!
 //! No API keys required -- uses FakeMessagesListChatModel.
 //!
-//! Run with: cargo run -p rustchain-examples --example multi_agent_collaboration
+//! Run with: cargo run -p cognis-examples --example multi_agent_collaboration
+
+mod shared;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use deepagents::agent::create_deep_agent;
-use deepagents::config::DeepAgentConfig;
-use deepagents::middleware::subagent::SubAgentMiddleware;
-use langgraph::graph::state::{AsyncNodeAction, StateGraph};
-use rustchain_core::language_models::FakeMessagesListChatModel;
-use rustchain_core::messages::tool_types::ToolCall;
-use rustchain_core::messages::{AIMessage, Message};
-use rustchain_core::tools::BaseTool;
+use cognisagent::agent::create_deep_agent;
+use cognisagent::config::DeepAgentConfig;
+use cognisagent::middleware::subagent::SubAgentMiddleware;
+use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
+use cognis_core::language_models::FakeMessagesListChatModel;
+use cognis_core::messages::tool_types::ToolCall;
+use cognis_core::messages::{AIMessage, Message};
+use cognis_core::tools::BaseTool;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,12 +37,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--- Step 1: Setting up researcher agent ---\n");
 
     // The sub-agent model (used by SubAgentMiddleware) returns fact-checked content.
-    let subagent_model = Arc::new(FakeMessagesListChatModel::new(vec![Message::Ai(
-        AIMessage::new(
-            "Fact-check result: Rust was first released in 2010 by Mozilla Research. \
-             It reached version 1.0 in May 2015. The borrow checker is a key innovation.",
-        ),
-    )]));
+    let subagent_model = shared::get_chat_model(vec![
+        "Fact-check result: Rust was first released in 2010 by Mozilla Research. \
+         It reached version 1.0 in May 2015. The borrow checker is a key innovation.".into(),
+    ]);
 
     let subagent_mw = SubAgentMiddleware::new(subagent_model.clone(), 3);
     let subagent_tools = subagent_mw.tools();
@@ -101,19 +101,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("--- Step 2: Setting up writer agent ---\n");
 
-    let writer_model = Arc::new(FakeMessagesListChatModel::new(vec![Message::Ai(
-        AIMessage::new(
-            "# The Rust Programming Language: A Brief History\n\n\
-             Rust emerged from Mozilla Research in 2010 as a bold experiment in systems \
-             programming. The language reached its 1.0 milestone in May 2015, proving that \
-             memory safety and performance need not be mutually exclusive.\n\n\
-             At the heart of Rust's innovation lies the borrow checker -- a compile-time \
-             system that enforces strict ownership rules. This eliminates entire classes of \
-             bugs (use-after-free, data races) without the overhead of garbage collection.\n\n\
-             The developer community has embraced Rust enthusiastically, voting it the 'most \
-             loved programming language' in Stack Overflow surveys for multiple consecutive years.",
-        ),
-    )]));
+    let writer_model = shared::get_chat_model(vec![
+        "# The Rust Programming Language: A Brief History\n\n\
+         Rust emerged from Mozilla Research in 2010 as a bold experiment in systems \
+         programming. The language reached its 1.0 milestone in May 2015, proving that \
+         memory safety and performance need not be mutually exclusive.\n\n\
+         At the heart of Rust's innovation lies the borrow checker -- a compile-time \
+         system that enforces strict ownership rules. This eliminates entire classes of \
+         bugs (use-after-free, data races) without the overhead of garbage collection.\n\n\
+         The developer community has embraced Rust enthusiastically, voting it the 'most \
+         loved programming language' in Stack Overflow surveys for multiple consecutive years.".into(),
+    ]);
 
     let writer_config = DeepAgentConfig::default().with_system_prompt(
         "You are a skilled technical writer. Transform research notes into polished articles.",

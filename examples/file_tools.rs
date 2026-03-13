@@ -9,12 +9,12 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
-use rustchain::tools::file_management::{
+use cognis::tools::file_management::{
     create_file_toolkit, FileInfoTool, FileSystemConfig, ListDirectoryTool, ReadFileTool,
     SearchFilesTool, WriteFileTool,
 };
-use rustchain_core::tools::base::{BaseTool, BaseToolkit};
-use rustchain_core::tools::types::ToolInput;
+use cognis_core::tools::base::{BaseTool, BaseToolkit};
+use cognis_core::tools::types::ToolInput;
 
 /// Helper to create a structured tool input from key-value pairs.
 fn structured_input(pairs: &[(&str, &str)]) -> ToolInput {
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let result = write_tool
         ._run(structured_input(&[
             ("path", "hello.txt"),
-            ("content", "Hello from RustChain!"),
+            ("content", "Hello from Cognis!"),
         ]))
         .await?;
     println!("  {}", extract_content_str(&result));
@@ -225,18 +225,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Extract string content from a ToolOutput.
-fn extract_content_str(output: &rustchain_core::tools::types::ToolOutput) -> String {
+fn extract_content_str(output: &cognis_core::tools::types::ToolOutput) -> String {
     match output {
-        rustchain_core::tools::types::ToolOutput::Content(Value::String(s)) => s.clone(),
-        rustchain_core::tools::types::ToolOutput::Content(v) => v.to_string(),
+        cognis_core::tools::types::ToolOutput::Content(Value::String(s)) => s.clone(),
+        cognis_core::tools::types::ToolOutput::Content(v) => v.to_string(),
         other => format!("{:?}", other),
     }
 }
 
 /// Extract a JSON value from a ToolOutput.
-fn extract_content_value(output: &rustchain_core::tools::types::ToolOutput) -> Value {
+fn extract_content_value(output: &cognis_core::tools::types::ToolOutput) -> Value {
     match output {
-        rustchain_core::tools::types::ToolOutput::Content(v) => v.clone(),
+        cognis_core::tools::types::ToolOutput::Content(v) => v.clone(),
         _ => json!(null),
     }
 }

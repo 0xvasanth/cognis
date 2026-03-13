@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use rustchain::chains::{
+use cognis::chains::{
     BranchChain, ClosureCondition, ConditionalChain, KeyContainsCondition, KeyEqualsCondition,
     KeyExistsCondition, SwitchChain,
 };
-use rustchain_core::runnables::{Runnable, RunnableLambda};
+use cognis_core::runnables::{Runnable, RunnableLambda};
 
 /// Helper: create a lambda that uppercases the "text" field.
 fn uppercase_lambda() -> Arc<dyn Runnable> {

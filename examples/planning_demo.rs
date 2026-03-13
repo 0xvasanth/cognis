@@ -1,6 +1,6 @@
 //! Planning System Demo
 //!
-//! Demonstrates the planning system from `deepagents::planning`:
+//! Demonstrates the planning system from `cognisagent::planning`:
 //! - PlanBuilder for creating plans with sequential and parallel steps
 //! - PlanExecutor for driving execution (start, complete, fail, skip)
 //! - PlanProgress for tracking progress
@@ -8,9 +8,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example planning_demo`
+//! Run with: `cargo run -p cognis-examples --example planning_demo`
 
-use deepagents::planning::{PlanBuilder, PlanExecutor, PlanStep, Replanner};
+use cognisagent::planning::{PlanBuilder, PlanExecutor, PlanStep, Replanner};
 use serde_json::json;
 
 fn main() {
@@ -198,7 +198,7 @@ fn main() {
     let failed_step_id = plan
         .steps()
         .iter()
-        .find(|s| matches!(s.status, deepagents::planning::StepStatus::Failed(_)))
+        .find(|s| matches!(s.status, cognisagent::planning::StepStatus::Failed(_)))
         .map(|s| s.id.clone());
 
     if let Some(id) = failed_step_id {

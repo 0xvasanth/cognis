@@ -1,6 +1,6 @@
 //! Tracing Demo
 //!
-//! Demonstrates the tracing and observability system from `rustchain_core::tracing`.
+//! Demonstrates the tracing and observability system from `cognis_core::tracing`.
 //!
 //! Features shown:
 //! - Creating a TraceCollector to manage traces
@@ -14,15 +14,15 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example tracing_demo`
+//! Run with: `cargo run -p cognis-examples --example tracing_demo`
 
-use rustchain_core::tracing::{
+use cognis_core::tracing::{
     Span, SpanEvent, SpanStatus, Trace, TraceCollector, TraceExporter, TraceId,
 };
 use serde_json::json;
 
 fn main() {
-    println!("=== RustChain Tracing Demo ===\n");
+    println!("=== Cognis Tracing Demo ===\n");
 
     // -----------------------------------------------------------------------
     // 1. Create a TraceCollector

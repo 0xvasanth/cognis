@@ -5,11 +5,12 @@
 //!
 //! No API keys required -- uses fake/mock models.
 
+mod shared;
+
 use futures::StreamExt;
 
-use rustchain_core::language_models::chat_model::BaseChatModel;
-use rustchain_core::language_models::{FakeListChatModel, GenericFakeChatModel};
-use rustchain_core::messages::{AIMessage, HumanMessage, Message};
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::{HumanMessage, Message};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,9 +19,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- Part 1: Character-level streaming with FakeListChatModel ---
     //
     // FakeListChatModel streams each character of the response as a separate chunk.
-    println!("--- Part 1: Character-level streaming (FakeListChatModel) ---\n");
+    // With Ollama, real model responses are streamed instead.
+    println!("--- Part 1: Character-level streaming ---\n");
 
-    let model = FakeListChatModel::new(vec!["Hello! I am a streaming assistant.".into()]);
+    let model = shared::get_streaming_model(vec!["Hello! I am a streaming assistant.".into()]);
 
     let messages = vec![Message::Human(HumanMessage::new("Say hello"))];
 
@@ -36,15 +38,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("\n");
 
-    // --- Part 2: Word-level streaming with GenericFakeChatModel ---
+    // --- Part 2: Word-level streaming ---
     //
-    // GenericFakeChatModel splits responses on whitespace boundaries,
-    // yielding words and spaces as separate tokens.
-    println!("--- Part 2: Word-level streaming (GenericFakeChatModel) ---\n");
+    // With fake model, splits responses on whitespace boundaries.
+    // With Ollama, real model responses are streamed.
+    println!("--- Part 2: Word-level streaming ---\n");
 
-    let model = GenericFakeChatModel::from_messages(vec![AIMessage::new(
-        "The quick brown fox jumps over the lazy dog",
-    )]);
+    let model = shared::get_streaming_model(vec![
+        "The quick brown fox jumps over the lazy dog".into(),
+    ]);
 
     let messages = vec![Message::Human(HumanMessage::new("Tell me a sentence"))];
 
@@ -61,12 +63,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("\n  (received {token_count} tokens)\n");
 
-    // --- Part 3: Simulated streaming with sleep for visual effect ---
+    // --- Part 3: Streaming with simulated latency ---
     //
-    // FakeListChatModel supports an optional sleep delay between chunks.
+    // With fake model, uses a sleep delay. With Ollama, real latency.
     println!("--- Part 3: Streaming with simulated latency ---\n");
 
-    let model = FakeListChatModel::new(vec!["Rust is blazingly fast!".into()]).with_sleep(30); // 30ms delay before starting (initial delay only)
+    let model = shared::get_streaming_model(vec!["Rust is blazingly fast!".into()]);
 
     let messages = vec![Message::Human(HumanMessage::new("Tell me about Rust"))];
 
@@ -86,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // You can also collect all chunks into a final string.
     println!("--- Part 4: Collecting streamed chunks ---\n");
 
-    let model = FakeListChatModel::new(vec!["Collected output from streaming.".into()]);
+    let model = shared::get_streaming_model(vec!["Collected output from streaming.".into()]);
 
     let messages = vec![Message::Human(HumanMessage::new("Collect this"))];
 

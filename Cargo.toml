@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/rustchain-core",
-    "crates/rustchain",
-    "crates/langgraph",
-    "crates/deepagents",
+    "crates/cognis-core",
+    "crates/cognis",
+    "crates/cognisgraph",
+    "crates/cognisagent",
     "crates/examples",
 ]
 
@@ -27,7 +27,7 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 secrecy = { version = "0.10", features = ["serde"] }
 
 
-rustchain = { path = "crates/rustchain" }
-rustchain-core = { path = "crates/rustchain-core" }
-langgraph = { path = "crates/langgraph" }
-deepagents = { path = "crates/deepagents" }
+cognis = { path = "crates/cognis", version = "0.1.0" }
+cognis-core = { path = "crates/cognis-core", version = "0.1.0" }
+cognisgraph = { path = "crates/cognisgraph", version = "0.1.0" }
+cognisagent = { path = "crates/cognisagent", version = "0.1.0" }

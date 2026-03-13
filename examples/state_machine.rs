@@ -1,6 +1,6 @@
 //! State Machine Example
 //!
-//! Demonstrates the finite state machine layer provided by `langgraph::graph::state_machine`
+//! Demonstrates the finite state machine layer provided by `cognisgraph::graph::state_machine`
 //! for modeling agent workflows as explicit state transitions with guards and actions.
 //!
 //! Features shown:
@@ -14,9 +14,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example state_machine`
+//! Run with: `cargo run -p cognis-examples --example state_machine`
 
-use langgraph::graph::{
+use cognisgraph::graph::{
     StateHistory, StateId, StateMachine, StateMachineBuilder, StateMachineValidator, Transition,
 };
 use serde_json::json;

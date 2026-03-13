@@ -1,6 +1,6 @@
 //! Error Recovery Example
 //!
-//! Demonstrates the error recovery system from deepagents:
+//! Demonstrates the error recovery system from cognisagent:
 //!
 //! - `ErrorClassifier` — classify error messages into categories
 //! - `RecoveryPolicy` — configure recovery strategies per error category
@@ -9,11 +9,11 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example error_recovery`
+//! Run with: `cargo run -p cognis-examples --example error_recovery`
 
 use std::time::Duration;
 
-use deepagents::recovery::{
+use cognisagent::recovery::{
     BackoffStrategy, ErrorCategory, ErrorClassifier, RecoveryManager, RecoveryPolicy,
     RecoveryStrategy,
 };

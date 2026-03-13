@@ -15,9 +15,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example evaluation_framework`
+//! Run with: `cargo run -p cognis-examples --example evaluation_framework`
 
-use deepagents::evaluation::{
+use cognisagent::evaluation::{
     ContainsMetric, EvalCase, EvalMetric, EvalScore, EvalSuite, ExactMatchMetric,
     JsonSimilarityMetric, NumericDistanceMetric,
 };

@@ -1,6 +1,6 @@
 //! Context Management Demo
 //!
-//! Demonstrates context management from `deepagents::context`:
+//! Demonstrates context management from `cognisagent::context`:
 //! - ContextWindow with a token budget
 //! - Pushing entries with different roles (System, User, Assistant, Tool)
 //! - Checking utilization and remaining tokens
@@ -10,9 +10,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example context_management_demo`
+//! Run with: `cargo run -p cognis-examples --example context_management_demo`
 
-use deepagents::context::{
+use cognisagent::context::{
     ContextCompressor, ContextEntry, ContextFilter, ContextPolicy, ContextRole, ContextSnapshot,
     ContextStats, ContextWindow,
 };

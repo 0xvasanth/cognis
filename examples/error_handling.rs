@@ -1,6 +1,6 @@
 //! Error Handling Example
 //!
-//! Demonstrates the runnable error handling module from `rustchain-core`,
+//! Demonstrates the runnable error handling module from `cognis-core`,
 //! which provides structured error classification, recovery strategies,
 //! circuit breaker patterns, and error chain tracking.
 //!
@@ -16,12 +16,12 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example error_handling`
+//! Run with: `cargo run -p cognis-examples --example error_handling`
 
 use std::thread;
 use std::time::Duration;
 
-use rustchain_core::runnables::{
+use cognis_core::runnables::{
     CircuitBreaker, CircuitState, ClassifiedError, ErrorAction, ErrorChain, ErrorClassifier,
     ErrorHandler, ErrorKind, MapErrorHandler, PatternErrorClassifier, RecoveryHandler,
 };

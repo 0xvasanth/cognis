@@ -9,15 +9,16 @@
 //!
 //! No API keys required -- uses FakeListChatModel.
 //!
-//! Run with: cargo run -p rustchain-examples --example extraction_chain
+//! Run with: cargo run -p cognis-examples --example extraction_chain
+
+mod shared;
 
 use std::sync::Arc;
 
-use rustchain::chains::extraction::{
+use cognis::chains::extraction::{
     ExtractionChain, ExtractionSchema, FieldType, SchemaFieldBuilder,
 };
-use rustchain_core::language_models::chat_model::BaseChatModel;
-use rustchain_core::language_models::FakeListChatModel;
+use cognis_core::language_models::chat_model::BaseChatModel;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -68,11 +69,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Each response simulates what a real LLM would return: a JSON array of
     // extracted entities matching the schema.
 
-    let model: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
+    let model: Arc<dyn BaseChatModel> = shared::get_chat_model(vec![
         r#"[{"name": "Alice Chen", "age": 34, "occupation": "Machine Learning Engineer", "location": "San Francisco"}]"#.into(),
         r#"[{"name": "Dr. James Wilson", "age": 52, "occupation": "Chief Medical Officer", "location": "Boston"}, {"name": "Sarah Park", "age": 29, "occupation": "Research Scientist", "location": "Boston"}]"#.into(),
         r#"[{"name": "Marcus Johnson", "occupation": "Software Architect"}, {"name": "Elena Rodriguez", "age": 41, "occupation": "VP of Engineering", "location": "Austin"}]"#.into(),
-    ]));
+    ]);
 
     println!("Step 2: Created FakeListChatModel with 3 predefined responses\n");
 

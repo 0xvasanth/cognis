@@ -1,10 +1,10 @@
 <div align="center">
 
-# RustChain
+# Cognis
 
 **Build LLM apps in Rust. Fast, type-safe, composable.**
 
-[![CI](https://img.shields.io/github/actions/workflow/status/0xvasanth/rustchain/ci.yml?branch=main)](https://github.com/0xvasanth/rustchain/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/0xvasanth/cognis/ci.yml?branch=main)](https://github.com/0xvasanth/cognis/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
 
@@ -12,9 +12,9 @@
 
 ---
 
-RustChain is a Rust-native framework for building LLM-powered applications — chains, agents, RAG pipelines, and stateful workflows. If you've used LangChain in Python, this is the same mental model with Rust's performance and compile-time guarantees.
+Cognis is a Rust-native framework for building LLM-powered applications — chains, agents, RAG pipelines, and stateful workflows. If you've used LangChain in Python, this is the same mental model with Rust's performance and compile-time guarantees.
 
-## Why RustChain?
+## Why Cognis?
 
 - **Compile-time safety** — Tool schemas, message types, and state transitions are checked before your code runs. No more runtime surprises.
 - **Pay only for what you use** — LLM providers are behind feature flags. Your binary doesn't include OpenAI code if you only use Anthropic.
@@ -28,8 +28,8 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rustchain = { git = "https://github.com/0xvasanth/rustchain", features = ["openai"] }
-rustchain-core = { git = "https://github.com/0xvasanth/rustchain" }
+cognis = { git = "https://github.com/0xvasanth/cognis", features = ["openai"] }
+cognis-core = { git = "https://github.com/0xvasanth/cognis" }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 ```
@@ -39,11 +39,11 @@ serde_json = "1"
 ```rust
 use std::sync::Arc;
 use serde_json::json;
-use rustchain_core::chain;
-use rustchain_core::language_models::{ChatModelRunnable, FakeListChatModel};
-use rustchain_core::output_parsers::StrOutputParser;
-use rustchain_core::prompts::ChatPromptTemplate;
-use rustchain_core::runnables::Runnable;
+use cognis_core::chain;
+use cognis_core::language_models::{ChatModelRunnable, FakeListChatModel};
+use cognis_core::output_parsers::StrOutputParser;
+use cognis_core::prompts::ChatPromptTemplate;
+use cognis_core::runnables::Runnable;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -77,7 +77,7 @@ Build multi-step workflows with conditional branching, checkpointing, and human-
 ```rust
 use std::sync::Arc;
 use serde_json::{json, Value};
-use langgraph::graph::state::{AsyncNodeAction, StateGraph};
+use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -113,10 +113,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### RAG in 10 Lines
 
 ```rust
-use rustchain::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
-use rustchain::document_loaders::text::TextLoader;
-use rustchain_core::document_loaders::BaseLoader;
-use rustchain_core::vectorstores::{in_memory::InMemoryVectorStore, base::VectorStore};
+use cognis::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
+use cognis::document_loaders::text::TextLoader;
+use cognis_core::document_loaders::BaseLoader;
+use cognis_core::vectorstores::{in_memory::InMemoryVectorStore, base::VectorStore};
 
 let docs = TextLoader::new("data.txt").load().await?;
 
@@ -135,8 +135,8 @@ let results = store.similarity_search("your question", 3).await?;
 
 ```rust
 use futures::StreamExt;
-use rustchain_core::language_models::chat_model::BaseChatModel;
-use rustchain_core::messages::{HumanMessage, Message};
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::{HumanMessage, Message};
 
 let messages = vec![Message::Human(HumanMessage::new("Tell me a story"))];
 let mut stream = model._stream(&messages, None).await?;
@@ -148,12 +148,12 @@ while let Some(chunk) = stream.next().await {
 
 ## What's Included
 
-| Layer | Crate | What it does |
-|---|---|---|
-| **Foundation** | `rustchain-core` | Base traits (`ChatModel`, `Tool`, `Runnable`, `VectorStore`), message types, prompt templates, output parsers, callbacks |
-| **Implementation** | `rustchain` | 5 LLM providers, 19 chain types, 14 retrievers, 11 memory types, 6 vector stores, document loaders, text splitters, tools |
-| **Orchestration** | `langgraph` | State graphs, Pregel execution engine, checkpointing (SQLite/Postgres), streaming, human-in-the-loop, subgraph composition |
-| **Application** | `deepagents` | Zero-boilerplate agent factory, middleware pipeline, sandboxed execution, planning, plugins, workflow engine |
+| Layer              | Crate         | What it does                                                                                                               |
+| ------------------ | ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Foundation**     | `cognis-core` | Base traits (`ChatModel`, `Tool`, `Runnable`, `VectorStore`), message types, prompt templates, output parsers, callbacks   |
+| **Implementation** | `cognis`      | 5 LLM providers, 19 chain types, 14 retrievers, 11 memory types, 6 vector stores, document loaders, text splitters, tools  |
+| **Orchestration**  | `cognisgraph` | State graphs, Pregel execution engine, checkpointing (SQLite/Postgres), streaming, human-in-the-loop, subgraph composition |
+| **Application**    | `cognisagent` | Zero-boilerplate agent factory, middleware pipeline, sandboxed execution, planning, plugins, workflow engine               |
 
 ## Providers
 
@@ -161,37 +161,37 @@ Enable only what you need via feature flags:
 
 ```toml
 # Pick your providers
-rustchain = { git = "https://github.com/0xvasanth/rustchain", features = ["anthropic", "openai"] }
+cognis = { git = "https://github.com/0xvasanth/cognis", features = ["anthropic", "openai"] }
 
 # Or enable everything
-rustchain = { git = "https://github.com/0xvasanth/rustchain", features = ["all-providers"] }
+cognis = { git = "https://github.com/0xvasanth/cognis", features = ["all-providers"] }
 
 # Graph workflows with persistence
-langgraph = { git = "https://github.com/0xvasanth/rustchain", features = ["sqlite"] }
+cognisgraph = { git = "https://github.com/0xvasanth/cognis", features = ["sqlite"] }
 ```
 
-| Flag | Provider |
-|---|---|
-| `openai` | OpenAI GPT models + embeddings |
-| `anthropic` | Anthropic Claude models + embeddings |
-| `google` | Google Gemini models + embeddings |
-| `ollama` | Ollama local models + embeddings |
-| `azure` | Azure OpenAI |
-| `qdrant` / `pinecone` / `weaviate` / `chroma` / `faiss` | Vector store backends |
-| `sqlite` / `postgres` | Checkpoint persistence (langgraph) |
+| Flag                                                    | Provider                             |
+| ------------------------------------------------------- | ------------------------------------ |
+| `openai`                                                | OpenAI GPT models + embeddings       |
+| `anthropic`                                             | Anthropic Claude models + embeddings |
+| `google`                                                | Google Gemini models + embeddings    |
+| `ollama`                                                | Ollama local models + embeddings     |
+| `azure`                                                 | Azure OpenAI                         |
+| `qdrant` / `pinecone` / `weaviate` / `chroma` / `faiss` | Vector store backends                |
+| `sqlite` / `postgres`                                   | Checkpoint persistence (cognisgraph) |
 
 ## Examples
 
 All examples work without API keys using mock models:
 
 ```bash
-git clone https://github.com/0xvasanth/rustchain.git
-cd rustchain
+git clone https://github.com/0xvasanth/cognis.git
+cd cognis
 
 cargo run --example simple_chain           # Basic chain composition
 cargo run --example tool_agent             # Agent with tool calling
 cargo run --example rag_pipeline           # Full RAG pipeline
-cargo run --example langgraph_agent        # Stateful graph agent
+cargo run --example cognisgraph_agent        # Stateful graph agent
 cargo run --example streaming              # Token streaming
 cargo run --example graph_with_checkpoints # Persistent graph workflows
 cargo run --example memory_types           # Conversation memory
@@ -202,14 +202,11 @@ See the [`examples/`](examples/) directory for 35+ runnable demos.
 
 ## Contributing
 
-```bash
-cargo build --workspace          # Build
-cargo test --workspace           # Test
-cargo clippy --workspace         # Lint
-cargo fmt --all                  # Format
-```
-
 See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines, project structure, and conventions.
+
+## Acknowledgments
+
+Cognis is heavily inspired by the [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), and [DeepAgents](https://github.com/langchain-ai/deepagents) Python ecosystem. Huge thanks to the LangChain team for pioneering the composable LLM framework paradigm — their design patterns, abstractions, and developer experience were the foundation that made this Rust port possible.
 
 ## License
 
@@ -219,6 +216,6 @@ MIT
 
 <div align="center">
 
-[Report a Bug](https://github.com/0xvasanth/rustchain/issues) · [Request a Feature](https://github.com/0xvasanth/rustchain/issues) · [Discussions](https://github.com/0xvasanth/rustchain/discussions)
+[Report a Bug](https://github.com/0xvasanth/cognis/issues) · [Request a Feature](https://github.com/0xvasanth/cognis/issues) · [Discussions](https://github.com/0xvasanth/cognis/discussions)
 
 </div>

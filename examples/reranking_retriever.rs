@@ -13,15 +13,15 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example reranking_retriever`
+//! Run with: `cargo run -p cognis-examples --example reranking_retriever`
 
 use std::collections::HashMap;
 
-use rustchain::retrievers::reranking::{
+use cognis::retrievers::reranking::{
     CascadeReranker, KeywordReranker, LengthReranker, MetadataReranker, Reranker, RerankerPipeline,
     RerankingRetriever, TfIdfReranker,
 };
-use rustchain_core::documents::Document;
+use cognis_core::documents::Document;
 use serde_json::json;
 
 fn make_doc(content: &str) -> Document {

@@ -6,7 +6,7 @@
 //!
 //! No API keys required -- uses a mock retriever.
 //!
-//! Run with: `cargo run -p rustchain-examples --example caching_retriever`
+//! Run with: `cargo run -p cognis-examples --example caching_retriever`
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -14,10 +14,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use rustchain::retrievers::caching::{CacheConfig, CachingRetriever};
-use rustchain_core::documents::Document;
-use rustchain_core::error::Result;
-use rustchain_core::retrievers::BaseRetriever;
+use cognis::retrievers::caching::{CacheConfig, CachingRetriever};
+use cognis_core::documents::Document;
+use cognis_core::error::Result;
+use cognis_core::retrievers::BaseRetriever;
 
 /// A mock retriever that returns fixed documents and counts how many times
 /// the underlying retrieval was actually called.

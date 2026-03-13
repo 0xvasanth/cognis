@@ -9,9 +9,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example state_snapshot`
+//! Run with: `cargo run -p cognis-examples --example state_snapshot`
 
-use langgraph::graph::{
+use cognisgraph::graph::{
     SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot, TimeTravelDebugger,
 };
 use serde_json::json;

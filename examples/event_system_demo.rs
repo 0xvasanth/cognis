@@ -1,6 +1,6 @@
 //! Event System Demo
 //!
-//! Demonstrates the event system from `rustchain_core::events`:
+//! Demonstrates the event system from `cognis_core::events`:
 //! - Creating Events with different EventTypes
 //! - Using EventBus with subscribers
 //! - Using EventFilter to filter events by type and source
@@ -10,9 +10,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example event_system_demo`
+//! Run with: `cargo run -p cognis-examples --example event_system_demo`
 
-use rustchain_core::events::{
+use cognis_core::events::{
     Event, EventBus, EventFilter, EventHook, EventLog, EventMetrics, EventType, HookRegistry,
 };
 use serde_json::json;

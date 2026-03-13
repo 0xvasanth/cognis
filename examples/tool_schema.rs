@@ -15,9 +15,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example tool_schema`
+//! Run with: `cargo run -p cognis-examples --example tool_schema`
 
-use rustchain_core::tools::schema::{
+use cognis_core::tools::schema::{
     PropertySchema, SchemaObject, SchemaRegistry, SchemaValidator, ToolSchema, ToolSchemaGenerator,
 };
 use serde_json::json;

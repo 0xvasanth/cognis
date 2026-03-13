@@ -1,6 +1,6 @@
 //! Graph Validation Demo
 //!
-//! Demonstrates the graph validation utilities from `langgraph::graph::validation`:
+//! Demonstrates the graph validation utilities from `cognisgraph::graph::validation`:
 //!
 //! - **GraphValidator** — structural checks (unreachable nodes, missing entry/finish,
 //!   dangling edges, self-loops, duplicate edges, orphan nodes)
@@ -11,9 +11,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example graph_validation_demo`
+//! Run with: `cargo run -p cognis-examples --example graph_validation_demo`
 
-use langgraph::graph::validation::{
+use cognisgraph::graph::validation::{
     GraphValidator, QuickCheck, SchemaValidator, StateRule, StateValidator, ValidationReport,
 };
 use serde_json::json;

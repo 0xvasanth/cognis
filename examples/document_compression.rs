@@ -10,15 +10,15 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example document_compression`
+//! Run with: `cargo run -p cognis-examples --example document_compression`
 
 use std::collections::HashMap;
 
-use rustchain::retrievers::compression::{
+use cognis::retrievers::compression::{
     CompressorPipeline, ContextualCompressionRetriever, DocumentCompressor, LengthCompressor,
     RedundancyFilter, RelevanceScorer, SentenceExtractor,
 };
-use rustchain_core::documents::Document;
+use cognis_core::documents::Document;
 use serde_json::json;
 
 fn main() {

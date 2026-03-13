@@ -18,13 +18,13 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example chat_model_registry`
+//! Run with: `cargo run -p cognis-examples --example chat_model_registry`
 
-use rustchain::chat_models::registry::{
+use cognis::chat_models::registry::{
     ChatRequest, ChatResponse, ModelCapability, ModelConfig, ModelInfo, ModelRegistry,
     ModelSelector, TokenUsage,
 };
-use rustchain_core::messages::Message;
+use cognis_core::messages::Message;
 
 fn main() {
     println!("=== Chat Model Registry Example ===\n");

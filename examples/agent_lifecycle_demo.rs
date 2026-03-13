@@ -1,6 +1,6 @@
 //! Agent Lifecycle Demo
 //!
-//! Demonstrates the `deepagents::lifecycle` module:
+//! Demonstrates the `cognisagent::lifecycle` module:
 //! - Creating an `AgentLifecycle` and walking through state transitions
 //! - Handling invalid transition errors
 //! - Using `HealthCheck` to monitor agent health
@@ -10,9 +10,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example agent_lifecycle_demo`
+//! Run with: `cargo run -p cognis-examples --example agent_lifecycle_demo`
 
-use deepagents::lifecycle::{
+use cognisagent::lifecycle::{
     AgentLifecycle, GracefulShutdown, HealthCheck, LifecycleMonitor, RestartPolicy,
 };
 

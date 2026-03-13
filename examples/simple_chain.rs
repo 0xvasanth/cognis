@@ -5,15 +5,15 @@
 //!
 //! No API keys required -- uses fake/mock models.
 
-use std::sync::Arc;
+mod shared;
 
 use serde_json::json;
 
-use rustchain_core::chain;
-use rustchain_core::language_models::{ChatModelRunnable, FakeListChatModel};
-use rustchain_core::output_parsers::StrOutputParser;
-use rustchain_core::prompts::ChatPromptTemplate;
-use rustchain_core::runnables::Runnable;
+use cognis_core::chain;
+use cognis_core::language_models::ChatModelRunnable;
+use cognis_core::output_parsers::StrOutputParser;
+use cognis_core::prompts::ChatPromptTemplate;
+use cognis_core::runnables::Runnable;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,10 +35,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         prompt.input_variables
     );
 
-    // Step 2: Create a FakeListChatModel that returns predefined responses.
+    // Step 2: Get a chat model (Ollama if available, otherwise fake responses).
     //
     // In a real application, this would be an OpenAI, Anthropic, or other provider model.
-    let model = FakeListChatModel::new(vec![
+    let model = shared::get_chat_model(vec![
         "Rust is a systems programming language focused on safety, speed, and concurrency.".into(),
         "Python is a high-level, interpreted language known for readability and versatility."
             .into(),
@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // This creates a RunnableSequence: prompt -> model -> parser.
     // Data flows through each step: JSON input -> formatted messages -> AI response -> string.
-    let model_runnable = ChatModelRunnable::new(Arc::new(model));
+    let model_runnable = ChatModelRunnable::new(model);
     let chain = chain!(prompt, model_runnable, parser)?;
 
     println!("Built chain: {}\n", chain.name());

@@ -8,15 +8,15 @@
 //!
 //! No API keys required -- uses pure state manipulation.
 //!
-//! Run with: cargo run -p rustchain-examples --example graph_with_checkpoints
+//! Run with: cargo run -p cognis-examples --example graph_with_checkpoints
 
 use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use langgraph::checkpoint::InMemoryCheckpointSaver;
-use langgraph::graph::state::{AsyncNodeAction, StateGraph};
-use langgraph::graph::PersistentGraph;
+use cognisgraph::checkpoint::InMemoryCheckpointSaver;
+use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
+use cognisgraph::graph::PersistentGraph;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

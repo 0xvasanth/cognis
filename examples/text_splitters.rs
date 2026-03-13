@@ -1,6 +1,6 @@
 //! Text Splitters Example
 //!
-//! Demonstrates the various text splitting strategies available in RustChain
+//! Demonstrates the various text splitting strategies available in Cognis
 //! for chunking documents before embedding or retrieval. Each splitter targets
 //! a different content type (plain text, markdown, code) and supports
 //! configurable chunk size, overlap, and whitespace handling.
@@ -16,15 +16,15 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example text_splitters`
+//! Run with: `cargo run -p cognis-examples --example text_splitters`
 
 use std::collections::HashMap;
 
-use rustchain::text_splitters::{
+use cognis::text_splitters::{
     CharacterTextSplitter, CodeLanguage, CodeTextSplitter, MarkdownTextSplitter,
     RecursiveCharacterTextSplitter, SplitConfig, TextSplitter, TokenTextSplitter,
 };
-use rustchain_core::documents::Document;
+use cognis_core::documents::Document;
 use serde_json::json;
 
 fn print_chunks(chunks: &[String]) {
@@ -179,7 +179,7 @@ Welcome to the project. This guide walks you through setup.
 Install with cargo:
 
 ```
-cargo add rustchain
+cargo add cognis
 ```
 
 ## Configuration

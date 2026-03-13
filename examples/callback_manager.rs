@@ -14,9 +14,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example callback_manager`
+//! Run with: `cargo run -p cognis-examples --example callback_manager`
 
-use rustchain::callbacks::manager::{
+use cognis::callbacks::manager::{
     CallbackDataBuilder, CallbackHandler, CallbackManager, CallbackPhase, CallbackScope,
     ConsoleCallbackHandler, FilteredHandler, MetricsCallbackHandler,
 };
@@ -28,7 +28,7 @@ use std::sync::Arc;
 /// wrap an Arc to retain access for inspection after events are emitted.
 struct SharedConsole(Arc<ConsoleCallbackHandler>);
 impl CallbackHandler for SharedConsole {
-    fn on_event(&self, data: &rustchain::callbacks::manager::CallbackData) {
+    fn on_event(&self, data: &cognis::callbacks::manager::CallbackData) {
         self.0.on_event(data);
     }
     fn name(&self) -> &str {
@@ -38,7 +38,7 @@ impl CallbackHandler for SharedConsole {
 
 struct SharedMetrics(Arc<MetricsCallbackHandler>);
 impl CallbackHandler for SharedMetrics {
-    fn on_event(&self, data: &rustchain::callbacks::manager::CallbackData) {
+    fn on_event(&self, data: &cognis::callbacks::manager::CallbackData) {
         self.0.on_event(data);
     }
     fn name(&self) -> &str {

@@ -6,21 +6,22 @@
 //!
 //! No API keys required -- uses FakeListChatModel.
 //!
-//! Run with: cargo run -p rustchain-examples --example conversational_agent
+//! Run with: cargo run -p cognis-examples --example conversational_agent
 
-use rustchain::memory::{BaseMemory, ConversationBufferMemory};
-use rustchain_core::language_models::chat_model::BaseChatModel;
-use rustchain_core::language_models::FakeListChatModel;
-use rustchain_core::messages::Message;
+mod shared;
+
+use cognis::memory::{BaseMemory, ConversationBufferMemory};
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Multi-Turn Conversational Agent ===\n");
 
-    // Step 1: Create a fake model with predefined responses for each turn.
+    // Step 1: Get a chat model (Ollama if available, otherwise fake responses).
     //
     // In production, replace with ChatAnthropic, ChatOpenAI, etc.
-    let model = FakeListChatModel::new(vec![
+    let model = shared::get_chat_model(vec![
         "Hello! I'm your Rust assistant. How can I help you today?".into(),
         "Ownership is Rust's key memory management feature. Each value has exactly one owner, and when the owner goes out of scope, the value is dropped. This eliminates garbage collection.".into(),
         "Borrowing lets you reference a value without taking ownership. You can have either one mutable reference OR any number of immutable references at a time. The borrow checker enforces these rules at compile time.".into(),

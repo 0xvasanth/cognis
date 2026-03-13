@@ -7,21 +7,22 @@
 //!
 //! No API keys required -- uses DeterministicFakeEmbedding and FakeListChatModel.
 //!
-//! Run with: cargo run -p rustchain-examples --example indexing_rag
+//! Run with: cargo run -p cognis-examples --example indexing_rag
+
+mod shared;
 
 use std::sync::Arc;
 
-use rustchain::chains::RetrievalQAChain;
-use rustchain::indexing::{CleanupMode, InMemoryRecordManager, IndexingPipeline};
-use rustchain::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
-use rustchain_core::documents::Document;
-use rustchain_core::embeddings::Embeddings;
-use rustchain_core::embeddings_fake::DeterministicFakeEmbedding;
-use rustchain_core::language_models::chat_model::BaseChatModel;
-use rustchain_core::language_models::FakeListChatModel;
-use rustchain_core::retrievers::BaseRetriever;
-use rustchain_core::vectorstores::base::{SearchType, VectorStore};
-use rustchain_core::vectorstores::in_memory::InMemoryVectorStore;
+use cognis::chains::RetrievalQAChain;
+use cognis::indexing::{CleanupMode, InMemoryRecordManager, IndexingPipeline};
+use cognis::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
+use cognis_core::documents::Document;
+use cognis_core::embeddings::Embeddings;
+use cognis_core::embeddings_fake::DeterministicFakeEmbedding;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::retrievers::BaseRetriever;
+use cognis_core::vectorstores::base::{SearchType, VectorStore};
+use cognis_core::vectorstores::in_memory::InMemoryVectorStore;
 
 /// Sample documents about different programming topics.
 const DOC_RUST: &str = "\
@@ -178,7 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let retriever: Arc<dyn BaseRetriever> =
         Arc::new(store.as_retriever_with(SearchType::Similarity, 3));
 
-    let llm: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
+    let llm: Arc<dyn BaseChatModel> = shared::get_chat_model(vec![
         "Rust achieves memory safety through its ownership system. Each value has one owner, \
          and the borrow checker enforces reference rules at compile time. When the owner goes \
          out of scope, the value is automatically dropped."
@@ -191,7 +192,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
          Dependencies are specified in Cargo.toml, and Cargo.lock ensures reproducible builds \
          by recording exact versions."
             .into(),
-    ]));
+    ]);
 
     let qa_chain = RetrievalQAChain::new(retriever, llm).with_k(3);
     println!("  Built RetrievalQAChain (k=3)\n");

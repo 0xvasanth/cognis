@@ -1,6 +1,6 @@
 //! Embedding Models Example
 //!
-//! Demonstrates the embedding model abstractions provided by `rustchain::embeddings::models`,
+//! Demonstrates the embedding model abstractions provided by `cognis::embeddings::models`,
 //! including deterministic fake embeddings for testing, configuration, distance metrics,
 //! normalized embeddings, and a model registry.
 //!
@@ -16,9 +16,11 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example embedding_models`
+//! Run with: `cargo run -p cognis-examples --example embedding_models`
 
-use rustchain::embeddings::models::{
+mod shared;
+
+use cognis::embeddings::models::{
     EmbeddingDistance, EmbeddingModel, EmbeddingModelConfig, EmbeddingRegistry, EmbeddingResult,
     EmbeddingUsage, FakeEmbeddingModel, NormalizedEmbedding,
 };

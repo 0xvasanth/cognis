@@ -15,11 +15,11 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example checkpoint_persistence`
+//! Run with: `cargo run -p cognis-examples --example checkpoint_persistence`
 
 use std::collections::HashMap;
 
-use langgraph::checkpoint::persistence::{
+use cognisgraph::checkpoint::persistence::{
     CheckpointFilter, CheckpointHistory, CheckpointId, CheckpointManager, InMemoryPersistentSaver,
     PersistentCheckpoint, PersistentCheckpointSaver,
 };

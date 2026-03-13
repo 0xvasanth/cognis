@@ -7,7 +7,9 @@
 //!
 //! No API keys required -- uses FakeMessagesListChatModel.
 //!
-//! Run with: cargo run -p rustchain-examples --example tool_calling_agent
+//! Run with: cargo run -p cognis-examples --example tool_calling_agent
+
+mod shared;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,14 +17,14 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use rustchain::agents::AgentExecutor;
-use rustchain::tools::cached::CachedTool;
-use rustchain_core::language_models::FakeMessagesListChatModel;
-use rustchain_core::messages::tool_types::ToolCall;
-use rustchain_core::messages::{AIMessage, Message};
-use rustchain_core::tools::base::BaseTool;
-use rustchain_core::tools::simple::SimpleTool;
-use rustchain_core::tools::structured::StructuredTool;
+use cognis::agents::AgentExecutor;
+use cognis::tools::cached::CachedTool;
+use cognis_core::language_models::FakeMessagesListChatModel;
+use cognis_core::messages::tool_types::ToolCall;
+use cognis_core::messages::{AIMessage, Message};
+use cognis_core::tools::base::BaseTool;
+use cognis_core::tools::simple::SimpleTool;
+use cognis_core::tools::structured::StructuredTool;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -123,7 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Demonstrate caching behavior.
-    use rustchain_core::tools::types::ToolInput;
+    use cognis_core::tools::types::ToolInput;
 
     println!("  Running search twice with same input...");
     let input = ToolInput::Text("Rust ownership".to_string());
@@ -143,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         stats2.hit_rate * 100.0
     );
 
-    if let rustchain_core::tools::types::ToolOutput::Content(v) = result1 {
+    if let cognis_core::tools::types::ToolOutput::Content(v) = result1 {
         let preview = v.as_str().unwrap_or("");
         println!("    Result: {}...", &preview[..preview.len().min(60)]);
     }
@@ -193,6 +195,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
          the owner goes out of scope. Also, 42 * 7 = 294.",
     );
 
+    // Uses a custom mock model for deterministic tool-calling behavior.
+    // When Ollama is available, see ollama_chain example for real LLM usage.
     let model = Arc::new(FakeMessagesListChatModel::new(vec![
         Message::Ai(ai_search),
         Message::Ai(ai_calc),

@@ -1,18 +1,18 @@
 //! Planning Middleware Example
 //!
-//! Demonstrates the planning middleware from deepagents: creating plans with
+//! Demonstrates the planning middleware from cognisagent: creating plans with
 //! steps and dependencies, tracking progress, updating step status, finding
 //! ready steps, and using the SimplePlanningStrategy.
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example planning_middleware`
+//! Run with: `cargo run -p cognis-examples --example planning_middleware`
 
 use std::sync::Arc;
 
 use serde_json::json;
 
-use deepagents::middleware::planning::{
+use cognisagent::middleware::planning::{
     Plan, PlanStep, PlanStepStatus, PlanningMiddleware, SimplePlanningStrategy,
 };
 
@@ -156,7 +156,7 @@ Build an API server:
 
     println!("  Goal:\n    {}\n", structured_goal.replace('\n', "\n    "));
 
-    use deepagents::middleware::planning::PlanningStrategy;
+    use cognisagent::middleware::planning::PlanningStrategy;
     let auto_plan = strategy
         .create_plan(structured_goal, &json!({}))
         .await
@@ -194,7 +194,7 @@ Build an API server:
 
     println!(
         "  Middleware name: {}",
-        deepagents::middleware::Middleware::name(&middleware)
+        cognisagent::middleware::Middleware::name(&middleware)
     );
     println!(
         "  Current plan: {:?}\n",

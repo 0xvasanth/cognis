@@ -10,9 +10,9 @@ use std::collections::HashMap;
 
 use serde_json::json;
 
-use rustchain::chains::{create_qa_chain, CitedAnswer, QAChain, QAChainType, QAConfig, QAResult};
-use rustchain_core::documents::Document;
-use rustchain_core::runnables::Runnable;
+use cognis::chains::{create_qa_chain, CitedAnswer, QAChain, QAChainType, QAConfig, QAResult};
+use cognis_core::documents::Document;
+use cognis_core::runnables::Runnable;
 
 /// Create a sample document with source metadata.
 fn make_doc(content: &str, source: &str) -> Document {

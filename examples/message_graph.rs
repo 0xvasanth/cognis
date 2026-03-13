@@ -17,9 +17,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example message_graph`
+//! Run with: `cargo run -p cognis-examples --example message_graph`
 
-use langgraph::graph::{
+use cognisgraph::graph::{
     GraphMessage, MessageGraph, MessageGraphBuilder, MessageNode, MessageRole, MessageState,
 };
 

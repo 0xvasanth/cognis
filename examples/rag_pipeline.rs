@@ -9,13 +9,13 @@
 use std::io::Write;
 use std::sync::Arc;
 
-use rustchain::document_loaders::text::TextLoader;
-use rustchain::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
-use rustchain_core::document_loaders::BaseLoader;
-use rustchain_core::embeddings_fake::DeterministicFakeEmbedding;
-use rustchain_core::retrievers::BaseRetriever;
-use rustchain_core::vectorstores::base::{SearchType, VectorStore};
-use rustchain_core::vectorstores::in_memory::InMemoryVectorStore;
+use cognis::document_loaders::text::TextLoader;
+use cognis::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
+use cognis_core::document_loaders::BaseLoader;
+use cognis_core::embeddings_fake::DeterministicFakeEmbedding;
+use cognis_core::retrievers::BaseRetriever;
+use cognis_core::vectorstores::base::{SearchType, VectorStore};
+use cognis_core::vectorstores::in_memory::InMemoryVectorStore;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -86,7 +86,7 @@ Futures are lazy and only make progress when polled by a runtime."#;
     //
     // DeterministicFakeEmbedding produces hash-based embeddings that are
     // deterministic per text input. In production, use OpenAI, Ollama, etc.
-    let embedding: Arc<dyn rustchain_core::embeddings::Embeddings> =
+    let embedding: Arc<dyn cognis_core::embeddings::Embeddings> =
         Arc::new(DeterministicFakeEmbedding::new(64));
 
     let store = Arc::new(InMemoryVectorStore::new(embedding));

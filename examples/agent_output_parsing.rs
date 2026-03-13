@@ -5,9 +5,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example agent_output_parsing`
+//! Run with: `cargo run -p cognis-examples --example agent_output_parsing`
 
-use rustchain::agents::{
+use cognis::agents::{
     AgentOutputParser, JsonOutputParser, ReActOutputParser, ToolCallOutputParser, XmlOutputParser,
 };
 

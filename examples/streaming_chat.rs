@@ -6,7 +6,9 @@
 //!
 //! No API keys required -- uses GenericFakeChatModel and FakeListChatModel.
 //!
-//! Run with: cargo run -p rustchain-examples --example streaming_chat
+//! Run with: cargo run -p cognis-examples --example streaming_chat
+
+mod shared;
 
 use std::sync::Arc;
 
@@ -14,14 +16,13 @@ use futures::StreamExt;
 use serde_json::json;
 use uuid::Uuid;
 
-use rustchain_core::callbacks::base::CallbackHandler;
-use rustchain_core::callbacks::handlers::{
+use cognis_core::callbacks::base::CallbackHandler;
+use cognis_core::callbacks::handlers::{
     LogLevel, LoggingCallbackHandler, MetricsCallbackHandler,
 };
-use rustchain_core::language_models::chat_model::BaseChatModel;
-use rustchain_core::language_models::{FakeListChatModel, GenericFakeChatModel};
-use rustchain_core::messages::{AIMessage, HumanMessage, Message};
-use rustchain_core::outputs::LLMResult;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::{HumanMessage, Message};
+use cognis_core::outputs::LLMResult;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,14 +41,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // -------------------------------------------------------------------------
-    // Step 2: Token-level streaming with GenericFakeChatModel
+    // Step 2: Token-level streaming
     // -------------------------------------------------------------------------
-    println!("--- Step 2: Token-level streaming (GenericFakeChatModel) ---\n");
+    println!("--- Step 2: Token-level streaming ---\n");
 
     let response_text = "Rust is a systems programming language that guarantees memory safety \
         without garbage collection through its innovative ownership and borrowing system.";
 
-    let model = GenericFakeChatModel::from_messages(vec![AIMessage::new(response_text)]);
+    let model = shared::get_streaming_model(vec![response_text.into()]);
 
     let messages = vec![Message::Human(HumanMessage::new(
         "What is Rust programming language?",
@@ -107,7 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     println!("--- Step 3: Character-level streaming (FakeListChatModel) ---\n");
 
-    let char_model = FakeListChatModel::new(vec![
+    let char_model = shared::get_streaming_model(vec![
         "The borrow checker prevents data races at compile time!".into(),
     ]);
 
@@ -147,7 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     println!("--- Step 4: Collecting streamed output ---\n");
 
-    let collect_model = FakeListChatModel::new(vec!["Ownership, borrowing, and lifetimes.".into()]);
+    let collect_model = shared::get_streaming_model(vec!["Ownership, borrowing, and lifetimes.".into()]);
     let messages = vec![Message::Human(HumanMessage::new("Key Rust concepts?"))];
 
     let stream = collect_model._stream(&messages, None).await?;

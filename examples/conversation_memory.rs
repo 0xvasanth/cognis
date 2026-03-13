@@ -12,9 +12,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example conversation_memory`
+//! Run with: `cargo run -p cognis-examples --example conversation_memory`
 
-use rustchain::memory::conversation::{
+use cognis::memory::conversation::{
     BufferMemory, ConversationMessage, ConversationStore, MemorySearch, MemoryStats, MessageRole,
     SummaryMemory, TokenBufferMemory, WindowMemory,
 };

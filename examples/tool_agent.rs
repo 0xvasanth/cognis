@@ -6,20 +6,22 @@
 //!
 //! No API keys required -- uses a hand-crafted mock model.
 
+mod shared;
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use rustchain::agents::AgentExecutor;
-use rustchain::tools::calculator::CalculatorTool;
-use rustchain_core::error::Result;
-use rustchain_core::language_models::BaseChatModel;
-use rustchain_core::messages::tool_types::ToolCall;
-use rustchain_core::messages::{AIMessage, Message};
-use rustchain_core::outputs::{ChatGeneration, ChatResult};
-use rustchain_core::tools::BaseTool;
+use cognis::agents::AgentExecutor;
+use cognis::tools::calculator::CalculatorTool;
+use cognis_core::error::Result;
+use cognis_core::language_models::BaseChatModel;
+use cognis_core::messages::tool_types::ToolCall;
+use cognis_core::messages::{AIMessage, Message};
+use cognis_core::outputs::{ChatGeneration, ChatResult};
+use cognis_core::tools::BaseTool;
 
 /// A mock model that simulates tool-calling behavior:
 ///
@@ -97,6 +99,8 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!("=== Tool-Calling Agent Example ===\n");
 
     // Step 1: Create the mock model.
+    // Uses a custom mock model for deterministic tool-calling behavior.
+    // When Ollama is available, see ollama_chain example for real LLM usage.
     let model: Arc<dyn BaseChatModel> = Arc::new(ToolCallingMockModel::new());
 
     // Step 2: Create the calculator tool.

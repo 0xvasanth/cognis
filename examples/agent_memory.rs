@@ -17,9 +17,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example agent_memory`
+//! Run with: `cargo run -p cognis-examples --example agent_memory`
 
-use deepagents::memory::{
+use cognisagent::memory::{
     LongTermMemory, MemoryCategory, MemoryEntry, MemoryIndex, MemoryManager, ShortTermMemory,
 };
 

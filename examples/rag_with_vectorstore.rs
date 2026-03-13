@@ -7,20 +7,21 @@
 //! - InMemoryVectorStore for vector storage
 //! - RetrievalQAChain with FakeListChatModel for answering
 //!
-//! Run with: cargo run -p rustchain-examples --example rag_with_vectorstore
+//! Run with: cargo run -p cognis-examples --example rag_with_vectorstore
+
+mod shared;
 
 use std::sync::Arc;
 
-use rustchain::chains::RetrievalQAChain;
-use rustchain::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
-use rustchain_core::documents::Document;
-use rustchain_core::embeddings::Embeddings;
-use rustchain_core::embeddings_fake::DeterministicFakeEmbedding;
-use rustchain_core::language_models::chat_model::BaseChatModel;
-use rustchain_core::language_models::FakeListChatModel;
-use rustchain_core::retrievers::BaseRetriever;
-use rustchain_core::vectorstores::base::{SearchType, VectorStore};
-use rustchain_core::vectorstores::in_memory::InMemoryVectorStore;
+use cognis::chains::RetrievalQAChain;
+use cognis::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
+use cognis_core::documents::Document;
+use cognis_core::embeddings::Embeddings;
+use cognis_core::embeddings_fake::DeterministicFakeEmbedding;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::retrievers::BaseRetriever;
+use cognis_core::vectorstores::base::{SearchType, VectorStore};
+use cognis_core::vectorstores::in_memory::InMemoryVectorStore;
 
 /// Sample knowledge base about Rust programming.
 const SAMPLE_TEXT: &str = r#"
@@ -108,11 +109,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // The fake model returns predefined answers. In production, replace with
     // a real chat model (e.g., ChatAnthropic, ChatOpenAI).
-    let llm: Arc<dyn BaseChatModel> = Arc::new(FakeListChatModel::new(vec![
+    let llm: Arc<dyn BaseChatModel> = shared::get_chat_model(vec![
         "Rust achieves memory safety through its ownership system, which has three rules: each value has exactly one owner, there can only be one owner at a time, and values are dropped when the owner goes out of scope. The borrow checker enforces reference rules at compile time.".into(),
         "Cargo is Rust's build system and package manager. It handles downloading dependencies, compiling packages, running tests, and generating documentation. Projects are configured via Cargo.toml.".into(),
         "Async programming in Rust uses async/await syntax with the tokio runtime as the most popular executor. Futures are lazy and only make progress when polled.".into(),
-    ]));
+    ]);
 
     let chain = RetrievalQAChain::new(retriever, llm).with_k(3);
     println!("Step 5: Built RetrievalQAChain (k=3)\n");

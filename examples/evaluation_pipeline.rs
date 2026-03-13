@@ -6,15 +6,16 @@
 //!
 //! No API keys required -- uses FakeListChatModel.
 //!
-//! Run with: cargo run -p rustchain-examples --example evaluation_pipeline
+//! Run with: cargo run -p cognis-examples --example evaluation_pipeline
+
+mod shared;
 
 use std::sync::Arc;
 
-use rustchain::evaluation::{
+use cognis::evaluation::{
     BatchEvaluator, ContainsEvaluator, EvalExample, EvaluationDataset, Evaluator,
     ExactMatchEvaluator, LLMJudge,
 };
-use rustchain_core::language_models::FakeListChatModel;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -171,13 +172,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--- Step 5: LLMJudge ---\n");
 
     // The fake model returns numeric scores that the LLMJudge parses.
-    let judge_model = Arc::new(FakeListChatModel::new(vec![
+    let judge_model = shared::get_chat_model(vec![
         "8".to_string(), // 8/10 = 0.8
         "9".to_string(), // 9/10 = 0.9
         "3".to_string(), // 3/10 = 0.3
         "7".to_string(), // 7/10 = 0.7
         "2".to_string(), // 2/10 = 0.2
-    ]));
+    ]);
 
     let judge = Arc::new(
         LLMJudge::builder(judge_model)

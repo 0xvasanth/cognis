@@ -14,15 +14,15 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example document_store`
+//! Run with: `cargo run -p cognis-examples --example document_store`
 
 use std::collections::HashMap;
 
-use rustchain::stores::docstore::{
+use cognis::stores::docstore::{
     DocStore, DocStoreIndex, DocStoreQuery, DocStoreStats, InMemoryDocStore, IndexedDocStore,
     MetadataCondition,
 };
-use rustchain_core::documents::Document;
+use cognis_core::documents::Document;
 use serde_json::json;
 
 fn main() {

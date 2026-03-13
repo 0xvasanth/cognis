@@ -1,6 +1,6 @@
 //! Graph Debug Demo
 //!
-//! Demonstrates the graph debugging tools from `langgraph::graph::debug`:
+//! Demonstrates the graph debugging tools from `cognisgraph::graph::debug`:
 //!
 //! - **DebugSession** — manage breakpoints and record execution steps
 //! - **Breakpoint** with **BreakCondition** (Always, OnStateChange, OnValue, OnIteration)
@@ -10,9 +10,9 @@
 //!
 //! No API keys required.
 //!
-//! Run with: `cargo run -p rustchain-examples --example graph_debug_demo`
+//! Run with: `cargo run -p cognis-examples --example graph_debug_demo`
 
-use langgraph::graph::debug::{
+use cognisgraph::graph::debug::{
     BreakCondition, Breakpoint, DebugSession, ExecutionProfiler, StateInspector,
 };
 use serde_json::json;
