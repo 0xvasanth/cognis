@@ -16,6 +16,7 @@ pub mod merge;
 pub mod mustache;
 pub mod strings;
 pub mod token_counter;
+pub mod retry_policy;
 pub mod tokens;
 pub mod usage;
 pub mod uuid;
