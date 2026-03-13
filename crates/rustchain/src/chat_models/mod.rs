@@ -29,6 +29,7 @@ pub mod ollama;
 pub mod openai;
 pub mod rate_limited;
 pub mod retrying;
+pub mod routing;
 pub mod structured;
 pub mod token_counting;
 
