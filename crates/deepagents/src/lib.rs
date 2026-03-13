@@ -80,6 +80,7 @@ pub mod lifecycle;
 pub mod logging;
 pub mod memory;
 pub mod middleware;
+pub mod observability;
 pub mod multi_agent;
 pub mod orchestrator;
 pub mod planning;
