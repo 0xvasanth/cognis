@@ -1,0 +1,29 @@
+title: "[Idea]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share your ideas for rustchain! This is the place to brainstorm before creating a formal feature request.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea Description
+      description: Describe your idea. What would it enable?
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: How would you or others use this?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Any references, examples from other frameworks (Python LangChain, LangGraph, etc.), or related discussions.

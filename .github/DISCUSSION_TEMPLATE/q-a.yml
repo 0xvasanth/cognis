@@ -1,0 +1,35 @@
+title: "[Q&A]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask a question about using rustchain. The community and maintainers are here to help!
+
+  - type: dropdown
+    id: crate
+    attributes:
+      label: Related Crate
+      description: Which crate is your question about?
+      options:
+        - rustchain-core
+        - rustchain
+        - langgraph
+        - deepagents
+        - General / Multiple
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: What have you tried?
+      description: Share any code, documentation, or approaches you've already tried.

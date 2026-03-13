@@ -1,0 +1,97 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! We appreciate contributions that help make rustchain better.
+
+  - type: dropdown
+    id: crate
+    attributes:
+      label: Target Crate
+      description: Which crate should this feature be added to?
+      options:
+        - rustchain-core (base traits & types)
+        - rustchain (agent framework, chat models, tools)
+        - langgraph (state graphs, execution engine)
+        - deepagents (high-level agent factory)
+        - New crate / cross-cutting
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature Category
+      description: What area does this feature fall into?
+      options:
+        - LLM Provider Integration
+        - Agent / Chain Framework
+        - Graph Execution / Orchestration
+        - Tool / Function Calling
+        - Memory / State Management
+        - Streaming
+        - Embeddings / Vector Stores
+        - Checkpointing / Persistence
+        - Observability / Tracing
+        - Performance / Optimization
+        - Developer Experience / API Design
+        - Documentation / Examples
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? Is it related to a frustration?
+      placeholder: "I'm always frustrated when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like. Include API sketches if possible.
+      placeholder: |
+        I'd like a new trait/struct that...
+
+        ```rust
+        // Example API
+        let agent = AgentBuilder::new()
+            .with_model("claude-sonnet-4-20250514")
+            .build();
+        ```
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or features you've considered.
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Breaking Change?
+      description: Would this feature require breaking changes to existing APIs?
+      options:
+        - "No"
+        - "Yes - minor (deprecation possible)"
+        - "Yes - major (requires migration)"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any references, links to Python LangChain equivalents, or related issues.

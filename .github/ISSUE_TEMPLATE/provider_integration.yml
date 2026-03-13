@@ -1,0 +1,57 @@
+name: Provider Integration Request
+description: Request support for a new LLM provider
+title: "[Provider]: "
+labels: ["enhancement", "provider"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Request support for a new LLM provider integration.
+
+  - type: input
+    id: provider
+    attributes:
+      label: Provider Name
+      description: Name of the LLM provider.
+      placeholder: "e.g., Mistral, Cohere, Together AI"
+    validations:
+      required: true
+
+  - type: input
+    id: api-docs
+    attributes:
+      label: API Documentation URL
+      description: Link to the provider's API documentation.
+      placeholder: "https://docs.example.com/api"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: capabilities
+    attributes:
+      label: Required Capabilities
+      description: What capabilities should the integration support?
+      multiple: true
+      options:
+        - Chat completions
+        - Text completions
+        - Embeddings
+        - Tool/function calling
+        - Streaming
+        - Vision/multimodal
+        - JSON mode / structured output
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Additional Details
+      description: Any specific requirements, authentication methods, or rate limiting details.
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to submit a PR for this integration
