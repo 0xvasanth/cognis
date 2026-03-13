@@ -46,6 +46,7 @@ pub mod time_travel;
 pub mod ui;
 pub mod validation;
 pub mod validator;
+pub mod versioning;
 
 pub use annotations::{
     apply_annotations, AnnotatedState, AnnotatedStateBuilder, AnnotatedStateGraph,
