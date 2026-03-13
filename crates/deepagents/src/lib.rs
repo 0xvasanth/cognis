@@ -85,6 +85,7 @@ pub mod orchestrator;
 pub mod planning;
 pub mod plugins;
 pub mod presets;
+pub mod rate_limiting;
 pub mod recovery;
 pub mod sandbox;
 pub mod session;
