@@ -10,7 +10,6 @@
 
 mod shared;
 
-
 use serde_json::json;
 
 use cognis::chains::structured_output::StructuredOutputChain;

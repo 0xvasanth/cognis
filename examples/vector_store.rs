@@ -373,7 +373,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ]);
     let messages = vec![
         Message::system("Answer the user's question using only the provided context documents."),
-        Message::human(&format!("Context:\n{}\n\nQuestion: What topics are most related to AI in this collection?", context)),
+        Message::human(&format!(
+            "Context:\n{}\n\nQuestion: What topics are most related to AI in this collection?",
+            context
+        )),
     ];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {

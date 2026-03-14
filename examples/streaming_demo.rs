@@ -252,9 +252,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = shared::get_chat_model(vec![
         "Streaming allows LLMs to send tokens incrementally, reducing perceived latency and enabling real-time display of generated text.".into(),
     ]);
-    let messages = vec![
-        Message::human("Explain in one sentence why streaming is useful for LLM applications."),
-    ];
+    let messages = vec![Message::human(
+        "Explain in one sentence why streaming is useful for LLM applications.",
+    )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         let text = gen.message.content().text();
@@ -266,7 +266,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             llm_buffer.push(StreamEvent::Token(format!("{} ", word)));
         }
         llm_buffer.push(StreamEvent::Done);
-        println!("Collected {} events, complete: {}", llm_buffer.event_count(), llm_buffer.is_complete());
+        println!(
+            "Collected {} events, complete: {}",
+            llm_buffer.event_count(),
+            llm_buffer.is_complete()
+        );
         println!("Reconstructed: \"{}\"", llm_buffer.tokens().trim());
     }
 

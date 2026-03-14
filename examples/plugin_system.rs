@@ -253,11 +253,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = shared::get_chat_model(vec![
         "Plugins extend agent capabilities by providing modular tool providers, middleware hooks, and event handlers that can be loaded, activated, and deactivated at runtime without modifying the core agent code.".into(),
     ]);
-    let messages = vec![
-        cognis_core::messages::Message::human(
-            "How do plugins extend the capabilities of an AI agent system?"
-        ),
-    ];
+    let messages = vec![cognis_core::messages::Message::human(
+        "How do plugins extend the capabilities of an AI agent system?",
+    )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         println!("  LLM Response: {}", gen.message.content().text());

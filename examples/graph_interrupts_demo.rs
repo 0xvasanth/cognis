@@ -333,11 +333,16 @@ fn main() {
 
     let llm_review_request = InterruptRequest::new(
         "llm_review_node",
-        InterruptType::Review { data: review_data.clone() },
+        InterruptType::Review {
+            data: review_data.clone(),
+        },
     )
     .with_context("requires_llm_review", json!(true));
 
-    println!("   Created review request for LLM: {}", llm_review_request.id);
+    println!(
+        "   Created review request for LLM: {}",
+        llm_review_request.id
+    );
 
     let messages = vec![
         cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
@@ -349,9 +354,7 @@ fn main() {
     ];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = rt.block_on(async {
-        model.invoke_messages(&messages, None).await
-    });
+    let result = rt.block_on(async { model.invoke_messages(&messages, None).await });
 
     match result {
         Ok(response) => {
@@ -360,7 +363,10 @@ fn main() {
 
             // Use LLM response to auto-resolve the interrupt
             let approved = review_text.to_lowercase().contains("approv");
-            println!("   Auto-resolution: {}", if approved { "APPROVED" } else { "REJECTED" });
+            println!(
+                "   Auto-resolution: {}",
+                if approved { "APPROVED" } else { "REJECTED" }
+            );
         }
         Err(e) => println!("   LLM error: {}", e),
     }

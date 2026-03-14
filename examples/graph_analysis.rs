@@ -225,9 +225,7 @@ fn main() {
     ];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let ai_msg = rt.block_on(async {
-        model.invoke_messages(&messages, None).await
-    });
+    let ai_msg = rt.block_on(async { model.invoke_messages(&messages, None).await });
 
     match ai_msg {
         Ok(response) => println!("  LLM analysis: {}", response.base.content.text()),

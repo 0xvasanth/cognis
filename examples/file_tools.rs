@@ -257,7 +257,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Read it back to verify
             let read_result = read_tool._run(text_input("llm_generated.md")).await?;
-            println!("  Read back:\n    {}", extract_content_str(&read_result).replace('\n', "\n    "));
+            println!(
+                "  Read back:\n    {}",
+                extract_content_str(&read_result).replace('\n', "\n    ")
+            );
         }
         Err(e) => println!("  LLM error: {}", e),
     }

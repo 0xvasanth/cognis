@@ -218,7 +218,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     let llm_result = model._generate(&messages, None).await?;
     if let Some(gen) = llm_result.generations.first() {
-        println!("  LLM Extracted Triples:\n  {}", gen.message.content().text());
+        println!(
+            "  LLM Extracted Triples:\n  {}",
+            gen.message.content().text()
+        );
     }
 
     println!("\n=== Knowledge Graph Memory Example Complete ===");

@@ -451,7 +451,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Demonstrates composing a prompt template, chat model, and output parser.\n");
 
     let prompt = ChatPromptTemplate::from_messages(vec![
-        ("system", "You are a helpful assistant that explains topics concisely."),
+        (
+            "system",
+            "You are a helpful assistant that explains topics concisely.",
+        ),
         ("human", "Explain {topic} in one sentence."),
     ])?;
 

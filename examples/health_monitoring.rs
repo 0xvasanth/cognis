@@ -293,13 +293,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = shared::get_chat_model(vec![
         "LLM health check passed. Model is responsive and generating coherent output.".into(),
     ]);
-    let messages = vec![
-        cognis_core::messages::Message::human("Respond with a brief health status confirmation."),
-    ];
+    let messages = vec![cognis_core::messages::Message::human(
+        "Respond with a brief health status confirmation.",
+    )];
     let llm_result = model._generate(&messages, None).await?;
     if let Some(gen) = llm_result.generations.first() {
         let response = gen.message.content().text();
-        println!("  LLM Health Check: {}", if response.is_empty() { "UNHEALTHY (empty response)" } else { "HEALTHY" });
+        println!(
+            "  LLM Health Check: {}",
+            if response.is_empty() {
+                "UNHEALTHY (empty response)"
+            } else {
+                "HEALTHY"
+            }
+        );
         println!("  Response: {}", response);
     }
 

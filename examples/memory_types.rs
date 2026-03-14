@@ -291,7 +291,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Show final memory contents
     let final_vars = llm_mem.load_memory_variables().await?;
     let final_history = final_vars.get("history").unwrap().as_array().unwrap();
-    println!("  Memory now contains {} messages (2 turns)\n", final_history.len());
+    println!(
+        "  Memory now contains {} messages (2 turns)\n",
+        final_history.len()
+    );
 
     println!("=== Done ===");
     Ok(())

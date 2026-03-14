@@ -289,7 +289,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ];
         let result = model._generate(&messages, None).await?;
         if let Some(gen) = result.generations.first() {
-            println!("First chunk ({} chars): {:?}...", first_chunk.len(), &first_chunk[..first_chunk.len().min(60)]);
+            println!(
+                "First chunk ({} chars): {:?}...",
+                first_chunk.len(),
+                &first_chunk[..first_chunk.len().min(60)]
+            );
             println!("LLM summary: {}", gen.message.content().text());
         }
     }

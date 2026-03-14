@@ -13,9 +13,7 @@
 
 mod shared;
 use cognis_core::messages::Message;
-use cognisgraph::graph::{
-    SnapshotComparator, SnapshotStore, StateSnapshot, TimeTravelDebugger,
-};
+use cognisgraph::graph::{SnapshotComparator, SnapshotStore, StateSnapshot, TimeTravelDebugger};
 use serde_json::json;
 
 #[tokio::main]

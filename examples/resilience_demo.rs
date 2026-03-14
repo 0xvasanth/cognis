@@ -431,11 +431,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = shared::get_chat_model(vec![
         "Key resilience patterns for LLM APIs: 1) Retry with exponential backoff for transient errors, 2) Circuit breaker to stop cascading failures, 3) Bulkhead to limit concurrent requests, 4) Fallback chain to switch providers when one is down.".into(),
     ]);
-    let messages = vec![
-        cognis_core::messages::Message::human(
-            "What resilience patterns are most important when calling LLM APIs in production?"
-        ),
-    ];
+    let messages = vec![cognis_core::messages::Message::human(
+        "What resilience patterns are most important when calling LLM APIs in production?",
+    )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         println!("  LLM Response: {}", gen.message.content().text());

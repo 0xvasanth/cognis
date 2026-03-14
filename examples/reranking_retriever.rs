@@ -239,11 +239,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = shared::get_chat_model(vec![
         "Rust achieves memory safety through its ownership system and borrow checker, which enforce strict rules at compile time without needing a garbage collector.".into(),
     ]);
-    let messages = vec![
-        cognis_core::messages::Message::human(
-            &format!("Based on this context: '{}'\n\nHow does Rust achieve memory safety?", context)
-        ),
-    ];
+    let messages = vec![cognis_core::messages::Message::human(&format!(
+        "Based on this context: '{}'\n\nHow does Rust achieve memory safety?",
+        context
+    ))];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         println!("  Context: {}", context);

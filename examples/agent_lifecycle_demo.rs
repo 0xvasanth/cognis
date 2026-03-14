@@ -304,7 +304,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ]);
     let messages = vec![
         Message::system("You are an agent lifecycle monitor. Diagnose agent failures concisely."),
-        Message::human("Agent 'worker-3' failed with error: 'segfault'. What happened and what should we do?"),
+        Message::human(
+            "Agent 'worker-3' failed with error: 'segfault'. What happened and what should we do?",
+        ),
     ];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {

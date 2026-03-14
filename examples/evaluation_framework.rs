@@ -406,9 +406,7 @@ fn main() {
     // -----------------------------------------------------------------------
     println!("\n--- 9. Real LLM Demo (LLM-Powered Evaluation) ---\n");
 
-    let model = shared::get_chat_model(vec![
-        "Paris".into(),
-    ]);
+    let model = shared::get_chat_model(vec!["Paris".into()]);
 
     // Ask the LLM a question and evaluate the response
     let messages = vec![
@@ -421,9 +419,7 @@ fn main() {
     ];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = rt.block_on(async {
-        model.invoke_messages(&messages, None).await
-    });
+    let result = rt.block_on(async { model.invoke_messages(&messages, None).await });
 
     match result {
         Ok(response) => {
@@ -441,7 +437,11 @@ fn main() {
             println!("  Contains score:   {:.2}", contains_score.score);
             println!(
                 "  Evaluation: {}",
-                if contains_score.is_passing(0.5) { "PASS" } else { "FAIL" }
+                if contains_score.is_passing(0.5) {
+                    "PASS"
+                } else {
+                    "FAIL"
+                }
             );
         }
         Err(e) => println!("  LLM error: {}", e),

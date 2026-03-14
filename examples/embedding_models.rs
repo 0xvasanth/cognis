@@ -290,7 +290,11 @@ fn main() {
     let embed_model = FakeEmbeddingModel::new(8);
     let texts_to_embed = vec!["embeddings", "vectors", "similarity search"];
     let embeddings = embed_model.embed_batch(&texts_to_embed).unwrap();
-    println!("  Embedded {} texts into {}-dim vectors", texts_to_embed.len(), embed_model.dimensions());
+    println!(
+        "  Embedded {} texts into {}-dim vectors",
+        texts_to_embed.len(),
+        embed_model.dimensions()
+    );
 
     // Find most similar to "embeddings"
     let query_embedding = &embeddings[0];
@@ -310,9 +314,7 @@ fn main() {
     ];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let ai_msg = rt.block_on(async {
-        chat_model.invoke_messages(&messages, None).await
-    });
+    let ai_msg = rt.block_on(async { chat_model.invoke_messages(&messages, None).await });
 
     match ai_msg {
         Ok(response) => println!("\n  LLM explanation: {}", response.base.content.text()),

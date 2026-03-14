@@ -194,13 +194,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Turn 2
     let q2 = "What is the borrow checker?";
     conv_buffer.add_message(ConversationMessage::new(MessageRole::Human, q2));
-    let turn2_msgs: Vec<Message> = conv_buffer.messages().iter().map(|m| {
-        match m.role {
+    let turn2_msgs: Vec<Message> = conv_buffer
+        .messages()
+        .iter()
+        .map(|m| match m.role {
             MessageRole::Human => Message::human(&m.content),
             MessageRole::Ai => Message::ai(&m.content),
             _ => Message::human(&m.content),
-        }
-    }).collect();
+        })
+        .collect();
     // Remove last since it's the question we just added
     let result = model._generate(&turn2_msgs, None).await?;
     if let Some(gen) = result.generations.first() {

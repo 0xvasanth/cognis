@@ -251,11 +251,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = shared::get_chat_model(vec![
         "Here is a deployment plan:\n1. Run unit tests and integration tests\n2. Build Docker image with optimized settings\n3. Deploy to staging and run smoke tests\n4. Deploy to production with canary rollout\n5. Monitor metrics and rollback if error rate exceeds 1%".into(),
     ]);
-    let messages = vec![
-        cognis_core::messages::Message::human(
-            "Create a step-by-step plan for deploying a machine learning model to production safely."
-        ),
-    ];
+    let messages = vec![cognis_core::messages::Message::human(
+        "Create a step-by-step plan for deploying a machine learning model to production safely.",
+    )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         println!("  LLM Plan:\n  {}", gen.message.content().text());

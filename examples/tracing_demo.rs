@@ -206,25 +206,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let llm_span_id = collector
         .start_child_span(&llm_trace_id, &llm_root_id, "llm_generate")
         .expect("trace should exist");
-    collector.set_span_attribute(&llm_trace_id, &llm_span_id, "model", json!("ollama/llama3.2"));
+    collector.set_span_attribute(
+        &llm_trace_id,
+        &llm_span_id,
+        "model",
+        json!("ollama/llama3.2"),
+    );
 
     let model = shared::get_chat_model(vec![
         "Tracing helps developers understand the flow of requests through an LLM pipeline by recording spans with timing and metadata.".into(),
     ]);
-    let messages = vec![
-        Message::human("Explain in one sentence why tracing is important for LLM applications."),
-    ];
+    let messages = vec![Message::human(
+        "Explain in one sentence why tracing is important for LLM applications.",
+    )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         let response_text = gen.message.content().text();
-        collector.set_span_attribute(&llm_trace_id, &llm_span_id, "response_length", json!(response_text.len()));
+        collector.set_span_attribute(
+            &llm_trace_id,
+            &llm_span_id,
+            "response_length",
+            json!(response_text.len()),
+        );
         println!("LLM response: {}", response_text);
     }
 
     collector.finish_span(&llm_trace_id, &llm_span_id);
     collector.finish_span(&llm_trace_id, &llm_root_id);
 
-    let llm_trace = collector.get_trace(&llm_trace_id).expect("trace should exist");
+    let llm_trace = collector
+        .get_trace(&llm_trace_id)
+        .expect("trace should exist");
     println!("\nTraced LLM call summary:");
     println!("{}", TraceExporter::to_summary(llm_trace));
 

@@ -295,9 +295,7 @@ fn main() {
     ];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = rt.block_on(async {
-        model.invoke_messages(&messages, None).await
-    });
+    let result = rt.block_on(async { model.invoke_messages(&messages, None).await });
 
     match result {
         Ok(response) => {

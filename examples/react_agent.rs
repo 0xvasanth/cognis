@@ -373,11 +373,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = shared::get_chat_model(vec![
         "To solve '15 * 7 + 23', I would use the calculator tool: first compute 15 * 7 = 105, then add 23 to get 128. The final answer is 128.".into(),
     ]);
-    let messages = vec![
-        cognis_core::messages::Message::human(
-            "Using a ReAct approach, explain step by step how you would solve: 15 * 7 + 23"
-        ),
-    ];
+    let messages = vec![cognis_core::messages::Message::human(
+        "Using a ReAct approach, explain step by step how you would solve: 15 * 7 + 23",
+    )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         println!("  LLM Response: {}", gen.message.content().text());

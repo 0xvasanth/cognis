@@ -272,9 +272,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- Real LLM Demo ---
     println!("\n--- Real LLM Demo ---\n");
     let real_model = shared::get_chat_model(vec![
-        "Rust achieves memory safety through its ownership system with zero-cost abstractions.".into(),
+        "Rust achieves memory safety through its ownership system with zero-cost abstractions."
+            .into(),
     ]);
-    let simple_messages = vec![Message::human("Explain Rust's ownership model in one sentence.")];
+    let simple_messages = vec![Message::human(
+        "Explain Rust's ownership model in one sentence.",
+    )];
     let real_result = real_model._generate(&simple_messages, None).await?;
     if let Some(gen) = real_result.generations.first() {
         println!("Question: Explain Rust's ownership model in one sentence.");

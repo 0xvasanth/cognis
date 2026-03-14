@@ -161,11 +161,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = shared::get_chat_model(vec![
         "A graph visualization helps developers understand data flow, identify bottlenecks, and debug complex pipelines.".into(),
     ]);
-    let messages = vec![
-        cognis_core::messages::Message::human(
-            "Why is graph visualization useful for understanding agent workflows?"
-        ),
-    ];
+    let messages = vec![cognis_core::messages::Message::human(
+        "Why is graph visualization useful for understanding agent workflows?",
+    )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         println!("  LLM Response: {}", gen.message.content().text());

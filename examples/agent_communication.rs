@@ -586,10 +586,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Using an LLM to generate an agent task message.\n");
 
     let model = shared::get_chat_model(vec![
-        "Search for recent Rust async/await best practices and summarize the top 3 findings.".into(),
+        "Search for recent Rust async/await best practices and summarize the top 3 findings."
+            .into(),
     ]);
     let messages = vec![
-        Message::system("You are a planner agent. Generate a single task description for an executor agent."),
+        Message::system(
+            "You are a planner agent. Generate a single task description for an executor agent.",
+        ),
         Message::human("Create a task about researching Rust async patterns."),
     ];
     let result = model._generate(&messages, None).await?;
@@ -604,7 +607,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             json!({"description": task_body}),
         )
         .with_priority(MessagePriority::Normal);
-        println!("Created AgentMessage: from={}, to={}, subject={}", llm_task.from, llm_task.to, llm_task.subject);
+        println!(
+            "Created AgentMessage: from={}, to={}, subject={}",
+            llm_task.from, llm_task.to, llm_task.subject
+        );
     }
 
     println!("\n=== Agent Communication Example Complete ===");

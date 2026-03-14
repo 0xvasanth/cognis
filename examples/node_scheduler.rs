@@ -421,11 +421,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = shared::get_chat_model(vec![
         "For optimal scheduling, prioritize critical LLM calls first, batch similar requests, and use resource-aware scheduling to avoid overloading the model API.".into(),
     ]);
-    let messages = vec![
-        cognis_core::messages::Message::human(
-            "What is the best strategy for scheduling multiple LLM calls in a pipeline?"
-        ),
-    ];
+    let messages = vec![cognis_core::messages::Message::human(
+        "What is the best strategy for scheduling multiple LLM calls in a pipeline?",
+    )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         println!("  LLM Response: {}", gen.message.content().text());

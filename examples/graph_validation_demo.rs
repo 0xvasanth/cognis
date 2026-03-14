@@ -205,7 +205,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Ask the LLM to validate a graph description.\n");
 
     let model = shared::get_chat_model(vec![
-        "The graph is valid: it has a clear entry point, no cycles, and all nodes are reachable.".into(),
+        "The graph is valid: it has a clear entry point, no cycles, and all nodes are reachable."
+            .into(),
     ]);
     let messages = vec![
         cognis_core::messages::Message::human(

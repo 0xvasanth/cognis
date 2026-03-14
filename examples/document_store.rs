@@ -483,15 +483,14 @@ fn main() {
         cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
             "Answer the user's question based only on the provided context.",
         )),
-        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
-            &format!("Context:\n{}\n\nQuestion: What do these documents tell us about learning?", context),
-        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(&format!(
+            "Context:\n{}\n\nQuestion: What do these documents tell us about learning?",
+            context
+        ))),
     ];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let ai_msg = rt.block_on(async {
-        model.invoke_messages(&messages, None).await
-    });
+    let ai_msg = rt.block_on(async { model.invoke_messages(&messages, None).await });
 
     match ai_msg {
         Ok(response) => println!("  LLM answer: {}", response.base.content.text()),

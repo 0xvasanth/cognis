@@ -296,9 +296,7 @@ fn main() {
     ];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = rt.block_on(async {
-        model.invoke_messages(&messages, None).await
-    });
+    let result = rt.block_on(async { model.invoke_messages(&messages, None).await });
 
     match result {
         Ok(response) => {
@@ -309,13 +307,21 @@ fn main() {
             let simulated_error = "rate limit exceeded on LLM provider";
             let kind = classifier.classify(simulated_error);
             println!("\n  Simulated LLM error: \"{}\"", simulated_error);
-            println!("  Classified as: {} (retryable: {})", kind, kind.is_retryable());
+            println!(
+                "  Classified as: {} (retryable: {})",
+                kind,
+                kind.is_retryable()
+            );
         }
         Err(e) => {
             println!("  LLM call failed: {}", e);
             let classifier = PatternErrorClassifier::new();
             let kind = classifier.classify(&e.to_string());
-            println!("  Error classified as: {} (retryable: {})", kind, kind.is_retryable());
+            println!(
+                "  Error classified as: {} (retryable: {})",
+                kind,
+                kind.is_retryable()
+            );
         }
     }
 

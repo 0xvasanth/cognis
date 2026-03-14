@@ -12,8 +12,7 @@
 
 mod shared;
 use cognis::agents::plan_and_execute::{
-    PlanAndExecuteAgent, PlanStepStatus, Planner, SimplePlanner, TemplatePlanner,
-    ToolStepExecutor,
+    PlanAndExecuteAgent, PlanStepStatus, Planner, SimplePlanner, TemplatePlanner, ToolStepExecutor,
 };
 
 #[tokio::main]
@@ -180,16 +179,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- 7. LLM-Powered Planning ---");
     println!("Uses a real LLM (Ollama) to generate a plan from a high-level goal.\n");
 
-    let fake_plan_response = vec![
-        "Here is a step-by-step plan to build a CLI tool in Rust:\n\
+    let fake_plan_response = vec!["Here is a step-by-step plan to build a CLI tool in Rust:\n\
          1. Define the CLI argument structure using clap\n\
          2. Implement input parsing and validation\n\
          3. Build the core processing logic\n\
          4. Add formatted output and error messages\n\
          5. Write unit tests and integration tests\n\
          6. Add documentation and usage examples"
-            .to_string(),
-    ];
+        .to_string()];
 
     let model = shared::get_chat_model(fake_plan_response);
 

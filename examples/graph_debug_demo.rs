@@ -238,7 +238,8 @@ fn main() {
     ]);
 
     // Record a debug step for the LLM call
-    let llm_state = json!({"query": "Analyze profiler results", "profiler_data": profiler.to_json()});
+    let llm_state =
+        json!({"query": "Analyze profiler results", "profiler_data": profiler.to_json()});
     session.record_step("llm_analysis", llm_state);
 
     // Profile the LLM call
@@ -257,9 +258,7 @@ fn main() {
     ];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let ai_msg = rt.block_on(async {
-        model.invoke_messages(&messages, None).await
-    });
+    let ai_msg = rt.block_on(async { model.invoke_messages(&messages, None).await });
 
     profiler.end_node("llm_analysis");
 

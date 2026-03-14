@@ -401,9 +401,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Using an LLM to generate a memory-worthy fact, then storing it.\n");
 
     let model = shared::get_chat_model(vec![
-        "The Rust programming language was first released in 2010 by Graydon Hoare at Mozilla.".into(),
+        "The Rust programming language was first released in 2010 by Graydon Hoare at Mozilla."
+            .into(),
     ]);
-    let messages = vec![Message::human("Tell me a key fact about Rust's history in one sentence.")];
+    let messages = vec![Message::human(
+        "Tell me a key fact about Rust's history in one sentence.",
+    )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         let fact_text = gen.message.content().text();

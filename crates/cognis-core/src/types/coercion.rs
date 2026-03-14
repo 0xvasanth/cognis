@@ -1012,8 +1012,8 @@ mod tests {
 
     #[test]
     fn test_from_f64() {
-        let v: DynamicValue = 2.718f64.into();
-        assert_eq!(v, DynamicValue::Float(2.718));
+        let v: DynamicValue = 2.719f64.into();
+        assert_eq!(v, DynamicValue::Float(2.719));
     }
 
     #[test]

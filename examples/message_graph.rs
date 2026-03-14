@@ -427,11 +427,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = shared::get_chat_model(vec![
         "In a message graph, nodes process messages sequentially or conditionally, allowing you to build conversational workflows with routing logic.".into(),
     ]);
-    let messages = vec![
-        cognis_core::messages::Message::human(
-            "Explain how message graphs help build conversational AI workflows."
-        ),
-    ];
+    let messages = vec![cognis_core::messages::Message::human(
+        "Explain how message graphs help build conversational AI workflows.",
+    )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
         println!("  LLM Response: {}", gen.message.content().text());

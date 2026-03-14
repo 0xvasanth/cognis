@@ -450,17 +450,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     cb_manager.add_handler(Box::new(SharedMetrics(cb_metrics.clone())));
 
     let run_id = CallbackManager::new_run_id();
-    cb_manager.emit_phase(CallbackPhase::LlmStart, &run_id, json!({"model": "shared_model"}));
+    cb_manager.emit_phase(
+        CallbackPhase::LlmStart,
+        &run_id,
+        json!({"model": "shared_model"}),
+    );
 
     let model = shared::get_chat_model(vec![
         "Callbacks are essential for observability in LLM applications.".into(),
     ]);
-    let messages = vec![Message::human("Why are callbacks important in LLM frameworks?")];
+    let messages = vec![Message::human(
+        "Why are callbacks important in LLM frameworks?",
+    )];
     let result = model._generate(&messages, None).await?;
 
     if let Some(gen) = result.generations.first() {
         let response_text = gen.message.content().text();
-        cb_manager.emit_phase(CallbackPhase::LlmEnd, &run_id, json!({"response": response_text}));
+        cb_manager.emit_phase(
+            CallbackPhase::LlmEnd,
+            &run_id,
+            json!({"response": response_text}),
+        );
         println!("LLM Response: {}", response_text);
     }
 

@@ -588,9 +588,7 @@ fn main() {
     ];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = rt.block_on(async {
-        model.invoke_messages(&messages, None).await
-    });
+    let result = rt.block_on(async { model.invoke_messages(&messages, None).await });
     let elapsed_ms = start_time.elapsed().as_millis() as u64;
 
     match result {

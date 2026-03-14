@@ -240,14 +240,21 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let caching_llm = CachingRetriever::with_defaults(inner_llm.clone());
 
     let docs = caching_llm.get_relevant_documents("What is Rust?").await?;
-    let context: String = docs.iter().map(|d| d.page_content.as_str()).collect::<Vec<_>>().join(" ");
+    let context: String = docs
+        .iter()
+        .map(|d| d.page_content.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
 
     let model = shared::get_chat_model(vec![
         "Based on the retrieved documents: Rust was first released in 2010 and is maintained by the Rust Foundation.".into(),
     ]);
     let messages = vec![
         Message::system("Answer based on the following context only."),
-        Message::human(&format!("Context: {}\n\nQuestion: What do we know about Rust?", context)),
+        Message::human(&format!(
+            "Context: {}\n\nQuestion: What do we know about Rust?",
+            context
+        )),
     ];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {

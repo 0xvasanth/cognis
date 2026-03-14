@@ -330,11 +330,10 @@ Here are the top programming languages:
     println!("\n--- 7. Real LLM Demo ---");
     println!("Ask an LLM to generate structured JSON, then parse and validate it.\n");
 
-    let model = shared::get_chat_model(vec![
-        r#"```json
+    let model = shared::get_chat_model(vec![r#"```json
 {"language": "Rust", "year": 2015, "paradigm": "systems", "memory_safe": true}
-```"#.into(),
-    ]);
+```"#
+        .into()]);
     let messages = vec![
         Message::system("Always respond with a JSON object inside a markdown code block."),
         Message::human("Give me structured data about the Rust programming language: name, first stable release year, paradigm, and whether it is memory safe."),
@@ -346,14 +345,20 @@ Here are the top programming languages:
 
         match parser.parse_json_block(&raw) {
             Ok(parsed) => {
-                println!("Parsed JSON: {}", serde_json::to_string_pretty(&parsed).unwrap());
+                println!(
+                    "Parsed JSON: {}",
+                    serde_json::to_string_pretty(&parsed).unwrap()
+                );
 
                 let llm_schema = SchemaEnforcer::new()
                     .require_field("language")
                     .require_type("language", JsonType::String)
                     .require_type("year", JsonType::Number);
                 match llm_schema.validate(&parsed) {
-                    Ok(validated) => println!("Validation: PASS\n{}", serde_json::to_string_pretty(&validated).unwrap()),
+                    Ok(validated) => println!(
+                        "Validation: PASS\n{}",
+                        serde_json::to_string_pretty(&validated).unwrap()
+                    ),
                     Err(violations) => {
                         println!("Validation: FAIL");
                         for v in &violations {

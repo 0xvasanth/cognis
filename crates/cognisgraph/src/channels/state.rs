@@ -1097,10 +1097,10 @@ mod tests {
 
     #[test]
     fn test_channel_value_float_roundtrip() {
-        let cv = ChannelValue::Float(2.718);
+        let cv = ChannelValue::Float(2.719);
         let v = cv.to_value();
         let cv2 = ChannelValue::from_value(v);
-        assert_eq!(cv2, ChannelValue::Float(2.718));
+        assert_eq!(cv2, ChannelValue::Float(2.719));
     }
 
     #[test]

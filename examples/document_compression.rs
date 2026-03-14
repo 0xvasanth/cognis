@@ -256,15 +256,14 @@ fn main() {
         cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
             "You are a helpful summarizer. Provide a brief summary of the given documents.",
         )),
-        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
-            &format!("Summarize these compressed documents in 2-3 sentences:\n{}", compressed_text),
-        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(&format!(
+            "Summarize these compressed documents in 2-3 sentences:\n{}",
+            compressed_text
+        ))),
     ];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let ai_msg = rt.block_on(async {
-        model.invoke_messages(&messages, None).await
-    });
+    let ai_msg = rt.block_on(async { model.invoke_messages(&messages, None).await });
 
     match ai_msg {
         Ok(response) => println!("  LLM summary: {}\n", response.base.content.text()),

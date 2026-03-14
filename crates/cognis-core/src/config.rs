@@ -706,8 +706,8 @@ mod tests {
 
     #[test]
     fn from_f64() {
-        let v: ConfigValue = 2.718f64.into();
-        assert_eq!(v, ConfigValue::Float(2.718));
+        let v: ConfigValue = 2.719f64.into();
+        assert_eq!(v, ConfigValue::Float(2.719));
     }
 
     #[test]
