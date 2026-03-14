@@ -36,10 +36,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let encoder = FakeCrossEncoder::new();
 
     let pairs = vec![
-        ("rust programming language".into(), "rust programming language".into()),
-        ("rust programming language".into(), "python scripting language".into()),
-        ("rust programming language".into(), "completely unrelated xyz".into()),
-        ("rust programming language".into(), "rust is a great language".into()),
+        (
+            "rust programming language".into(),
+            "rust programming language".into(),
+        ),
+        (
+            "rust programming language".into(),
+            "python scripting language".into(),
+        ),
+        (
+            "rust programming language".into(),
+            "completely unrelated xyz".into(),
+        ),
+        (
+            "rust programming language".into(),
+            "rust is a great language".into(),
+        ),
     ];
 
     let scores = encoder.score_pairs(&pairs).await?;
@@ -56,8 +68,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Threshold: {}", threshold_encoder.threshold());
 
     let pairs = vec![
-        ("machine learning".into(), "machine learning".into()),       // high overlap
-        ("machine learning".into(), "deep learning models".into()),   // partial overlap
+        ("machine learning".into(), "machine learning".into()), // high overlap
+        ("machine learning".into(), "deep learning models".into()), // partial overlap
         ("machine learning".into(), "quantum physics theory".into()), // low overlap
     ];
 
@@ -112,14 +124,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("  Cache size before scoring: {}", cached.cache_len());
     let scores = cached.score_pairs(&pairs).await?;
-    println!("  Cache size after scoring {} pairs: {}", pairs.len(), cached.cache_len());
+    println!(
+        "  Cache size after scoring {} pairs: {}",
+        pairs.len(),
+        cached.cache_len()
+    );
     for (pair, score) in pairs.iter().zip(scores.iter()) {
         println!("    ({}, {}) => {:.4}", pair.0, pair.1, score);
     }
 
     // Score same pairs again — served from cache
     let scores2 = cached.score_pairs(&pairs).await?;
-    println!("  Cache size after re-scoring (cache hit): {}", cached.cache_len());
+    println!(
+        "  Cache size after re-scoring (cache hit): {}",
+        cached.cache_len()
+    );
     assert_eq!(scores, scores2);
     println!("  Scores match on re-score: true");
 
@@ -128,7 +147,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let extra = vec![(format!("key{}", i), format!("val{}", i))];
         cached.score_pairs(&extra).await?;
     }
-    println!("  Cache size after adding 4 more entries (capacity=5): {}", cached.cache_len());
+    println!(
+        "  Cache size after adding 4 more entries (capacity=5): {}",
+        cached.cache_len()
+    );
     println!();
 
     // -----------------------------------------------------------------------
@@ -138,8 +160,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let normalized = NormalizedCrossEncoder::new(FakeCrossEncoder::new());
 
     let pairs = vec![
-        ("rust programming".into(), "rust programming".into()),  // highest
-        ("rust programming".into(), "rust language".into()),      // mid
+        ("rust programming".into(), "rust programming".into()), // highest
+        ("rust programming".into(), "rust language".into()),    // mid
         ("rust programming".into(), "totally different xyz".into()), // lowest
     ];
 
@@ -180,7 +202,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let llm_reranker = CrossEncoderReranker::new(FakeCrossEncoder::new()).with_top_k(3);
-    let results = llm_reranker.rerank(&generated_query, &knowledge_base).await?;
+    let results = llm_reranker
+        .rerank(&generated_query, &knowledge_base)
+        .await?;
 
     println!("  Top 3 documents for LLM-generated query:");
     for result in &results {

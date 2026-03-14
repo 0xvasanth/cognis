@@ -80,8 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- 2. PairwiseSimilarityMatrix ---\n");
 
     // Symmetric matrix for all documents.
-    let sym_matrix =
-        PairwiseSimilarityMatrix::compute_symmetric(&all_docs, DistanceMetric::Cosine);
+    let sym_matrix = PairwiseSimilarityMatrix::compute_symmetric(&all_docs, DistanceMetric::Cosine);
 
     println!(
         "Symmetric pairwise matrix ({}x{}):",
@@ -115,8 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Asymmetric: compare a subset (queries) against another subset (corpus).
     let queries = vec![doc_rust.clone(), doc_ml.clone()];
     let corpus = vec![doc_python.clone(), doc_systems.clone(), doc_data.clone()];
-    let asym_matrix =
-        PairwiseSimilarityMatrix::compute(&queries, &corpus, DistanceMetric::Cosine);
+    let asym_matrix = PairwiseSimilarityMatrix::compute(&queries, &corpus, DistanceMetric::Cosine);
 
     println!(
         "\nAsymmetric matrix ({}x{}) — queries vs corpus:",
@@ -192,11 +190,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Use 2 initial centroids: one near "programming", one near "data/ML".
     let centroids = vec![
         vec![0.85, 0.05, 0.05, 0.85], // programming cluster
-        vec![0.1, 0.75, 0.85, 0.25],   // data/ML cluster
+        vec![0.1, 0.75, 0.85, 0.25],  // data/ML cluster
     ];
 
-    let clustering =
-        ClusterAssignment::assign(&all_docs, &centroids, DistanceMetric::Cosine);
+    let clustering = ClusterAssignment::assign(&all_docs, &centroids, DistanceMetric::Cosine);
     println!("Clusters (k={}):", clustering.k);
     for (i, &cluster) in clustering.assignments.iter().enumerate() {
         println!("  {} -> cluster {}", labels[i], cluster);
@@ -228,13 +225,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let raw = vec![3.0, 4.0, 0.0];
     let normalized = EmbeddingNormalizer::l2_normalize(&raw);
     let magnitude: f32 = normalized.iter().map(|x| x * x).sum::<f32>().sqrt();
-    println!("L2 normalize {:?} -> {:?} (magnitude={:.4})", raw, normalized, magnitude);
+    println!(
+        "L2 normalize {:?} -> {:?} (magnitude={:.4})",
+        raw, normalized, magnitude
+    );
 
     // L2 normalize a batch.
-    let batch = vec![
-        vec![1.0, 0.0, 0.0],
-        vec![0.0, 3.0, 4.0],
-    ];
+    let batch = vec![vec![1.0, 0.0, 0.0], vec![0.0, 3.0, 4.0]];
     let norm_batch = EmbeddingNormalizer::l2_normalize_batch(&batch);
     println!("\nL2 normalize batch:");
     for (orig, normed) in batch.iter().zip(norm_batch.iter()) {
@@ -242,11 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Mean-center.
-    let vectors = vec![
-        vec![2.0, 4.0],
-        vec![4.0, 6.0],
-        vec![6.0, 8.0],
-    ];
+    let vectors = vec![vec![2.0, 4.0], vec![4.0, 6.0], vec![6.0, 8.0]];
     let centered = EmbeddingNormalizer::mean_center(&vectors);
     println!("\nMean-centered:");
     for (orig, cent) in vectors.iter().zip(centered.iter()) {

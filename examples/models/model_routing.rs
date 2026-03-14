@@ -14,8 +14,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use cognis::chat_models::routing::{
-    FallbackChain, ModelCapabilities, ModelCapability, ModelRouter, RoutingContext,
-    RoutingMetrics, RoutingModelProfile, RoutingRule, RoutingStrategy,
+    FallbackChain, ModelCapabilities, ModelCapability, ModelRouter, RoutingContext, RoutingMetrics,
+    RoutingModelProfile, RoutingRule, RoutingStrategy,
 };
 use cognis_core::messages::{HumanMessage, Message};
 
@@ -38,8 +38,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         caps, caps.0
     );
 
-    println!("  contains STREAMING?      {}", caps.contains(ModelCapability::STREAMING));
-    println!("  contains VISION?         {}", caps.contains(ModelCapability::VISION));
+    println!(
+        "  contains STREAMING?      {}",
+        caps.contains(ModelCapability::STREAMING)
+    );
+    println!(
+        "  contains VISION?         {}",
+        caps.contains(ModelCapability::VISION)
+    );
 
     let required = ModelCapabilities(ModelCapability::STREAMING | ModelCapability::TOOL_CALLING);
     println!(
@@ -88,18 +94,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ))
         .with_quality(0.70);
 
-    println!("Profile: {} (quality={}, cost_in={}, latency={}ms, ctx={})",
-        gpt4_profile.name, gpt4_profile.quality_score,
-        gpt4_profile.cost_per_1k_input_tokens, gpt4_profile.avg_latency_ms,
-        gpt4_profile.max_context_length);
-    println!("Profile: {} (quality={}, cost_in={}, latency={}ms, ctx={})",
-        claude_profile.name, claude_profile.quality_score,
-        claude_profile.cost_per_1k_input_tokens, claude_profile.avg_latency_ms,
-        claude_profile.max_context_length);
-    println!("Profile: {} (quality={}, cost_in={}, latency={}ms, ctx={})",
-        mini_profile.name, mini_profile.quality_score,
-        mini_profile.cost_per_1k_input_tokens, mini_profile.avg_latency_ms,
-        mini_profile.max_context_length);
+    println!(
+        "Profile: {} (quality={}, cost_in={}, latency={}ms, ctx={})",
+        gpt4_profile.name,
+        gpt4_profile.quality_score,
+        gpt4_profile.cost_per_1k_input_tokens,
+        gpt4_profile.avg_latency_ms,
+        gpt4_profile.max_context_length
+    );
+    println!(
+        "Profile: {} (quality={}, cost_in={}, latency={}ms, ctx={})",
+        claude_profile.name,
+        claude_profile.quality_score,
+        claude_profile.cost_per_1k_input_tokens,
+        claude_profile.avg_latency_ms,
+        claude_profile.max_context_length
+    );
+    println!(
+        "Profile: {} (quality={}, cost_in={}, latency={}ms, ctx={})",
+        mini_profile.name,
+        mini_profile.quality_score,
+        mini_profile.cost_per_1k_input_tokens,
+        mini_profile.avg_latency_ms,
+        mini_profile.max_context_length
+    );
 
     // -----------------------------------------------------------------------
     // 3. RoutingStrategy — different selection strategies
@@ -107,15 +125,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- 3. RoutingStrategy ---\n");
 
     // We use fake models for all three profiles.
-    let gpt4_model = shared::get_chat_model(vec![
-        "I am GPT-4o, the high-quality model.".into(),
-    ]);
-    let claude_model = shared::get_chat_model(vec![
-        "I am Claude Sonnet, balanced and capable.".into(),
-    ]);
-    let mini_model = shared::get_chat_model(vec![
-        "I am GPT-4o-mini, fast and affordable.".into(),
-    ]);
+    let gpt4_model = shared::get_chat_model(vec!["I am GPT-4o, the high-quality model.".into()]);
+    let claude_model =
+        shared::get_chat_model(vec!["I am Claude Sonnet, balanced and capable.".into()]);
+    let mini_model = shared::get_chat_model(vec!["I am GPT-4o-mini, fast and affordable.".into()]);
 
     // --- CostOptimized ---
     let cost_router = ModelRouter::builder()
@@ -127,7 +140,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let ctx = RoutingContext::default();
     let selected = cost_router.preview_selection(&ctx)?;
-    println!("CostOptimized selects:    {} (cheapest input cost)", selected);
+    println!(
+        "CostOptimized selects:    {} (cheapest input cost)",
+        selected
+    );
 
     // --- LatencyOptimized ---
     let latency_router = ModelRouter::builder()
@@ -161,9 +177,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Rule: {}", long_ctx_rule.name);
 
     // Built-in rule: require specific capabilities.
-    let vision_rule = RoutingRule::requires_capabilities(
-        ModelCapabilities(ModelCapability::VISION),
-    );
+    let vision_rule =
+        RoutingRule::requires_capabilities(ModelCapabilities(ModelCapability::VISION));
     println!("Rule: {}", vision_rule.name);
 
     // Built-in rule: max cost per 1K input tokens.
@@ -175,10 +190,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Rule: {}", fits_rule.name);
 
     // Custom rule: only models with quality >= 0.9.
-    let quality_rule = RoutingRule::new(
-        "min_quality(0.9)",
-        |_ctx, profile| profile.quality_score >= 0.9,
-    );
+    let quality_rule = RoutingRule::new("min_quality(0.9)", |_ctx, profile| {
+        profile.quality_score >= 0.9
+    });
     println!("Rule: {}", quality_rule.name);
 
     // Build a router that requires VISION + quality >= 0.9 using QualityOptimized.
@@ -245,11 +259,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .strategy(RoutingStrategy::CostOptimized)
         .build()?;
 
-    let messages = vec![
-        Message::Human(HumanMessage::new("What is the meaning of life?")),
-    ];
+    let messages = vec![Message::Human(HumanMessage::new(
+        "What is the meaning of life?",
+    ))];
 
-    let (model_name, result) = router.route(&messages, None, &RoutingContext::default()).await?;
+    let (model_name, result) = router
+        .route(&messages, None, &RoutingContext::default())
+        .await?;
     println!("Routed to: {}", model_name);
     if let Some(gen) = result.generations.first() {
         println!("Response: {}", gen.text);

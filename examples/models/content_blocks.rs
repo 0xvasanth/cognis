@@ -24,7 +24,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--- 1. Text blocks ---\n");
 
     let greeting = text_block("Hello, world!");
-    let explanation = text_block("Content blocks provide a unified representation for multimodal data.");
+    let explanation =
+        text_block("Content blocks provide a unified representation for multimodal data.");
     println!("  {:?}", greeting);
     println!("  {:?}", explanation);
 
@@ -81,13 +82,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------------
     println!("\n--- 6. Citation blocks ---\n");
 
-    let cite = citation_block("doc-001", "Rust guarantees memory safety without a garbage collector.");
-    let cite_idx = citation_block_with_indices(
-        "doc-002",
-        "Ownership is Rust's most unique feature.",
-        0,
-        42,
+    let cite = citation_block(
+        "doc-001",
+        "Rust guarantees memory safety without a garbage collector.",
     );
+    let cite_idx =
+        citation_block_with_indices("doc-002", "Ownership is Rust's most unique feature.", 0, 42);
     println!("  Citation:             {:?}", cite);
     println!("  Citation with index:  {:?}", cite_idx);
 
@@ -97,7 +97,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- 7. Annotation and custom blocks ---\n");
 
     let annotation = annotation_block("highlight", json!({"color": "yellow", "note": "important"}));
-    let custom = custom_block("code_snippet", json!({"language": "rust", "code": "fn main() {}"}));
+    let custom = custom_block(
+        "code_snippet",
+        json!({"language": "rust", "code": "fn main() {}"}),
+    );
     println!("  Annotation: {:?}", annotation);
     println!("  Custom:     {:?}", custom);
 
@@ -108,8 +111,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut list = ContentBlockList::new();
     list.push(text_block("Introduction to Rust"));
-    list.push(image_block_url("https://example.com/rust-logo.png", "image/png"));
-    list.push(audio_block_url("https://example.com/podcast.mp3", "audio/mp3"));
+    list.push(image_block_url(
+        "https://example.com/rust-logo.png",
+        "image/png",
+    ));
+    list.push(audio_block_url(
+        "https://example.com/podcast.mp3",
+        "audio/mp3",
+    ));
     list.push(pdf_block_url("https://example.com/rust-book.pdf"));
     list.push(citation_block("ch1", "Rust is blazingly fast."));
     list.push(text_block("Conclusion"));
@@ -175,7 +184,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut final_list = ContentBlockList::new();
     final_list.push(llm_block);
     final_list.push(citation_block("llm-response", llm_text));
-    println!("  Final list has {} blocks, text_only={}", final_list.len(), final_list.text_only());
+    println!(
+        "  Final list has {} blocks, text_only={}",
+        final_list.len(),
+        final_list.text_only()
+    );
 
     println!("\n=== Multimodal Content Blocks Example Complete ===");
     Ok(())

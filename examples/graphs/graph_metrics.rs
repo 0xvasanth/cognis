@@ -19,8 +19,8 @@ mod shared;
 use std::time::Duration;
 
 use cognisgraph::graph::metrics::{
-    EdgeMetrics, GraphMetrics, InMemoryMetricsCollector, MetricsAggregator,
-    MetricsCollector, MetricsExporter, MetricsReport, NodeMetrics,
+    EdgeMetrics, GraphMetrics, InMemoryMetricsCollector, MetricsAggregator, MetricsCollector,
+    MetricsExporter, MetricsReport, NodeMetrics,
 };
 
 use cognis_core::messages::Message;
@@ -86,9 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!(
         "  {} -> {}: {} traversals (cold path)\n",
-        edge_process_to_retry.from,
-        edge_process_to_retry.to,
-        edge_process_to_retry.traversal_count
+        edge_process_to_retry.from, edge_process_to_retry.to, edge_process_to_retry.traversal_count
     );
 
     // -----------------------------------------------------------------------
@@ -193,7 +191,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n  Edges by traversal count:");
     for em in gm.edges_by_traversal() {
-        println!("    {} -> {} — {} traversals", em.from, em.to, em.traversal_count);
+        println!(
+            "    {} -> {} — {} traversals",
+            em.from, em.to, em.traversal_count
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -227,7 +228,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     aggregator.merge(&gm);
 
     println!("  Total runs aggregated: {}", aggregator.total_runs);
-    println!("  Total duration across runs: {:?}", aggregator.total_duration);
+    println!(
+        "  Total duration across runs: {:?}",
+        aggregator.total_duration
+    );
     println!(
         "  Total nodes executed: {}",
         aggregator.total_nodes_executed
@@ -319,10 +323,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  {}", node_json);
 
     let gm_json = MetricsExporter::to_json(&gm)?;
-    println!(
-        "\n  Full GraphMetrics JSON length: {} chars",
-        gm_json.len()
-    );
+    println!("\n  Full GraphMetrics JSON length: {} chars", gm_json.len());
 
     // -----------------------------------------------------------------------
     // 9. LLM analysis of the metrics report

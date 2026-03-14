@@ -22,11 +22,11 @@ mod shared;
 
 use std::sync::Arc;
 
+use cognis_core::messages::Message;
 use cognisgraph::config::{InMemoryStore, Store};
 use cognisgraph::runtime::{
     NoContext, Runtime, RuntimeBuilder, RuntimeConfig, RuntimeProvider, RuntimeScope, StreamWriter,
 };
-use cognis_core::messages::Message;
 use serde_json::json;
 
 #[tokio::main]
@@ -80,7 +80,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_previous(json!({"step": "initialized"}))
         .build();
 
-    println!("  Runtime with store — has store: {}", rt_with_store.store().is_some());
+    println!(
+        "  Runtime with store — has store: {}",
+        rt_with_store.store().is_some()
+    );
     let alice = rt_with_store.store().unwrap().get(&["users"], "alice")?;
     println!("  Store lookup users/alice: {:?}", alice);
     println!("  Previous value: {:?}", rt_with_store.previous());
@@ -107,7 +110,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut rt_custom = RuntimeBuilder::new()
         .with_context(ctx)
-        .with_config(RuntimeConfig::new().with_run_id("run-003").with_tag("custom"))
+        .with_config(
+            RuntimeConfig::new()
+                .with_run_id("run-003")
+                .with_tag("custom"),
+        )
         .build();
 
     println!("  Context user_id: {}", rt_custom.context().user_id);
@@ -119,7 +126,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  After increment: {}", rt_custom.context().request_count);
 
     // Map context to a different type
-    let rt_mapped = rt_custom.map_context(|ctx| format!("user={}, reqs={}", ctx.user_id, ctx.request_count));
+    let rt_mapped =
+        rt_custom.map_context(|ctx| format!("user={}, reqs={}", ctx.user_id, ctx.request_count));
     println!("  Mapped context: {}", rt_mapped.context());
 
     // Replace context entirely
@@ -179,7 +187,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
         println!("  Scoped run_id: {:?}", _scope.runtime().config().run_id);
     }
-    println!("  Cleanup callback ran: {}", cleanup_ran.load(std::sync::atomic::Ordering::SeqCst));
+    println!(
+        "  Cleanup callback ran: {}",
+        cleanup_ran.load(std::sync::atomic::Ordering::SeqCst)
+    );
 
     // Scope with mutable access
     let rt = RuntimeBuilder::new()
@@ -211,7 +222,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nc_json = serde_json::to_string(&nc)?;
     println!("  NoContext serialized: {}", nc_json);
     let nc_back: NoContext = serde_json::from_str(&nc_json)?;
-    println!("  NoContext roundtrip: {:?} (equal={})", nc_back, nc == nc_back);
+    println!(
+        "  NoContext roundtrip: {:?} (equal={})",
+        nc_back,
+        nc == nc_back
+    );
 
     let rt_default = Runtime::<NoContext>::new();
     println!("  Default runtime context: {:?}", rt_default.context());
@@ -224,7 +239,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base = RuntimeBuilder::new()
         .with_context(String::from("base"))
         .with_store(Arc::new(InMemoryStore::new()) as Arc<_>)
-        .with_config(RuntimeConfig::new().with_run_id("base-run").with_tag("base-tag"))
+        .with_config(
+            RuntimeConfig::new()
+                .with_run_id("base-run")
+                .with_tag("base-tag"),
+        )
         .with_previous(json!("base_prev"))
         .build();
 
@@ -235,10 +254,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let merged = base.merge(overlay);
     println!("  Merged context: {} (from overlay)", merged.context());
-    println!("  Merged run_id: {:?} (from overlay)", merged.config().run_id);
-    println!("  Merged store present: {} (falls back to base)", merged.store().is_some());
-    println!("  Merged tags: {:?} (falls back to base since overlay empty)", merged.config().tags);
-    println!("  Merged previous: {:?} (falls back to base)", merged.previous());
+    println!(
+        "  Merged run_id: {:?} (from overlay)",
+        merged.config().run_id
+    );
+    println!(
+        "  Merged store present: {} (falls back to base)",
+        merged.store().is_some()
+    );
+    println!(
+        "  Merged tags: {:?} (falls back to base since overlay empty)",
+        merged.config().tags
+    );
+    println!(
+        "  Merged previous: {:?} (falls back to base)",
+        merged.previous()
+    );
     println!();
 
     // -----------------------------------------------------------------------
@@ -255,7 +286,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a runtime scope that simulates a graph execution context
     let store = Arc::new(InMemoryStore::new());
-    store.put(&["prompts"], "system", json!("You are a concise technical assistant."))?;
+    store.put(
+        &["prompts"],
+        "system",
+        json!("You are a concise technical assistant."),
+    )?;
 
     let rt = RuntimeBuilder::new()
         .with_context(String::from("llm-demo"))
@@ -271,7 +306,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let scope = RuntimeScope::new(rt);
     println!("  Runtime run_id: {:?}", scope.runtime().config().run_id);
-    println!("  Runtime thread_id: {:?}", scope.runtime().config().thread_id);
+    println!(
+        "  Runtime thread_id: {:?}",
+        scope.runtime().config().thread_id
+    );
     println!("  Runtime context: {}", scope.runtime().context());
 
     // Retrieve system prompt from store
@@ -281,11 +319,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap()
         .get(&["prompts"], "system")?
         .unwrap_or(json!("You are a helpful assistant."));
-    let system_text = system_prompt.as_str().unwrap_or("You are a helpful assistant.");
+    let system_text = system_prompt
+        .as_str()
+        .unwrap_or("You are a helpful assistant.");
 
     let messages = vec![
         Message::system(system_text),
-        Message::human("Explain what a runtime scope does in a graph execution framework, in one sentence."),
+        Message::human(
+            "Explain what a runtime scope does in a graph execution framework, in one sentence.",
+        ),
     ];
 
     let ai_response = model.invoke_messages(&messages, None).await?;

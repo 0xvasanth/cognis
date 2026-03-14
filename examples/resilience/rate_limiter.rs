@@ -19,8 +19,8 @@ mod shared;
 use std::time::Duration;
 
 use cognisagent::rate_limiting::{
-    CostBasedLimiter, CompositeLimiter, QuotaManager, RateLimitPolicy,
-    SlidingWindowLimiter, TimeWindow, TokenBucket, UsageTracker,
+    CompositeLimiter, CostBasedLimiter, QuotaManager, RateLimitPolicy, SlidingWindowLimiter,
+    TimeWindow, TokenBucket, UsageTracker,
 };
 
 use cognis_core::messages::Message;
@@ -113,8 +113,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Track API costs against a budget cap with per-model pricing.\n");
 
     let cost_limiter = CostBasedLimiter::new(
-        1.00,                      // $1.00 budget
-        0.01,                      // $0.01 default cost per call
+        1.00, // $1.00 budget
+        0.01, // $0.01 default cost per call
         RateLimitPolicy::Reject,
     );
     cost_limiter.set_model_cost("gpt-4", 0.03);
@@ -122,7 +122,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     cost_limiter.set_model_cost("claude-sonnet", 0.015);
 
     println!("  Budget: ${:.2}", cost_limiter.budget());
-    println!("  GPT-4 cost: ${:.3}/call", cost_limiter.cost_for_model("gpt-4"));
+    println!(
+        "  GPT-4 cost: ${:.3}/call",
+        cost_limiter.cost_for_model("gpt-4")
+    );
     println!(
         "  GPT-3.5 cost: ${:.4}/call",
         cost_limiter.cost_for_model("gpt-3.5")
@@ -142,10 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             model, result.allowed, result.cost_remaining
         );
     }
-    println!(
-        "  Total spent: ${:.4}",
-        cost_limiter.total_spent()
-    );
+    println!("  Total spent: ${:.4}", cost_limiter.total_spent());
     println!(
         "  Remaining budget: ${:.4}\n",
         cost_limiter.remaining_budget()
@@ -186,7 +186,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     composite.reset_all();
-    println!("  After reset, check: allowed={}\n", composite.check_all().allowed);
+    println!(
+        "  After reset, check: allowed={}\n",
+        composite.check_all().allowed
+    );
 
     // -----------------------------------------------------------------------
     // 5. QuotaManager — per-model and per-provider quotas
@@ -195,8 +198,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Enforce per-model or per-provider quotas with windowed resets.\n");
 
     let quotas = QuotaManager::new(Duration::from_secs(60));
-    quotas.set_quota("gpt-4", 5, 0.50);       // 5 requests, $0.50 max per minute
-    quotas.set_quota("gpt-3.5", 20, 0.10);    // 20 requests, $0.10 max per minute
+    quotas.set_quota("gpt-4", 5, 0.50); // 5 requests, $0.50 max per minute
+    quotas.set_quota("gpt-3.5", 20, 0.10); // 20 requests, $0.10 max per minute
     quotas.set_quota("claude-sonnet", 10, 0.30);
 
     println!("  Configured quotas: {:?}", quotas.keys());

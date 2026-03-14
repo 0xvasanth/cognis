@@ -112,8 +112,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let custom_tests = [
-        ("http://internal.mycompany.com/api", "allowed domain, but HTTP"),
-        ("https://internal.mycompany.com/api", "allowed domain + HTTPS"),
+        (
+            "http://internal.mycompany.com/api",
+            "allowed domain, but HTTP",
+        ),
+        (
+            "https://internal.mycompany.com/api",
+            "allowed domain + HTTPS",
+        ),
         ("https://10.0.0.5/hook", "allowed IP"),
         ("http://10.0.0.6/hook", "private IP, not allowed, HTTP"),
         ("http://example.com", "public but HTTP-only blocked"),
@@ -163,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- 7. Validating a URL suggested by the LLM ---\n");
 
     let model = shared::get_chat_model(vec![
-        "https://api.github.com/repos/rust-lang/rust".to_string(),
+        "https://api.github.com/repos/rust-lang/rust".to_string()
     ]);
 
     let prompt = ChatPromptTemplate::from_messages(vec![
