@@ -232,14 +232,11 @@ dependencies = [
 name = "cognis-macros"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "cognis-core",
  "proc-macro2",
  "quote",
  "serde",
  "serde_json",
  "syn",
- "tokio",
 ]
 
 [[package]]

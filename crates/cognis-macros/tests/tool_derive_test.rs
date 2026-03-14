@@ -1,102 +1,63 @@
-//! Integration tests for `#[derive(JsonSchema)]` (standalone) and `#[derive(Tool)]` (framework).
+//! Tests for `#[derive(JsonSchema)]` — standalone, zero framework dependencies.
+//!
+//! These tests verify that the macro generates correct OpenAPI-compatible
+//! JSON schemas using only `serde` and `serde_json`.
 
-use async_trait::async_trait;
-use cognis_core::error::Result;
-use cognis_core::tools::{ToolInput, ToolJsonSchema, ToolOutput};
-use cognis_core::{JsonSchema, Tool, ToolSchema};
+use cognis_macros::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
 // =========================================================================
-// Standalone schemas — use #[derive(JsonSchema)], NO framework dependency
+// Test types
 // =========================================================================
 
-/// A nested struct — standalone schema, no BaseTool needed.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-struct FilterConfig {
-    /// Minimum score threshold
-    min_score: f64,
-    /// Maximum number of results
-    max_results: i32,
-    /// Whether to deduplicate
-    deduplicate: Option<bool>,
+struct BasicStruct {
+    /// A string field
+    name: String,
+    /// A number field
+    score: f64,
+    /// An integer field
+    count: i32,
+    /// A boolean field
+    active: bool,
 }
 
-/// An enum — standalone schema.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-enum Operation {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-}
-
-/// An enum with serde rename — standalone schema.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-enum OutputFormat {
-    #[serde(rename = "json")]
-    Json,
-    #[serde(rename = "xml")]
-    Xml,
-    #[serde(rename = "csv")]
-    Csv,
-}
-
-// =========================================================================
-// Tool structs — use #[derive(Tool)], generates BaseTool + json_schema()
-// =========================================================================
-
-/// A simple calculator tool.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-#[tool(name = "calculator", description = "Performs basic arithmetic")]
-struct CalculatorTool {
-    /// The first operand
-    a: f64,
-    /// The second operand
-    b: f64,
-    /// The operation to perform
-    operation: String,
-}
-
-impl CalculatorTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        let result = match self.operation.as_str() {
-            "add" => self.a + self.b,
-            "sub" => self.a - self.b,
-            "mul" => self.a * self.b,
-            "div" => self.a / self.b,
-            _ => {
-                return Err(cognis_core::error::CognisError::ToolException(
-                    "unknown op".into(),
-                ))
-            }
-        };
-        Ok(ToolOutput::Content(json!(result)))
-    }
-}
-
-/// A search tool with optional parameters.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-struct SearchTool {
-    /// The search query
+struct OptionalFields {
+    /// Required field
     query: String,
-    /// Maximum number of results
+    /// Optional limit
     limit: Option<i32>,
-    /// Whether to include metadata
-    include_metadata: Option<bool>,
+    /// Optional flag
+    verbose: Option<bool>,
 }
 
-impl SearchTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!({"results": []})))
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct VecFields {
+    /// List of tags
+    tags: Vec<String>,
+    /// List of scores
+    scores: Vec<f64>,
 }
 
-/// Tool with serde rename attributes.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-#[tool(name = "renamed_tool")]
-struct RenamedFieldsTool {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct MapField {
+    /// Key-value metadata
+    metadata: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct ValueField {
+    /// An action name
+    action: String,
+    /// Arbitrary data
+    params: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct RenamedFields {
     /// The input text
     #[serde(rename = "inputText")]
     input_text: String,
@@ -105,210 +66,70 @@ struct RenamedFieldsTool {
     output_format: String,
 }
 
-impl RenamedFieldsTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!(self.input_text)))
-    }
-}
-
-/// Tool with a skipped field.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-struct SkippedFieldTool {
-    /// The visible field
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct SkippedField {
+    /// Visible field
     visible: String,
-    /// This field is internal
+    /// Internal state
     #[serde(skip)]
-    internal_state: i32,
+    internal: i32,
 }
 
-impl SkippedFieldTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!(self.visible)))
-    }
-}
-
-/// Tool with serde default.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-struct DefaultFieldTool {
-    /// Required field
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct DefaultField {
+    /// Required name
     name: String,
-    /// Optional with default
+    /// Count with default
     #[serde(default)]
     count: i32,
 }
 
-impl DefaultFieldTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!(self.name)))
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+enum SimpleEnum {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
 }
 
-/// Tool with Vec field.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-struct VecFieldTool {
-    /// List of tags
-    tags: Vec<String>,
-    /// List of scores
-    scores: Vec<f64>,
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+enum RenamedEnum {
+    #[serde(rename = "json")]
+    Json,
+    #[serde(rename = "xml")]
+    Xml,
+    #[serde(rename = "csv")]
+    Csv,
 }
 
-impl VecFieldTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!(self.tags)))
-    }
-}
+// --- Nested structs (3 levels deep) ---
 
-/// Tool with HashMap field.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-struct MapFieldTool {
-    /// Key-value metadata
-    metadata: HashMap<String, String>,
-}
-
-impl MapFieldTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!(self.metadata)))
-    }
-}
-
-/// Tool with serde_json::Value field.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-struct DynamicTool {
-    /// The action name
-    action: String,
-    /// Arbitrary parameters
-    params: Value,
-}
-
-impl DynamicTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!(self.action)))
-    }
-}
-
-/// Tool with bool field.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-struct BoolTool {
-    /// Whether to enable verbose mode
-    verbose: bool,
-    /// The input text
-    text: String,
-}
-
-impl BoolTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!(self.text)))
-    }
-}
-
-/// Tool with integer types.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-struct IntegerTool {
-    /// A 32-bit integer
-    count_i32: i32,
-    /// A 64-bit integer
-    count_i64: i64,
-    /// An unsigned integer
-    count_u32: u32,
-    /// A usize value
-    count_usize: usize,
-}
-
-impl IntegerTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!(self.count_i32)))
-    }
-}
-
-/// Tool with a nested struct field.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-struct NestedTool {
-    /// The search query
-    query: String,
-    /// Filter configuration
-    filter: FilterConfig,
-}
-
-impl NestedTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!(self.query)))
-    }
-}
-
-/// Tool with no explicit name/description (uses defaults).
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-struct AutoNamedTool {
-    /// The input value
-    input: String,
-}
-
-impl AutoNamedTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!(self.input)))
-    }
-}
-
-/// Tool that combines many features.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-#[tool(name = "complex_tool", description = "A tool with many field types")]
-struct ComplexTool {
-    /// Required string
-    name: String,
-    /// Optional integer
-    age: Option<i32>,
-    /// List of tags
-    tags: Vec<String>,
-    /// Dynamic data
-    extra: Value,
-    /// Field with default
-    #[serde(default)]
-    enabled: bool,
-    /// Skipped field
-    #[serde(skip)]
-    _cache: String,
-}
-
-impl ComplexTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!({"name": self.name})))
-    }
-}
-
-// =========================================================================
-// Multi-level nested structs (3 layers deep + arrays) — standalone schemas
-// =========================================================================
-
-/// Level 3: Geographic coordinate.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct GeoCoordinate {
-    /// Latitude in degrees (-90 to 90)
+    /// Latitude (-90 to 90)
     latitude: f64,
-    /// Longitude in degrees (-180 to 180)
+    /// Longitude (-180 to 180)
     longitude: f64,
     /// Optional altitude in meters
     altitude: Option<f64>,
 }
 
-/// Level 2: Delivery address.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct Address {
-    /// Street address line
+    /// Street address
     street: String,
     /// City name
     city: String,
-    /// ZIP or postal code
-    zip_code: String,
-    /// Country code (ISO 3166-1 alpha-2)
+    /// Country code
     country: String,
-    /// GPS coordinates for the address
+    /// GPS coordinates
     coordinates: GeoCoordinate,
-    /// Additional address tags
+    /// Tags
     tags: Vec<String>,
 }
 
-/// Shipping priority enum.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-enum ShippingPriority {
+enum Priority {
     #[serde(rename = "standard")]
     Standard,
     #[serde(rename = "express")]
@@ -317,388 +138,294 @@ enum ShippingPriority {
     Overnight,
 }
 
-/// Level 2: Order line item.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-struct OrderItem {
-    /// Product SKU identifier
+struct LineItem {
+    /// Product SKU
     sku: String,
-    /// Quantity ordered
+    /// Quantity
     quantity: u32,
-    /// Unit price in dollars
+    /// Price per unit
     unit_price: f64,
-    /// Optional discount percentage
+    /// Discount percentage
     discount: Option<f64>,
-    /// Item-level metadata
+    /// Item metadata
     metadata: HashMap<String, String>,
 }
 
-/// Level 1: 3-layer deep order placement tool.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-#[tool(
-    name = "place_order",
-    description = "Place a multi-item order with shipping address and delivery options"
-)]
-struct PlaceOrderTool {
-    /// Unique order identifier
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct Order {
+    /// Order ID
     order_id: String,
-    /// Customer email address
-    customer_email: String,
-    /// Shipping destination address
-    shipping_address: Address,
-    /// List of items in the order
-    items: Vec<OrderItem>,
-    /// Shipping priority
-    priority: ShippingPriority,
-    /// Optional gift message
+    /// Customer email
+    email: String,
+    /// Shipping address (level 2 → GeoCoordinate at level 3)
+    address: Address,
+    /// Order items (array of nested structs)
+    items: Vec<LineItem>,
+    /// Shipping priority (enum)
+    priority: Priority,
+    /// Gift message
     gift_message: Option<String>,
-    /// Whether to send a confirmation email
+    /// Send confirmation
     #[serde(default)]
     send_confirmation: bool,
 }
 
-impl PlaceOrderTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!({
-            "order_id": self.order_id,
-            "status": "placed",
-            "item_count": self.items.len(),
-        })))
-    }
-}
-
 // =========================================================================
-// Tests: Standalone #[derive(JsonSchema)] — no framework, just schemas
+// Tests: basic type mapping
 // =========================================================================
 
 #[test]
-fn test_standalone_struct_schema() {
-    let schema = FilterConfig::json_schema();
+fn test_string_type() {
+    let schema = BasicStruct::json_schema();
+    assert_eq!(schema["properties"]["name"]["type"], "string");
+}
+
+#[test]
+fn test_number_type() {
+    let schema = BasicStruct::json_schema();
+    assert_eq!(schema["properties"]["score"]["type"], "number");
+}
+
+#[test]
+fn test_integer_type() {
+    let schema = BasicStruct::json_schema();
+    assert_eq!(schema["properties"]["count"]["type"], "integer");
+}
+
+#[test]
+fn test_boolean_type() {
+    let schema = BasicStruct::json_schema();
+    assert_eq!(schema["properties"]["active"]["type"], "boolean");
+}
+
+#[test]
+fn test_top_level_is_object() {
+    let schema = BasicStruct::json_schema();
     assert_eq!(schema["type"], "object");
-    assert_eq!(schema["properties"]["min_score"]["type"], "number");
-    assert_eq!(schema["properties"]["max_results"]["type"], "integer");
-
-    let required = schema["required"].as_array().unwrap();
-    assert!(required.contains(&json!("min_score")));
-    assert!(required.contains(&json!("max_results")));
-    assert!(!required.contains(&json!("deduplicate")));
+    assert!(schema["properties"].is_object());
 }
 
 #[test]
-fn test_standalone_enum_schema() {
-    let schema = Operation::json_schema();
+fn test_all_required() {
+    let schema = BasicStruct::json_schema();
+    let required = schema["required"].as_array().unwrap();
+    assert_eq!(required.len(), 4);
+    assert!(required.contains(&json!("name")));
+    assert!(required.contains(&json!("score")));
+    assert!(required.contains(&json!("count")));
+    assert!(required.contains(&json!("active")));
+}
+
+// =========================================================================
+// Tests: doc comments → descriptions
+// =========================================================================
+
+#[test]
+fn test_doc_comments_become_descriptions() {
+    let schema = BasicStruct::json_schema();
+    assert_eq!(
+        schema["properties"]["name"]["description"],
+        "A string field"
+    );
+    assert_eq!(
+        schema["properties"]["score"]["description"],
+        "A number field"
+    );
+    assert_eq!(
+        schema["properties"]["count"]["description"],
+        "An integer field"
+    );
+    assert_eq!(
+        schema["properties"]["active"]["description"],
+        "A boolean field"
+    );
+}
+
+// =========================================================================
+// Tests: Option<T> handling
+// =========================================================================
+
+#[test]
+fn test_optional_not_required() {
+    let schema = OptionalFields::json_schema();
+    let required = schema["required"].as_array().unwrap();
+    assert_eq!(required.len(), 1);
+    assert!(required.contains(&json!("query")));
+    assert!(!required.contains(&json!("limit")));
+    assert!(!required.contains(&json!("verbose")));
+}
+
+#[test]
+fn test_optional_still_in_properties() {
+    let schema = OptionalFields::json_schema();
+    assert_eq!(schema["properties"]["limit"]["type"], "integer");
+    assert_eq!(schema["properties"]["verbose"]["type"], "boolean");
+}
+
+// =========================================================================
+// Tests: Vec<T>, HashMap, Value
+// =========================================================================
+
+#[test]
+fn test_vec_string() {
+    let schema = VecFields::json_schema();
+    assert_eq!(schema["properties"]["tags"]["type"], "array");
+    assert_eq!(schema["properties"]["tags"]["items"]["type"], "string");
+}
+
+#[test]
+fn test_vec_number() {
+    let schema = VecFields::json_schema();
+    assert_eq!(schema["properties"]["scores"]["type"], "array");
+    assert_eq!(schema["properties"]["scores"]["items"]["type"], "number");
+}
+
+#[test]
+fn test_hashmap() {
+    let schema = MapField::json_schema();
+    assert_eq!(schema["properties"]["metadata"]["type"], "object");
+    assert_eq!(
+        schema["properties"]["metadata"]["additionalProperties"]["type"],
+        "string"
+    );
+}
+
+#[test]
+fn test_value_any() {
+    let schema = ValueField::json_schema();
+    assert_eq!(schema["properties"]["action"]["type"], "string");
+    // Value maps to empty schema (any type)
+    assert!(schema["properties"]["params"].is_object());
+    assert!(schema["properties"]["params"]["type"].is_null());
+}
+
+// =========================================================================
+// Tests: serde attributes
+// =========================================================================
+
+#[test]
+fn test_serde_rename() {
+    let schema = RenamedFields::json_schema();
+    assert!(schema["properties"]["inputText"].is_object());
+    assert!(schema["properties"]["outputFormat"].is_object());
+    assert!(schema["properties"]["input_text"].is_null());
+}
+
+#[test]
+fn test_serde_skip() {
+    let schema = SkippedField::json_schema();
+    assert!(schema["properties"]["visible"].is_object());
+    assert!(schema["properties"]["internal"].is_null());
+}
+
+#[test]
+fn test_serde_default_not_required() {
+    let schema = DefaultField::json_schema();
+    let required = schema["required"].as_array().unwrap();
+    assert!(required.contains(&json!("name")));
+    assert!(!required.contains(&json!("count")));
+    // But still in properties
+    assert!(schema["properties"]["count"].is_object());
+}
+
+// =========================================================================
+// Tests: enums
+// =========================================================================
+
+#[test]
+fn test_enum_schema() {
+    let schema = SimpleEnum::json_schema();
     assert_eq!(schema["type"], "string");
     let vals = schema["enum"].as_array().unwrap();
     assert_eq!(vals.len(), 4);
     assert!(vals.contains(&json!("Add")));
     assert!(vals.contains(&json!("Subtract")));
+    assert!(vals.contains(&json!("Multiply")));
+    assert!(vals.contains(&json!("Divide")));
 }
 
 #[test]
-fn test_standalone_enum_with_serde_rename() {
-    let schema = OutputFormat::json_schema();
+fn test_enum_with_serde_rename() {
+    let schema = RenamedEnum::json_schema();
     let vals = schema["enum"].as_array().unwrap();
     assert!(vals.contains(&json!("json")));
     assert!(vals.contains(&json!("xml")));
     assert!(vals.contains(&json!("csv")));
 }
 
+// =========================================================================
+// Tests: nested structs (3 levels)
+// =========================================================================
+
 #[test]
-fn test_standalone_nested_address() {
-    let schema = Address::json_schema();
+fn test_nested_level1() {
+    let schema = Order::json_schema();
+    println!("schema - {}", schema);
     assert_eq!(schema["type"], "object");
-    assert_eq!(schema["properties"]["coordinates"]["type"], "object");
-    assert_eq!(
-        schema["properties"]["coordinates"]["properties"]["latitude"]["type"],
-        "number"
-    );
-}
+    assert_eq!(schema["properties"]["order_id"]["type"], "string");
+    assert_eq!(schema["properties"]["email"]["type"], "string");
+    assert!(schema["properties"]["address"]["type"].is_string());
+    assert!(schema["properties"]["items"]["type"].is_string());
 
-#[test]
-fn test_standalone_geo_coordinate() {
-    let schema = GeoCoordinate::json_schema();
-    assert_eq!(schema["properties"]["latitude"]["type"], "number");
-    assert_eq!(schema["properties"]["longitude"]["type"], "number");
-    let req = schema["required"].as_array().unwrap();
-    assert!(req.contains(&json!("latitude")));
-    assert!(!req.contains(&json!("altitude")));
-}
-
-#[test]
-fn test_standalone_order_item() {
-    let schema = OrderItem::json_schema();
-    assert_eq!(schema["properties"]["sku"]["type"], "string");
-    assert_eq!(schema["properties"]["quantity"]["type"], "integer");
-    assert_eq!(schema["properties"]["metadata"]["type"], "object");
-    assert_eq!(
-        schema["properties"]["metadata"]["additionalProperties"]["type"],
-        "string"
-    );
-}
-
-// =========================================================================
-// Tests: #[derive(Tool)] — framework integration via static json_schema()
-// =========================================================================
-
-#[test]
-fn test_tool_name_explicit() {
-    use cognis_core::tools::BaseTool;
-    let tool = CalculatorTool {
-        a: 1.0,
-        b: 2.0,
-        operation: "add".into(),
-    };
-    assert_eq!(tool.name(), "calculator");
-}
-
-#[test]
-fn test_tool_description_explicit() {
-    use cognis_core::tools::BaseTool;
-    let tool = CalculatorTool {
-        a: 1.0,
-        b: 2.0,
-        operation: "add".into(),
-    };
-    assert_eq!(tool.description(), "Performs basic arithmetic");
-}
-
-#[test]
-fn test_tool_name_auto_generated() {
-    use cognis_core::tools::BaseTool;
-    let tool = AutoNamedTool {
-        input: "test".into(),
-    };
-    assert_eq!(tool.name(), "auto_named_tool");
-}
-
-#[test]
-fn test_tool_description_from_doc_comment() {
-    use cognis_core::tools::BaseTool;
-    let tool = AutoNamedTool {
-        input: "test".into(),
-    };
-    assert_eq!(
-        tool.description(),
-        "Tool with no explicit name/description (uses defaults)."
-    );
-}
-
-#[test]
-fn test_schema_basic_types() {
-    let schema = CalculatorTool::json_schema();
-    assert_eq!(schema["type"], "object");
-    assert_eq!(schema["properties"]["a"]["type"], "number");
-    assert_eq!(schema["properties"]["b"]["type"], "number");
-    assert_eq!(schema["properties"]["operation"]["type"], "string");
-}
-
-#[test]
-fn test_schema_descriptions_from_doc_comments() {
-    let schema = CalculatorTool::json_schema();
-    assert_eq!(
-        schema["properties"]["a"]["description"],
-        "The first operand"
-    );
-    assert_eq!(
-        schema["properties"]["b"]["description"],
-        "The second operand"
-    );
-}
-
-#[test]
-fn test_schema_all_fields_required() {
-    let schema = CalculatorTool::json_schema();
-    let required = schema["required"].as_array().unwrap();
-    assert_eq!(required.len(), 3);
-    assert!(required.contains(&json!("a")));
-    assert!(required.contains(&json!("b")));
-    assert!(required.contains(&json!("operation")));
-}
-
-#[test]
-fn test_schema_optional_fields_not_required() {
-    let schema = SearchTool::json_schema();
-    let required = schema["required"].as_array().unwrap();
-    assert_eq!(required.len(), 1);
-    assert!(required.contains(&json!("query")));
-    assert!(!required.contains(&json!("limit")));
-}
-
-#[test]
-fn test_schema_optional_fields_still_in_properties() {
-    let schema = SearchTool::json_schema();
-    assert_eq!(schema["properties"]["limit"]["type"], "integer");
-    assert_eq!(schema["properties"]["include_metadata"]["type"], "boolean");
-}
-
-#[test]
-fn test_schema_serde_rename() {
-    let schema = RenamedFieldsTool::json_schema();
-    assert!(schema["properties"]["inputText"].is_object());
-    assert!(schema["properties"]["input_text"].is_null());
-}
-
-#[test]
-fn test_schema_serde_skip() {
-    let schema = SkippedFieldTool::json_schema();
-    assert!(schema["properties"]["visible"].is_object());
-    assert!(schema["properties"]["internal_state"].is_null());
-}
-
-#[test]
-fn test_schema_serde_default_not_required() {
-    let schema = DefaultFieldTool::json_schema();
-    let required = schema["required"].as_array().unwrap();
-    assert!(required.contains(&json!("name")));
-    assert!(!required.contains(&json!("count")));
-}
-
-#[test]
-fn test_schema_vec_field() {
-    let schema = VecFieldTool::json_schema();
-    assert_eq!(schema["properties"]["tags"]["type"], "array");
-    assert_eq!(schema["properties"]["tags"]["items"]["type"], "string");
-}
-
-#[test]
-fn test_schema_hashmap_field() {
-    let schema = MapFieldTool::json_schema();
-    assert_eq!(schema["properties"]["metadata"]["type"], "object");
-    assert_eq!(
-        schema["properties"]["metadata"]["additionalProperties"]["type"],
-        "string"
-    );
-}
-
-#[test]
-fn test_schema_value_field() {
-    let schema = DynamicTool::json_schema();
-    assert_eq!(schema["properties"]["action"]["type"], "string");
-    assert!(schema["properties"]["params"]["type"].is_null());
-}
-
-#[test]
-fn test_schema_bool_field() {
-    let schema = BoolTool::json_schema();
-    assert_eq!(schema["properties"]["verbose"]["type"], "boolean");
-}
-
-#[test]
-fn test_schema_integer_types() {
-    let schema = IntegerTool::json_schema();
-    assert_eq!(schema["properties"]["count_i32"]["type"], "integer");
-    assert_eq!(schema["properties"]["count_i64"]["type"], "integer");
-    assert_eq!(schema["properties"]["count_u32"]["type"], "integer");
-    assert_eq!(schema["properties"]["count_usize"]["type"], "integer");
-}
-
-#[test]
-fn test_schema_nested_struct() {
-    let schema = NestedTool::json_schema();
-    let filter = &schema["properties"]["filter"];
-    assert_eq!(filter["type"], "object");
-    assert_eq!(filter["properties"]["min_score"]["type"], "number");
-}
-
-#[test]
-fn test_complex_tool_schema() {
-    let schema = ComplexTool::json_schema();
-    let required = schema["required"].as_array().unwrap();
-    assert!(required.contains(&json!("name")));
-    assert!(!required.contains(&json!("age")));
-    assert!(!required.contains(&json!("enabled")));
-    assert!(schema["properties"]["_cache"].is_null());
-}
-
-// --- args_schema(&self) delegates to static json_schema() ---
-
-#[test]
-fn test_args_schema_matches_static_json_schema() {
-    use cognis_core::tools::BaseTool;
-    let tool = CalculatorTool {
-        a: 99.0,
-        b: -1.0,
-        operation: "whatever".into(),
-    };
-    assert_eq!(tool.args_schema().unwrap(), CalculatorTool::json_schema());
-}
-
-// --- ToolJsonSchema bridge works ---
-
-#[test]
-fn test_tool_json_schema_bridge() {
-    // The Tool derive also generates ToolJsonSchema impl that delegates
-    let from_inherent = CalculatorTool::json_schema();
-    let from_trait = <CalculatorTool as ToolJsonSchema>::json_schema();
-    assert_eq!(from_inherent, from_trait);
-}
-
-// --- Execution ---
-
-#[tokio::test]
-async fn test_tool_run() {
-    use cognis_core::tools::BaseTool;
-    let tool = CalculatorTool {
-        a: 3.0,
-        b: 4.0,
-        operation: "add".into(),
-    };
-    let result = tool._run(ToolInput::Text("ignored".into())).await.unwrap();
-    match result {
-        ToolOutput::Content(v) => assert_eq!(v, json!(7.0)),
-        _ => panic!("expected Content variant"),
-    }
-}
-
-// =========================================================================
-// Multi-level nested tests — all static
-// =========================================================================
-
-#[test]
-fn test_three_level_top_level() {
-    let schema = PlaceOrderTool::json_schema();
-    assert_eq!(schema["type"], "object");
     let required = schema["required"].as_array().unwrap();
     assert!(required.contains(&json!("order_id")));
-    assert!(required.contains(&json!("shipping_address")));
+    assert!(required.contains(&json!("address")));
     assert!(required.contains(&json!("items")));
     assert!(!required.contains(&json!("gift_message")));
     assert!(!required.contains(&json!("send_confirmation")));
 }
 
 #[test]
-fn test_three_level_address() {
-    let schema = PlaceOrderTool::json_schema();
-    let addr = &schema["properties"]["shipping_address"];
+fn test_nested_level2_address() {
+    let schema = Order::json_schema();
+    let addr = &schema["properties"]["address"];
     assert_eq!(addr["type"], "object");
     assert_eq!(addr["properties"]["street"]["type"], "string");
+    assert_eq!(addr["properties"]["city"]["type"], "string");
     assert_eq!(addr["properties"]["coordinates"]["type"], "object");
+    assert_eq!(addr["properties"]["tags"]["type"], "array");
 }
 
 #[test]
-fn test_three_level_coordinates() {
-    let schema = PlaceOrderTool::json_schema();
-    let coords = &schema["properties"]["shipping_address"]["properties"]["coordinates"];
+fn test_nested_level3_coordinates() {
+    let schema = Order::json_schema();
+    let coords = &schema["properties"]["address"]["properties"]["coordinates"];
+    assert_eq!(coords["type"], "object");
     assert_eq!(coords["properties"]["latitude"]["type"], "number");
     assert_eq!(coords["properties"]["longitude"]["type"], "number");
+    assert_eq!(
+        coords["properties"]["latitude"]["description"],
+        "Latitude (-90 to 90)"
+    );
+
     let req = coords["required"].as_array().unwrap();
     assert!(req.contains(&json!("latitude")));
+    assert!(req.contains(&json!("longitude")));
     assert!(!req.contains(&json!("altitude")));
 }
 
 #[test]
 fn test_array_of_nested_structs() {
-    let schema = PlaceOrderTool::json_schema();
+    let schema = Order::json_schema();
     let items = &schema["properties"]["items"];
     assert_eq!(items["type"], "array");
+
     let item = &items["items"];
     assert_eq!(item["type"], "object");
     assert_eq!(item["properties"]["sku"]["type"], "string");
     assert_eq!(item["properties"]["quantity"]["type"], "integer");
+    assert_eq!(item["properties"]["unit_price"]["type"], "number");
+    assert_eq!(item["properties"]["metadata"]["type"], "object");
+
+    let req = item["required"].as_array().unwrap();
+    assert!(req.contains(&json!("sku")));
+    assert!(!req.contains(&json!("discount")));
 }
 
 #[test]
-fn test_enum_in_nested_schema() {
-    let schema = PlaceOrderTool::json_schema();
+fn test_enum_in_nested() {
+    let schema = Order::json_schema();
     let priority = &schema["properties"]["priority"];
     assert_eq!(priority["type"], "string");
     let vals = priority["enum"].as_array().unwrap();
@@ -707,58 +434,63 @@ fn test_enum_in_nested_schema() {
     assert!(vals.contains(&json!("overnight")));
 }
 
+// =========================================================================
+// Tests: standalone schemas match embedded
+// =========================================================================
+
 #[test]
 fn test_standalone_matches_embedded() {
     let standalone = Address::json_schema();
-    let full = PlaceOrderTool::json_schema();
-    let mut embedded = full["properties"]["shipping_address"].clone();
+    let order_schema = Order::json_schema();
+    let mut embedded = order_schema["properties"]["address"].clone();
     embedded.as_object_mut().unwrap().remove("description");
     assert_eq!(standalone, embedded);
 }
 
 #[test]
-fn test_full_schema_roundtrips() {
-    let schema = PlaceOrderTool::json_schema();
+fn test_standalone_coordinates_matches() {
+    let standalone = GeoCoordinate::json_schema();
+    let order_schema = Order::json_schema();
+    let mut embedded = order_schema["properties"]["address"]["properties"]["coordinates"].clone();
+    embedded.as_object_mut().unwrap().remove("description");
+    assert_eq!(standalone, embedded);
+}
+
+#[test]
+fn test_standalone_line_item_matches() {
+    let standalone = LineItem::json_schema();
+    let order_schema = Order::json_schema();
+    let embedded = &order_schema["properties"]["items"]["items"];
+    assert_eq!(standalone, *embedded);
+}
+
+// =========================================================================
+// Tests: JSON roundtrip
+// =========================================================================
+
+#[test]
+fn test_schema_roundtrips_through_json() {
+    let schema = Order::json_schema();
     let json_str = serde_json::to_string_pretty(&schema).unwrap();
     let reparsed: Value = serde_json::from_str(&json_str).unwrap();
     assert_eq!(schema, reparsed);
 }
 
-#[tokio::test]
-async fn test_three_level_execution() {
-    use cognis_core::tools::BaseTool;
-    let tool = PlaceOrderTool {
-        order_id: "ORD-123".into(),
-        customer_email: "user@test.com".into(),
-        shipping_address: Address {
-            street: "456 Oak Ave".into(),
-            city: "Portland".into(),
-            zip_code: "97201".into(),
-            country: "US".into(),
-            coordinates: GeoCoordinate {
-                latitude: 45.5152,
-                longitude: -122.6784,
-                altitude: Some(15.0),
-            },
-            tags: vec!["residential".into()],
-        },
-        items: vec![OrderItem {
-            sku: "WIDGET-001".into(),
-            quantity: 3,
-            unit_price: 29.99,
-            discount: None,
-            metadata: HashMap::new(),
-        }],
-        priority: ShippingPriority::Express,
-        gift_message: None,
-        send_confirmation: true,
-    };
-    let result = tool._run(ToolInput::Text("ignored".into())).await.unwrap();
-    match result {
-        ToolOutput::Content(v) => {
-            assert_eq!(v["order_id"], "ORD-123");
-            assert_eq!(v["item_count"], 1);
-        }
-        _ => panic!("expected Content variant"),
-    }
+#[test]
+fn test_openapi_structure() {
+    let schema = Order::json_schema();
+
+    // Every level has type + properties + required
+    assert!(schema["type"].is_string());
+    assert!(schema["properties"].is_object());
+    assert!(schema["required"].is_array());
+
+    let addr = &schema["properties"]["address"];
+    assert!(addr["type"].is_string());
+    assert!(addr["properties"].is_object());
+
+    let coords = &addr["properties"]["coordinates"];
+    assert!(coords["type"].is_string());
+    assert!(coords["properties"].is_object());
+    assert!(coords["required"].is_array());
 }
