@@ -19,6 +19,7 @@ futures.workspace = true
 tempfile = "3"
 uuid.workspace = true
 chrono = "0.4"
+chrono-tz = "0.10"
 
 [[example]]
 name = "simple_chain"

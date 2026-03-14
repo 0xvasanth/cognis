@@ -46,23 +46,46 @@ impl BaseTool for GetCurrentTimeTool {
     }
 
     fn description(&self) -> &str {
-        "Get the current date and time. No input required. Returns the current timestamp."
+        "Get the current date and time in a given timezone. Returns the current timestamp."
     }
 
     fn args_schema(&self) -> Option<serde_json::Value> {
         Some(json!({
             "type": "object",
-            "properties": {},
+            "properties": {
+                "timezone": {
+                    "type": "string",
+                    "description": "IANA timezone name (e.g. 'America/New_York', 'Asia/Kolkata', 'Europe/London'). Defaults to 'UTC' if not provided."
+                }
+            },
         }))
     }
 
-    async fn _run(&self, _input: ToolInput) -> cognis_core::error::Result<ToolOutput> {
-        let timestamp = chrono::Utc::now()
-            .format("%Y-%m-%d %H:%M:%S UTC")
-            .to_string();
+    async fn _run(&self, input: ToolInput) -> cognis_core::error::Result<ToolOutput> {
+        let tz_str = match &input {
+            ToolInput::Structured(map) => map
+                .get("timezone")
+                .and_then(|v| v.as_str())
+                .unwrap_or("UTC")
+                .to_string(),
+            ToolInput::ToolCall(tc) => tc
+                .args
+                .get("timezone")
+                .and_then(|v| v.as_str())
+                .unwrap_or("UTC")
+                .to_string(),
+            ToolInput::Text(s) if !s.is_empty() => s.clone(),
+            _ => "UTC".to_string(),
+        };
 
-        println!("  [get_current_time] Returning: {timestamp}");
-        Ok(ToolOutput::Content(json!({ "current_time": timestamp })))
+        let tz: chrono_tz::Tz = tz_str.parse().unwrap_or(chrono_tz::UTC);
+        let now = chrono::Utc::now().with_timezone(&tz);
+        let timestamp = now.format("%Y-%m-%d %H:%M:%S %Z").to_string();
+
+        println!("  [get_current_time] timezone={tz_str} -> {timestamp}");
+        Ok(ToolOutput::Content(
+            json!({ "current_time": timestamp, "timezone": tz_str }),
+        ))
     }
 }
 
@@ -144,14 +167,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Simulate the ReAct loop: first response has a tool call, second is final answer
         let mut ai_with_tool = AIMessage::new("");
+        let mut args = HashMap::new();
+        args.insert("timezone".to_string(), json!("Asia/Kolkata"));
         ai_with_tool.tool_calls.push(ToolCall {
             name: "get_current_time".to_string(),
-            args: HashMap::new(),
+            args,
             id: Some("call_1".to_string()),
         });
 
-        let ai_final =
-            AIMessage::new("The current time is shown above from the get_current_time tool.");
+        let ai_final = AIMessage::new(
+            "The current time in IST (Asia/Kolkata) is shown above from the get_current_time tool.",
+        );
 
         Arc::new(FakeMessagesListChatModel::new(vec![
             Message::Ai(ai_with_tool),
