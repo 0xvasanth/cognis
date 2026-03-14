@@ -789,7 +789,9 @@ mod tests {
 
     #[test]
     fn test_runtime_context_mut() {
-        let mut rt = RuntimeBuilder::new().with_context(String::from("a")).build();
+        let mut rt = RuntimeBuilder::new()
+            .with_context(String::from("a"))
+            .build();
         rt.context_mut().push_str("bc");
         assert_eq!(rt.context(), "abc");
     }
@@ -803,9 +805,7 @@ mod tests {
 
     #[test]
     fn test_runtime_into_context() {
-        let rt = RuntimeBuilder::new()
-            .with_context(vec![1, 2, 3])
-            .build();
+        let rt = RuntimeBuilder::new().with_context(vec![1, 2, 3]).build();
         let ctx = rt.into_context();
         assert_eq!(ctx, vec![1, 2, 3]);
     }
@@ -860,9 +860,7 @@ mod tests {
             .with_config(RuntimeConfig::new().with_run_id("r-base").with_tag("base"))
             .with_previous(json!("base_prev"))
             .build();
-        let other = RuntimeBuilder::new()
-            .with_context(2u32)
-            .build();
+        let other = RuntimeBuilder::new().with_context(2u32).build();
         let merged = base.merge(other);
         // other has no store -> falls back to base store
         assert!(merged.store().is_some());
@@ -892,9 +890,7 @@ mod tests {
             .with_context(0u32)
             .with_config(RuntimeConfig::new().with_tag("a"))
             .build();
-        let other = RuntimeBuilder::new()
-            .with_context(0u32)
-            .build();
+        let other = RuntimeBuilder::new().with_context(0u32).build();
         let merged = base.merge(other);
         assert_eq!(merged.config().tags, vec!["a"]);
     }
@@ -1066,10 +1062,9 @@ mod tests {
     fn test_runtime_with_stream_writer_replaces() {
         let buf = Arc::new(std::sync::Mutex::new(Vec::new()));
         let b = buf.clone();
-        let rt = Runtime::<NoContext>::new()
-            .with_stream_writer(Arc::new(move |v| {
-                b.lock().unwrap().push(v);
-            }));
+        let rt = Runtime::<NoContext>::new().with_stream_writer(Arc::new(move |v| {
+            b.lock().unwrap().push(v);
+        }));
         rt.write_to_stream(json!("x"));
         assert_eq!(buf.lock().unwrap().len(), 1);
     }
@@ -1096,9 +1091,7 @@ mod tests {
             .with_context(0u32)
             .with_config(RuntimeConfig::new().with_metadata("k1", json!("v1")))
             .build();
-        let other = RuntimeBuilder::new()
-            .with_context(0u32)
-            .build();
+        let other = RuntimeBuilder::new().with_context(0u32).build();
         let merged = base.merge(other);
         assert_eq!(merged.config().metadata.get("k1"), Some(&json!("v1")));
     }

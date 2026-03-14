@@ -246,7 +246,11 @@ impl<E: CrossEncoder> CrossEncoderReranker<E> {
             })
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         if let Some(k) = self.top_k {
             results.truncate(k);
@@ -548,9 +552,9 @@ mod tests {
     async fn threshold_filters_below() {
         let enc = ThresholdCrossEncoder::new(FakeCrossEncoder::new(), 0.6);
         let pairs = vec![
-            ("abc".into(), "abc".into()),   // 1.0 -> keep
-            ("abc".into(), "xyz".into()),   // 0.0 -> zero
-            ("abc".into(), "abx".into()),   // 0.666 -> keep
+            ("abc".into(), "abc".into()), // 1.0 -> keep
+            ("abc".into(), "xyz".into()), // 0.0 -> zero
+            ("abc".into(), "abx".into()), // 0.666 -> keep
         ];
         let scores = enc.score_pairs(&pairs).await.unwrap();
         assert!((scores[0] - 1.0).abs() < f64::EPSILON);
@@ -586,8 +590,8 @@ mod tests {
     async fn threshold_one_filters_imperfect() {
         let enc = ThresholdCrossEncoder::new(FakeCrossEncoder::new(), 1.0);
         let pairs = vec![
-            ("abc".into(), "abc".into()),  // 1.0 -> keep
-            ("abc".into(), "abx".into()),  // 0.666 -> zero
+            ("abc".into(), "abc".into()), // 1.0 -> keep
+            ("abc".into(), "abx".into()), // 0.666 -> zero
         ];
         let scores = enc.score_pairs(&pairs).await.unwrap();
         assert!((scores[0] - 1.0).abs() < f64::EPSILON);
@@ -618,10 +622,7 @@ mod tests {
     #[tokio::test]
     async fn batch_single_item_batches() {
         let enc = BatchCrossEncoder::new(FakeCrossEncoder::new(), 1);
-        let pairs = vec![
-            ("a".into(), "a".into()),
-            ("b".into(), "b".into()),
-        ];
+        let pairs = vec![("a".into(), "a".into()), ("b".into(), "b".into())];
         let scores = enc.score_pairs(&pairs).await.unwrap();
         assert_eq!(scores.len(), 2);
         assert!((scores[0] - 1.0).abs() < f64::EPSILON);
@@ -656,9 +657,9 @@ mod tests {
     async fn reranker_basic_order() {
         let reranker = CrossEncoderReranker::new(FakeCrossEncoder::new());
         let docs = vec![
-            Document::new("xyz"),           // low overlap with "abc"
-            Document::new("abc"),           // perfect overlap
-            Document::new("abx"),           // partial overlap
+            Document::new("xyz"), // low overlap with "abc"
+            Document::new("abc"), // perfect overlap
+            Document::new("abx"), // partial overlap
         ];
         let results = reranker.rerank("abc", &docs).await.unwrap();
         assert_eq!(results.len(), 3);
@@ -766,8 +767,8 @@ mod tests {
         enc.score_pairs(&pairs1).await.unwrap();
 
         let pairs2 = vec![
-            ("abc".into(), "abc".into()),  // hit
-            ("xyz".into(), "xyz".into()),  // miss
+            ("abc".into(), "abc".into()), // hit
+            ("xyz".into(), "xyz".into()), // miss
         ];
         let scores = enc.score_pairs(&pairs2).await.unwrap();
         assert_eq!(scores.len(), 2);
@@ -803,23 +804,20 @@ mod tests {
     async fn normalized_range() {
         let enc = NormalizedCrossEncoder::new(FakeCrossEncoder::new());
         let pairs = vec![
-            ("abc".into(), "abc".into()),  // highest
-            ("abc".into(), "xyz".into()),  // lowest
-            ("abc".into(), "abx".into()),  // middle
+            ("abc".into(), "abc".into()), // highest
+            ("abc".into(), "xyz".into()), // lowest
+            ("abc".into(), "abx".into()), // middle
         ];
         let scores = enc.score_pairs(&pairs).await.unwrap();
         assert!((scores[0] - 1.0).abs() < f64::EPSILON); // max -> 1.0
-        assert!((scores[1]).abs() < f64::EPSILON);        // min -> 0.0
-        assert!(scores[2] > 0.0 && scores[2] < 1.0);     // between
+        assert!((scores[1]).abs() < f64::EPSILON); // min -> 0.0
+        assert!(scores[2] > 0.0 && scores[2] < 1.0); // between
     }
 
     #[tokio::test]
     async fn normalized_all_equal() {
         let enc = NormalizedCrossEncoder::new(FakeCrossEncoder::new());
-        let pairs = vec![
-            ("abc".into(), "abc".into()),
-            ("xyz".into(), "xyz".into()),
-        ];
+        let pairs = vec![("abc".into(), "abc".into()), ("xyz".into(), "xyz".into())];
         // Both are 1.0, so range is 0 -> all become 0.5
         let scores = enc.score_pairs(&pairs).await.unwrap();
         assert!((scores[0] - 0.5).abs() < f64::EPSILON);
@@ -846,10 +844,7 @@ mod tests {
     async fn normalized_two_distinct_values() {
         let enc = NormalizedCrossEncoder::new(FakeCrossEncoder::new());
         // "abc" vs "abc" => 1.0, "abc" vs "xyz" => 0.0
-        let pairs = vec![
-            ("abc".into(), "abc".into()),
-            ("abc".into(), "xyz".into()),
-        ];
+        let pairs = vec![("abc".into(), "abc".into()), ("abc".into(), "xyz".into())];
         let scores = enc.score_pairs(&pairs).await.unwrap();
         assert!((scores[0] - 1.0).abs() < f64::EPSILON);
         assert!((scores[1]).abs() < f64::EPSILON);
@@ -862,8 +857,8 @@ mod tests {
         let inner = ThresholdCrossEncoder::new(FakeCrossEncoder::new(), 0.5);
         let enc = NormalizedCrossEncoder::new(inner);
         let pairs = vec![
-            ("abc".into(), "abc".into()),  // 1.0 (above threshold)
-            ("abc".into(), "xyz".into()),  // 0.0 (below -> zeroed by threshold)
+            ("abc".into(), "abc".into()), // 1.0 (above threshold)
+            ("abc".into(), "xyz".into()), // 0.0 (below -> zeroed by threshold)
         ];
         let scores = enc.score_pairs(&pairs).await.unwrap();
         // After threshold: [1.0, 0.0]; after normalize: [1.0, 0.0]

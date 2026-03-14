@@ -21,272 +21,304 @@ uuid.workspace = true
 
 [[example]]
 name = "simple_chain"
-path = "../../examples/simple_chain.rs"
+path = "../../examples/chains/simple_chain.rs"
 
 [[example]]
 name = "rag_pipeline"
-path = "../../examples/rag_pipeline.rs"
+path = "../../examples/retrieval/rag_pipeline.rs"
 
 [[example]]
 name = "langgraph_agent"
-path = "../../examples/langgraph_agent.rs"
+path = "../../examples/graphs/langgraph_agent.rs"
 
 [[example]]
 name = "streaming"
-path = "../../examples/streaming.rs"
+path = "../../examples/models/streaming.rs"
 
 [[example]]
 name = "tool_agent"
-path = "../../examples/tool_agent.rs"
+path = "../../examples/tools/tool_agent.rs"
 
 [[example]]
 name = "rag_with_vectorstore"
-path = "../../examples/rag_with_vectorstore.rs"
+path = "../../examples/retrieval/rag_with_vectorstore.rs"
 
 [[example]]
 name = "conversational_agent"
-path = "../../examples/conversational_agent.rs"
+path = "../../examples/agents/conversational_agent.rs"
 
 [[example]]
 name = "graph_with_checkpoints"
-path = "../../examples/graph_with_checkpoints.rs"
+path = "../../examples/graphs/graph_with_checkpoints.rs"
 
 [[example]]
 name = "semantic_router"
-path = "../../examples/semantic_router.rs"
+path = "../../examples/graphs/semantic_router.rs"
 
 [[example]]
 name = "multi_agent_collaboration"
-path = "../../examples/multi_agent_collaboration.rs"
+path = "../../examples/agents/multi_agent_collaboration.rs"
 
 [[example]]
 name = "structured_extraction"
-path = "../../examples/structured_extraction.rs"
+path = "../../examples/chains/structured_extraction.rs"
 
 [[example]]
 name = "evaluation_pipeline"
-path = "../../examples/evaluation_pipeline.rs"
+path = "../../examples/observability/evaluation_pipeline.rs"
 
 [[example]]
 name = "streaming_chat"
-path = "../../examples/streaming_chat.rs"
+path = "../../examples/models/streaming_chat.rs"
 
 [[example]]
 name = "tool_calling_agent"
-path = "../../examples/tool_calling_agent.rs"
+path = "../../examples/tools/tool_calling_agent.rs"
 
 [[example]]
 name = "indexing_rag"
-path = "../../examples/indexing_rag.rs"
+path = "../../examples/retrieval/indexing_rag.rs"
 
 [[example]]
 name = "vector_store_search"
-path = "../../examples/vector_store_search.rs"
+path = "../../examples/retrieval/vector_store_search.rs"
 
 [[example]]
 name = "text_splitting"
-path = "../../examples/text_splitting.rs"
+path = "../../examples/retrieval/text_splitting.rs"
 
 [[example]]
 name = "extraction_chain"
-path = "../../examples/extraction_chain.rs"
+path = "../../examples/chains/extraction_chain.rs"
 
 [[example]]
 name = "graph_visualization"
-path = "../../examples/graph_visualization.rs"
+path = "../../examples/graphs/graph_visualization.rs"
 
 [[example]]
 name = "agent_output_parsing"
-path = "../../examples/agent_output_parsing.rs"
+path = "../../examples/chains/agent_output_parsing.rs"
 
 [[example]]
 name = "memory_types"
-path = "../../examples/memory_types.rs"
+path = "../../examples/memory/memory_types.rs"
 
 [[example]]
 name = "caching_retriever"
-path = "../../examples/caching_retriever.rs"
+path = "../../examples/retrieval/caching_retriever.rs"
 
 [[example]]
 name = "planning_middleware"
-path = "../../examples/planning_middleware.rs"
+path = "../../examples/agents/planning_middleware.rs"
 
 [[example]]
 name = "react_agent"
-path = "../../examples/react_agent.rs"
+path = "../../examples/agents/react_agent.rs"
 
 [[example]]
 name = "conditional_chains"
-path = "../../examples/conditional_chains.rs"
+path = "../../examples/chains/conditional_chains.rs"
 
 [[example]]
 name = "file_tools"
-path = "../../examples/file_tools.rs"
+path = "../../examples/tools/file_tools.rs"
 
 [[example]]
 name = "qa_chain"
-path = "../../examples/qa_chain.rs"
+path = "../../examples/chains/qa_chain.rs"
 
 [[example]]
 name = "plan_and_execute"
-path = "../../examples/plan_and_execute.rs"
+path = "../../examples/agents/plan_and_execute.rs"
 
 [[example]]
 name = "knowledge_graph_memory"
-path = "../../examples/knowledge_graph_memory.rs"
+path = "../../examples/memory/knowledge_graph_memory.rs"
 
 [[example]]
 name = "execution_hooks"
-path = "../../examples/execution_hooks.rs"
+path = "../../examples/agents/execution_hooks.rs"
 
 [[example]]
 name = "health_monitoring"
-path = "../../examples/health_monitoring.rs"
+path = "../../examples/observability/health_monitoring.rs"
 
 [[example]]
 name = "summary_buffer_memory"
-path = "../../examples/summary_buffer_memory.rs"
+path = "../../examples/memory/summary_buffer_memory.rs"
 
 [[example]]
 name = "reranking_retriever"
-path = "../../examples/reranking_retriever.rs"
+path = "../../examples/retrieval/reranking_retriever.rs"
 
 [[example]]
 name = "topic_channels"
-path = "../../examples/topic_channels.rs"
+path = "../../examples/graphs/topic_channels.rs"
 
 [[example]]
 name = "plugin_system"
-path = "../../examples/plugin_system.rs"
+path = "../../examples/agents/plugin_system.rs"
 
 [[example]]
 name = "conversation_memory"
-path = "../../examples/conversation_memory.rs"
+path = "../../examples/memory/conversation_memory.rs"
 
 [[example]]
 name = "document_compression"
-path = "../../examples/document_compression.rs"
+path = "../../examples/retrieval/document_compression.rs"
 
 [[example]]
 name = "state_snapshot"
-path = "../../examples/state_snapshot.rs"
+path = "../../examples/graphs/state_snapshot.rs"
 
 [[example]]
 name = "error_recovery"
-path = "../../examples/error_recovery.rs"
+path = "../../examples/resilience/error_recovery.rs"
 
 [[example]]
 name = "error_handling"
-path = "../../examples/error_handling.rs"
+path = "../../examples/resilience/error_handling.rs"
 
 [[example]]
 name = "document_store"
-path = "../../examples/document_store.rs"
+path = "../../examples/retrieval/document_store.rs"
 
 [[example]]
 name = "node_scheduler"
-path = "../../examples/node_scheduler.rs"
+path = "../../examples/graphs/node_scheduler.rs"
 
 [[example]]
 name = "agent_communication"
-path = "../../examples/agent_communication.rs"
+path = "../../examples/agents/agent_communication.rs"
 
 [[example]]
 name = "text_splitters"
-path = "../../examples/text_splitters.rs"
+path = "../../examples/retrieval/text_splitters.rs"
 
 [[example]]
 name = "chat_model_registry"
-path = "../../examples/chat_model_registry.rs"
+path = "../../examples/models/chat_model_registry.rs"
 
 [[example]]
 name = "message_graph"
-path = "../../examples/message_graph.rs"
+path = "../../examples/graphs/message_graph.rs"
 
 [[example]]
 name = "agent_memory"
-path = "../../examples/agent_memory.rs"
+path = "../../examples/memory/agent_memory.rs"
 
 [[example]]
 name = "embedding_models"
-path = "../../examples/embedding_models.rs"
+path = "../../examples/models/embedding_models.rs"
 
 [[example]]
 name = "chain_composition"
-path = "../../examples/chain_composition.rs"
+path = "../../examples/chains/chain_composition.rs"
 
 [[example]]
 name = "checkpoint_persistence"
-path = "../../examples/checkpoint_persistence.rs"
+path = "../../examples/graphs/checkpoint_persistence.rs"
 
 [[example]]
 name = "graph_analysis"
-path = "../../examples/graph_analysis.rs"
+path = "../../examples/graphs/graph_analysis.rs"
 
 [[example]]
 name = "state_machine"
-path = "../../examples/state_machine.rs"
+path = "../../examples/graphs/state_machine.rs"
 
 [[example]]
 name = "evaluation_framework"
-path = "../../examples/evaluation_framework.rs"
+path = "../../examples/observability/evaluation_framework.rs"
 
 [[example]]
 name = "callback_manager"
-path = "../../examples/callback_manager.rs"
+path = "../../examples/observability/callback_manager.rs"
 
 [[example]]
 name = "vector_store"
-path = "../../examples/vector_store.rs"
+path = "../../examples/retrieval/vector_store.rs"
 
 [[example]]
 name = "tool_schema"
-path = "../../examples/tool_schema.rs"
+path = "../../examples/tools/tool_schema.rs"
 
 [[example]]
 name = "streaming_demo"
-path = "../../examples/streaming_demo.rs"
+path = "../../examples/models/streaming_demo.rs"
 
 [[example]]
 name = "structured_parsing_demo"
-path = "../../examples/structured_parsing_demo.rs"
+path = "../../examples/chains/structured_parsing_demo.rs"
 
 [[example]]
 name = "tracing_demo"
-path = "../../examples/tracing_demo.rs"
+path = "../../examples/observability/tracing_demo.rs"
 
 [[example]]
 name = "graph_interrupts_demo"
-path = "../../examples/graph_interrupts_demo.rs"
+path = "../../examples/graphs/graph_interrupts_demo.rs"
 
 [[example]]
 name = "planning_demo"
-path = "../../examples/planning_demo.rs"
+path = "../../examples/agents/planning_demo.rs"
 
 [[example]]
 name = "context_management_demo"
-path = "../../examples/context_management_demo.rs"
+path = "../../examples/agents/context_management_demo.rs"
 
 [[example]]
 name = "agent_lifecycle_demo"
-path = "../../examples/agent_lifecycle_demo.rs"
+path = "../../examples/agents/agent_lifecycle_demo.rs"
 
 [[example]]
 name = "resilience_demo"
-path = "../../examples/resilience_demo.rs"
+path = "../../examples/resilience/resilience_demo.rs"
 
 [[example]]
 name = "graph_validation_demo"
-path = "../../examples/graph_validation_demo.rs"
+path = "../../examples/graphs/graph_validation_demo.rs"
 
 [[example]]
 name = "graph_debug_demo"
-path = "../../examples/graph_debug_demo.rs"
+path = "../../examples/graphs/graph_debug_demo.rs"
 
 [[example]]
 name = "caching_demo"
-path = "../../examples/caching_demo.rs"
+path = "../../examples/resilience/caching_demo.rs"
 
 [[example]]
 name = "event_system_demo"
-path = "../../examples/event_system_demo.rs"
+path = "../../examples/observability/event_system_demo.rs"
+
+[[example]]
+name = "ssrf_protection"
+path = "../../examples/resilience/ssrf_protection.rs"
+
+[[example]]
+name = "content_blocks"
+path = "../../examples/models/content_blocks.rs"
+
+[[example]]
+name = "cross_encoder"
+path = "../../examples/retrieval/cross_encoder.rs"
+
+[[example]]
+name = "graph_runtime"
+path = "../../examples/graphs/graph_runtime.rs"
+
+[[example]]
+name = "model_routing"
+path = "../../examples/models/model_routing.rs"
+
+[[example]]
+name = "embedding_similarity"
+path = "../../examples/models/embedding_similarity.rs"
+
+[[example]]
+name = "graph_metrics"
+path = "../../examples/graphs/graph_metrics.rs"
+
+[[example]]
+name = "rate_limiter"
+path = "../../examples/resilience/rate_limiter.rs"

@@ -189,9 +189,7 @@ pub fn image_block_url(
 ) -> MultimodalContentBlock {
     MultimodalContentBlock::Image(ImageContentBlock {
         id: new_block_id(),
-        source: MediaSource::Url {
-            url: url.into(),
-        },
+        source: MediaSource::Url { url: url.into() },
         media_type: media_type.into(),
         alt_text: None,
     })
@@ -204,9 +202,7 @@ pub fn image_block_base64(
 ) -> MultimodalContentBlock {
     MultimodalContentBlock::Image(ImageContentBlock {
         id: new_block_id(),
-        source: MediaSource::Base64 {
-            data: data.into(),
-        },
+        source: MediaSource::Base64 { data: data.into() },
         media_type: media_type.into(),
         alt_text: None,
     })
@@ -220,9 +216,7 @@ pub fn image_block_url_with_alt(
 ) -> MultimodalContentBlock {
     MultimodalContentBlock::Image(ImageContentBlock {
         id: new_block_id(),
-        source: MediaSource::Url {
-            url: url.into(),
-        },
+        source: MediaSource::Url { url: url.into() },
         media_type: media_type.into(),
         alt_text: Some(alt_text.into()),
     })
@@ -235,9 +229,7 @@ pub fn audio_block_url(
 ) -> MultimodalContentBlock {
     MultimodalContentBlock::Audio(AudioContentBlock {
         id: new_block_id(),
-        source: MediaSource::Url {
-            url: url.into(),
-        },
+        source: MediaSource::Url { url: url.into() },
         media_type: media_type.into(),
         transcript: None,
     })
@@ -250,9 +242,7 @@ pub fn audio_block_base64(
 ) -> MultimodalContentBlock {
     MultimodalContentBlock::Audio(AudioContentBlock {
         id: new_block_id(),
-        source: MediaSource::Base64 {
-            data: data.into(),
-        },
+        source: MediaSource::Base64 { data: data.into() },
         media_type: media_type.into(),
         transcript: None,
     })
@@ -266,9 +256,7 @@ pub fn audio_block_url_with_transcript(
 ) -> MultimodalContentBlock {
     MultimodalContentBlock::Audio(AudioContentBlock {
         id: new_block_id(),
-        source: MediaSource::Url {
-            url: url.into(),
-        },
+        source: MediaSource::Url { url: url.into() },
         media_type: media_type.into(),
         transcript: Some(transcript.into()),
     })
@@ -281,9 +269,7 @@ pub fn video_block_url(
 ) -> MultimodalContentBlock {
     MultimodalContentBlock::Video(VideoContentBlock {
         id: new_block_id(),
-        source: MediaSource::Url {
-            url: url.into(),
-        },
+        source: MediaSource::Url { url: url.into() },
         media_type: media_type.into(),
     })
 }
@@ -295,9 +281,7 @@ pub fn video_block_base64(
 ) -> MultimodalContentBlock {
     MultimodalContentBlock::Video(VideoContentBlock {
         id: new_block_id(),
-        source: MediaSource::Base64 {
-            data: data.into(),
-        },
+        source: MediaSource::Base64 { data: data.into() },
         media_type: media_type.into(),
     })
 }
@@ -306,9 +290,7 @@ pub fn video_block_base64(
 pub fn pdf_block_url(url: impl Into<String>) -> MultimodalContentBlock {
     MultimodalContentBlock::Pdf(PdfContentBlock {
         id: new_block_id(),
-        source: MediaSource::Url {
-            url: url.into(),
-        },
+        source: MediaSource::Url { url: url.into() },
         page_range: None,
     })
 }
@@ -317,9 +299,7 @@ pub fn pdf_block_url(url: impl Into<String>) -> MultimodalContentBlock {
 pub fn pdf_block_base64(data: impl Into<String>) -> MultimodalContentBlock {
     MultimodalContentBlock::Pdf(PdfContentBlock {
         id: new_block_id(),
-        source: MediaSource::Base64 {
-            data: data.into(),
-        },
+        source: MediaSource::Base64 { data: data.into() },
         page_range: None,
     })
 }
@@ -331,9 +311,7 @@ pub fn pdf_block_url_with_pages(
 ) -> MultimodalContentBlock {
     MultimodalContentBlock::Pdf(PdfContentBlock {
         id: new_block_id(),
-        source: MediaSource::Url {
-            url: url.into(),
-        },
+        source: MediaSource::Url { url: url.into() },
         page_range: Some(page_range.into()),
     })
 }
@@ -367,10 +345,7 @@ pub fn citation_block_with_indices(
 }
 
 /// Create a [`MultimodalContentBlock::Annotation`] block.
-pub fn annotation_block(
-    annotation_type: impl Into<String>,
-    data: Value,
-) -> MultimodalContentBlock {
+pub fn annotation_block(annotation_type: impl Into<String>, data: Value) -> MultimodalContentBlock {
     MultimodalContentBlock::Annotation(AnnotationBlock {
         id: new_block_id(),
         annotation_type: annotation_type.into(),
@@ -379,10 +354,7 @@ pub fn annotation_block(
 }
 
 /// Create a [`MultimodalContentBlock::Custom`] block.
-pub fn custom_block(
-    custom_type: impl Into<String>,
-    data: Value,
-) -> MultimodalContentBlock {
+pub fn custom_block(custom_type: impl Into<String>, data: Value) -> MultimodalContentBlock {
     MultimodalContentBlock::Custom {
         custom_type: custom_type.into(),
         data,
@@ -786,7 +758,9 @@ mod tests {
         assert!(block.is_image());
         if let MultimodalContentBlock::Image(i) = &block {
             assert_eq!(i.media_type, "image/png");
-            assert!(matches!(&i.source, MediaSource::Url { url } if url == "https://example.com/img.png"));
+            assert!(
+                matches!(&i.source, MediaSource::Url { url } if url == "https://example.com/img.png")
+            );
             assert!(i.alt_text.is_none());
         }
     }
@@ -1034,10 +1008,7 @@ mod tests {
     #[test]
     fn test_block_type_str() {
         assert_eq!(text_block("x").block_type_str(), "text");
-        assert_eq!(
-            image_block_url("u", "image/png").block_type_str(),
-            "image"
-        );
+        assert_eq!(image_block_url("u", "image/png").block_type_str(), "image");
         assert_eq!(audio_block_url("u", "audio/mp3").block_type_str(), "audio");
         assert_eq!(video_block_url("u", "video/mp4").block_type_str(), "video");
         assert_eq!(pdf_block_url("u").block_type_str(), "pdf");
@@ -1046,10 +1017,7 @@ mod tests {
             annotation_block("t", json!(null)).block_type_str(),
             "annotation"
         );
-        assert_eq!(
-            custom_block("c", json!(null)).block_type_str(),
-            "custom"
-        );
+        assert_eq!(custom_block("c", json!(null)).block_type_str(), "custom");
     }
 
     #[test]
@@ -1126,7 +1094,9 @@ mod tests {
 
     #[test]
     fn test_media_source_url_serde() {
-        let src = MediaSource::Url { url: "https://example.com".into() };
+        let src = MediaSource::Url {
+            url: "https://example.com".into(),
+        };
         let json = serde_json::to_string(&src).unwrap();
         assert!(json.contains("\"source_type\":\"url\""));
         let deserialized: MediaSource = serde_json::from_str(&json).unwrap();
@@ -1135,7 +1105,9 @@ mod tests {
 
     #[test]
     fn test_media_source_base64_serde() {
-        let src = MediaSource::Base64 { data: "abc==".into() };
+        let src = MediaSource::Base64 {
+            data: "abc==".into(),
+        };
         let json = serde_json::to_string(&src).unwrap();
         assert!(json.contains("\"source_type\":\"base64\""));
         let deserialized: MediaSource = serde_json::from_str(&json).unwrap();
@@ -1168,10 +1140,7 @@ mod tests {
 
     #[test]
     fn test_content_block_list_text_only_true() {
-        let list = ContentBlockList::from_blocks(vec![
-            text_block("a"),
-            text_block("b"),
-        ]);
+        let list = ContentBlockList::from_blocks(vec![text_block("a"), text_block("b")]);
         assert!(list.text_only());
     }
 
@@ -1200,41 +1169,37 @@ mod tests {
 
     #[test]
     fn test_content_block_list_has_audio() {
-        let list = ContentBlockList::from_blocks(vec![
-            audio_block_url("https://a.com/s.mp3", "audio/mp3"),
-        ]);
+        let list = ContentBlockList::from_blocks(vec![audio_block_url(
+            "https://a.com/s.mp3",
+            "audio/mp3",
+        )]);
         assert!(list.has_audio());
     }
 
     #[test]
     fn test_content_block_list_has_video() {
-        let list = ContentBlockList::from_blocks(vec![
-            video_block_url("https://v.com/v.mp4", "video/mp4"),
-        ]);
+        let list = ContentBlockList::from_blocks(vec![video_block_url(
+            "https://v.com/v.mp4",
+            "video/mp4",
+        )]);
         assert!(list.has_video());
     }
 
     #[test]
     fn test_content_block_list_has_pdfs() {
-        let list = ContentBlockList::from_blocks(vec![
-            pdf_block_url("https://d.com/d.pdf"),
-        ]);
+        let list = ContentBlockList::from_blocks(vec![pdf_block_url("https://d.com/d.pdf")]);
         assert!(list.has_pdfs());
     }
 
     #[test]
     fn test_content_block_list_has_citations() {
-        let list = ContentBlockList::from_blocks(vec![
-            citation_block("src", "quote"),
-        ]);
+        let list = ContentBlockList::from_blocks(vec![citation_block("src", "quote")]);
         assert!(list.has_citations());
     }
 
     #[test]
     fn test_content_block_list_has_annotations() {
-        let list = ContentBlockList::from_blocks(vec![
-            annotation_block("highlight", json!({})),
-        ]);
+        let list = ContentBlockList::from_blocks(vec![annotation_block("highlight", json!({}))]);
         assert!(list.has_annotations());
     }
 
@@ -1243,10 +1208,8 @@ mod tests {
         let list = ContentBlockList::from_blocks(vec![text_block("x")]);
         assert!(!list.has_media());
 
-        let list2 = ContentBlockList::from_blocks(vec![
-            text_block("x"),
-            image_block_url("u", "image/png"),
-        ]);
+        let list2 =
+            ContentBlockList::from_blocks(vec![text_block("x"), image_block_url("u", "image/png")]);
         assert!(list2.has_media());
     }
 
@@ -1262,9 +1225,7 @@ mod tests {
 
     #[test]
     fn test_content_block_list_extract_text_empty() {
-        let list = ContentBlockList::from_blocks(vec![
-            image_block_url("u", "image/png"),
-        ]);
+        let list = ContentBlockList::from_blocks(vec![image_block_url("u", "image/png")]);
         assert_eq!(list.extract_text(), "");
     }
 
@@ -1293,27 +1254,20 @@ mod tests {
 
     #[test]
     fn test_content_block_list_audio_blocks() {
-        let list = ContentBlockList::from_blocks(vec![
-            audio_block_url("u", "audio/mp3"),
-            text_block("x"),
-        ]);
+        let list =
+            ContentBlockList::from_blocks(vec![audio_block_url("u", "audio/mp3"), text_block("x")]);
         assert_eq!(list.audio_blocks().len(), 1);
     }
 
     #[test]
     fn test_content_block_list_video_blocks() {
-        let list = ContentBlockList::from_blocks(vec![
-            video_block_url("u", "video/mp4"),
-        ]);
+        let list = ContentBlockList::from_blocks(vec![video_block_url("u", "video/mp4")]);
         assert_eq!(list.video_blocks().len(), 1);
     }
 
     #[test]
     fn test_content_block_list_pdf_blocks() {
-        let list = ContentBlockList::from_blocks(vec![
-            pdf_block_url("u"),
-            pdf_block_base64("d"),
-        ]);
+        let list = ContentBlockList::from_blocks(vec![pdf_block_url("u"), pdf_block_base64("d")]);
         assert_eq!(list.pdf_blocks().len(), 2);
     }
 

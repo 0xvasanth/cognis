@@ -48,7 +48,9 @@ pub enum SsrfError {
 impl fmt::Display for SsrfError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidScheme(s) => write!(f, "Only HTTP/HTTPS URLs are allowed, got scheme: {s}"),
+            Self::InvalidScheme(s) => {
+                write!(f, "Only HTTP/HTTPS URLs are allowed, got scheme: {s}")
+            }
             Self::MissingHostname => write!(f, "URL must have a valid hostname"),
             Self::InvalidUrl(s) => write!(f, "Invalid URL: {s}"),
             Self::PrivateIp(ip) => write!(f, "URL resolves to private IP address: {ip}"),
@@ -184,17 +186,17 @@ impl CidrRange {
 fn default_blocked_ranges() -> Vec<CidrRange> {
     vec![
         // IPv4 private ranges
-        CidrRange::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 0)), 8),       // Private Class A
-        CidrRange::new(IpAddr::V4(Ipv4Addr::new(172, 16, 0, 0)), 12),    // Private Class B
-        CidrRange::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 0)), 16),   // Private Class C
-        CidrRange::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 0)), 8),      // Loopback
-        CidrRange::new(IpAddr::V4(Ipv4Addr::new(169, 254, 0, 0)), 16),   // Link-local
-        CidrRange::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8),        // Current network
+        CidrRange::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 0)), 8), // Private Class A
+        CidrRange::new(IpAddr::V4(Ipv4Addr::new(172, 16, 0, 0)), 12), // Private Class B
+        CidrRange::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 0)), 16), // Private Class C
+        CidrRange::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 0)), 8), // Loopback
+        CidrRange::new(IpAddr::V4(Ipv4Addr::new(169, 254, 0, 0)), 16), // Link-local
+        CidrRange::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8),  // Current network
         // IPv6 reserved ranges
-        CidrRange::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 128),             // IPv6 loopback
-        CidrRange::new(IpAddr::V6(Ipv6Addr::new(0xfc00, 0, 0, 0, 0, 0, 0, 0)), 7),  // Unique local
+        CidrRange::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 128), // IPv6 loopback
+        CidrRange::new(IpAddr::V6(Ipv6Addr::new(0xfc00, 0, 0, 0, 0, 0, 0, 0)), 7), // Unique local
         CidrRange::new(IpAddr::V6(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0)), 10), // Link-local
-        CidrRange::new(IpAddr::V6(Ipv6Addr::new(0xff00, 0, 0, 0, 0, 0, 0, 0)), 8),  // Multicast
+        CidrRange::new(IpAddr::V6(Ipv6Addr::new(0xff00, 0, 0, 0, 0, 0, 0, 0)), 8), // Multicast
     ]
 }
 
@@ -258,7 +260,10 @@ impl Default for SsrfValidator {
             blocked_ranges: default_blocked_ranges(),
             allowed_domains: Vec::new(),
             allowed_ips: Vec::new(),
-            cloud_metadata_ips: CLOUD_METADATA_IPS.iter().map(|s| (*s).to_string()).collect(),
+            cloud_metadata_ips: CLOUD_METADATA_IPS
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
             cloud_metadata_hostnames: CLOUD_METADATA_HOSTNAMES
                 .iter()
                 .map(|s| (*s).to_string())
@@ -310,7 +315,7 @@ impl SsrfValidator {
             }
 
             // Always block cloud metadata IPs
-            if self.is_cloud_metadata_ip(&hostname) {
+            if self.is_cloud_metadata_ip(hostname) {
                 return Err(SsrfError::CloudMetadata(hostname.to_string()));
             }
 
@@ -341,9 +346,7 @@ impl SsrfValidator {
     // -- internal helpers ---------------------------------------------------
 
     fn is_cloud_metadata_hostname(&self, hostname: &str) -> bool {
-        self.cloud_metadata_hostnames
-            .iter()
-            .any(|h| h == hostname)
+        self.cloud_metadata_hostnames.iter().any(|h| h == hostname)
     }
 
     fn is_cloud_metadata_ip(&self, ip_str: &str) -> bool {
@@ -478,13 +481,12 @@ fn parse_url_parts(url: &str) -> Result<(&str, &str, Option<u16>)> {
             .find(']')
             .ok_or_else(|| SsrfError::InvalidUrl("unclosed bracket in IPv6 address".into()))?;
         let hostname = &authority[1..bracket_end];
-        let port = if authority.len() > bracket_end + 1 && authority.as_bytes()[bracket_end + 1] == b':' {
-            authority[bracket_end + 2..]
-                .parse::<u16>()
-                .ok()
-        } else {
-            None
-        };
+        let port =
+            if authority.len() > bracket_end + 1 && authority.as_bytes()[bracket_end + 1] == b':' {
+                authority[bracket_end + 2..].parse::<u16>().ok()
+            } else {
+                None
+            };
         return Ok((scheme, hostname, port));
     }
 
@@ -577,10 +579,7 @@ mod tests {
 
     #[test]
     fn cidr_contains_ipv6() {
-        let r = CidrRange::new(
-            IpAddr::V6(Ipv6Addr::new(0xfc00, 0, 0, 0, 0, 0, 0, 0)),
-            7,
-        );
+        let r = CidrRange::new(IpAddr::V6(Ipv6Addr::new(0xfc00, 0, 0, 0, 0, 0, 0, 0)), 7);
         assert!(r.contains(&IpAddr::V6(Ipv6Addr::new(0xfc00, 0, 0, 0, 0, 0, 0, 1))));
         assert!(r.contains(&IpAddr::V6(Ipv6Addr::new(0xfdff, 0xff, 0, 0, 0, 0, 0, 0))));
         assert!(!r.contains(&IpAddr::V6(Ipv6Addr::new(0xfe00, 0, 0, 0, 0, 0, 0, 0))));
@@ -692,7 +691,9 @@ mod tests {
     #[test]
     fn allows_public_https_with_path() {
         let v = SsrfValidator::default();
-        assert!(v.validate_url("https://hooks.slack.com/services/xxx").is_ok());
+        assert!(v
+            .validate_url("https://hooks.slack.com/services/xxx")
+            .is_ok());
     }
 
     #[test]
@@ -824,8 +825,12 @@ mod tests {
     fn blocks_cloud_metadata_even_with_allow_private() {
         let v = SsrfValidator::builder().allow_private(true).build();
         // Cloud metadata must ALWAYS be blocked
-        assert!(v.validate_url("http://169.254.169.254/latest/meta-data/").is_err());
-        assert!(v.validate_url("http://metadata.google.internal/foo").is_err());
+        assert!(v
+            .validate_url("http://169.254.169.254/latest/meta-data/")
+            .is_err());
+        assert!(v
+            .validate_url("http://metadata.google.internal/foo")
+            .is_err());
     }
 
     // -----------------------------------------------------------------------
@@ -924,7 +929,9 @@ mod tests {
         let v = SsrfValidator::builder()
             .allow_domain("metadata.google.internal")
             .build();
-        assert!(v.validate_url("http://metadata.google.internal/foo").is_err());
+        assert!(v
+            .validate_url("http://metadata.google.internal/foo")
+            .is_err());
     }
 
     // -----------------------------------------------------------------------
@@ -1033,7 +1040,9 @@ mod tests {
     #[test]
     fn url_with_query_string() {
         let v = SsrfValidator::default();
-        assert!(v.validate_url("https://example.com/path?foo=bar&baz=1").is_ok());
+        assert!(v
+            .validate_url("https://example.com/path?foo=bar&baz=1")
+            .is_ok());
     }
 
     #[test]
@@ -1057,7 +1066,9 @@ mod tests {
     #[test]
     fn url_with_userinfo_private_blocked() {
         let v = SsrfValidator::default();
-        assert!(v.validate_url("http://admin:pass@192.168.1.1/admin").is_err());
+        assert!(v
+            .validate_url("http://admin:pass@192.168.1.1/admin")
+            .is_err());
     }
 
     #[test]
@@ -1099,7 +1110,9 @@ mod tests {
     #[test]
     fn metadata_hostname_uppercase() {
         let v = SsrfValidator::default();
-        assert!(v.validate_url("http://METADATA.GOOGLE.INTERNAL/foo").is_err());
+        assert!(v
+            .validate_url("http://METADATA.GOOGLE.INTERNAL/foo")
+            .is_err());
     }
 
     #[test]
@@ -1114,7 +1127,13 @@ mod tests {
         let v1 = SsrfValidator::default();
         let v2 = SsrfValidatorBuilder::default().build();
         // Both should behave identically
-        assert_eq!(v1.is_safe_url("https://example.com"), v2.is_safe_url("https://example.com"));
-        assert_eq!(v1.is_safe_url("http://10.0.0.1"), v2.is_safe_url("http://10.0.0.1"));
+        assert_eq!(
+            v1.is_safe_url("https://example.com"),
+            v2.is_safe_url("https://example.com")
+        );
+        assert_eq!(
+            v1.is_safe_url("http://10.0.0.1"),
+            v2.is_safe_url("http://10.0.0.1")
+        );
     }
 }
