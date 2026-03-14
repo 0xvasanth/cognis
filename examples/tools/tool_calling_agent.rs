@@ -22,7 +22,6 @@ use serde_json::{json, Value};
 use cognis::agents::AgentExecutor;
 use cognis::tools::cached::CachedTool;
 use cognis_core::language_models::chat_model::BaseChatModel;
-use cognis_core::language_models::FakeMessagesListChatModel;
 use cognis_core::messages::tool_types::ToolCall;
 use cognis_core::messages::{AIMessage, Message};
 use cognis_core::tools::base::BaseTool;
@@ -151,32 +150,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--- Step 3: Building AgentExecutor ---\n");
 
     // Get a model: Ollama if available, otherwise fake with tool-calling simulation.
-    let model: Arc<dyn BaseChatModel> = if shared::is_ollama_available() {
-        shared::get_chat_model(vec![])
-    } else {
-        println!("[Ollama not detected — using fake tool-calling model]\n");
+    let mut ai_calc = AIMessage::new("Let me calculate that for you.");
+    ai_calc.tool_calls.push(ToolCall {
+        name: "calculator".to_string(),
+        args: {
+            let mut m = HashMap::new();
+            m.insert("a".to_string(), json!(42.0));
+            m.insert("b".to_string(), json!(7.0));
+            m.insert("operation".to_string(), json!("multiply"));
+            m
+        },
+        id: Some("call_001".to_string()),
+    });
+    let ai_final = AIMessage::new("42 multiplied by 7 equals 294.");
 
-        // Simulate: 1) model calls calculator, 2) model returns final answer
-        let mut ai_calc = AIMessage::new("Let me calculate that for you.");
-        ai_calc.tool_calls.push(ToolCall {
-            name: "calculator".to_string(),
-            args: {
-                let mut m = HashMap::new();
-                m.insert("a".to_string(), json!(42.0));
-                m.insert("b".to_string(), json!(7.0));
-                m.insert("operation".to_string(), json!("multiply"));
-                m
-            },
-            id: Some("call_001".to_string()),
-        });
-
-        let ai_final = AIMessage::new("42 multiplied by 7 equals 294.");
-
-        Arc::new(FakeMessagesListChatModel::new(vec![
-            Message::Ai(ai_calc),
-            Message::Ai(ai_final),
-        ]))
-    };
+    let model: Arc<dyn BaseChatModel> =
+        shared::get_tool_calling_model(vec![Message::Ai(ai_calc), Message::Ai(ai_final)]);
 
     let search_tool_arc: Arc<dyn BaseTool> = Arc::new(cached_search);
     let calc_tool_arc: Arc<dyn BaseTool> = Arc::new(calculator_tool);

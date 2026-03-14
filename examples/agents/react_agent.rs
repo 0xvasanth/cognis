@@ -24,7 +24,6 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use cognis_core::language_models::chat_model::BaseChatModel;
-use cognis_core::language_models::FakeMessagesListChatModel;
 use cognis_core::messages::tool_types::ToolCall;
 use cognis_core::messages::{AIMessage, Message};
 use cognis_core::tools::types::{ToolInput, ToolOutput};
@@ -160,30 +159,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // With Ollama: the agent uses the real LLM to decide tool calls.
     // Without Ollama: uses a fake model that simulates tool-calling behavior.
-    let model: Arc<dyn BaseChatModel> = if shared::is_ollama_available() {
-        shared::get_chat_model(vec![])
-    } else {
-        println!("[Ollama not detected — using fake tool-calling model]\n");
+    let mut ai_with_tool = AIMessage::new("");
+    let mut args = HashMap::new();
+    args.insert("timezone".to_string(), json!("Asia/Kolkata"));
+    ai_with_tool.tool_calls.push(ToolCall {
+        name: "get_current_time".to_string(),
+        args,
+        id: Some("call_1".to_string()),
+    });
+    let ai_final = AIMessage::new(
+        "The current time in IST (Asia/Kolkata) is shown above from the get_current_time tool.",
+    );
 
-        // Simulate the ReAct loop: first response has a tool call, second is final answer
-        let mut ai_with_tool = AIMessage::new("");
-        let mut args = HashMap::new();
-        args.insert("timezone".to_string(), json!("Asia/Kolkata"));
-        ai_with_tool.tool_calls.push(ToolCall {
-            name: "get_current_time".to_string(),
-            args,
-            id: Some("call_1".to_string()),
-        });
-
-        let ai_final = AIMessage::new(
-            "The current time in IST (Asia/Kolkata) is shown above from the get_current_time tool.",
-        );
-
-        Arc::new(FakeMessagesListChatModel::new(vec![
-            Message::Ai(ai_with_tool),
-            Message::Ai(ai_final),
-        ]))
-    };
+    let model: Arc<dyn BaseChatModel> =
+        shared::get_tool_calling_model(vec![Message::Ai(ai_with_tool), Message::Ai(ai_final)]);
 
     // Step 2: Define the tools.
     let tools: Vec<Arc<dyn BaseTool>> =

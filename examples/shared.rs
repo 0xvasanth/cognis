@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use cognis::chat_models::ollama::ChatOllama;
 use cognis_core::language_models::chat_model::BaseChatModel;
-use cognis_core::language_models::FakeListChatModel;
+use cognis_core::language_models::{FakeListChatModel, FakeMessagesListChatModel};
+use cognis_core::messages::Message;
 
 /// Check if Ollama is reachable at localhost:11434.
 pub fn is_ollama_available() -> bool {
@@ -45,4 +46,26 @@ pub fn get_chat_model(fake_responses: Vec<String>) -> Arc<dyn BaseChatModel> {
 /// Same auto-detection logic as `get_chat_model`.
 pub fn get_streaming_model(fake_responses: Vec<String>) -> Arc<dyn BaseChatModel> {
     get_chat_model(fake_responses)
+}
+
+/// Returns a chat model for tool-calling examples.
+///
+/// When Ollama is available, returns a real model. Otherwise uses
+/// `FakeMessagesListChatModel` with the provided `Message` sequence
+/// to simulate a tool-calling conversation (e.g., AI message with
+/// tool calls followed by a final AI answer).
+pub fn get_tool_calling_model(fake_messages: Vec<Message>) -> Arc<dyn BaseChatModel> {
+    if is_ollama_available() {
+        let model = ChatOllama::builder()
+            .model("llama3.2")
+            .temperature(0.3)
+            .num_predict(256)
+            .build()
+            .expect("Failed to build ChatOllama");
+        println!("[Using Ollama llama3.2]\n");
+        Arc::new(model)
+    } else {
+        println!("[Ollama not detected — using fake tool-calling model]\n");
+        Arc::new(FakeMessagesListChatModel::new(fake_messages))
+    }
 }
