@@ -57,26 +57,9 @@ impl BaseTool for GetCurrentTimeTool {
     }
 
     async fn _run(&self, _input: ToolInput) -> cognis_core::error::Result<ToolOutput> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap();
-        let secs = now.as_secs();
-
-        // Simple date formatting without chrono dependency
-        let days = secs / 86400;
-        let time_of_day = secs % 86400;
-        let hours = time_of_day / 3600;
-        let minutes = (time_of_day % 3600) / 60;
-        let seconds = time_of_day % 60;
-
-        // Approximate date from epoch (good enough for a demo)
-        let year = 1970 + (days / 365);
-        let day_of_year = days % 365;
-        let month = day_of_year / 30 + 1;
-        let day = day_of_year % 30 + 1;
-
-        let timestamp =
-            format!("{year}-{month:02}-{day:02} {hours:02}:{minutes:02}:{seconds:02} UTC");
+        let timestamp = chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S UTC")
+            .to_string();
 
         println!("  [get_current_time] Returning: {timestamp}");
         Ok(ToolOutput::Content(json!({ "current_time": timestamp })))
@@ -196,7 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // "What time is it?" — the LLM cannot know the current time, so it
     // MUST call the get_current_time tool to answer.
-    let question = "What time is it right now?";
+    let question = "What time is it right now respond in IST?";
     println!("User: {question}\n");
 
     let input = json!({

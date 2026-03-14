@@ -18,6 +18,7 @@ async-trait.workspace = true
 futures.workspace = true
 tempfile = "3"
 uuid.workspace = true
+chrono = "0.4"
 
 [[example]]
 name = "simple_chain"
