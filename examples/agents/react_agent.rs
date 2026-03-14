@@ -55,7 +55,7 @@ impl BaseTool for GetCurrentTimeTool {
             "properties": {
                 "timezone": {
                     "type": "string",
-                    "description": "IANA timezone name (e.g. 'America/New_York', 'Asia/Kolkata', 'Europe/London'). Defaults to 'UTC' if not provided."
+                    "description": "IANA timezone name (e.g. 'America/New_York', 'Europe/London'). Defaults to 'UTC' if not provided."
                 }
             },
         }))
