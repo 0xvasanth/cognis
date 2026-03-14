@@ -4,6 +4,7 @@ pub mod block_translators;
 pub mod chat;
 pub mod chunks;
 pub mod content;
+pub mod content_blocks;
 pub mod function;
 pub mod history;
 pub mod human;
