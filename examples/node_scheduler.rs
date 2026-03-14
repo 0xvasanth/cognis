@@ -21,7 +21,6 @@
 //! Run with: `cargo run -p cognis-examples --example node_scheduler`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use std::collections::HashSet;
 use std::time::Duration;
 

@@ -334,7 +334,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ContextRole::System => Message::system(&e.content),
             ContextRole::User => Message::human(&e.content),
             ContextRole::Assistant => Message::ai(&e.content),
-            ContextRole::Tool(_) => Message::human(&e.content),
+            ContextRole::Tool(_) | ContextRole::Summary => Message::human(&e.content),
         }
     }).collect();
 

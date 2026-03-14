@@ -303,7 +303,7 @@ fn main() {
 
     match result {
         Ok(response) => {
-            println!("  LLM response: {}", response.content);
+            println!("  LLM response: {}", response.base.content.text());
 
             // Demonstrate classifying a hypothetical LLM error
             let classifier = PatternErrorClassifier::new();

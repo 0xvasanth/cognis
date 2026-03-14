@@ -253,13 +253,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // After LLM node
             let after_ctx = HookContext::new(
                 HookPhase::AfterNode,
-                json!({"question": "What are execution hooks?", "answer": response.content.clone()}),
+                json!({"question": "What are execution hooks?", "answer": response.base.content.text()}),
                 0,
             )
             .with_node("llm_call");
             llm_registry.dispatch(&after_ctx).await?;
 
-            println!("  LLM response: {}", response.content);
+            println!("  LLM response: {}", response.base.content.text());
 
             let snaps = llm_snapshot.snapshots_for_node("llm_call").await;
             println!("  Snapshots captured for 'llm_call': {}", snaps.len());

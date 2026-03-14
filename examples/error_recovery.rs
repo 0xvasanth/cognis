@@ -302,7 +302,7 @@ fn main() {
 
     match result {
         Ok(response) => {
-            println!("  LLM response: {}", response.content);
+            println!("  LLM response: {}", response.base.content.text());
         }
         Err(e) => {
             // Demonstrate recovery: classify the error and determine action

@@ -11,7 +11,6 @@
 //! Run with: cargo run -p cognis-examples --example graph_with_checkpoints
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use std::sync::Arc;
 
 use serde_json::{json, Value};

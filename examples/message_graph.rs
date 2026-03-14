@@ -20,7 +20,6 @@
 //! Run with: `cargo run -p cognis-examples --example message_graph`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognisgraph::graph::{
     GraphMessage, MessageGraph, MessageGraphBuilder, MessageNode, MessageRole, MessageState,
 };

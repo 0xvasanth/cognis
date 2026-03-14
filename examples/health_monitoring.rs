@@ -12,7 +12,6 @@
 //! Run with: `cargo run -p cognis-examples --example health_monitoring`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use std::sync::Arc;
 use std::time::Duration;
 

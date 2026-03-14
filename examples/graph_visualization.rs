@@ -11,7 +11,6 @@
 //! Run with: cargo run -p cognis-examples --example graph_visualization
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use std::collections::HashMap;
 use std::sync::Arc;
 

@@ -356,10 +356,11 @@ fn main() {
 
     match result {
         Ok(response) => {
-            println!("   LLM review: {}", response.content);
+            let review_text = response.base.content.text();
+            println!("   LLM review: {}", review_text);
 
             // Use LLM response to auto-resolve the interrupt
-            let approved = response.content.to_lowercase().contains("approv");
+            let approved = review_text.to_lowercase().contains("approv");
             println!("   Auto-resolution: {}", if approved { "APPROVED" } else { "REJECTED" });
         }
         Err(e) => println!("   LLM error: {}", e),

@@ -428,7 +428,7 @@ fn main() {
 
     match result {
         Ok(response) => {
-            let llm_answer = response.content.trim().to_string();
+            let llm_answer = response.base.content.text().trim().to_string();
             println!("  LLM answer: \"{}\"", llm_answer);
 
             // Evaluate the LLM response using our metrics

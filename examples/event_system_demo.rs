@@ -597,14 +597,14 @@ fn main() {
             // Record LlmEnd event
             let end_event = Event::new(
                 EventType::LlmEnd,
-                json!({"response_length": response.content.len()}),
+                json!({"response_length": response.base.content.text().len()}),
             )
             .with_source("real_llm_demo");
             llm_log.record(end_event);
             llm_metrics.record_event(&EventType::LlmEnd);
             llm_metrics.record_processing_time(&EventType::LlmEnd, elapsed_ms);
 
-            println!("  LLM response: {}", response.content);
+            println!("  LLM response: {}", response.base.content.text());
             println!("  Duration: {}ms", elapsed_ms);
             println!("  Events logged: {}", llm_log.len());
             println!("  Total events tracked: {}", llm_metrics.total_events());

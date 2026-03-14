@@ -14,7 +14,6 @@
 //! Run with: `cargo run -p cognis-examples --example graph_validation_demo`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognisgraph::graph::validation::{
     GraphValidator, QuickCheck, SchemaValidator, StateRule, StateValidator, ValidationReport,
 };

@@ -11,7 +11,6 @@
 //! Run with: `cargo run -p cognis-examples --example planning_demo`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognisagent::planning::{PlanBuilder, PlanExecutor, PlanStep, Replanner};
 use serde_json::json;
 

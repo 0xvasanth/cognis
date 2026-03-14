@@ -14,7 +14,6 @@
 //! Run with: `cargo run -p cognis-examples --example resilience_demo`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis::resilience::{
     Bulkhead, CircuitBreaker, FallbackChain, ResilienceMetrics, ResiliencePolicy, RetryConfig,
     RetryStrategy,

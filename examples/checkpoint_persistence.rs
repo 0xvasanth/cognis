@@ -473,7 +473,7 @@ fn main() {
     });
 
     match ai_msg {
-        Ok(response) => println!("  LLM summary: {}", response.content),
+        Ok(response) => println!("  LLM summary: {}", response.base.content.text()),
         Err(e) => println!("  LLM error: {}", e),
     }
 

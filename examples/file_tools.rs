@@ -244,13 +244,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match result {
         Ok(response) => {
-            println!("  LLM generated content ({} chars)", response.content.len());
+            let generated = response.base.content.text();
+            println!("  LLM generated content ({} chars)", generated.len());
 
             // Write the LLM-generated content using file tools
             let write_result = write_tool
                 ._run(structured_input(&[
                     ("path", "llm_generated.md"),
-                    ("content", &response.content),
+                    ("content", &generated),
                 ]))
                 .await?;
             println!("  {}", extract_content_str(&write_result));

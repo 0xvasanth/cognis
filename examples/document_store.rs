@@ -495,7 +495,7 @@ fn main() {
     });
 
     match ai_msg {
-        Ok(response) => println!("  LLM answer: {}", response.content),
+        Ok(response) => println!("  LLM answer: {}", response.base.content.text()),
         Err(e) => println!("  LLM error: {}", e),
     }
 

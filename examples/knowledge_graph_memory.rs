@@ -12,7 +12,6 @@
 //! Run with: `cargo run -p cognis-examples --example knowledge_graph_memory`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis::memory::knowledge_graph::{
     KnowledgeGraph, KnowledgeGraphMemory, KnowledgeTriple, RegexTripleExtractor, TripleExtractor,
 };

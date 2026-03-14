@@ -195,7 +195,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Turn 2
     let q2 = "What is the borrow checker?";
     conv_buffer.add_message(ConversationMessage::new(MessageRole::Human, q2));
-    let mut turn2_msgs: Vec<Message> = conv_buffer.messages().iter().map(|m| {
+    let turn2_msgs: Vec<Message> = conv_buffer.messages().iter().map(|m| {
         match m.role {
             MessageRole::Human => Message::human(&m.content),
             MessageRole::Ai => Message::ai(&m.content),

@@ -17,7 +17,6 @@
 //! Run with: `cargo run -p cognis-examples --example plugin_system`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognisagent::plugins::{Plugin, PluginCapability, PluginRegistry, SimplePlugin};
 
 #[tokio::main]

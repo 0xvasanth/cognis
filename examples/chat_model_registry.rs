@@ -25,9 +25,11 @@ use cognis::chat_models::registry::{
     ChatRequest, ChatResponse, ModelCapability, ModelConfig, ModelInfo, ModelRegistry,
     ModelSelector, TokenUsage,
 };
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Chat Model Registry Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -467,5 +469,29 @@ fn main() {
         serde_json::to_string_pretty(&response.to_json()).unwrap()
     );
 
+    // -----------------------------------------------------------------------
+    // 10. Real LLM Demo — Registry + real model together
+    // -----------------------------------------------------------------------
+    println!("\n--- 10. Real LLM Demo ---");
+    println!("Use shared::get_chat_model() alongside the registry to show real model usage.\n");
+
+    let model = shared::get_chat_model(vec![
+        "The builder pattern is a creational design pattern that constructs complex objects step by step, allowing you to produce different types and representations using the same construction code.".into(),
+    ]);
+    let llm_messages = vec![
+        Message::system("You are a helpful coding assistant."),
+        Message::human("Explain the builder pattern in one sentence."),
+    ];
+    let result = model._generate(&llm_messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        let response_text = gen.message.content().text();
+        println!("LLM Response: {}", response_text);
+
+        // Show how you might track this in the registry system
+        let real_usage = TokenUsage::new(25, response_text.len() / 4, 25 + response_text.len() / 4);
+        println!("Estimated usage: {:?}", real_usage);
+    }
+
     println!("\n=== Chat Model Registry Example Complete ===");
+    Ok(())
 }

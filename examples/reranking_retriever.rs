@@ -16,7 +16,6 @@
 //! Run with: `cargo run -p cognis-examples --example reranking_retriever`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use std::collections::HashMap;
 
 use cognis::retrievers::reranking::{

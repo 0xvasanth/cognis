@@ -266,7 +266,7 @@ fn main() {
 
     match ai_msg {
         Ok(response) => {
-            println!("  LLM analysis: {}", response.content);
+            println!("  LLM analysis: {}", response.base.content.text());
             if let Some(avg) = profiler.average_time("llm_analysis") {
                 println!("  LLM node execution time: {:.2} ms", avg);
             }

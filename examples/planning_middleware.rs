@@ -9,7 +9,6 @@
 //! Run with: `cargo run -p cognis-examples --example planning_middleware`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use std::sync::Arc;
 
 use serde_json::json;
