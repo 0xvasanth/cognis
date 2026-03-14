@@ -30,7 +30,7 @@
 //! assert_eq!(msg.message_type(), cognis_core::messages::MessageType::Human);
 //! ```
 
-pub use cognis_macros::{Tool, ToolSchema};
+pub use cognis_macros::{JsonSchema, Tool, ToolSchema};
 
 pub mod agents;
 pub mod caches;

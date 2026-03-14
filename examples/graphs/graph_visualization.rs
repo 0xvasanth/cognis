@@ -1,12 +1,6 @@
 //! Graph Visualization Example
 //!
-//! Demonstrates building a StateGraph and exporting it for visualization:
-//! - Building a StateGraph with nodes and edges (including conditional edges)
-//! - Exporting as a Mermaid diagram (for GitHub, docs, mermaid.live)
-//! - Exporting as ASCII art (for terminal display)
-//! - Showing both vertical and compact rendering options
-//!
-//! No API keys required.
+//! Demonstrates building StateGraphs and exporting as Mermaid diagrams and ASCII art.
 //!
 //! Run with: cargo run -p cognis-examples --example graph_visualization
 
@@ -19,20 +13,13 @@ use cognisgraph::graph::branch::RouterResult;
 use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
 use serde_json::{json, Value};
 
-/// A no-op async node action for demonstration purposes.
 fn noop_action() -> AsyncNodeAction {
     Arc::new(|_state: Value| Box::pin(async move { Ok(json!({})) }))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Graph Visualization Example ===\n");
-
-    // -------------------------------------------------------------------------
-    // Part 1: Simple linear graph
-    // -------------------------------------------------------------------------
-    println!("--- Part 1: Simple Linear Graph ---\n");
-
+    // Linear graph
     let linear_graph = StateGraph::new()
         .add_node("fetch_data", noop_action())
         .add_node("process", noop_action())
@@ -43,23 +30,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set_finish_point("store_results")
         .compile()?;
 
-    // Export as Mermaid diagram.
-    let mermaid = linear_graph.draw_mermaid();
-    println!("Mermaid diagram:");
-    println!("{}", mermaid);
-    println!();
+    println!("Linear graph (Mermaid):\n{}", linear_graph.draw_mermaid());
+    println!("Linear graph (ASCII):\n{}", linear_graph.draw_ascii());
 
-    // Export as ASCII art.
-    let ascii = linear_graph.draw_ascii();
-    println!("ASCII art:");
-    println!("{}", ascii);
-    println!();
-
-    // -------------------------------------------------------------------------
-    // Part 2: Graph with conditional branching (ReAct-style agent)
-    // -------------------------------------------------------------------------
-    println!("--- Part 2: Conditional Branching (Agent Pattern) ---\n");
-
+    // Conditional branching (ReAct-style agent)
     let mut path_map = HashMap::new();
     path_map.insert("continue".to_string(), "tools".to_string());
     path_map.insert("end".to_string(), "__end__".to_string());
@@ -74,21 +48,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_edge("tools", "agent")
         .compile()?;
 
-    let agent_mermaid = agent_graph.draw_mermaid();
-    println!("Mermaid diagram (agent with tool loop):");
-    println!("{}", agent_mermaid);
-    println!();
+    println!("Agent graph (Mermaid):\n{}", agent_graph.draw_mermaid());
+    println!("Agent graph (ASCII):\n{}", agent_graph.draw_ascii());
 
-    let agent_ascii = agent_graph.draw_ascii();
-    println!("ASCII art:");
-    println!("{}", agent_ascii);
-    println!();
-
-    // -------------------------------------------------------------------------
-    // Part 3: Multi-branch graph (router pattern)
-    // -------------------------------------------------------------------------
-    println!("--- Part 3: Multi-Branch Router ---\n");
-
+    // Multi-branch router
     let mut router_map = HashMap::new();
     router_map.insert("technical".to_string(), "tech_support".to_string());
     router_map.insert("billing".to_string(), "billing_agent".to_string());
@@ -110,66 +73,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set_finish_point("respond")
         .compile()?;
 
-    let router_mermaid = router_graph.draw_mermaid();
-    println!("Mermaid diagram (router):");
-    println!("{}", router_mermaid);
-    println!();
+    println!("Router graph (Mermaid):\n{}", router_graph.draw_mermaid());
 
-    let router_ascii = router_graph.draw_ascii();
-    println!("ASCII art:");
-    println!("{}", router_ascii);
-    println!();
-
-    // -------------------------------------------------------------------------
-    // Part 4: Compact ASCII rendering
-    // -------------------------------------------------------------------------
-    println!("--- Part 4: Compact ASCII Rendering ---\n");
-
+    // Compact vs default ASCII rendering
     let compact_opts = cognisgraph::graph::ascii::AsciiRenderOptions {
         compact: true,
         ..Default::default()
     };
-
-    println!("Default rendering:");
-    let default_ascii = linear_graph.draw_ascii();
-    println!("{}", default_ascii);
-
-    println!("Compact rendering:");
-    let compact_ascii = linear_graph.draw_ascii_with_options(&compact_opts);
-    println!("{}", compact_ascii);
-
-    let default_lines = default_ascii.lines().count();
-    let compact_lines = compact_ascii.lines().count();
+    println!("Default:\n{}", linear_graph.draw_ascii());
     println!(
-        "Line count: default={}, compact={}\n",
-        default_lines, compact_lines
+        "Compact:\n{}",
+        linear_graph.draw_ascii_with_options(&compact_opts)
     );
 
-    // -------------------------------------------------------------------------
-    // Part 5: Mermaid live URL
-    // -------------------------------------------------------------------------
-    println!("--- Part 5: Mermaid Live URL ---\n");
+    // Mermaid live URL
+    println!("Mermaid live URL: {}", agent_graph.draw_mermaid_url());
 
-    let url = agent_graph.draw_mermaid_url();
-    println!("Open this URL to view the agent graph interactively:");
-    println!("{}", url);
-
-    // -------------------------------------------------------------------------
-    // Part 6: Real LLM Demo — LLM-powered graph node
-    // -------------------------------------------------------------------------
-    println!("\n--- Part 6: Real LLM Demo ---\n");
-
+    // LLM demo
     let model = shared::get_chat_model(vec![
-        "A graph visualization helps developers understand data flow, identify bottlenecks, and debug complex pipelines.".into(),
+        "Graph visualization helps developers understand data flow and debug pipelines.".into(),
     ]);
     let messages = vec![cognis_core::messages::Message::human(
         "Why is graph visualization useful for understanding agent workflows?",
     )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
-        println!("  LLM Response: {}", gen.message.content().text());
+        println!("LLM: {}", gen.message.content().text());
     }
 
-    println!("\nDone!");
     Ok(())
 }

@@ -1,193 +1,94 @@
 //! Summary Buffer Memory Example
 //!
-//! Demonstrates the SummaryBufferMemory system that combines a message buffer
-//! with periodic summarization. When the buffer exceeds a configurable token
-//! threshold, older messages are automatically summarized to keep the context
-//! window manageable while preserving important information.
-//!
-//! Features shown:
-//! - SimpleSummarizer (bullet-point concatenation)
-//! - TemplateSummarizer (custom template with placeholders)
-//! - Auto-summarization when buffer exceeds token threshold
-//! - Context output with summary + recent messages
-//! - Summary strategies (Oldest, First, Sliding)
-//! - Builder pattern for configuration
-//!
-//! No API keys required.
-//!
-//! Run with: `cargo run -p cognis-examples --example summary_buffer_memory`
+//! Demonstrates SummaryBufferMemory which combines a message buffer with
+//! periodic summarization when the buffer exceeds a token threshold.
 
 #[path = "../shared.rs"]
 mod shared;
+
 use cognis::memory::summary_buffer::{
-    SimpleSummarizer, SummaryBufferMemory, SummaryStrategy, TemplateSummarizer,
+    SimpleSummarizer, Summarizer, SummaryBufferMemory, SummaryStrategy, TemplateSummarizer,
 };
 use cognis_core::messages::Message;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Summary Buffer Memory Example ===\n");
-
-    // -----------------------------------------------------------------------
-    // 1. SimpleSummarizer — bullet-point summary without an LLM
-    // -----------------------------------------------------------------------
-    println!("--- 1. SimpleSummarizer ---");
-    println!("Concatenates messages into a bullet-point summary.\n");
-
+    // --- 1. SimpleSummarizer: bullet-point summary ---
     let summarizer = SimpleSummarizer::new();
-
     let messages = vec![
-        Message::human("What is the capital of France?"),
-        Message::ai("The capital of France is Paris."),
-        Message::human("And what about Germany?"),
-        Message::ai("The capital of Germany is Berlin."),
+        Message::human("Capital of France?"),
+        Message::ai("Paris."),
+        Message::human("And Germany?"),
+        Message::ai("Berlin."),
     ];
+    let summary = Summarizer::summarize(&summarizer, &messages, None)?;
+    println!("Simple summary:\n{summary}\n");
 
-    let summary =
-        cognis::memory::summary_buffer::Summarizer::summarize(&summarizer, &messages, None)?;
-    println!("Summary (no prior context):");
-    println!("{}\n", summary);
+    let new_msgs = vec![Message::human("What about Spain?"), Message::ai("Madrid.")];
+    let with_prior = Summarizer::summarize(&summarizer, &new_msgs, Some(&summary))?;
+    println!("With prior context:\n{with_prior}\n");
 
-    // With an existing summary to incorporate
-    let new_messages = vec![
-        Message::human("What about Spain?"),
-        Message::ai("The capital of Spain is Madrid."),
-    ];
-    let summary_with_prior = cognis::memory::summary_buffer::Summarizer::summarize(
-        &summarizer,
-        &new_messages,
-        Some(&summary),
-    )?;
-    println!("Summary (with prior context):");
-    println!("{}\n", summary_with_prior);
-
-    // -----------------------------------------------------------------------
-    // 2. TemplateSummarizer — custom template with placeholders
-    // -----------------------------------------------------------------------
-    println!("--- 2. TemplateSummarizer ---");
-    println!(
-        "Uses a configurable template with {{messages}} and {{existing_summary}} placeholders.\n"
-    );
-
+    // --- 2. TemplateSummarizer: custom template ---
     let template_summarizer = TemplateSummarizer::new(
-        "=== Conversation Summary ===\nPrior: {existing_summary}\n\nRecent:\n{messages}",
+        "=== Summary ===\nPrior: {existing_summary}\n\nRecent:\n{messages}",
     );
-
-    let template_summary = cognis::memory::summary_buffer::Summarizer::summarize(
+    let template_summary = Summarizer::summarize(
         &template_summarizer,
         &messages,
         Some("User asked about European capitals."),
     )?;
-    println!("Template-based summary:");
-    println!("{}\n", template_summary);
+    println!("Template summary:\n{template_summary}\n");
 
-    // -----------------------------------------------------------------------
-    // 3. Auto-summarization when buffer exceeds threshold
-    // -----------------------------------------------------------------------
-    println!("--- 3. Auto-Summarization ---");
-    println!("Automatically summarizes when estimated token count exceeds the threshold.\n");
-
-    // Use a small token threshold (30) to trigger summarization quickly
+    // --- 3. Auto-summarization on threshold ---
     let mut memory = SummaryBufferMemory::new(30, SimpleSummarizer::new());
-
-    println!("Adding messages to buffer (max ~30 tokens)...");
-
     memory.add_message(Message::human(
-        "Tell me about the history of the Roman Empire and its major conquests",
+        "Tell me about the history of the Roman Empire",
     ))?;
-    println!(
-        "  After msg 1: {} messages in buffer, has summary: {}",
-        memory.message_count(),
-        memory.has_summary()
-    );
-
     memory.add_message(Message::ai(
-        "The Roman Empire was one of the largest empires in ancient history spanning several centuries",
+        "The Roman Empire was one of the largest empires in ancient history",
     ))?;
-    println!(
-        "  After msg 2: {} messages in buffer, has summary: {}",
-        memory.message_count(),
-        memory.has_summary()
-    );
-
     memory.add_message(Message::human(
-        "What were its greatest achievements in architecture and engineering",
+        "What were its greatest achievements in architecture",
     ))?;
+
     println!(
-        "  After msg 3: {} messages in buffer, has summary: {}",
+        "After 3 messages: {} in buffer, has summary: {}",
         memory.message_count(),
         memory.has_summary()
     );
-
     if memory.has_summary() {
-        println!("\nSummarization was triggered!");
-        println!("Current summary:");
-        println!("  {}", memory.current_summary().unwrap());
-        println!("Remaining messages in buffer: {}", memory.message_count());
+        println!("Summary: {}", memory.current_summary().unwrap());
     }
+    println!(
+        "Context: {}\n",
+        serde_json::to_string_pretty(&memory.get_context())?
+    );
 
-    println!("\nContext output (JSON):");
-    let context = memory.get_context();
-    println!("{}\n", serde_json::to_string_pretty(&context)?);
-
-    // -----------------------------------------------------------------------
-    // 4. Summary Strategies
-    // -----------------------------------------------------------------------
-    println!("--- 4. Summary Strategies ---");
-    println!("Different strategies control which messages get summarized.\n");
-
-    // Strategy: First (summarize only the oldest message)
-    println!("Strategy: First (summarize only the oldest message)");
+    // --- 4. Summary strategies ---
     let mut mem_first =
         SummaryBufferMemory::new(25, SimpleSummarizer::new()).with_strategy(SummaryStrategy::First);
-
-    mem_first.add_message(Message::human(
-        "First question about weather patterns around the world",
-    ))?;
-    mem_first.add_message(Message::ai(
-        "Weather patterns vary greatly by region and season",
-    ))?;
-    mem_first.add_message(Message::human(
-        "Tell me more about tropical storms and hurricanes",
-    ))?;
-
+    mem_first.add_message(Message::human("First question about weather patterns"))?;
+    mem_first.add_message(Message::ai("Weather patterns vary by region and season"))?;
+    mem_first.add_message(Message::human("Tell me more about tropical storms"))?;
     println!(
-        "  Messages remaining: {}, Has summary: {}",
+        "Strategy::First - {} msgs, summary: {}",
         mem_first.message_count(),
         mem_first.has_summary()
     );
 
-    // Strategy: Sliding (keep only the N most recent messages)
-    println!("\nStrategy: Sliding(2) (keep only the 2 most recent messages)");
     let mut mem_sliding = SummaryBufferMemory::new(15, SimpleSummarizer::new())
         .with_strategy(SummaryStrategy::Sliding(2));
-
-    mem_sliding.add_message(Message::human(
-        "Message one about artificial intelligence research",
-    ))?;
-    mem_sliding.add_message(Message::ai(
-        "AI research has made significant advances recently",
-    ))?;
-    mem_sliding.add_message(Message::human("What about machine learning specifically"))?;
-    mem_sliding.add_message(Message::ai(
-        "Machine learning is a subset of AI focused on data",
-    ))?;
-
+    mem_sliding.add_message(Message::human("Message about AI research"))?;
+    mem_sliding.add_message(Message::ai("AI research has advanced significantly"))?;
+    mem_sliding.add_message(Message::human("What about machine learning?"))?;
+    mem_sliding.add_message(Message::ai("ML is a subset of AI focused on data"))?;
     println!(
-        "  Messages remaining: {}, Has summary: {}",
+        "Strategy::Sliding(2) - {} msgs, summary: {}\n",
         mem_sliding.message_count(),
         mem_sliding.has_summary()
     );
-    if mem_sliding.has_summary() {
-        println!("  Summary: {}", mem_sliding.current_summary().unwrap());
-    }
 
-    // -----------------------------------------------------------------------
-    // 5. Builder Pattern
-    // -----------------------------------------------------------------------
-    println!("\n--- 5. Builder Pattern ---");
-    println!("Fluent builder for configuring SummaryBufferMemory.\n");
-
+    // --- 5. Builder pattern ---
     let mut mem_built = SummaryBufferMemory::builder()
         .max_token_count(20)
         .summarizer(TemplateSummarizer::new("Summary: {messages}"))
@@ -197,55 +98,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .strategy(SummaryStrategy::Oldest)
         .build();
 
-    mem_built.add_message(Message::human("Hello, I need help with my Rust project"))?;
-    mem_built.add_message(Message::ai(
-        "Of course! I would be happy to help with your Rust project",
-    ))?;
-    mem_built.add_message(Message::human(
-        "How do I use traits effectively in Rust programming",
-    ))?;
-
-    let built_context = mem_built.get_context();
-    println!("Custom-configured context (key='conversation', prefixes='User'/'Assistant'):");
-    println!("{}\n", serde_json::to_string_pretty(&built_context)?);
-
-    // -----------------------------------------------------------------------
-    // 6. Clear and Reset
-    // -----------------------------------------------------------------------
-    println!("--- 6. Clear and Reset ---");
-    println!("Clearing the memory resets both buffer and summary.\n");
-
+    mem_built.add_message(Message::human("Help with my Rust project"))?;
+    mem_built.add_message(Message::ai("Of course! Happy to help with Rust"))?;
+    mem_built.add_message(Message::human("How do I use traits effectively?"))?;
     println!(
-        "Before clear: {} messages, has summary: {}",
+        "Builder config:\n{}\n",
+        serde_json::to_string_pretty(&mem_built.get_context())?
+    );
+
+    // --- 6. Clear and reset ---
+    println!(
+        "Before clear: {} msgs, summary: {}",
         mem_built.message_count(),
         mem_built.has_summary()
     );
     mem_built.clear();
     println!(
-        "After clear:  {} messages, has summary: {}",
+        "After clear: {} msgs, summary: {}\n",
         mem_built.message_count(),
         mem_built.has_summary()
     );
 
-    // -----------------------------------------------------------------------
-    // 7. Real LLM Demo — LLM-generated summary
-    // -----------------------------------------------------------------------
-    println!("\n--- 7. Real LLM Demo ---");
-    println!("Ask an LLM to summarize a conversation.\n");
-
+    // --- 7. LLM-generated summary ---
     let model = shared::get_chat_model(vec![
-        "The user asked about European capitals. The assistant identified Paris as France's capital, Berlin as Germany's, and Madrid as Spain's.".into(),
+        "The user asked about European capitals: Paris (France), Berlin (Germany), Madrid (Spain)."
+            .into(),
     ]);
-    let conversation = "Human: What is the capital of France?\nAI: Paris.\nHuman: And Germany?\nAI: Berlin.\nHuman: What about Spain?\nAI: Madrid.";
     let llm_messages = vec![
-        Message::system("Summarize the following conversation in one concise sentence."),
-        Message::human(conversation),
+        Message::system("Summarize the following conversation in one sentence."),
+        Message::human("Human: Capital of France?\nAI: Paris.\nHuman: Germany?\nAI: Berlin.\nHuman: Spain?\nAI: Madrid."),
     ];
     let result = model._generate(&llm_messages, None).await?;
     if let Some(gen) = result.generations.first() {
-        println!("LLM-generated summary: {}", gen.message.content().text());
+        println!("LLM summary: {}", gen.message.content().text());
     }
 
-    println!("\n=== Summary Buffer Memory Example Complete ===");
     Ok(())
 }

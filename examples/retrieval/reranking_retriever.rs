@@ -1,22 +1,13 @@
 //! Reranking Retriever Example
 //!
-//! Demonstrates the reranking retriever system that takes initial retrieval
-//! results and reorders them by relevance using various scoring strategies.
+//! Demonstrates reranking strategies: KeywordReranker, TfIdfReranker,
+//! CascadeReranker, RerankingRetriever, and RerankerPipeline.
 //!
-//! Features shown:
-//! - KeywordReranker (keyword overlap scoring)
-//! - TfIdfReranker (TF-IDF scoring)
-//! - CascadeReranker (weighted combination of multiple rerankers)
-//! - RerankingRetriever (end-to-end retrieval with reranking)
-//! - RerankerPipeline (sequential multi-stage reranking)
-//! - Score thresholds and top-k filtering
-//!
-//! No API keys required.
-//!
-//! Run with: `cargo run -p cognis-examples --example reranking_retriever`
+//! Run with: cargo run -p cognis-examples --example reranking_retriever
 
 #[path = "../shared.rs"]
 mod shared;
+
 use std::collections::HashMap;
 
 use cognis::retrievers::reranking::{
@@ -26,11 +17,11 @@ use cognis::retrievers::reranking::{
 use cognis_core::documents::Document;
 use serde_json::json;
 
-fn make_doc(content: &str) -> Document {
+fn doc(content: &str) -> Document {
     Document::new(content)
 }
 
-fn make_doc_with_meta(content: &str, key: &str, value: f64) -> Document {
+fn doc_meta(content: &str, key: &str, value: f64) -> Document {
     let mut meta = HashMap::new();
     meta.insert(key.to_string(), json!(value));
     Document::new(content).with_metadata(meta)
@@ -38,218 +29,102 @@ fn make_doc_with_meta(content: &str, key: &str, value: f64) -> Document {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Reranking Retriever Example ===\n");
-
-    // Sample document corpus
     let documents = vec![
-        make_doc("Rust is a systems programming language focused on safety and performance"),
-        make_doc("Python is widely used for machine learning and data science applications"),
-        make_doc("Rust provides memory safety without garbage collection through ownership"),
-        make_doc("JavaScript runs in the browser and powers modern web applications"),
-        make_doc("Rust and Python can interoperate through PyO3 bindings for performance"),
-        make_doc("Go is a statically typed language designed for simplicity and concurrency"),
+        doc("Rust is a systems programming language focused on safety and performance"),
+        doc("Python is widely used for machine learning and data science applications"),
+        doc("Rust provides memory safety without garbage collection through ownership"),
+        doc("JavaScript runs in the browser and powers modern web applications"),
+        doc("Rust and Python can interoperate through PyO3 bindings for performance"),
+        doc("Go is a statically typed language designed for simplicity and concurrency"),
     ];
 
-    // -----------------------------------------------------------------------
-    // 1. KeywordReranker — scores by keyword overlap
-    // -----------------------------------------------------------------------
-    println!("--- 1. KeywordReranker ---");
-    println!("Scores documents by the fraction of query terms found in each document.\n");
-
-    let keyword_reranker = KeywordReranker::new();
-    let query = "Rust memory safety performance";
-    println!("Query: \"{}\"\n", query);
-
-    let results = keyword_reranker.rerank(query, &documents)?;
-    println!("Ranked results:");
-    for (i, (doc, score)) in results.iter().enumerate() {
-        println!("  {}. [score: {:.3}] {}", i + 1, score, doc.page_content);
+    // 1. KeywordReranker
+    println!("--- KeywordReranker ---");
+    let results = KeywordReranker::new().rerank("Rust memory safety performance", &documents)?;
+    for (i, (d, score)) in results.iter().take(3).enumerate() {
+        println!("  {}. [{:.3}] {}", i + 1, score, d.page_content);
     }
 
-    // -----------------------------------------------------------------------
-    // 2. TfIdfReranker — scores using TF-IDF
-    // -----------------------------------------------------------------------
-    println!("\n--- 2. TfIdfReranker ---");
-    println!("Scores using term frequency * inverse document frequency.\n");
-    println!("Rare terms in the corpus get higher weight.\n");
-
-    let tfidf_reranker = TfIdfReranker::new();
-    let query = "ownership garbage collection";
-    println!("Query: \"{}\"\n", query);
-
-    let results = tfidf_reranker.rerank(query, &documents)?;
-    println!("Ranked results:");
-    for (i, (doc, score)) in results.iter().enumerate() {
-        println!("  {}. [score: {:.4}] {}", i + 1, score, doc.page_content);
+    // 2. TfIdfReranker
+    println!("\n--- TfIdfReranker ---");
+    let results = TfIdfReranker::new().rerank("ownership garbage collection", &documents)?;
+    for (i, (d, score)) in results.iter().take(3).enumerate() {
+        println!("  {}. [{:.4}] {}", i + 1, score, d.page_content);
     }
 
-    // -----------------------------------------------------------------------
-    // 3. CascadeReranker — weighted combination
-    // -----------------------------------------------------------------------
-    println!("\n--- 3. CascadeReranker ---");
-    println!("Combines multiple rerankers with configurable weights.\n");
-
-    // Documents with metadata boost scores
-    let docs_with_meta = vec![
-        make_doc_with_meta(
+    // 3. CascadeReranker (keyword + metadata weights)
+    println!("\n--- CascadeReranker ---");
+    let docs_meta = vec![
+        doc_meta(
             "Rust is a systems programming language focused on safety and performance",
             "relevance",
             0.9,
         ),
-        make_doc_with_meta(
+        doc_meta(
             "Python is widely used for machine learning and data science applications",
             "relevance",
             0.7,
         ),
-        make_doc_with_meta(
+        doc_meta(
             "Rust provides memory safety without garbage collection through ownership",
             "relevance",
             0.95,
         ),
-        make_doc_with_meta(
+        doc_meta(
             "JavaScript runs in the browser and powers modern web applications",
             "relevance",
             0.3,
         ),
-        make_doc_with_meta(
-            "Rust and Python can interoperate through PyO3 bindings for performance",
-            "relevance",
-            0.8,
-        ),
     ];
-
     let cascade = CascadeReranker::new(vec![
         (Box::new(KeywordReranker::new()), 0.6),
         (Box::new(MetadataReranker::new("relevance")), 0.4),
     ]);
-
-    let query = "Rust safety";
-    println!("Query: \"{}\"", query);
-    println!("Weights: KeywordReranker=0.6, MetadataReranker(relevance)=0.4\n");
-
-    let results = cascade.rerank(query, &docs_with_meta)?;
-    println!("Ranked results (combined score):");
-    for (i, (doc, score)) in results.iter().enumerate() {
-        let meta_score = doc
-            .metadata
-            .get("relevance")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        println!(
-            "  {}. [combined: {:.3}, meta: {:.2}] {}",
-            i + 1,
-            score,
-            meta_score,
-            doc.page_content
-        );
+    let results = cascade.rerank("Rust safety", &docs_meta)?;
+    for (i, (d, score)) in results.iter().enumerate() {
+        println!("  {}. [{:.3}] {}", i + 1, score, d.page_content);
     }
 
-    // -----------------------------------------------------------------------
-    // 4. RerankingRetriever — end-to-end retrieval with top-k and min_score
-    // -----------------------------------------------------------------------
-    println!("\n--- 4. RerankingRetriever ---");
-    println!("Wraps a document set with a reranker for end-to-end retrieval.\n");
-
+    // 4. RerankingRetriever with top-k and min_score
+    println!("\n--- RerankingRetriever ---");
     let retriever = RerankingRetriever::new(documents.clone(), Box::new(KeywordReranker::new()))
         .with_top_k(3)
         .with_min_score(0.2);
-
-    let query = "Rust programming performance";
-    println!("Query: \"{}\"", query);
-    println!("Config: top_k=3, min_score=0.2\n");
-
-    let results = retriever.retrieve_with_scores(query, 3)?;
-    println!("Retrieved documents (top-3 with score >= 0.2):");
-    for (i, (doc, score)) in results.iter().enumerate() {
-        println!("  {}. [score: {:.3}] {}", i + 1, score, doc.page_content);
+    let results = retriever.retrieve_with_scores("Rust programming performance", 3)?;
+    for (i, (d, score)) in results.iter().enumerate() {
+        println!("  {}. [{:.3}] {}", i + 1, score, d.page_content);
     }
 
-    // Show filtering effect with a query that has low overlap
-    let query_low = "database SQL NoSQL";
-    println!("\nQuery: \"{}\"", query_low);
-    let results_low = retriever.retrieve_with_scores(query_low, 3)?;
-    println!(
-        "Retrieved: {} documents (low overlap filtered by min_score)",
-        results_low.len()
-    );
-
-    // -----------------------------------------------------------------------
-    // 5. RerankerPipeline — sequential multi-stage reranking
-    // -----------------------------------------------------------------------
-    println!("\n--- 5. RerankerPipeline ---");
-    println!("Applies rerankers sequentially, narrowing results at each stage.\n");
-
+    // 5. RerankerPipeline (multi-stage)
+    println!("\n--- RerankerPipeline ---");
     let pipeline = RerankerPipeline::new(vec![
-        // Stage 1: Keyword relevance, keep top 4
         (Box::new(KeywordReranker::new()), 4),
-        // Stage 2: Prefer medium-length docs (~60 chars), keep top 2
         (Box::new(LengthReranker::new(60)), 2),
     ]);
-
-    let query = "Rust programming";
-    println!("Query: \"{}\"", query);
-    println!("Pipeline: KeywordReranker(top 4) -> LengthReranker(ideal=60, top 2)\n");
-
-    let results = pipeline.run(query, &documents)?;
-    println!("Final results after pipeline:");
-    for (i, (doc, score)) in results.iter().enumerate() {
-        println!(
-            "  {}. [score: {:.4}, len: {}] {}",
-            i + 1,
-            score,
-            doc.page_content.len(),
-            doc.page_content
-        );
+    let results = pipeline.run("Rust programming", &documents)?;
+    for (i, (d, score)) in results.iter().enumerate() {
+        println!("  {}. [{:.4}] {}", i + 1, score, d.page_content);
     }
 
-    // -----------------------------------------------------------------------
-    // 6. Comparing Rerankers on the Same Query
-    // -----------------------------------------------------------------------
-    println!("\n--- 6. Comparison ---");
-    println!("Same query ranked by different rerankers.\n");
-
-    let query = "machine learning Python";
-    println!("Query: \"{}\"\n", query);
-
-    let keyword_results = KeywordReranker::new().rerank(query, &documents)?;
-    let tfidf_results = TfIdfReranker::new().rerank(query, &documents)?;
-
-    println!("KeywordReranker top-3:");
-    for (i, (doc, score)) in keyword_results.iter().take(3).enumerate() {
-        println!("  {}. [score: {:.3}] {}", i + 1, score, doc.page_content);
-    }
-
-    println!("\nTfIdfReranker top-3:");
-    for (i, (doc, score)) in tfidf_results.iter().take(3).enumerate() {
-        println!("  {}. [score: {:.4}] {}", i + 1, score, doc.page_content);
-    }
-
-    // -----------------------------------------------------------------------
-    // 7. Real LLM Demo — Q&A after reranking
-    // -----------------------------------------------------------------------
-    println!("\n--- 7. Real LLM Demo ---");
-    println!("Use the top reranked document as context for LLM Q&A.\n");
-
-    let top_query = "Rust memory safety";
-    let top_results = KeywordReranker::new().rerank(top_query, &documents)?;
-    let context = top_results
+    // 6. LLM Q&A using top reranked document as context
+    println!("\n--- LLM with Reranked Context ---");
+    let top = KeywordReranker::new().rerank("Rust memory safety", &documents)?;
+    let context = top
         .first()
-        .map(|(doc, _)| doc.page_content.as_str())
-        .unwrap_or("No context available.");
+        .map(|(d, _)| d.page_content.as_str())
+        .unwrap_or("");
 
     let model = shared::get_chat_model(vec![
-        "Rust achieves memory safety through its ownership system and borrow checker, which enforce strict rules at compile time without needing a garbage collector.".into(),
+        "Rust achieves memory safety through ownership and the borrow checker at compile time."
+            .into(),
     ]);
     let messages = vec![cognis_core::messages::Message::human(&format!(
-        "Based on this context: '{}'\n\nHow does Rust achieve memory safety?",
-        context
+        "Based on: '{context}'\n\nHow does Rust achieve memory safety?"
     ))];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
-        println!("  Context: {}", context);
-        println!("  LLM Answer: {}", gen.message.content().text());
+        println!("  Answer: {}", gen.message.content().text());
     }
 
-    println!("\n=== Reranking Retriever Example Complete ===");
     Ok(())
 }

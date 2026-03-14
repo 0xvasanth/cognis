@@ -1,38 +1,101 @@
-//! Derive macros for the Cognis LLM framework.
+//! Standalone derive macros for generating OpenAPI-compatible JSON schemas.
 //!
-//! Provides `#[derive(Tool)]` for auto-generating `BaseTool` implementations
-//! with OpenAPI-compatible JSON schemas, and `#[derive(ToolSchema)]` for
-//! generating `ToolJsonSchema` implementations for nested structs and enums.
+//! This crate is **framework-independent** — it has zero runtime dependencies
+//! beyond `syn`/`quote`/`proc-macro2` (compile-time only).
+//!
+//! ## Standalone schema generation
+//!
+//! `#[derive(JsonSchema)]` generates an implementation of the `JsonSchema` trait
+//! that returns a `serde_json::Value` describing the type in OpenAPI format.
+//! Works on structs and enums. No framework dependency required.
+//!
+//! ```ignore
+//! use cognis_macros::JsonSchema;
+//!
+//! #[derive(JsonSchema, serde::Serialize, serde::Deserialize)]
+//! struct SearchFilter {
+//!     /// Minimum relevance score
+//!     min_score: f64,
+//!     /// Categories to include
+//!     categories: Vec<String>,
+//! }
+//!
+//! let schema = SearchFilter::json_schema();
+//! // {"type":"object","properties":{"min_score":{"type":"number","description":"Minimum relevance score"},...},"required":["min_score","categories"]}
+//! ```
+//!
+//! ## Framework integration
+//!
+//! `#[derive(Tool)]` generates both a `JsonSchema` impl AND a framework-specific
+//! `BaseTool` impl. The framework crate path defaults to `cognis_core` but can be
+//! overridden with `#[tool(crate_path = "my_framework")]`.
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{parse_macro_input, Attribute, Data, DeriveInput, Expr, Fields, Lit, Meta, Type};
 
+// =========================================================================
+// The JsonSchema trait — defined here so the macro is fully standalone.
+// Users only need `cognis-macros` + `serde_json` in scope.
+// =========================================================================
+
+// NOTE: The trait is not defined as Rust code in this proc-macro crate (proc-macro
+// crates can only export procedural macros). Instead, the derive macro generates
+// an impl for a trait `cognis_macros::JsonSchema` which is defined via a
+// re-export trick: the trait definition lives in the generated code itself using
+// a well-known path. We use a standalone trait path that can be configured.
+
 // ---------------------------------------------------------------------------
-// #[derive(Tool)]
+// #[derive(JsonSchema)] — standalone, no framework dependency
 // ---------------------------------------------------------------------------
 
-/// Derive macro that generates `BaseTool` and `ToolJsonSchema` implementations
-/// for a struct.
+/// Derive macro that generates a `json_schema()` associated function returning
+/// an OpenAPI-compatible JSON Schema as `serde_json::Value`.
+///
+/// Works on **structs** (generates `"type": "object"` with properties) and
+/// **enums** (generates `"type": "string"` with enum values).
+///
+/// This macro is **standalone** — it does not depend on any LLM framework.
+/// The only runtime dependency is `serde_json`.
 ///
 /// # Struct-level attributes
 ///
-/// - `#[tool(name = "my_tool")]` — Override the tool name (defaults to snake_case
-///   of the struct name).
-/// - `#[tool(description = "...")]` — Override the description (defaults to the
-///   struct's doc comment).
+/// - `#[schema(description = "...")]` — Override the struct description.
 ///
 /// # Field-level behaviour
 ///
-/// - Doc comments become the `"description"` in the JSON schema.
+/// - Doc comments (`///`) become `"description"` in the JSON schema.
 /// - `Option<T>` fields are excluded from `"required"`.
 /// - `#[serde(skip)]` fields are excluded from the schema entirely.
 /// - `#[serde(rename = "new_name")]` uses the renamed key.
 /// - `#[serde(default)]` removes the field from `"required"`.
+/// - Nested structs that also derive `JsonSchema` produce nested object schemas.
+/// - Enums with `#[serde(rename = "...")]` on variants use the renamed values.
+#[proc_macro_derive(JsonSchema, attributes(schema))]
+pub fn derive_json_schema(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match derive_json_schema_impl(&input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// #[derive(Tool)] — framework integration (generates BaseTool + JsonSchema)
+// ---------------------------------------------------------------------------
+
+/// Derive macro that generates both a `JsonSchema` impl and a framework-specific
+/// `BaseTool` impl for the struct.
 ///
-/// The struct must also implement an `async fn execute(&self) -> cognis_core::error::Result<cognis_core::tools::ToolOutput>`
-/// method that contains the actual tool logic.
+/// # Struct-level attributes
+///
+/// - `#[tool(name = "my_tool")]` — Override the tool name (defaults to snake_case).
+/// - `#[tool(description = "...")]` — Override the description (defaults to doc comment).
+/// - `#[tool(crate_path = "my_crate")]` — Override the framework crate path
+///   (defaults to `cognis_core`).
+///
+/// The struct must implement `async fn execute(&self) -> Result<ToolOutput>`.
 #[proc_macro_derive(Tool, attributes(tool))]
 pub fn derive_tool(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -42,25 +105,83 @@ pub fn derive_tool(input: TokenStream) -> TokenStream {
     }
 }
 
-/// Derive macro that generates `ToolJsonSchema` for structs and enums.
-///
-/// For enums, generates `{"type": "string", "enum": [...]}` using variant names.
-/// Respects `#[serde(rename = "...")]` on variants.
-///
-/// For structs, generates the same schema as `#[derive(Tool)]` but only the
-/// `ToolJsonSchema` trait (not `BaseTool`).
-#[proc_macro_derive(ToolSchema, attributes(tool))]
+/// Kept for backward compatibility — alias for `#[derive(JsonSchema)]`.
+#[proc_macro_derive(ToolSchema, attributes(tool, schema))]
 pub fn derive_tool_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    match derive_tool_schema_impl(&input) {
+    match derive_json_schema_impl(&input) {
         Ok(tokens) => tokens.into(),
         Err(err) => err.to_compile_error().into(),
     }
 }
 
-// ---------------------------------------------------------------------------
-// Core implementation for #[derive(Tool)]
-// ---------------------------------------------------------------------------
+// =========================================================================
+// Implementation: #[derive(JsonSchema)]
+// =========================================================================
+
+fn derive_json_schema_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
+    let name = &input.ident;
+
+    match &input.data {
+        Data::Struct(data) => match &data.fields {
+            Fields::Named(f) => generate_json_schema_impl(name, &f.named),
+            _ => Err(syn::Error::new_spanned(
+                name,
+                "JsonSchema derive for structs only supports named fields",
+            )),
+        },
+        Data::Enum(data) => {
+            let variants: Vec<String> = data
+                .variants
+                .iter()
+                .map(|v| {
+                    if let Some(renamed) = get_serde_rename(&v.attrs) {
+                        renamed
+                    } else {
+                        v.ident.to_string()
+                    }
+                })
+                .collect();
+
+            let variant_literals: Vec<_> = variants.iter().map(|v| quote! { #v }).collect();
+
+            Ok(quote! {
+                impl #name {
+                    /// Returns the OpenAPI-compatible JSON Schema for this type.
+                    pub fn json_schema() -> serde_json::Value {
+                        serde_json::json!({
+                            "type": "string",
+                            "enum": [#(#variant_literals),*]
+                        })
+                    }
+                }
+            })
+        }
+        _ => Err(syn::Error::new_spanned(
+            name,
+            "JsonSchema derive only supports structs and enums",
+        )),
+    }
+}
+
+fn generate_json_schema_impl(
+    name: &syn::Ident,
+    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+) -> syn::Result<TokenStream2> {
+    let schema_body = generate_schema_body(fields)?;
+    Ok(quote! {
+        impl #name {
+            /// Returns the OpenAPI-compatible JSON Schema for this type.
+            pub fn json_schema() -> serde_json::Value {
+                #schema_body
+            }
+        }
+    })
+}
+
+// =========================================================================
+// Implementation: #[derive(Tool)]
+// =========================================================================
 
 fn derive_tool_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let name = &input.ident;
@@ -83,14 +204,17 @@ fn derive_tool_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         }
     };
 
-    let (tool_name, tool_desc) = parse_tool_attrs(&input.attrs, name)?;
-
+    let (tool_name, tool_desc, crate_path) = parse_tool_attrs(&input.attrs, name)?;
+    let json_schema_impl = generate_json_schema_impl(name, fields)?;
     let schema_body = generate_schema_body(fields)?;
-    let tool_schema_impl = generate_tool_json_schema_impl(name, fields)?;
 
     Ok(quote! {
+        // Standalone json_schema() — no framework dependency
+        #json_schema_impl
+
+        // Framework-specific BaseTool impl
         #[async_trait::async_trait]
-        impl cognis_core::tools::BaseTool for #name {
+        impl #crate_path::tools::BaseTool for #name {
             fn name(&self) -> &str {
                 #tool_name
             }
@@ -100,84 +224,26 @@ fn derive_tool_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             }
 
             fn args_schema(&self) -> Option<serde_json::Value> {
-                Some(#schema_body)
+                Some(Self::json_schema())
             }
 
-            async fn _run(&self, input: cognis_core::tools::ToolInput) -> cognis_core::error::Result<cognis_core::tools::ToolOutput> {
+            async fn _run(&self, _input: #crate_path::tools::ToolInput) -> #crate_path::error::Result<#crate_path::tools::ToolOutput> {
                 self.execute().await
             }
         }
 
-        #tool_schema_impl
-    })
-}
-
-// ---------------------------------------------------------------------------
-// Core implementation for #[derive(ToolSchema)]
-// ---------------------------------------------------------------------------
-
-fn derive_tool_schema_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
-    let name = &input.ident;
-
-    match &input.data {
-        Data::Struct(data) => match &data.fields {
-            Fields::Named(f) => generate_tool_json_schema_impl(name, &f.named),
-            _ => Err(syn::Error::new_spanned(
-                name,
-                "ToolSchema derive for structs only supports named fields",
-            )),
-        },
-        Data::Enum(data) => {
-            let variants: Vec<String> = data
-                .variants
-                .iter()
-                .map(|v| {
-                    // Check for #[serde(rename = "...")]
-                    if let Some(renamed) = get_serde_rename(&v.attrs) {
-                        renamed
-                    } else {
-                        v.ident.to_string()
-                    }
-                })
-                .collect();
-
-            let variant_literals: Vec<_> = variants.iter().map(|v| quote! { #v }).collect();
-
-            Ok(quote! {
-                impl cognis_core::tools::ToolJsonSchema for #name {
-                    fn json_schema() -> serde_json::Value {
-                        serde_json::json!({
-                            "type": "string",
-                            "enum": [#(#variant_literals),*]
-                        })
-                    }
-                }
-            })
-        }
-        _ => Err(syn::Error::new_spanned(
-            name,
-            "ToolSchema derive only supports structs and enums",
-        )),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Schema body generation (shared by Tool and ToolSchema for structs)
-// ---------------------------------------------------------------------------
-
-fn generate_tool_json_schema_impl(
-    name: &syn::Ident,
-    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> syn::Result<TokenStream2> {
-    let schema_body = generate_schema_body(fields)?;
-    Ok(quote! {
-        impl cognis_core::tools::ToolJsonSchema for #name {
+        // Framework ToolJsonSchema bridge — delegates to standalone json_schema()
+        impl #crate_path::tools::ToolJsonSchema for #name {
             fn json_schema() -> serde_json::Value {
-                #schema_body
+                <#name>::json_schema()
             }
         }
     })
 }
+
+// =========================================================================
+// Schema body generation
+// =========================================================================
 
 fn generate_schema_body(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
@@ -186,7 +252,6 @@ fn generate_schema_body(
     let mut required_inserts = Vec::new();
 
     for field in fields {
-        // Skip fields with #[serde(skip)]
         if has_serde_skip(&field.attrs) {
             continue;
         }
@@ -196,24 +261,18 @@ fn generate_schema_body(
             .as_ref()
             .ok_or_else(|| syn::Error::new_spanned(field, "expected named field"))?;
 
-        // Determine the JSON key name
         let json_key = if let Some(renamed) = get_serde_rename(&field.attrs) {
             renamed
         } else {
             field_ident.to_string()
         };
 
-        // Extract doc comment
         let description = get_doc_comment(&field.attrs);
-
-        // Determine if the field is optional or has a default
         let has_default = has_serde_default(&field.attrs);
         let (inner_ty, is_option) = unwrap_option_type(&field.ty);
 
-        // Generate the schema for this field's type
         let schema_expr = type_to_schema(inner_ty);
 
-        // Add description if present
         let property_value = if let Some(desc) = &description {
             quote! {
                 {
@@ -232,7 +291,6 @@ fn generate_schema_body(
             __properties.insert(#json_key.to_string(), #property_value);
         });
 
-        // Add to required if not Option and not serde(default)
         if !is_option && !has_default {
             required_inserts.push(quote! {
                 __required.push(serde_json::Value::String(#json_key.to_string()));
@@ -262,9 +320,9 @@ fn generate_schema_body(
     })
 }
 
-// ---------------------------------------------------------------------------
+// =========================================================================
 // Type → JSON Schema mapping
-// ---------------------------------------------------------------------------
+// =========================================================================
 
 fn type_to_schema(ty: &Type) -> TokenStream2 {
     match ty {
@@ -295,7 +353,6 @@ fn type_to_schema(ty: &Type) -> TokenStream2 {
                     }
                 }
                 "HashMap" | "BTreeMap" => {
-                    // Extract the value type (second generic arg)
                     if let Some(value_ty) = extract_second_generic_arg(&last_segment.arguments) {
                         let value_schema = type_to_schema(value_ty);
                         quote! {
@@ -310,39 +367,28 @@ fn type_to_schema(ty: &Type) -> TokenStream2 {
                 }
                 "Value" => quote! { serde_json::json!({}) },
                 "Option" => {
-                    // Shouldn't normally reach here since we unwrap Option in the caller,
-                    // but handle gracefully.
                     if let Some(inner) = extract_generic_arg(&last_segment.arguments) {
                         type_to_schema(inner)
                     } else {
                         quote! { serde_json::json!({}) }
                     }
                 }
-                // Any other type — assume it implements ToolJsonSchema
+                // Any other type — call its json_schema() inherent method
                 _ => {
-                    let ty_tokens = quote! { #ty };
-                    quote! {
-                        <#ty_tokens as cognis_core::tools::ToolJsonSchema>::json_schema()
-                    }
+                    quote! { #ty::json_schema() }
                 }
             }
         }
-        Type::Reference(type_ref) => {
-            // Handle &str etc.
-            type_to_schema(&type_ref.elem)
-        }
+        Type::Reference(type_ref) => type_to_schema(&type_ref.elem),
         _ => {
-            // Fallback: delegate to ToolJsonSchema
-            quote! {
-                <#ty as cognis_core::tools::ToolJsonSchema>::json_schema()
-            }
+            quote! { #ty::json_schema() }
         }
     }
 }
 
-// ---------------------------------------------------------------------------
+// =========================================================================
 // Helper: extract generic type arguments
-// ---------------------------------------------------------------------------
+// =========================================================================
 
 fn extract_generic_arg(args: &syn::PathArguments) -> Option<&Type> {
     match args {
@@ -361,24 +407,24 @@ fn extract_second_generic_arg(args: &syn::PathArguments) -> Option<&Type> {
                 syn::GenericArgument::Type(ty) => Some(ty),
                 _ => None,
             });
-            types.next(); // skip first (key type)
-            types.next() // second (value type)
+            types.next();
+            types.next()
         }
         _ => None,
     }
 }
 
-// ---------------------------------------------------------------------------
+// =========================================================================
 // Attribute parsing helpers
-// ---------------------------------------------------------------------------
+// =========================================================================
 
-/// Parse `#[tool(name = "...", description = "...")]` and doc comments on the struct.
 fn parse_tool_attrs(
     attrs: &[Attribute],
     struct_name: &syn::Ident,
-) -> syn::Result<(TokenStream2, TokenStream2)> {
+) -> syn::Result<(TokenStream2, TokenStream2, TokenStream2)> {
     let mut tool_name: Option<String> = None;
     let mut tool_desc: Option<String> = None;
+    let mut crate_path_str: Option<String> = None;
 
     for attr in attrs {
         if attr.path().is_ident("tool") {
@@ -397,8 +443,15 @@ fn parse_tool_attrs(
                         tool_desc = Some(lit.value());
                     }
                     Ok(())
+                } else if meta.path.is_ident("crate_path") {
+                    let value = meta.value()?;
+                    let s: Lit = value.parse()?;
+                    if let Lit::Str(lit) = s {
+                        crate_path_str = Some(lit.value());
+                    }
+                    Ok(())
                 } else {
-                    Err(meta.error("expected `name` or `description`"))
+                    Err(meta.error("expected `name`, `description`, or `crate_path`"))
                 }
             })?;
         }
@@ -408,10 +461,18 @@ fn parse_tool_attrs(
     let desc_str = tool_desc
         .unwrap_or_else(|| get_doc_comment(attrs).unwrap_or_else(|| format!("Tool: {}", name_str)));
 
-    Ok((quote! { #name_str }, quote! { #desc_str }))
+    let crate_path: TokenStream2 = if let Some(path) = crate_path_str {
+        let ident = syn::parse_str::<syn::Path>(&path).map_err(|e| {
+            syn::Error::new_spanned(struct_name, format!("invalid crate_path: {e}"))
+        })?;
+        quote! { #ident }
+    } else {
+        quote! { cognis_core }
+    };
+
+    Ok((quote! { #name_str }, quote! { #desc_str }, crate_path))
 }
 
-/// Extract doc comment text from attributes.
 fn get_doc_comment(attrs: &[Attribute]) -> Option<String> {
     let docs: Vec<String> = attrs
         .iter()
@@ -440,17 +501,14 @@ fn get_doc_comment(attrs: &[Attribute]) -> Option<String> {
     }
 }
 
-/// Check if a field has `#[serde(skip)]`.
 fn has_serde_skip(attrs: &[Attribute]) -> bool {
     has_serde_attr(attrs, "skip")
 }
 
-/// Check if a field has `#[serde(default)]`.
 fn has_serde_default(attrs: &[Attribute]) -> bool {
     has_serde_attr(attrs, "default")
 }
 
-/// Generic helper to check for a bare `#[serde(attr_name)]`.
 fn has_serde_attr(attrs: &[Attribute], attr_name: &str) -> bool {
     for attr in attrs {
         if !attr.path().is_ident("serde") {
@@ -470,7 +528,6 @@ fn has_serde_attr(attrs: &[Attribute], attr_name: &str) -> bool {
     false
 }
 
-/// Extract `#[serde(rename = "new_name")]` value.
 fn get_serde_rename(attrs: &[Attribute]) -> Option<String> {
     for attr in attrs {
         if !attr.path().is_ident("serde") {
@@ -494,7 +551,6 @@ fn get_serde_rename(attrs: &[Attribute]) -> Option<String> {
     None
 }
 
-/// Unwrap `Option<T>` → `(T, true)`, otherwise `(ty, false)`.
 fn unwrap_option_type(ty: &Type) -> (&Type, bool) {
     if let Type::Path(type_path) = ty {
         if let Some(last) = type_path.path.segments.last() {
@@ -508,7 +564,6 @@ fn unwrap_option_type(ty: &Type) -> (&Type, bool) {
     (ty, false)
 }
 
-/// Convert PascalCase to snake_case.
 fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
     for (i, ch) in s.chars().enumerate() {

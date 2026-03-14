@@ -1,10 +1,7 @@
 //! Tool-Calling Agent Example
 //!
-//! Demonstrates the AgentExecutor with a CalculatorTool. The mock model first
-//! returns a tool call to "calculator", then returns the final text response
-//! after seeing the tool result.
-//!
-//! No API keys required -- uses a hand-crafted mock model.
+//! Demonstrates AgentExecutor with a CalculatorTool. A mock model emits a tool
+//! call on the first turn, then produces a final answer after seeing the result.
 
 #[path = "../shared.rs"]
 mod shared;
@@ -24,20 +21,9 @@ use cognis_core::messages::{AIMessage, Message};
 use cognis_core::outputs::{ChatGeneration, ChatResult};
 use cognis_core::tools::BaseTool;
 
-/// A mock model that simulates tool-calling behavior:
-///
-/// - On the first call, it returns an AIMessage with a tool call to "calculator".
-/// - On the second call, it returns a final text answer incorporating the tool result.
+/// Mock model: first call returns a tool call, second call returns a text answer.
 struct ToolCallingMockModel {
     call_count: Mutex<u32>,
-}
-
-impl ToolCallingMockModel {
-    fn new() -> Self {
-        Self {
-            call_count: Mutex::new(0),
-        }
-    }
 }
 
 #[async_trait]
@@ -51,14 +37,12 @@ impl BaseChatModel for ToolCallingMockModel {
         *count += 1;
 
         if *count == 1 {
-            // First call: the model decides to use the calculator tool.
-            println!("  [Model] Deciding to call the calculator tool...");
             let mut ai = AIMessage::new("Let me calculate that for you.");
             ai.tool_calls.push(ToolCall {
                 name: "calculator".to_string(),
                 args: HashMap::from([(
                     "expression".to_string(),
-                    Value::String("(2 + 3) * 4".to_string()),
+                    Value::String("(2 + 3) * 4".into()),
                 )]),
                 id: Some("call_001".to_string()),
             });
@@ -67,8 +51,6 @@ impl BaseChatModel for ToolCallingMockModel {
                 llm_output: None,
             })
         } else {
-            // Second call: the model has the tool result and produces the final answer.
-            // Look for the tool result in the conversation.
             let tool_result = messages
                 .iter()
                 .rev()
@@ -79,9 +61,7 @@ impl BaseChatModel for ToolCallingMockModel {
                         None
                     }
                 })
-                .unwrap_or_else(|| "unknown".to_string());
-
-            println!("  [Model] Got tool result: {tool_result}. Producing final answer...");
+                .unwrap_or_else(|| "unknown".into());
             let ai = AIMessage::new(format!("The result of (2 + 3) * 4 is {tool_result}."));
             Ok(ChatResult {
                 generations: vec![ChatGeneration::new(ai)],
@@ -97,46 +77,25 @@ impl BaseChatModel for ToolCallingMockModel {
 
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    println!("=== Tool-Calling Agent Example ===\n");
+    println!("=== Tool-Calling Agent ===\n");
 
-    // Step 1: Create the mock model.
-    // Uses a custom mock model for deterministic tool-calling behavior.
-    // When Ollama is available, see ollama_chain example for real LLM usage.
-    let model: Arc<dyn BaseChatModel> = Arc::new(ToolCallingMockModel::new());
-
-    // Step 2: Create the calculator tool.
-    //
-    // CalculatorTool evaluates math expressions safely using a recursive descent parser.
+    let model: Arc<dyn BaseChatModel> = Arc::new(ToolCallingMockModel {
+        call_count: Mutex::new(0),
+    });
     let calculator = Arc::new(CalculatorTool);
     println!("Tool: {} - {}", calculator.name(), calculator.description());
 
-    // Step 3: Build the AgentExecutor using the builder pattern.
-    //
-    // The executor runs the agent loop: model -> tool calls -> tool results -> model
-    // until the model stops calling tools or max_iterations is reached.
     let executor = AgentExecutor::builder()
         .model(model)
         .tool(calculator)
         .max_iterations(5)
         .build();
 
-    println!("\nBuilt AgentExecutor (max_iterations=5)\n");
+    let result = executor
+        .run(&[Message::human("What is (2 + 3) * 4?")])
+        .await?;
 
-    // Step 4: Run the agent with an initial user message.
-    let initial_messages = vec![Message::human("What is (2 + 3) * 4?")];
-
-    println!("User: What is (2 + 3) * 4?\n");
-    println!("--- Agent Loop ---");
-
-    let result = executor.run(&initial_messages).await?;
-
-    println!("--- Agent Finished ---\n");
-
-    // Step 5: Print the full conversation.
-    println!(
-        "=== Full Conversation ({} messages) ===\n",
-        result.messages.len()
-    );
+    println!("\nConversation ({} messages):", result.messages.len());
     for (i, msg) in result.messages.iter().enumerate() {
         let role = match msg {
             Message::Human(_) => "Human",
@@ -147,17 +106,15 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         };
         println!("  [{}] {}: {}", i + 1, role, msg.content().text());
     }
+    println!("\nFinal: {}", result.output);
 
-    println!("\nFinal output: {}", result.output);
-
-    // --- Real LLM Demo ---
-    println!("\n--- Real LLM Demo ---\n");
+    // Real LLM demo
     let real_model = shared::get_chat_model(vec!["The result of 2 + 2 is 4.".into()]);
-    let simple_messages = vec![Message::human("What is 2 + 2?")];
-    let real_result = real_model._generate(&simple_messages, None).await?;
+    let real_result = real_model
+        ._generate(&[Message::human("What is 2 + 2?")], None)
+        .await?;
     if let Some(gen) = real_result.generations.first() {
-        println!("Question: What is 2 + 2?");
-        println!("LLM Response: {}", gen.message.content().text());
+        println!("\nLLM: {}", gen.message.content().text());
     }
 
     Ok(())

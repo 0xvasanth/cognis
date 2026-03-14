@@ -1,13 +1,7 @@
 //! Knowledge Graph Memory Example
 //!
-//! Demonstrates the knowledge graph memory system:
-//! - Creating a `KnowledgeGraph` and adding triples manually
-//! - Using `RegexTripleExtractor` to extract triples from natural language
-//! - Querying the graph by entity, relationship, and search
-//! - Using `KnowledgeGraphMemory` with the builder pattern
-//! - Merging graphs and natural language output
-//!
-//! No API keys required.
+//! Demonstrates knowledge graph memory: manual triples, regex extraction,
+//! querying, merging, and KnowledgeGraphMemory with conversations.
 //!
 //! Run with: `cargo run -p cognis-examples --example knowledge_graph_memory`
 
@@ -21,128 +15,49 @@ use cognis_core::messages::Message;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Knowledge Graph Memory Example ===\n");
-
-    // -----------------------------------------------------------------------
-    // 1. Create a KnowledgeGraph and add triples manually
-    // -----------------------------------------------------------------------
-    println!("--- 1. Manual Knowledge Graph ---");
-    println!("Build a graph by adding subject-predicate-object triples.\n");
-
+    // Build a knowledge graph manually
     let mut graph = KnowledgeGraph::new();
-
     graph.add_triple(KnowledgeTriple::new("Alice", "works at", "Acme Corp"));
     graph.add_triple(KnowledgeTriple::new("Bob", "works at", "TechStart"));
     graph.add_triple(KnowledgeTriple::new("Alice", "knows", "Bob"));
     graph.add_triple(KnowledgeTriple::new("Alice", "lives in", "San Francisco"));
     graph.add_triple(KnowledgeTriple::new("Bob", "manages", "Project Alpha").with_confidence(0.9));
-    graph.add_triple(
-        KnowledgeTriple::new("Charlie", "created", "Cognis")
-            .with_confidence(0.95)
-            .with_source("Internal docs"),
-    );
 
-    println!("Graph has {} triples", graph.len());
-    println!("All triples as natural language:");
-    println!("  {}\n", graph.to_natural_language());
+    println!("Graph: {} triples", graph.len());
+    println!("{}", graph.to_natural_language());
 
-    // -----------------------------------------------------------------------
-    // 2. Query by entity
-    // -----------------------------------------------------------------------
-    println!("--- 2. Query by Entity ---");
-    println!("Find all triples involving a specific entity.\n");
-
+    // Query by entity
     let alice_triples = graph.get_triples_for_entity("Alice");
-    println!("Triples involving Alice ({} found):", alice_triples.len());
-    for triple in &alice_triples {
+    println!("Alice triples: {}", alice_triples.len());
+
+    let related = graph.get_related_entities("Alice");
+    println!("Related to Alice: {:?}", related);
+
+    // Regex triple extraction
+    let extractor = RegexTripleExtractor::new();
+    let text = "Alice is a software engineer. Bob works at Google. Charlie lives in New York.";
+    let extracted = extractor.extract_triples(text);
+    println!("Extracted {} triples from text", extracted.len());
+    for triple in &extracted {
         println!(
-            "  {} {} {}",
+            "  {} --[{}]--> {}",
             triple.subject, triple.predicate, triple.object
         );
     }
-    println!();
 
-    // -----------------------------------------------------------------------
-    // 3. Related entities
-    // -----------------------------------------------------------------------
-    println!("--- 3. Related Entities ---");
-    println!("Find all entities connected to a given entity.\n");
-
-    let related = graph.get_related_entities("Alice");
-    println!("Entities related to Alice:");
-    for entity in &related {
-        println!("  - {}", entity);
-    }
-    println!();
-
-    // -----------------------------------------------------------------------
-    // 4. Search triples
-    // -----------------------------------------------------------------------
-    println!("--- 4. Search Triples ---");
-    println!("Fuzzy search across subjects, predicates, and objects.\n");
-
-    let work_results = graph.search_triples("works");
-    println!("Search for 'works' ({} results):", work_results.len());
-    for triple in &work_results {
-        println!("  {}", triple.to_natural_language());
-    }
-    println!();
-
-    // -----------------------------------------------------------------------
-    // 5. RegexTripleExtractor
-    // -----------------------------------------------------------------------
-    println!("--- 5. RegexTripleExtractor ---");
-    println!("Automatically extract triples from natural language text.\n");
-
-    let extractor = RegexTripleExtractor::new();
-    println!(
-        "Extractor loaded with {} default patterns",
-        extractor.pattern_count()
-    );
-
-    let text = "Alice is a software engineer. Bob works at Google. \
-                Charlie lives in New York. Diana knows Charlie. \
-                Eve created a machine learning framework.";
-
-    println!("Input text: \"{}\"\n", text);
-
-    let extracted = extractor.extract_triples(text);
-    println!("Extracted {} triples:", extracted.len());
-    for triple in &extracted {
-        println!(
-            "  {} --[{}]--> {} (confidence: {:.1})",
-            triple.subject, triple.predicate, triple.object, triple.confidence
-        );
-    }
-    println!();
-
-    // -----------------------------------------------------------------------
-    // 6. Graph merging
-    // -----------------------------------------------------------------------
-    println!("--- 6. Graph Merging ---");
-    println!("Merge two graphs with automatic deduplication.\n");
-
+    // Graph merging with deduplication
     let mut graph_a = KnowledgeGraph::new();
     graph_a.add_triple(KnowledgeTriple::new("Alice", "works at", "Acme Corp"));
     graph_a.add_triple(KnowledgeTriple::new("Bob", "lives in", "Berlin"));
 
     let mut graph_b = KnowledgeGraph::new();
-    graph_b.add_triple(KnowledgeTriple::new("Alice", "works at", "Acme Corp")); // duplicate
+    graph_b.add_triple(KnowledgeTriple::new("Alice", "works at", "Acme Corp"));
     graph_b.add_triple(KnowledgeTriple::new("Charlie", "teaches", "Rust"));
 
-    println!("Graph A: {} triples", graph_a.len());
-    println!("Graph B: {} triples", graph_b.len());
-
     graph_a.merge(&graph_b);
-    println!("After merge: {} triples (duplicate removed)", graph_a.len());
-    println!("  {}\n", graph_a.to_natural_language());
+    println!("Merged: {} triples (deduplicated)", graph_a.len());
 
-    // -----------------------------------------------------------------------
-    // 7. KnowledgeGraphMemory with conversation
-    // -----------------------------------------------------------------------
-    println!("--- 7. KnowledgeGraphMemory ---");
-    println!("Automatically extracts and stores knowledge from conversations.\n");
-
+    // KnowledgeGraphMemory with conversation
     let memory = KnowledgeGraphMemory::builder()
         .memory_key("chat_history")
         .knowledge_key("knowledge_context")
@@ -153,78 +68,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )])
         .build();
 
-    println!("Initial triple count: {}", memory.triple_count().await);
-
-    // Simulate a conversation
     memory
         .save_context(
             &Message::human("Alice works at Google and she lives in London."),
-            &Message::ai("That's interesting! Alice must enjoy the tech scene there."),
+            &Message::ai("Interesting!"),
         )
         .await?;
 
     memory
         .save_context(
             &Message::human("Bob knows Alice and he created a new startup."),
-            &Message::ai("Great to hear about Bob's entrepreneurial journey!"),
+            &Message::ai("Great to hear!"),
         )
         .await?;
 
     println!(
-        "After conversation: {} triples extracted",
+        "After conversation: {} triples",
         memory.triple_count().await
     );
+    println!(
+        "Alice: {}",
+        memory.get_knowledge_for(&["Alice".to_string()]).await
+    );
 
-    // Query knowledge for specific entities
-    let alice_knowledge = memory.get_knowledge_for(&["Alice".to_string()]).await;
-    println!("\nKnowledge about Alice:");
-    println!("  {}", alice_knowledge);
-
-    let bob_knowledge = memory.get_knowledge_for(&["Bob".to_string()]).await;
-    println!("\nKnowledge about Bob:");
-    println!("  {}", bob_knowledge);
-
-    // Load memory variables
-    let vars = memory.load_memory_variables().await?;
-    println!("\nMemory variables:");
-    println!("  Keys: {:?}", vars.keys().collect::<Vec<_>>());
-
-    if let Some(knowledge) = vars.get("knowledge_context") {
-        println!(
-            "  Knowledge context: {}",
-            knowledge.as_str().unwrap_or("N/A")
-        );
-    }
-
-    // Get a graph snapshot
-    let snapshot = memory.graph_snapshot().await;
-    println!("\nGraph snapshot: {} triples", snapshot.len());
-    for triple in snapshot.triples() {
-        println!("  {}", triple.to_natural_language());
-    }
-
-    // -----------------------------------------------------------------------
-    // 8. Real LLM Demo — extract knowledge triples using LLM
-    // -----------------------------------------------------------------------
-    println!("\n--- 8. Real LLM Demo ---");
-    println!("Use an LLM to extract knowledge triples from text.\n");
-
+    // LLM demo
     let model = shared::get_chat_model(vec![
-        "Here are the knowledge triples:\n- (Elon Musk, founded, SpaceX)\n- (SpaceX, is, aerospace company)\n- (SpaceX, headquartered in, Hawthorne California)".into(),
+        "Triples:\n- (Elon Musk, founded, SpaceX)\n- (SpaceX, is, aerospace company)\n- (SpaceX, headquartered in, Hawthorne California)".into(),
     ]);
-    let messages = vec![
-        cognis_core::messages::Message::human(
-            "Extract knowledge triples (subject, predicate, object) from this text: 'Elon Musk founded SpaceX, an aerospace company headquartered in Hawthorne, California.'"
-        ),
-    ];
-    let llm_result = model._generate(&messages, None).await?;
-    if let Some(gen) = llm_result.generations.first() {
-        println!(
-            "  LLM Extracted Triples:\n  {}",
-            gen.message.content().text()
-        );
+    let messages = vec![Message::human(
+        "Extract knowledge triples from: 'Elon Musk founded SpaceX, an aerospace company headquartered in Hawthorne, California.'",
+    )];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("LLM: {}", gen.message.content().text());
     }
 
-    println!("\n=== Knowledge Graph Memory Example Complete ===");
     Ok(())
 }

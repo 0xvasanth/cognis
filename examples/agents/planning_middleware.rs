@@ -1,275 +1,125 @@
 //! Planning Middleware Example
 //!
-//! Demonstrates the planning middleware from cognisagent: creating plans with
-//! steps and dependencies, tracking progress, updating step status, finding
-//! ready steps, and using the SimplePlanningStrategy.
-//!
-//! No API keys required.
+//! Demonstrates creating plans with steps and dependencies, tracking progress,
+//! using SimplePlanningStrategy, and PlanningMiddleware.
 //!
 //! Run with: `cargo run -p cognis-examples --example planning_middleware`
 
 #[path = "../shared.rs"]
 mod shared;
-use std::sync::Arc;
-
-use serde_json::json;
-
 use cognisagent::middleware::planning::{
-    Plan, PlanStep, PlanStepStatus, PlanningMiddleware, SimplePlanningStrategy,
+    Plan, PlanStep, PlanStepStatus, PlanningMiddleware, PlanningStrategy, SimplePlanningStrategy,
 };
+use serde_json::json;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Planning Middleware Example ===\n");
-
-    // -----------------------------------------------------------------------
-    // 1. Creating a plan manually
-    // -----------------------------------------------------------------------
-    println!("--- 1. Creating a Plan Manually ---\n");
-
+    // Create a plan manually with dependencies
     let mut plan = Plan::new("build-website", "Build and deploy a personal website");
-
     let step0_id = plan.add_step(PlanStep::new(0, "Design the page layout"));
     let step1_id = plan.add_step(PlanStep::new(0, "Write HTML and CSS").with_dependency(step0_id));
     let step2_id =
         plan.add_step(PlanStep::new(0, "Add JavaScript interactivity").with_dependency(step1_id));
-    let _step3_id = plan.add_step(
+    let step3_id = plan.add_step(
         PlanStep::new(0, "Deploy to production").with_dependencies(vec![step1_id, step2_id]),
     );
 
-    println!("  Plan ID: {}", plan.id);
-    println!("  Goal: {}", plan.goal);
-    println!("  Total steps: {}", plan.steps.len());
-    println!("  Progress: {:.0}%\n", plan.progress_percentage());
+    println!(
+        "Plan: {} ({} steps, {:.0}%)",
+        plan.goal,
+        plan.steps.len(),
+        plan.progress_percentage()
+    );
 
-    println!("  Status summary:\n");
-    for line in plan.status_summary().lines() {
-        println!("    {line}");
-    }
-    println!();
-
-    // -----------------------------------------------------------------------
-    // 2. Finding ready steps and dependencies
-    // -----------------------------------------------------------------------
-    println!("--- 2. Finding Ready Steps ---\n");
-
+    // Find and execute ready steps
     let ready = plan.get_ready_steps();
-    println!("  Ready steps (no unmet dependencies):");
-    for step in &ready {
-        println!("    Step {}: {}", step.id, step.description);
-    }
-    println!();
+    println!(
+        "Ready: {:?}",
+        ready.iter().map(|s| s.id).collect::<Vec<_>>()
+    );
 
-    if let Some(next) = plan.next_actionable_step() {
-        println!(
-            "  Next actionable step: Step {} - {}\n",
-            next.id, next.description
-        );
-    }
-
-    // -----------------------------------------------------------------------
-    // 3. Executing steps and tracking progress
-    // -----------------------------------------------------------------------
-    println!("--- 3. Executing Steps and Tracking Progress ---\n");
-
-    // Complete step 0
-    println!("  Completing Step 0: \"Design the page layout\"...");
+    // Execute steps
     plan.update_step_status(
         step0_id,
         PlanStepStatus::Completed,
-        Some("Wireframe created with Figma".to_string()),
+        Some("Wireframe done".into()),
     );
-    println!("    Progress: {:.0}%", plan.progress_percentage());
-    let ready = plan.get_ready_steps();
-    println!(
-        "    Newly ready steps: {:?}\n",
-        ready.iter().map(|s| s.id).collect::<Vec<_>>()
-    );
-
-    // Start step 1 (set to in-progress)
-    println!("  Starting Step 1: \"Write HTML and CSS\"...");
-    plan.update_step_status(step1_id, PlanStepStatus::InProgress, None);
-    println!(
-        "    Step 1 status: {}",
-        plan.get_step(step1_id).unwrap().status
-    );
-    println!(
-        "    Step 1 is terminal: {}\n",
-        plan.get_step(step1_id).unwrap().is_terminal()
-    );
-
-    // Complete step 1
-    println!("  Completing Step 1...");
     plan.update_step_status(
         step1_id,
         PlanStepStatus::Completed,
-        Some("Pages built with Tailwind CSS".to_string()),
+        Some("Pages built".into()),
     );
-    println!("    Progress: {:.0}%", plan.progress_percentage());
-    let ready = plan.get_ready_steps();
-    println!(
-        "    Newly ready steps: {:?}\n",
-        ready.iter().map(|s| s.id).collect::<Vec<_>>()
-    );
-
-    // Fail step 2
-    println!("  Failing Step 2: \"Add JavaScript interactivity\"...");
     plan.update_step_status(
         step2_id,
         PlanStepStatus::Failed,
-        Some("JS build errors encountered".to_string()),
+        Some("JS build errors".into()),
     );
-    println!("    Progress: {:.0}%", plan.progress_percentage());
+    plan.update_step_status(step3_id, PlanStepStatus::Skipped, None);
 
-    // Check if step 3 is ready (it depends on both step 1 and step 2)
-    let ready = plan.get_ready_steps();
     println!(
-        "    Ready steps: {:?} (step 3 blocked because step 2 failed, not completed)\n",
-        ready.iter().map(|s| s.id).collect::<Vec<_>>()
+        "Complete: {}, progress: {:.0}%",
+        plan.is_complete(),
+        plan.progress_percentage()
     );
 
-    // Skip step 3 since step 2 failed
-    println!("  Skipping Step 3 since dependency failed...");
-    plan.update_step_status(_step3_id, PlanStepStatus::Skipped, None);
-    println!("    Plan complete: {}", plan.is_complete());
-    println!("    Final progress: {:.0}%\n", plan.progress_percentage());
-
-    println!("  Final status:\n");
-    for line in plan.status_summary().lines() {
-        println!("    {line}");
-    }
-    println!();
-
-    // -----------------------------------------------------------------------
-    // 4. Using SimplePlanningStrategy
-    // -----------------------------------------------------------------------
-    println!("--- 4. Using SimplePlanningStrategy ---\n");
-
+    // SimplePlanningStrategy - auto-generate from structured goal
     let strategy = SimplePlanningStrategy::new();
-
-    // Create a plan from a structured goal
-    let structured_goal = "\
-Build an API server:
-1. Define the data models
-2. Implement the REST endpoints
-3. Write integration tests
-4. Set up CI/CD pipeline
-5. Deploy to staging";
-
-    println!("  Goal:\n    {}\n", structured_goal.replace('\n', "\n    "));
-
-    use cognisagent::middleware::planning::PlanningStrategy;
+    let structured_goal = "Build an API server:\n1. Define data models\n2. Implement REST endpoints\n3. Write tests\n4. Set up CI/CD\n5. Deploy to staging";
     let auto_plan = strategy
         .create_plan(structured_goal, &json!({}))
         .await
         .map_err(|e| format!("{e}"))?;
-
-    println!("  Auto-generated plan ({} steps):", auto_plan.steps.len());
+    println!("Auto-plan: {} steps", auto_plan.steps.len());
     for step in &auto_plan.steps {
-        println!(
-            "    Step {}: {} (deps: {:?})",
-            step.id, step.description, step.dependencies
-        );
+        println!("  Step {}: {}", step.id, step.description);
     }
-    println!();
 
-    // Create a plan from an unstructured goal (single step)
-    let simple_goal = "Fix the login bug on the homepage";
-    let simple_plan = strategy
-        .create_plan(simple_goal, &json!({}))
-        .await
-        .map_err(|e| format!("{e}"))?;
-    println!("  Unstructured goal: \"{simple_goal}\"");
-    println!(
-        "  Generated {} step(s): \"{}\"\n",
-        simple_plan.steps.len(),
-        simple_plan.steps[0].description
-    );
-
-    // -----------------------------------------------------------------------
-    // 5. Using PlanningMiddleware
-    // -----------------------------------------------------------------------
-    println!("--- 5. Using PlanningMiddleware ---\n");
-
+    // PlanningMiddleware
     let strategy = Arc::new(SimplePlanningStrategy::new());
     let middleware = PlanningMiddleware::new(strategy);
 
-    println!(
-        "  Middleware name: {}",
-        cognisagent::middleware::Middleware::name(&middleware)
-    );
-    println!(
-        "  Current plan: {:?}\n",
-        middleware.get_plan().await.map(|p| p.id)
-    );
-
-    // Create a plan through the middleware
     let mw_plan = middleware
         .create_plan("1. Research\n2. Prototype\n3. Test", &json!({}))
         .await
         .map_err(|e| format!("{e}"))?;
-    println!(
-        "  Created plan with {} steps via middleware",
-        mw_plan.steps.len()
-    );
-    println!("  Plan stored: {}\n", middleware.get_plan().await.is_some());
+    println!("Middleware plan: {} steps", mw_plan.steps.len());
 
-    // Update steps through middleware
-    println!("  Updating step 0 to Completed via middleware...");
-    let updated = middleware
+    middleware
         .update_step(0, PlanStepStatus::Completed, Some("Done".into()))
         .await;
-    println!("  Update successful: {updated}");
-
     let current = middleware.get_plan().await.unwrap();
-    println!("  Step 0 status: {}", current.get_step(0).unwrap().status);
-    println!("  Plan progress: {:.0}%\n", current.progress_percentage());
+    println!(
+        "Step 0: {}, progress: {:.0}%",
+        current.get_step(0).unwrap().status,
+        current.progress_percentage()
+    );
 
-    // -----------------------------------------------------------------------
-    // 6. Plan serialization
-    // -----------------------------------------------------------------------
-    println!("--- 6. Plan Serialization ---\n");
+    // Plan serialization roundtrip
+    let mut ser_plan = Plan::new("demo", "JSON roundtrip");
+    ser_plan.add_step(PlanStep::new(0, "Step A"));
+    ser_plan.add_step(PlanStep::new(0, "Step B").with_dependency(0));
+    ser_plan.update_step_status(0, PlanStepStatus::Completed, Some("done".into()));
 
-    let mut serialize_plan = Plan::new("serialize-demo", "Demonstrate JSON roundtrip");
-    serialize_plan.add_step(PlanStep::new(0, "Step A"));
-    serialize_plan.add_step(PlanStep::new(0, "Step B").with_dependency(0));
-    serialize_plan.update_step_status(0, PlanStepStatus::Completed, Some("done".into()));
-
-    let json_str = serde_json::to_string_pretty(&serialize_plan)?;
-    println!("  Serialized plan (JSON):\n");
-    for line in json_str.lines() {
-        println!("    {line}");
-    }
-
+    let json_str = serde_json::to_string(&ser_plan)?;
     let deserialized: Plan = serde_json::from_str(&json_str)?;
     println!(
-        "\n  Deserialized: id={}, goal={}, steps={}",
-        deserialized.id,
-        deserialized.goal,
-        deserialized.steps.len()
-    );
-    println!(
-        "  Step 0 status after roundtrip: {}\n",
+        "Roundtrip: {} steps, step 0={}",
+        deserialized.steps.len(),
         deserialized.get_step(0).unwrap().status
     );
 
-    // -----------------------------------------------------------------------
-    // 7. Real LLM Demo — LLM in planning middleware
-    // -----------------------------------------------------------------------
-    println!("\n--- 7. Real LLM Demo ---");
-    println!("Use an LLM to generate a plan from a natural language goal.\n");
-
+    // LLM demo
     let model = shared::get_chat_model(vec![
-        "To build a REST API:\n1. Define data models and database schema\n2. Implement CRUD endpoints\n3. Add authentication middleware\n4. Write integration tests\n5. Deploy with CI/CD pipeline".into(),
+        "1. Define data models\n2. Implement CRUD endpoints\n3. Add auth\n4. Write tests\n5. Deploy with CI/CD".into(),
     ]);
     let messages = vec![cognis_core::messages::Message::human(
-        "Break down the goal 'Build a REST API server' into actionable steps.",
+        "Break down 'Build a REST API server' into actionable steps.",
     )];
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
-        println!("  LLM Plan:\n  {}", gen.message.content().text());
+        println!("LLM: {}", gen.message.content().text());
     }
 
-    println!("\n=== Done ===");
     Ok(())
 }

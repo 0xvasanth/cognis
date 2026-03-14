@@ -1,15 +1,13 @@
-//! Example demonstrating the `#[derive(Tool)]` macro for auto-generating
-//! OpenAPI-compatible tool schemas from Rust structs.
+//! Derive Tool Example
+//!
+//! Demonstrates `#[derive(Tool)]` for auto-generating OpenAPI-compatible
+//! tool schemas from Rust structs, including nested structs and enums.
 
 use cognis_core::error::Result;
 use cognis_core::tools::{BaseTool, ToolInput, ToolJsonSchema, ToolOutput};
 use cognis_core::{Tool, ToolSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
-// ---------------------------------------------------------------------------
-// 1. Simple calculator tool
-// ---------------------------------------------------------------------------
 
 /// Performs basic arithmetic on two numbers.
 #[derive(Debug, Clone, Serialize, Deserialize, Tool)]
@@ -29,38 +27,31 @@ impl CalculatorTool {
             "add" => self.a + self.b,
             "sub" => self.a - self.b,
             "mul" => self.a * self.b,
+            "div" if self.b != 0.0 => self.a / self.b,
             "div" => {
-                if self.b == 0.0 {
-                    return Err(cognis_core::error::CognisError::ToolException(
-                        "Division by zero".into(),
-                    ));
-                }
-                self.a / self.b
+                return Err(cognis_core::error::CognisError::ToolException(
+                    "Division by zero".into(),
+                ))
             }
             _ => {
                 return Err(cognis_core::error::CognisError::ToolException(format!(
-                    "Unknown operation: {}",
+                    "Unknown op: {}",
                     self.operation
                 )))
             }
         };
-        Ok(ToolOutput::Content(json!({
-            "result": result,
-            "expression": format!("{} {} {} = {}", self.a, self.operation, self.b, result),
-        })))
+        Ok(ToolOutput::Content(
+            json!({"result": result, "expression": format!("{} {} {} = {}", self.a, self.operation, self.b, result)}),
+        ))
     }
 }
-
-// ---------------------------------------------------------------------------
-// 2. Search tool with nested filter struct
-// ---------------------------------------------------------------------------
 
 /// Configuration for filtering search results.
 #[derive(Debug, Clone, Serialize, Deserialize, ToolSchema)]
 struct SearchFilter {
     /// Minimum relevance score (0.0 to 1.0)
     min_score: f64,
-    /// Maximum number of results to return
+    /// Maximum number of results
     max_results: i32,
     /// Only include results from these categories
     categories: Option<Vec<String>>,
@@ -72,32 +63,22 @@ struct SearchFilter {
 struct SearchTool {
     /// The search query string
     query: String,
-    /// Filter configuration for the search
+    /// Filter configuration
     filter: SearchFilter,
-    /// Whether to include document snippets in results
+    /// Whether to include snippets
     #[serde(default)]
     include_snippets: bool,
 }
 
 impl SearchTool {
     async fn execute(&self) -> Result<ToolOutput> {
-        // Simulated search results
         Ok(ToolOutput::Content(json!({
             "query": self.query,
-            "results": [
-                {"title": "Document 1", "score": 0.95},
-                {"title": "Document 2", "score": 0.87},
-            ],
-            "total": 2,
+            "results": [{"title": "Doc 1", "score": 0.95}, {"title": "Doc 2", "score": 0.87}],
         })))
     }
 }
 
-// ---------------------------------------------------------------------------
-// 3. Tool with enum parameter
-// ---------------------------------------------------------------------------
-
-/// The output format for generated content.
 #[derive(Debug, Clone, Serialize, Deserialize, ToolSchema)]
 enum OutputFormat {
     #[serde(rename = "json")]
@@ -116,7 +97,7 @@ struct SummarizeTool {
     text: String,
     /// Desired output format
     format: OutputFormat,
-    /// Maximum length of the summary in words
+    /// Maximum length in words
     max_words: Option<i32>,
 }
 
@@ -127,90 +108,59 @@ impl SummarizeTool {
         } else {
             self.text.clone()
         };
-        Ok(ToolOutput::Content(json!({
-            "summary": summary,
-            "word_count": summary.split_whitespace().count(),
-        })))
+        Ok(ToolOutput::Content(
+            json!({"summary": summary, "word_count": summary.split_whitespace().count()}),
+        ))
     }
 }
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
 
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!("=== Derive Tool Examples ===\n");
 
-    // --- Calculator ---
-    let calculator = CalculatorTool {
+    let empty = ToolInput::Text(String::new());
+
+    let calc = CalculatorTool {
         a: 10.0,
         b: 3.0,
         operation: "mul".into(),
     };
-
-    println!("Tool: {}", calculator.name());
-    println!("Description: {}", calculator.description());
     println!(
-        "Schema:\n{}\n",
-        serde_json::to_string_pretty(&calculator.args_schema().unwrap())?
+        "{} schema: {}",
+        calc.name(),
+        serde_json::to_string(&calc.args_schema().unwrap())?
     );
+    println!("Result: {:?}\n", calc._run(empty.clone()).await?);
 
-    let result = calculator._run(ToolInput::Text(String::new())).await?;
-    println!("Result: {:?}\n", result);
-
-    // --- Search with nested filter ---
     let search = SearchTool {
-        query: "rust async programming".into(),
+        query: "rust async".into(),
         filter: SearchFilter {
             min_score: 0.8,
             max_results: 5,
-            categories: Some(vec!["programming".into(), "rust".into()]),
+            categories: Some(vec!["rust".into()]),
         },
         include_snippets: true,
     };
-
-    println!("Tool: {}", search.name());
-    println!("Description: {}", search.description());
     println!(
-        "Schema:\n{}\n",
-        serde_json::to_string_pretty(&search.args_schema().unwrap())?
+        "{}: {:?}\n",
+        search.name(),
+        search._run(empty.clone()).await?
     );
 
-    let result = search._run(ToolInput::Text(String::new())).await?;
-    println!("Result: {:?}\n", result);
-
-    // --- Summarize with enum ---
-    let summarize = SummarizeTool {
-        text: "Rust is a systems programming language focused on safety, speed, and concurrency."
-            .into(),
+    let summ = SummarizeTool {
+        text: "Rust is a systems language focused on safety and concurrency.".into(),
         format: OutputFormat::Markdown,
         max_words: Some(50),
     };
+    println!("{}: {:?}\n", summ.name(), summ._run(empty).await?);
 
-    println!("Tool: {}", summarize.name());
-    println!("Description: {}", summarize.description());
     println!(
-        "Schema:\n{}\n",
-        serde_json::to_string_pretty(&summarize.args_schema().unwrap())?
+        "OutputFormat: {}",
+        serde_json::to_string(&OutputFormat::json_schema())?
     );
-
-    let result = summarize._run(ToolInput::Text(String::new())).await?;
-    println!("Result: {:?}\n", result);
-
-    // --- Show enum schema ---
-    println!("OutputFormat enum schema:");
     println!(
-        "{}\n",
-        serde_json::to_string_pretty(&OutputFormat::json_schema())?
+        "SearchFilter: {}",
+        serde_json::to_string(&SearchFilter::json_schema())?
     );
-
-    // --- Show nested struct schema ---
-    println!("SearchFilter struct schema:");
-    println!(
-        "{}\n",
-        serde_json::to_string_pretty(&SearchFilter::json_schema())?
-    );
-
     Ok(())
 }

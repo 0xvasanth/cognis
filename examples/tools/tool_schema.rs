@@ -1,17 +1,7 @@
 //! Tool Schema Example
 //!
-//! Demonstrates JSON Schema-based tool parameter definition, validation, and
-//! export to OpenAI and Anthropic formats. Covers the full lifecycle from
-//! property definitions through schema registration and call validation.
-//!
-//! Features shown:
-//! - PropertySchema static constructors (string, integer, boolean, enum_type, array)
-//! - SchemaObject building with required fields
-//! - ToolSchema creation and export to OpenAI JSON format
-//! - ToolSchema export to Anthropic JSON format
-//! - SchemaValidator validation (passing and failing cases)
-//! - ToolSchemaGenerator declarative building
-//! - SchemaRegistry registration and validate_call
+//! Defines a weather tool with a JSON schema, validates inputs, and
+//! asks an LLM to select the tool with appropriate parameters.
 //!
 //! No API keys required.
 //!
@@ -19,9 +9,11 @@
 
 #[path = "../shared.rs"]
 mod shared;
+
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognis_core::tools::schema::{
-    PropertySchema, SchemaObject, SchemaRegistry, SchemaValidator, ToolSchema, ToolSchemaGenerator,
+    PropertySchema, SchemaRegistry, SchemaValidator, ToolSchemaGenerator,
 };
 use serde_json::json;
 
@@ -29,206 +21,7 @@ use serde_json::json;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Tool Schema Example ===\n");
 
-    // -----------------------------------------------------------------------
-    // 1. PropertySchema Static Constructors
-    // -----------------------------------------------------------------------
-    println!("--- 1. PropertySchema Static Constructors ---");
-    println!("Build property schemas for common JSON Schema types.\n");
-
-    // String with constraints
-    let name_prop = PropertySchema::string()
-        .with_description("The user's full name")
-        .with_min_length(1)
-        .with_max_length(100);
-    println!("String property: {:?}", name_prop.to_json());
-
-    // Integer with range
-    let age_prop = PropertySchema::integer()
-        .with_description("Age in years")
-        .with_minimum(0.0)
-        .with_maximum(150.0);
-    println!("Integer property: {:?}", age_prop.to_json());
-
-    // Boolean
-    let active_prop = PropertySchema::boolean().with_description("Whether the account is active");
-    println!("Boolean property: {:?}", active_prop.to_json());
-
-    // Enum type (string with allowed values)
-    let role_prop =
-        PropertySchema::enum_type(vec!["admin".into(), "editor".into(), "viewer".into()])
-            .with_description("User role");
-    println!("Enum property:    {:?}", role_prop.to_json());
-
-    // Array of strings
-    let tags_prop =
-        PropertySchema::array(PropertySchema::string()).with_description("List of tags");
-    println!("Array property:   {:?}", tags_prop.to_json());
-
-    // -----------------------------------------------------------------------
-    // 2. SchemaObject Building
-    // -----------------------------------------------------------------------
-    println!("\n--- 2. SchemaObject Building ---");
-    println!("Compose properties into an object schema with required fields.\n");
-
-    let params = SchemaObject::new()
-        .with_property(
-            "query",
-            PropertySchema::string().with_description("Search query text"),
-        )
-        .with_property(
-            "max_results",
-            PropertySchema::integer()
-                .with_description("Maximum number of results")
-                .with_minimum(1.0)
-                .with_maximum(100.0),
-        )
-        .with_property(
-            "category",
-            PropertySchema::enum_type(vec!["docs".into(), "code".into(), "issues".into()])
-                .with_description("Category to search in"),
-        )
-        .with_required("query")
-        .with_required("max_results");
-
-    let schema_json = params.to_json();
-    println!("Schema object JSON:");
-    println!("{}", serde_json::to_string_pretty(&schema_json).unwrap());
-
-    // -----------------------------------------------------------------------
-    // 3. ToolSchema — OpenAI Format
-    // -----------------------------------------------------------------------
-    println!("\n--- 3. ToolSchema — OpenAI Format ---");
-    println!("Create a tool schema and export it in OpenAI function-calling format.\n");
-
-    let search_tool = ToolSchema::new("search_documents", "Search the document index")
-        .with_parameters(params.clone())
-        .with_strict(false);
-
-    let openai_json = search_tool.to_json();
-    println!("OpenAI function-calling format:");
-    println!("{}", serde_json::to_string_pretty(&openai_json).unwrap());
-
-    // Verify the structure
-    assert_eq!(openai_json["type"], "function");
-    assert_eq!(openai_json["function"]["name"], "search_documents");
-    println!("\nStructure verified: type=function, name=search_documents");
-
-    // -----------------------------------------------------------------------
-    // 4. ToolSchema — Anthropic Format
-    // -----------------------------------------------------------------------
-    println!("\n--- 4. ToolSchema — Anthropic Format ---");
-    println!("Export the same tool schema in Anthropic tool_use format.\n");
-
-    let anthropic_json = search_tool.to_anthropic_json();
-    println!("Anthropic tool_use format:");
-    println!("{}", serde_json::to_string_pretty(&anthropic_json).unwrap());
-
-    // Verify the structure
-    assert_eq!(anthropic_json["name"], "search_documents");
-    assert!(anthropic_json.get("input_schema").is_some());
-    println!("\nStructure verified: name=search_documents, has input_schema");
-
-    // -----------------------------------------------------------------------
-    // 5. SchemaValidator — Passing and Failing Cases
-    // -----------------------------------------------------------------------
-    println!("\n--- 5. SchemaValidator ---");
-    println!("Validate JSON inputs against a schema object.\n");
-
-    let validation_schema = SchemaObject::new()
-        .with_property(
-            "name",
-            PropertySchema::string()
-                .with_description("User name")
-                .with_min_length(1),
-        )
-        .with_property(
-            "age",
-            PropertySchema::integer()
-                .with_description("Age")
-                .with_minimum(0.0)
-                .with_maximum(150.0),
-        )
-        .with_property(
-            "role",
-            PropertySchema::enum_type(vec!["admin".into(), "user".into()]).with_description("Role"),
-        )
-        .with_required("name")
-        .with_required("age");
-
-    // Valid input
-    let valid_input = json!({
-        "name": "Alice",
-        "age": 30,
-        "role": "admin"
-    });
-    match SchemaValidator::validate(&validation_schema, &valid_input) {
-        Ok(()) => println!("Valid input:   PASS (as expected)"),
-        Err(errs) => println!("Valid input:   FAIL (unexpected) {:?}", errs),
-    }
-
-    // Missing required field
-    let missing_field = json!({
-        "name": "Bob"
-    });
-    match SchemaValidator::validate(&validation_schema, &missing_field) {
-        Ok(()) => println!("Missing field: PASS (unexpected)"),
-        Err(errs) => {
-            println!("Missing field: FAIL (as expected)");
-            for e in &errs {
-                println!("  -> {}", e);
-            }
-        }
-    }
-
-    // Wrong type
-    let wrong_type = json!({
-        "name": "Charlie",
-        "age": "thirty"
-    });
-    match SchemaValidator::validate(&validation_schema, &wrong_type) {
-        Ok(()) => println!("Wrong type:    PASS (unexpected)"),
-        Err(errs) => {
-            println!("Wrong type:    FAIL (as expected)");
-            for e in &errs {
-                println!("  -> {}", e);
-            }
-        }
-    }
-
-    // Invalid enum value
-    let bad_enum = json!({
-        "name": "Diana",
-        "age": 25,
-        "role": "superadmin"
-    });
-    match SchemaValidator::validate(&validation_schema, &bad_enum) {
-        Ok(()) => println!("Bad enum:      PASS (unexpected)"),
-        Err(errs) => {
-            println!("Bad enum:      FAIL (as expected)");
-            for e in &errs {
-                println!("  -> {}", e);
-            }
-        }
-    }
-
-    // Non-object input
-    let not_object = json!("just a string");
-    match SchemaValidator::validate(&validation_schema, &not_object) {
-        Ok(()) => println!("Non-object:    PASS (unexpected)"),
-        Err(errs) => {
-            println!("Non-object:    FAIL (as expected)");
-            for e in &errs {
-                println!("  -> {}", e);
-            }
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // 6. ToolSchemaGenerator — Declarative Building
-    // -----------------------------------------------------------------------
-    println!("\n--- 6. ToolSchemaGenerator ---");
-    println!("Build tool schemas declaratively with typed parameter helpers.\n");
-
+    // 1. Define a weather tool using the declarative builder
     let weather_tool = ToolSchemaGenerator::new("get_weather", "Get current weather for a city")
         .add_string_param("city", "City name", true)
         .add_enum_param(
@@ -238,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             false,
         )
         .add_boolean_param("include_forecast", "Include 5-day forecast", false)
-        .add_integer_param("forecast_days", "Number of forecast days", false)
+        .add_integer_param("forecast_days", "Number of forecast days (1-7)", false)
         .add_array_param(
             "fields",
             "Specific weather fields to return",
@@ -247,120 +40,68 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .build();
 
-    println!("Generated tool schema (OpenAI):");
+    println!("Tool schema (OpenAI format):");
     println!(
-        "{}",
-        serde_json::to_string_pretty(&weather_tool.to_json()).unwrap()
+        "{}\n",
+        serde_json::to_string_pretty(&weather_tool.to_json())?
     );
 
-    // Validate a call against the generated schema
-    let valid_call = json!({
-        "city": "San Francisco",
+    // 2. Validate inputs against the schema
+    let valid_input = json!({
+        "city": "Tokyo",
         "units": "celsius",
-        "include_forecast": true
+        "include_forecast": true,
+        "forecast_days": 3
     });
-    match weather_tool.validate_input(&valid_call) {
-        Ok(()) => println!("\nWeather tool call validation: PASS"),
-        Err(errs) => println!("\nWeather tool call validation: FAIL {:?}", errs),
+    match weather_tool.validate_input(&valid_input) {
+        Ok(()) => println!("Valid input:          PASS"),
+        Err(errs) => println!("Valid input:          FAIL {:?}", errs),
     }
 
-    // -----------------------------------------------------------------------
-    // 7. SchemaRegistry — Registration and validate_call
-    // -----------------------------------------------------------------------
-    println!("\n--- 7. SchemaRegistry ---");
-    println!("Register multiple tools and validate calls by name.\n");
+    let missing_required = json!({ "units": "celsius" });
+    match weather_tool.validate_input(&missing_required) {
+        Ok(()) => println!("Missing 'city':       PASS (unexpected)"),
+        Err(errs) => println!("Missing 'city':       FAIL — {:?}", errs),
+    }
 
+    let bad_enum = json!({ "city": "Tokyo", "units": "kelvin" });
+    match weather_tool.validate_input(&bad_enum) {
+        Ok(()) => println!("Invalid enum value:   PASS (unexpected)"),
+        Err(errs) => println!("Invalid enum value:   FAIL — {:?}", errs),
+    }
+
+    // 3. Register the tool and export the registry
     let mut registry = SchemaRegistry::new();
-
-    // Register the search tool
-    registry.register(search_tool);
-
-    // Register the weather tool
     registry.register(weather_tool);
+    println!("\nRegistry contains {} tool(s)", registry.len());
 
-    // Build and register a third tool
-    let calc_tool = ToolSchema::new("calculator", "Perform arithmetic operations").with_parameters(
-        SchemaObject::new()
-            .with_property(
-                "expression",
-                PropertySchema::string().with_description("Math expression to evaluate"),
-            )
-            .with_property(
-                "precision",
-                PropertySchema::integer()
-                    .with_description("Decimal places")
-                    .with_minimum(0.0)
-                    .with_maximum(20.0),
-            )
-            .with_required("expression"),
-    );
-    registry.register(calc_tool);
-
-    println!("Registered {} tools in the registry", registry.len());
-
-    // List all registered schemas
-    let all = registry.all_schemas();
-    println!("Registered tools:");
-    for schema in &all {
-        println!(
-            "  - {} (params: {})",
-            schema.name,
-            schema.parameters.properties.len()
-        );
-    }
-
-    // Validate a correct call
-    let good_call = json!({
-        "query": "vector databases",
-        "max_results": 10
-    });
-    match registry.validate_call("search_documents", &good_call) {
-        Ok(()) => println!("\nvalidate_call('search_documents', valid):   PASS"),
-        Err(e) => println!("\nvalidate_call('search_documents', valid):   FAIL - {}", e),
-    }
-
-    // Validate a call with missing required field
-    let bad_call = json!({
-        "category": "docs"
-    });
-    match registry.validate_call("search_documents", &bad_call) {
-        Ok(()) => println!("validate_call('search_documents', missing): PASS (unexpected)"),
-        Err(e) => println!("validate_call('search_documents', missing): FAIL - {}", e),
-    }
-
-    // Validate a call to an unknown tool
-    match registry.validate_call("nonexistent_tool", &json!({})) {
-        Ok(()) => println!("validate_call('nonexistent_tool'):           PASS (unexpected)"),
-        Err(e) => println!("validate_call('nonexistent_tool'):           FAIL - {}", e),
-    }
-
-    // Export the full registry as JSON (OpenAI format)
-    let registry_json = registry.to_json();
-    println!(
-        "\nFull registry export ({} tools):",
-        registry_json.as_array().map_or(0, |a| a.len())
-    );
-    println!("{}", serde_json::to_string_pretty(&registry_json).unwrap());
-
-    // -----------------------------------------------------------------------
-    // 8. Real LLM Demo — LLM call with tool schema context
-    // -----------------------------------------------------------------------
-    println!("\n--- 8. Real LLM Demo ---");
-    println!("Ask an LLM a question, providing tool schemas as context.\n");
-
+    // 4. Ask an LLM to pick the right tool
+    println!("\n--- LLM Tool Selection ---");
     let model = shared::get_chat_model(vec![
-        "I would use the `get_weather` tool with parameters: {\"city\": \"Tokyo\", \"units\": \"celsius\", \"include_forecast\": true, \"forecast_days\": 3}".into(),
+        "I would use `get_weather` with: {\"city\": \"Tokyo\", \"units\": \"celsius\", \"include_forecast\": true, \"forecast_days\": 3}".into(),
     ]);
-    let tool_list = serde_json::to_string_pretty(&registry.to_json()).unwrap();
+
+    let tool_list = serde_json::to_string_pretty(&registry.to_json())?;
     let messages = vec![
-        Message::system(&format!("You have access to these tools:\n{}\n\nDescribe which tool you would use and with what parameters.", tool_list)),
-        Message::human("I want to know the weather in Tokyo for the next 3 days in Celsius."),
+        Message::system(&format!(
+            "You have these tools:\n{}\n\nSay which tool and parameters you'd use.",
+            tool_list
+        )),
+        Message::human("What's the weather in Tokyo for the next 3 days in Celsius?"),
     ];
+
     let result = model._generate(&messages, None).await?;
     if let Some(gen) = result.generations.first() {
-        println!("LLM tool selection: {}", gen.message.content().text());
+        println!("LLM response: {}", gen.message.content().text());
     }
 
-    println!("\n=== Tool Schema Example Complete ===");
+    // 5. Validate the call through the registry
+    let call_args = json!({ "city": "Tokyo", "units": "celsius", "include_forecast": true, "forecast_days": 3 });
+    match registry.validate_call("get_weather", &call_args) {
+        Ok(()) => println!("\nRegistry validation: PASS"),
+        Err(e) => println!("\nRegistry validation: FAIL — {}", e),
+    }
+
+    println!("\n=== Done ===");
     Ok(())
 }

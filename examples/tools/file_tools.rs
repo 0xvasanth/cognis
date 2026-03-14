@@ -1,12 +1,11 @@
 //! File Management Tools Example
 //!
-//! Demonstrates the file management toolkit: read, write, list, search, and
-//! file info operations, all sandboxed within a temporary directory.
-//!
-//! No API keys required -- operates on a local temp directory.
+//! Demonstrates file tools (read, write, list, search, info) sandboxed in a temp directory,
+//! then uses an LLM to generate content and write it to a file.
 
 #[path = "../shared.rs"]
 mod shared;
+
 use std::collections::HashMap;
 
 use serde_json::{json, Value};
@@ -16,9 +15,8 @@ use cognis::tools::file_management::{
     SearchFilesTool, WriteFileTool,
 };
 use cognis_core::tools::base::{BaseTool, BaseToolkit};
-use cognis_core::tools::types::ToolInput;
+use cognis_core::tools::types::{ToolInput, ToolOutput};
 
-/// Helper to create a structured tool input from key-value pairs.
 fn structured_input(pairs: &[(&str, &str)]) -> ToolInput {
     let map: HashMap<String, Value> = pairs
         .iter()
@@ -27,262 +25,108 @@ fn structured_input(pairs: &[(&str, &str)]) -> ToolInput {
     ToolInput::Structured(map)
 }
 
-/// Helper to create a text tool input.
 fn text_input(s: &str) -> ToolInput {
     ToolInput::Text(s.to_string())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== File Management Tools Example ===\n");
-
-    // Create a temporary directory that will be automatically cleaned up.
-    let tmp_dir = tempfile::TempDir::new()?;
-    let root = tmp_dir.path();
-    println!("  Working directory: {}\n", root.display());
-
-    let config = FileSystemConfig::new(root);
-
-    // =========================================================================
-    // 1. WriteFileTool: create files
-    // =========================================================================
-    println!("--- 1. Writing Files ---\n");
-
-    let write_tool = WriteFileTool::new(config.clone());
-
-    // Write a simple text file
-    let result = write_tool
-        ._run(structured_input(&[
-            ("path", "hello.txt"),
-            ("content", "Hello from Cognis!"),
-        ]))
-        .await?;
-    println!("  {}", extract_content_str(&result));
-
-    // Write a Rust source file
-    let rust_code = r#"fn main() {
-    println!("Hello, world!");
-}
-"#;
-    let result = write_tool
-        ._run(structured_input(&[
-            ("path", "src/main.rs"),
-            ("content", rust_code),
-        ]))
-        .await?;
-    println!("  {}", extract_content_str(&result));
-
-    // Write a config file in a nested directory
-    let result = write_tool
-        ._run(structured_input(&[
-            ("path", "config/settings.toml"),
-            ("content", "[app]\nname = \"demo\"\nversion = \"1.0\""),
-        ]))
-        .await?;
-    println!("  {}", extract_content_str(&result));
-
-    // Write another file for search demo
-    let result = write_tool
-        ._run(structured_input(&[
-            ("path", "src/lib.rs"),
-            ("content", "pub fn add(a: i32, b: i32) -> i32 { a + b }"),
-        ]))
-        .await?;
-    println!("  {}", extract_content_str(&result));
-
-    // =========================================================================
-    // 2. ReadFileTool: read file contents
-    // =========================================================================
-    println!("\n--- 2. Reading Files ---\n");
-
-    let read_tool = ReadFileTool::new(config.clone());
-
-    let result = read_tool._run(text_input("hello.txt")).await?;
-    println!("  hello.txt content: \"{}\"", extract_content_str(&result));
-
-    let result = read_tool._run(text_input("src/main.rs")).await?;
-    println!(
-        "  src/main.rs content:\n    {}",
-        extract_content_str(&result).replace('\n', "\n    ")
-    );
-
-    // Using run_json (the JSON-based interface)
-    let result = read_tool
-        .run_json(&json!({"path": "config/settings.toml"}))
-        .await?;
-    println!(
-        "  config/settings.toml (via run_json): \"{}\"",
-        result.as_str().unwrap_or("")
-    );
-
-    // =========================================================================
-    // 3. ListDirectoryTool: list directory contents
-    // =========================================================================
-    println!("\n--- 3. Listing Directories ---\n");
-
-    let list_tool = ListDirectoryTool::new(config.clone());
-
-    let result = list_tool._run(text_input(".")).await?;
-    println!("  Root directory:");
-    for line in extract_content_str(&result).lines() {
-        println!("    {}", line);
-    }
-
-    let result = list_tool._run(text_input("src")).await?;
-    println!("\n  src/ directory:");
-    for line in extract_content_str(&result).lines() {
-        println!("    {}", line);
-    }
-
-    // =========================================================================
-    // 4. SearchFilesTool: find files by glob pattern
-    // =========================================================================
-    println!("\n--- 4. Searching Files ---\n");
-
-    let search_tool = SearchFilesTool::new(config.clone());
-
-    let result = search_tool
-        ._run(structured_input(&[("pattern", "**/*.rs")]))
-        .await?;
-    println!("  Pattern '**/*.rs' matches:");
-    for line in extract_content_str(&result).lines() {
-        println!("    {}", line);
-    }
-
-    let result = search_tool
-        ._run(structured_input(&[("pattern", "*.txt")]))
-        .await?;
-    println!("\n  Pattern '*.txt' matches:");
-    for line in extract_content_str(&result).lines() {
-        println!("    {}", line);
-    }
-
-    let result = search_tool
-        ._run(structured_input(&[("pattern", "*.xyz")]))
-        .await?;
-    println!("\n  Pattern '*.xyz': {}", extract_content_str(&result));
-
-    // =========================================================================
-    // 5. FileInfoTool: get file metadata
-    // =========================================================================
-    println!("\n--- 5. File Info ---\n");
-
-    let info_tool = FileInfoTool::new(config.clone());
-
-    let result = info_tool._run(text_input("hello.txt")).await?;
-    let info = extract_content_value(&result);
-    println!("  hello.txt metadata:");
-    println!("    size: {} bytes", info["size"]);
-    println!("    is_file: {}", info["is_file"]);
-    println!("    is_dir: {}", info["is_dir"]);
-    println!("    readonly: {}", info["readonly"]);
-
-    let result = info_tool._run(text_input("src")).await?;
-    let info = extract_content_value(&result);
-    println!("\n  src/ metadata:");
-    println!("    is_file: {}", info["is_file"]);
-    println!("    is_dir: {}", info["is_dir"]);
-
-    // =========================================================================
-    // 6. FileToolkit: get all tools at once
-    // =========================================================================
-    println!("\n--- 6. FileToolkit ---\n");
-
-    let toolkit = create_file_toolkit(config.clone());
-    let tools = toolkit.get_tools();
-    println!("  Toolkit provides {} tools:", tools.len());
-    for tool in &tools {
-        println!("    - {} : {}", tool.name(), tool.description());
-    }
-
-    // =========================================================================
-    // 7. Error handling demos
-    // =========================================================================
-    println!("\n--- 7. Error Handling ---\n");
-
-    // Read non-existent file
-    let result = read_tool._run(text_input("nonexistent.txt")).await;
-    match result {
-        Err(e) => println!("  Reading missing file: Error - {}", e),
-        Ok(_) => println!("  Reading missing file: (unexpected success)"),
-    }
-
-    // Read-only config
-    let mut ro_config = config.clone();
-    ro_config.read_only = true;
-    let ro_write = WriteFileTool::new(ro_config);
-    let result = ro_write
-        ._run(structured_input(&[
-            ("path", "test.txt"),
-            ("content", "data"),
-        ]))
-        .await;
-    match result {
-        Err(e) => println!("  Writing in read-only mode: Error - {}", e),
-        Ok(_) => println!("  Writing in read-only mode: (unexpected success)"),
-    }
-
-    // =========================================================================
-    // 8. Real LLM Demo — Generate content with LLM and write to file
-    // =========================================================================
-    println!("\n--- 8. Real LLM Demo (LLM-Generated File Content) ---\n");
-
-    let model = shared::get_chat_model(vec![
-        "# Cognis Framework\n\nCognis is a Rust-based LLM framework providing chat models, tools, and graph-based workflows.\n\n## Features\n- Chat model abstractions\n- File management tools\n- Graph execution engine".into(),
-    ]);
-
-    let messages = vec![
-        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
-            "You are a technical writer. Generate concise markdown content.",
-        )),
-        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
-            "Write a short README.md for a Rust LLM framework called Cognis. Include a title, brief description, and 3 bullet-point features. Keep it under 10 lines.",
-        )),
-    ];
-
-    let result = model.invoke_messages(&messages, None).await;
-
-    match result {
-        Ok(response) => {
-            let generated = response.base.content.text();
-            println!("  LLM generated content ({} chars)", generated.len());
-
-            // Write the LLM-generated content using file tools
-            let write_result = write_tool
-                ._run(structured_input(&[
-                    ("path", "llm_generated.md"),
-                    ("content", &generated),
-                ]))
-                .await?;
-            println!("  {}", extract_content_str(&write_result));
-
-            // Read it back to verify
-            let read_result = read_tool._run(text_input("llm_generated.md")).await?;
-            println!(
-                "  Read back:\n    {}",
-                extract_content_str(&read_result).replace('\n', "\n    ")
-            );
-        }
-        Err(e) => println!("  LLM error: {}", e),
-    }
-
-    println!("\n=== File Management Tools Example Complete ===");
-    Ok(())
-}
-
-/// Extract string content from a ToolOutput.
-fn extract_content_str(output: &cognis_core::tools::types::ToolOutput) -> String {
+fn content_str(output: &ToolOutput) -> String {
     match output {
-        cognis_core::tools::types::ToolOutput::Content(Value::String(s)) => s.clone(),
-        cognis_core::tools::types::ToolOutput::Content(v) => v.to_string(),
+        ToolOutput::Content(Value::String(s)) => s.clone(),
+        ToolOutput::Content(v) => v.to_string(),
         other => format!("{:?}", other),
     }
 }
 
-/// Extract a JSON value from a ToolOutput.
-fn extract_content_value(output: &cognis_core::tools::types::ToolOutput) -> Value {
-    match output {
-        cognis_core::tools::types::ToolOutput::Content(v) => v.clone(),
-        _ => json!(null),
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let tmp_dir = tempfile::TempDir::new()?;
+    let root = tmp_dir.path();
+    let config = FileSystemConfig::new(root);
+    println!("Working directory: {}\n", root.display());
+
+    // Write files
+    let write_tool = WriteFileTool::new(config.clone());
+    for (path, content) in [
+        ("hello.txt", "Hello from Cognis!"),
+        (
+            "src/main.rs",
+            "fn main() {\n    println!(\"Hello, world!\");\n}\n",
+        ),
+        (
+            "config/settings.toml",
+            "[app]\nname = \"demo\"\nversion = \"1.0\"",
+        ),
+    ] {
+        let r = write_tool
+            ._run(structured_input(&[("path", path), ("content", content)]))
+            .await?;
+        println!("Write: {}", content_str(&r));
     }
+
+    // Read a file back
+    let read_tool = ReadFileTool::new(config.clone());
+    let r = read_tool._run(text_input("hello.txt")).await?;
+    println!("\nRead hello.txt: \"{}\"", content_str(&r));
+
+    // List directory
+    let list_tool = ListDirectoryTool::new(config.clone());
+    let r = list_tool._run(text_input(".")).await?;
+    println!(
+        "\nRoot listing:\n  {}",
+        content_str(&r).replace('\n', "\n  ")
+    );
+
+    // Search by glob
+    let search_tool = SearchFilesTool::new(config.clone());
+    let r = search_tool
+        ._run(structured_input(&[("pattern", "**/*.rs")]))
+        .await?;
+    println!(
+        "\nGlob '**/*.rs':\n  {}",
+        content_str(&r).replace('\n', "\n  ")
+    );
+
+    // File info
+    let info_tool = FileInfoTool::new(config.clone());
+    let r = info_tool._run(text_input("hello.txt")).await?;
+    if let ToolOutput::Content(v) = &r {
+        println!(
+            "\nhello.txt info: size={} is_file={}",
+            v["size"], v["is_file"]
+        );
+    }
+
+    // Toolkit overview
+    let toolkit = create_file_toolkit(config.clone());
+    println!("\nToolkit: {} tools", toolkit.get_tools().len());
+
+    // Error handling: read missing file
+    if let Err(e) = read_tool._run(text_input("nonexistent.txt")).await {
+        println!("Missing file error: {}", e);
+    }
+
+    // LLM-generated content written to file
+    let model = shared::get_chat_model(vec![
+        "# Cognis\n\nRust LLM framework.\n\n- Chat models\n- File tools\n- Graph engine".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::system("You are a technical writer."),
+        cognis_core::messages::Message::human("Write a short README for Cognis."),
+    ];
+    if let Ok(resp) = model.invoke_messages(&messages, None).await {
+        let text = resp.base.content.text();
+        write_tool
+            ._run(structured_input(&[
+                ("path", "llm_generated.md"),
+                ("content", &text),
+            ]))
+            .await?;
+        let r = read_tool._run(text_input("llm_generated.md")).await?;
+        println!(
+            "\nLLM-generated file:\n  {}",
+            content_str(&r).replace('\n', "\n  ")
+        );
+    }
+
+    Ok(())
 }
