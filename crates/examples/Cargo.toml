@@ -9,6 +9,7 @@ description = "Example programs for the Cognis workspace"
 [dependencies]
 cognis-core.workspace = true
 cognis = { workspace = true, features = ["all-providers"] }
+cognis-macros.workspace = true
 cognisgraph.workspace = true
 cognisagent.workspace = true
 serde.workspace = true
@@ -244,6 +245,10 @@ path = "../../examples/retrieval/vector_store.rs"
 [[example]]
 name = "tool_schema"
 path = "../../examples/tools/tool_schema.rs"
+
+[[example]]
+name = "derive_tool"
+path = "../../examples/tools/derive_tool.rs"
 
 [[example]]
 name = "streaming_demo"

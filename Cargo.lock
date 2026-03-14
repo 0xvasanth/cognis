@@ -217,6 +217,7 @@ dependencies = [
  "chrono-tz",
  "cognis",
  "cognis-core",
+ "cognis-macros",
  "cognisagent",
  "cognisgraph",
  "futures",
