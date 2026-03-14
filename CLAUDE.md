@@ -74,3 +74,18 @@ crates/
 - **`thiserror`:** Each crate defines its own error enum
 - **Graph constants:** `cognisgraph::START` and `cognisgraph::END` are string constants used as node identifiers in graph edges
 - **Middleware trait:** `cognisagent::middleware::Middleware` provides before/after hooks for model and tool calls
+
+## Worktrees
+
+Worktree directory: `.worktrees/` (project-local, globally gitignored)
+
+```bash
+# Create a worktree for a new feature
+git worktree add .worktrees/my-feature -b feature/my-feature
+
+# List active worktrees
+git worktree list
+
+# Remove when done
+git worktree remove .worktrees/my-feature
+```
