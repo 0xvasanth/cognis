@@ -3,9 +3,10 @@
 //! Demonstrates creating tools using SimpleTool (single string input) and
 //! StructuredTool (named arguments with schema validation), wrapping them
 //! with CachedTool for result caching, and running them through an
-//! AgentExecutor think-act-observe loop.
+//! AgentExecutor with a real LLM that decides which tools to call.
 //!
-//! No API keys required -- uses FakeMessagesListChatModel.
+//! Auto-detects Ollama for real LLM reasoning. Falls back to a fake model
+//! with canned tool-calling responses when Ollama is not available.
 //!
 //! Run with: cargo run -p cognis-examples --example tool_calling_agent
 
@@ -20,6 +21,7 @@ use serde_json::{json, Value};
 
 use cognis::agents::AgentExecutor;
 use cognis::tools::cached::CachedTool;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::language_models::FakeMessagesListChatModel;
 use cognis_core::messages::tool_types::ToolCall;
 use cognis_core::messages::{AIMessage, Message};
@@ -39,12 +41,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // SimpleTool: takes a single string input.
     let search_tool = SimpleTool::new(
         "search",
-        "Search for information about a topic",
+        "Search for information about a topic. Input: a search query string.",
         |query: &str| {
-            // Simulate a search result based on the query.
             Ok(format!(
-                "Search results for '{}': Found 3 relevant articles about this topic. \
-                 Key finding: This is a well-documented subject with extensive resources.",
+                "Search results for '{}': Rust is a systems programming language focused on \
+                 safety, speed, and concurrency. It achieves memory safety without garbage \
+                 collection through its ownership system.",
                 query
             ))
         },
@@ -67,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "b": { "type": "number", "description": "Second number" },
                 "operation": {
                     "type": "string",
-                    "description": "Operation to perform: add, subtract, multiply, divide",
+                    "description": "Operation to perform",
                     "enum": ["add", "subtract", "multiply", "divide"]
                 }
             },
@@ -85,12 +87,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "add" => a + b,
                 "subtract" => a - b,
                 "multiply" => a * b,
-                "divide" => {
-                    if b == 0.0 {
-                        return Ok(json!({"error": "Division by zero"}));
-                    }
-                    a / b
-                }
+                "divide" if b != 0.0 => a / b,
+                "divide" => return Ok(json!({"error": "Division by zero"})),
                 _ => return Ok(json!({"error": format!("Unknown operation: {}", op)})),
             };
 
@@ -106,9 +104,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         calculator_tool.name(),
         calculator_tool.description()
     );
-    if let Some(schema) = calculator_tool.args_schema() {
-        println!("  Schema: {}", serde_json::to_string(&schema)?);
-    }
     println!();
 
     // -------------------------------------------------------------------------
@@ -117,15 +112,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--- Step 2: Wrapping search tool with CachedTool ---\n");
 
     let cached_search = CachedTool::new(Arc::new(search_tool))
-        .with_ttl(Duration::from_secs(300)) // 5-minute TTL
-        .with_max_size(50); // Max 50 cached entries
+        .with_ttl(Duration::from_secs(300))
+        .with_max_size(50);
 
     println!(
         "  CachedTool wrapping: {} (TTL=300s, max_size=50)",
         cached_search.name()
     );
 
-    // Demonstrate caching behavior.
+    // Demonstrate caching: same query returns cached result on second call.
     use cognis_core::tools::types::ToolInput;
 
     println!("  Running search twice with same input...");
@@ -140,10 +135,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _result2 = cached_search._run(input).await?;
     let stats2 = cached_search.cache_stats();
     println!(
-        "    Second call: hits={}, misses={} (hit rate: {:.0}%)",
-        stats2.hits,
-        stats2.misses,
-        stats2.hit_rate * 100.0
+        "    Second call: hits={}, misses={} (cache hit!)",
+        stats2.hits, stats2.misses,
     );
 
     if let cognis_core::tools::types::ToolOutput::Content(v) = result1 {
@@ -157,54 +150,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     println!("--- Step 3: Building AgentExecutor ---\n");
 
-    // Create a mock model that simulates the think-act-observe loop:
-    // 1. First call: model decides to search.
-    // 2. Second call: model decides to calculate.
-    // 3. Third call: model produces the final answer.
+    // Get a model: Ollama if available, otherwise fake with tool-calling simulation.
+    let model: Arc<dyn BaseChatModel> = if shared::is_ollama_available() {
+        shared::get_chat_model(vec![])
+    } else {
+        println!("[Ollama not detected — using fake tool-calling model]\n");
 
-    let mut ai_search = AIMessage::new("Let me search for information about Rust's memory model.");
-    ai_search.tool_calls.push(ToolCall {
-        name: "search".to_string(),
-        args: {
-            let mut m = HashMap::new();
-            m.insert(
-                "tool_input".to_string(),
-                json!("Rust memory safety ownership"),
-            );
-            m
-        },
-        id: Some("call_001".to_string()),
-    });
+        // Simulate: 1) model calls calculator, 2) model returns final answer
+        let mut ai_calc = AIMessage::new("Let me calculate that for you.");
+        ai_calc.tool_calls.push(ToolCall {
+            name: "calculator".to_string(),
+            args: {
+                let mut m = HashMap::new();
+                m.insert("a".to_string(), json!(42.0));
+                m.insert("b".to_string(), json!(7.0));
+                m.insert("operation".to_string(), json!("multiply"));
+                m
+            },
+            id: Some("call_001".to_string()),
+        });
 
-    let mut ai_calc = AIMessage::new("Now let me calculate something.");
-    ai_calc.tool_calls.push(ToolCall {
-        name: "calculator".to_string(),
-        args: {
-            let mut m = HashMap::new();
-            m.insert("a".to_string(), json!(42.0));
-            m.insert("b".to_string(), json!(7.0));
-            m.insert("operation".to_string(), json!("multiply"));
-            m
-        },
-        id: Some("call_002".to_string()),
-    });
+        let ai_final = AIMessage::new("42 multiplied by 7 equals 294.");
 
-    let ai_final = AIMessage::new(
-        "Based on my research and calculations: Rust achieves memory safety through \
-         its ownership system without garbage collection. The system uses three rules: \
-         each value has one owner, only one owner at a time, and values are dropped when \
-         the owner goes out of scope. Also, 42 * 7 = 294.",
-    );
+        Arc::new(FakeMessagesListChatModel::new(vec![
+            Message::Ai(ai_calc),
+            Message::Ai(ai_final),
+        ]))
+    };
 
-    // Uses a custom mock model for deterministic tool-calling behavior.
-    // When Ollama is available, see ollama_chain example for real LLM usage.
-    let model = Arc::new(FakeMessagesListChatModel::new(vec![
-        Message::Ai(ai_search),
-        Message::Ai(ai_calc),
-        Message::Ai(ai_final),
-    ]));
-
-    // Build the executor with both tools.
     let search_tool_arc: Arc<dyn BaseTool> = Arc::new(cached_search);
     let calc_tool_arc: Arc<dyn BaseTool> = Arc::new(calculator_tool);
 
@@ -218,11 +191,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Built AgentExecutor (max_iterations=10, 2 tools)\n");
 
     // -------------------------------------------------------------------------
-    // Step 4: Run the agent
+    // Step 4: Run the agent with a user question
     // -------------------------------------------------------------------------
     println!("--- Step 4: Running the agent ---\n");
 
-    let user_message = "Tell me about Rust's memory model and calculate 42 * 7.";
+    let user_message = "What is 42 multiplied by 7?";
     println!("  User: {user_message}\n");
     println!("  --- Agent Think-Act-Observe Loop ---");
 
@@ -235,56 +208,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 5: Display the conversation
     // -------------------------------------------------------------------------
     println!(
-        "--- Step 5: Full Conversation ({} messages) ---\n",
+        "--- Step 5: Conversation ({} messages) ---\n",
         result.messages.len()
     );
 
     for (i, msg) in result.messages.iter().enumerate() {
-        let (role, content) = match msg {
-            Message::Human(_) => ("Human", msg.content().text()),
-            Message::Ai(ai) => {
-                if ai.tool_calls.is_empty() {
-                    ("AI (final)", msg.content().text())
-                } else {
-                    let tool_names: Vec<_> =
-                        ai.tool_calls.iter().map(|tc| tc.name.as_str()).collect();
-                    (
-                        "AI (tool call)",
-                        format!("{} -> calls {:?}", msg.content().text(), tool_names),
-                    )
-                }
+        match msg {
+            Message::Human(_) => {
+                println!("  [{}] Human: {}", i + 1, msg.content().text());
             }
-            Message::Tool(t) => (
-                "Tool Result",
-                format!(
-                    "[{}] {}",
-                    t.tool_call_id,
-                    &t.base.content.text()[..t.base.content.text().len().min(80)]
-                ),
-            ),
-            Message::System(_) => ("System", msg.content().text()),
-            _ => ("Other", msg.content().text()),
-        };
-        println!("  [{}] {}: {}", i + 1, role, content);
+            Message::Ai(ai) if !ai.tool_calls.is_empty() => {
+                let tool_names: Vec<_> = ai.tool_calls.iter().map(|tc| tc.name.as_str()).collect();
+                println!(
+                    "  [{}] AI: {} -> calls {:?}",
+                    i + 1,
+                    msg.content().text(),
+                    tool_names
+                );
+            }
+            Message::Ai(_) => {
+                println!("  [{}] AI (final): {}", i + 1, msg.content().text());
+            }
+            Message::Tool(t) => {
+                let text = t.base.content.text();
+                let preview = &text[..text.len().min(80)];
+                println!("  [{}] Tool [{}]: {}", i + 1, t.tool_call_id, preview);
+            }
+            _ => {
+                println!("  [{}] {}", i + 1, msg.content().text());
+            }
+        }
     }
 
-    println!("\n  Final output: {}", result.output);
-
-    // --- Real LLM Demo ---
-    println!("\n--- Real LLM Demo ---\n");
-    let real_model = shared::get_chat_model(vec![
-        "Rust achieves memory safety through its ownership system with zero-cost abstractions."
-            .into(),
-    ]);
-    let simple_messages = vec![Message::human(
-        "Explain Rust's ownership model in one sentence.",
-    )];
-    let real_result = real_model._generate(&simple_messages, None).await?;
-    if let Some(gen) = real_result.generations.first() {
-        println!("Question: Explain Rust's ownership model in one sentence.");
-        println!("LLM Response: {}", gen.message.content().text());
-    }
-
+    println!("\n  Final answer: {}", result.output);
     println!("\nDone!");
     Ok(())
 }
