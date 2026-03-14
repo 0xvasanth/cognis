@@ -11,6 +11,7 @@
 //! Run with: cargo run -p cognis-examples --example graph_with_checkpoints
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
@@ -179,6 +180,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|v| v.as_str())
             .unwrap_or("(none)")
     );
+
+    // -----------------------------------------------------------------------
+    // Real LLM Demo — LLM-powered summarization in checkpoint context
+    // -----------------------------------------------------------------------
+    println!("\n--- Real LLM Demo ---");
+    println!("Use an LLM to summarize the checkpointed pipeline results.\n");
+
+    let model = shared::get_chat_model(vec![
+        "The pipeline processed two tickets: a login bug (high priority) and a dark mode feature request (medium priority). Both were classified, processed, and summarized successfully.".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            "Summarize the results of a ticket pipeline that processed a login bug report and a dark mode feature request."
+        ),
+    ];
+    let llm_result = model._generate(&messages, None).await?;
+    if let Some(gen) = llm_result.generations.first() {
+        println!("  LLM Summary: {}", gen.message.content().text());
+    }
 
     println!("\nDone!");
     Ok(())

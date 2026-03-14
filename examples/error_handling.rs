@@ -276,5 +276,49 @@ fn main() {
         println!("  {label:14} -> {action:?}");
     }
 
+    // -----------------------------------------------------------------------
+    // 9. Real LLM Demo — Error handling with a real model
+    // -----------------------------------------------------------------------
+    println!("\n--- 9. Real LLM Demo (Error Handling with Real Model) ---");
+    println!("Demonstrate graceful error handling when calling an LLM.\n");
+
+    let model = shared::get_chat_model(vec![
+        "Error handling is crucial in production LLM applications. You should classify errors, implement retries for transient failures, and provide fallback responses.".into(),
+    ]);
+
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a software engineering expert.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            "In 2-3 sentences, explain why error classification matters when building LLM-powered applications.",
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let result = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        model.invoke_messages(&messages, None).await
+    });
+
+    match result {
+        Ok(response) => {
+            println!("  LLM response: {}", response.content);
+
+            // Demonstrate classifying a hypothetical LLM error
+            let classifier = PatternErrorClassifier::new();
+            let simulated_error = "rate limit exceeded on LLM provider";
+            let kind = classifier.classify(simulated_error);
+            println!("\n  Simulated LLM error: \"{}\"", simulated_error);
+            println!("  Classified as: {} (retryable: {})", kind, kind.is_retryable());
+        }
+        Err(e) => {
+            println!("  LLM call failed: {}", e);
+            let classifier = PatternErrorClassifier::new();
+            let kind = classifier.classify(&e.to_string());
+            println!("  Error classified as: {} (retryable: {})", kind, kind.is_retryable());
+        }
+    }
+
     println!("\n=== Error Handling Example Complete ===");
 }

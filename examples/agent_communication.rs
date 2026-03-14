@@ -18,12 +18,15 @@
 //! Run with: `cargo run -p cognis-examples --example agent_communication`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognisagent::communication::{
     AgentMessage, Channel, CommunicationHub, Mailbox, MessageFilter, MessagePriority, SharedState,
 };
 use serde_json::json;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Agent Communication Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -579,5 +582,32 @@ fn main() {
         hub.get_mailbox("planner").unwrap().unread_count()
     );
 
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Using an LLM to generate an agent task message.\n");
+
+    let model = shared::get_chat_model(vec![
+        "Search for recent Rust async/await best practices and summarize the top 3 findings.".into(),
+    ]);
+    let messages = vec![
+        Message::system("You are a planner agent. Generate a single task description for an executor agent."),
+        Message::human("Create a task about researching Rust async patterns."),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        let task_body = gen.message.content().text();
+        println!("LLM-generated task: {}", task_body);
+
+        let llm_task = AgentMessage::new(
+            "planner",
+            "executor",
+            "LLM-generated task",
+            json!({"description": task_body}),
+        )
+        .with_priority(MessagePriority::Normal);
+        println!("Created AgentMessage: from={}, to={}, subject={}", llm_task.from, llm_task.to, llm_task.subject);
+    }
+
     println!("\n=== Agent Communication Example Complete ===");
+    Ok(())
 }

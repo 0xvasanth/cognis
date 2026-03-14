@@ -276,5 +276,49 @@ fn main() {
     }
     println!();
 
+    // -----------------------------------------------------------------------
+    // 10. Real LLM Demo — Error recovery with a real model
+    // -----------------------------------------------------------------------
+    println!("--- 10. Real LLM Demo (Error Recovery with Real Model) ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "When an LLM call fails, best practices include: 1) Classify the error (transient vs permanent), 2) Apply exponential backoff for retries, 3) Fall back to cached responses when retries are exhausted.".into(),
+    ]);
+
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a reliability engineering expert.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            "What are the best practices for error recovery when making LLM API calls? Answer in 2-3 sentences.",
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let result = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        model.invoke_messages(&messages, None).await
+    });
+
+    match result {
+        Ok(response) => {
+            println!("  LLM response: {}", response.content);
+        }
+        Err(e) => {
+            // Demonstrate recovery: classify the error and determine action
+            println!("  LLM call failed: {}", e);
+            let policy = RecoveryPolicy::with_default_retry(3);
+            let mut recovery_manager = RecoveryManager::new(policy);
+            let action = recovery_manager.handle_error(&e.to_string());
+            println!(
+                "  Recovery action: category={}, should_retry={}, delay={:?}",
+                action.category,
+                action.should_retry(),
+                action.delay,
+            );
+        }
+    }
+    println!();
+
     println!("=== Error Recovery Example Complete ===");
 }

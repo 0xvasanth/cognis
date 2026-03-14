@@ -314,5 +314,56 @@ fn main() {
     println!("   Queue size after dequeue: {}", process_queue.len());
     println!("   Queue is empty: {}", process_queue.is_empty());
 
+    // -----------------------------------------------------------------------
+    // 9. Real LLM Demo — LLM call in interrupt workflow
+    // -----------------------------------------------------------------------
+    println!("\n9. Real LLM Demo (LLM in Interrupt Workflow):\n");
+
+    let model = shared::get_chat_model(vec![
+        "Based on the review request, I recommend APPROVING the email send action. The content appears professional, the recipient is valid, and the subject line is appropriate. No sensitive data is exposed.".into(),
+    ]);
+
+    // Simulate an interrupt workflow where LLM helps decide on approval
+    let review_data = json!({
+        "action": "send_email",
+        "to": "team@example.com",
+        "subject": "Quarterly Report",
+        "body_preview": "Please find attached the Q4 results..."
+    });
+
+    let llm_review_request = InterruptRequest::new(
+        "llm_review_node",
+        InterruptType::Review { data: review_data.clone() },
+    )
+    .with_context("requires_llm_review", json!(true));
+
+    println!("   Created review request for LLM: {}", llm_review_request.id);
+
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a security reviewer. Review the action and recommend APPROVE or REJECT with a brief reason.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            &format!("Review this action and provide your recommendation:\n{}", serde_json::to_string_pretty(&review_data).unwrap()),
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let result = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        model.invoke_messages(&messages, None).await
+    });
+
+    match result {
+        Ok(response) => {
+            println!("   LLM review: {}", response.content);
+
+            // Use LLM response to auto-resolve the interrupt
+            let approved = response.content.to_lowercase().contains("approv");
+            println!("   Auto-resolution: {}", if approved { "APPROVED" } else { "REJECTED" });
+        }
+        Err(e) => println!("   LLM error: {}", e),
+    }
+
     println!("\n=== Graph Interrupts Demo Complete ===");
 }

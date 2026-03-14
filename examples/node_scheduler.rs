@@ -21,6 +21,7 @@
 //! Run with: `cargo run -p cognis-examples --example node_scheduler`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use std::collections::HashSet;
 use std::time::Duration;
 
@@ -29,7 +30,8 @@ use cognisgraph::pregel::scheduler::{
     SchedulingStrategy,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Node Scheduler Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -411,5 +413,25 @@ fn main() {
         serde_json::to_string_pretty(&ras_metrics.to_json()).unwrap()
     );
 
+    // -----------------------------------------------------------------------
+    // 11. Real LLM Demo — LLM call in scheduled node context
+    // -----------------------------------------------------------------------
+    println!("\n--- 11. Real LLM Demo ---");
+    println!("Simulate an LLM call as a scheduled node task.\n");
+
+    let model = shared::get_chat_model(vec![
+        "For optimal scheduling, prioritize critical LLM calls first, batch similar requests, and use resource-aware scheduling to avoid overloading the model API.".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            "What is the best strategy for scheduling multiple LLM calls in a pipeline?"
+        ),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("  LLM Response: {}", gen.message.content().text());
+    }
+
     println!("\n=== Node Scheduler Example Complete ===");
+    Ok(())
 }

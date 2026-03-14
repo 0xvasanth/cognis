@@ -12,6 +12,7 @@
 //! Run with: `cargo run -p cognis-examples --example knowledge_graph_memory`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis::memory::knowledge_graph::{
     KnowledgeGraph, KnowledgeGraphMemory, KnowledgeTriple, RegexTripleExtractor, TripleExtractor,
 };
@@ -200,6 +201,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nGraph snapshot: {} triples", snapshot.len());
     for triple in snapshot.triples() {
         println!("  {}", triple.to_natural_language());
+    }
+
+    // -----------------------------------------------------------------------
+    // 8. Real LLM Demo — extract knowledge triples using LLM
+    // -----------------------------------------------------------------------
+    println!("\n--- 8. Real LLM Demo ---");
+    println!("Use an LLM to extract knowledge triples from text.\n");
+
+    let model = shared::get_chat_model(vec![
+        "Here are the knowledge triples:\n- (Elon Musk, founded, SpaceX)\n- (SpaceX, is, aerospace company)\n- (SpaceX, headquartered in, Hawthorne California)".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            "Extract knowledge triples (subject, predicate, object) from this text: 'Elon Musk founded SpaceX, an aerospace company headquartered in Hawthorne, California.'"
+        ),
+    ];
+    let llm_result = model._generate(&messages, None).await?;
+    if let Some(gen) = llm_result.generations.first() {
+        println!("  LLM Extracted Triples:\n  {}", gen.message.content().text());
     }
 
     println!("\n=== Knowledge Graph Memory Example Complete ===");

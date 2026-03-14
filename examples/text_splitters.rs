@@ -26,6 +26,8 @@ use cognis::text_splitters::{
     RecursiveCharacterTextSplitter, SplitConfig, TextSplitter, TokenTextSplitter,
 };
 use cognis_core::documents::Document;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use serde_json::json;
 
 fn print_chunks(chunks: &[String]) {
@@ -39,7 +41,8 @@ fn print_chunks(chunks: &[String]) {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Text Splitters Example ===\n");
 
     // -------------------------------------------------------------------
@@ -328,5 +331,32 @@ def divide(a, b):
         );
     }
 
+    // -------------------------------------------------------------------
+    // 8. Real LLM Demo — Summarize split text chunks
+    // -------------------------------------------------------------------
+    println!("\n--- 8. Real LLM Demo ---");
+    println!("Ask an LLM to summarize the first text chunk.\n");
+
+    let model = shared::get_chat_model(vec![
+        "This chunk introduces Rust as a fast and safe systems programming language with key features like ownership, borrowing, and the Cargo package manager.".into(),
+    ]);
+
+    let demo_splitter = RecursiveCharacterTextSplitter::new()
+        .with_chunk_size(80)
+        .with_chunk_overlap(10);
+    let demo_chunks = demo_splitter.split_text(article);
+    if let Some(first_chunk) = demo_chunks.first() {
+        let messages = vec![
+            Message::system("Summarize the following text chunk in one sentence."),
+            Message::human(first_chunk),
+        ];
+        let result = model._generate(&messages, None).await?;
+        if let Some(gen) = result.generations.first() {
+            println!("Chunk: {:?}", first_chunk);
+            println!("LLM summary: {}", gen.message.content().text());
+        }
+    }
+
     println!("\n=== Text Splitters Example Complete ===");
+    Ok(())
 }

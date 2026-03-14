@@ -11,6 +11,7 @@
 //! Run with: cargo run -p cognis-examples --example graph_visualization
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -152,6 +153,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url = agent_graph.draw_mermaid_url();
     println!("Open this URL to view the agent graph interactively:");
     println!("{}", url);
+
+    // -------------------------------------------------------------------------
+    // Part 6: Real LLM Demo — LLM-powered graph node
+    // -------------------------------------------------------------------------
+    println!("\n--- Part 6: Real LLM Demo ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "A graph visualization helps developers understand data flow, identify bottlenecks, and debug complex pipelines.".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            "Why is graph visualization useful for understanding agent workflows?"
+        ),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("  LLM Response: {}", gen.message.content().text());
+    }
 
     println!("\nDone!");
     Ok(())

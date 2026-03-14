@@ -13,11 +13,14 @@
 //! Run with: `cargo run -p cognis-examples --example agent_lifecycle_demo`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognisagent::lifecycle::{
     AgentLifecycle, GracefulShutdown, HealthCheck, LifecycleMonitor, RestartPolicy,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Agent Lifecycle Demo ===\n");
 
     // -----------------------------------------------------------------------
@@ -293,5 +296,22 @@ fn main() {
         serde_json::to_string_pretty(&monitor.to_json()).unwrap()
     );
 
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Using an LLM to diagnose a failed agent's error.\n");
+
+    let model = shared::get_chat_model(vec![
+        "The 'segfault' error in worker-3 likely indicates a memory access violation. Recommended action: check for unsafe code blocks and restart with memory sanitizer enabled.".into(),
+    ]);
+    let messages = vec![
+        Message::system("You are an agent lifecycle monitor. Diagnose agent failures concisely."),
+        Message::human("Agent 'worker-3' failed with error: 'segfault'. What happened and what should we do?"),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("LLM diagnosis: {}", gen.message.content().text());
+    }
+
     println!("\n=== Agent Lifecycle Demo Complete ===");
+    Ok(())
 }

@@ -16,6 +16,7 @@
 //! Run with: `cargo run -p cognis-examples --example reranking_retriever`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use std::collections::HashMap;
 
 use cognis::retrievers::reranking::{
@@ -221,6 +222,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nTfIdfReranker top-3:");
     for (i, (doc, score)) in tfidf_results.iter().take(3).enumerate() {
         println!("  {}. [score: {:.4}] {}", i + 1, score, doc.page_content);
+    }
+
+    // -----------------------------------------------------------------------
+    // 7. Real LLM Demo — Q&A after reranking
+    // -----------------------------------------------------------------------
+    println!("\n--- 7. Real LLM Demo ---");
+    println!("Use the top reranked document as context for LLM Q&A.\n");
+
+    let top_query = "Rust memory safety";
+    let top_results = KeywordReranker::new().rerank(top_query, &documents)?;
+    let context = top_results
+        .first()
+        .map(|(doc, _)| doc.page_content.as_str())
+        .unwrap_or("No context available.");
+
+    let model = shared::get_chat_model(vec![
+        "Rust achieves memory safety through its ownership system and borrow checker, which enforce strict rules at compile time without needing a garbage collector.".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            &format!("Based on this context: '{}'\n\nHow does Rust achieve memory safety?", context)
+        ),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("  Context: {}", context);
+        println!("  LLM Answer: {}", gen.message.content().text());
     }
 
     println!("\n=== Reranking Retriever Example Complete ===");

@@ -200,5 +200,40 @@ fn main() {
     println!("\nASCII representation:");
     println!("{}", GraphVisualizer::to_ascii(&topo));
 
+    // -----------------------------------------------------------------------
+    // 9. Real LLM Demo — LLM-powered graph analysis
+    // -----------------------------------------------------------------------
+    println!("\n--- 9. Real LLM Demo (LLM Graph Analysis) ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "This is a DAG with 6 nodes and 6 edges representing a data pipeline. The graph has density 0.2 and max depth 5. There are 2 paths from ingest to store, with the shortest being 4 steps. The pipeline branches at 'transform' into parallel 'enrich' and 'filter' paths before converging at 'store'.".into(),
+    ]);
+
+    let metrics = GraphMetrics::from_topology(&topo);
+    let mermaid = GraphVisualizer::to_mermaid(&topo);
+
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a graph analysis expert. Analyze the given graph structure concisely.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            &format!(
+                "Analyze this data pipeline graph in 2-3 sentences. Metrics: nodes={}, edges={}, density={:.4}, max_depth={}, is_dag={}.\n\nGraph:\n{}",
+                metrics.node_count, metrics.edge_count, metrics.density, metrics.max_depth, topo.is_dag(), mermaid
+            ),
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let ai_msg = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        model.invoke_messages(&messages, None).await
+    });
+
+    match ai_msg {
+        Ok(response) => println!("  LLM analysis: {}", response.content),
+        Err(e) => println!("  LLM error: {}", e),
+    }
+
     println!("\n=== Graph Analysis Example Complete ===");
 }

@@ -461,5 +461,43 @@ fn main() {
     println!("\nStats as JSON:");
     println!("  {}", serde_json::to_string_pretty(&stats_json).unwrap());
 
+    // -----------------------------------------------------------------------
+    // 8. Real LLM Demo — Q&A using stored documents
+    // -----------------------------------------------------------------------
+    println!("\n--- 8. Real LLM Demo (Q&A with Stored Documents) ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "Based on the stored documents, machine learning algorithms learn patterns from data, and deep learning uses neural networks with many layers. These are sub-fields of AI.".into(),
+    ]);
+
+    // Retrieve relevant documents from the indexed store
+    let query = DocStoreQuery::new().with_text("learning");
+    let relevant_docs = indexed_store.search(&query).unwrap();
+    let context: String = relevant_docs
+        .iter()
+        .map(|doc| doc.page_content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "Answer the user's question based only on the provided context.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            &format!("Context:\n{}\n\nQuestion: What do these documents tell us about learning?", context),
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let ai_msg = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        model.invoke_messages(&messages, None).await
+    });
+
+    match ai_msg {
+        Ok(response) => println!("  LLM answer: {}", response.content),
+        Err(e) => println!("  LLM error: {}", e),
+    }
+
     println!("\n=== Document Store Example Complete ===");
 }

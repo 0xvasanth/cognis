@@ -18,12 +18,15 @@
 //! Run with: `cargo run -p cognis-examples --example tool_schema`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognis_core::tools::schema::{
     PropertySchema, SchemaObject, SchemaRegistry, SchemaValidator, ToolSchema, ToolSchemaGenerator,
 };
 use serde_json::json;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Tool Schema Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -339,5 +342,25 @@ fn main() {
     );
     println!("{}", serde_json::to_string_pretty(&registry_json).unwrap());
 
+    // -----------------------------------------------------------------------
+    // 8. Real LLM Demo — LLM call with tool schema context
+    // -----------------------------------------------------------------------
+    println!("\n--- 8. Real LLM Demo ---");
+    println!("Ask an LLM a question, providing tool schemas as context.\n");
+
+    let model = shared::get_chat_model(vec![
+        "I would use the `get_weather` tool with parameters: {\"city\": \"Tokyo\", \"units\": \"celsius\", \"include_forecast\": true, \"forecast_days\": 3}".into(),
+    ]);
+    let tool_list = serde_json::to_string_pretty(&registry.to_json()).unwrap();
+    let messages = vec![
+        Message::system(&format!("You have access to these tools:\n{}\n\nDescribe which tool you would use and with what parameters.", tool_list)),
+        Message::human("I want to know the weather in Tokyo for the next 3 days in Celsius."),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("LLM tool selection: {}", gen.message.content().text());
+    }
+
     println!("\n=== Tool Schema Example Complete ===");
+    Ok(())
 }

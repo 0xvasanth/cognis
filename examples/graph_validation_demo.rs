@@ -14,6 +14,7 @@
 //! Run with: `cargo run -p cognis-examples --example graph_validation_demo`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognisgraph::graph::validation::{
     GraphValidator, QuickCheck, SchemaValidator, StateRule, StateValidator, ValidationReport,
 };
@@ -41,7 +42,8 @@ fn print_report(label: &str, report: &ValidationReport) {
     println!();
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Graph Validation Demo ===\n");
 
     // -----------------------------------------------------------------------
@@ -197,5 +199,25 @@ fn main() {
     );
     println!();
 
-    println!("=== Graph Validation Demo Complete ===");
+    // -----------------------------------------------------------------------
+    // 7. Real LLM Demo — validated graph with LLM node
+    // -----------------------------------------------------------------------
+    println!("\n--- 7. Real LLM Demo ---");
+    println!("Ask the LLM to validate a graph description.\n");
+
+    let model = shared::get_chat_model(vec![
+        "The graph is valid: it has a clear entry point, no cycles, and all nodes are reachable.".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            "I have a graph with nodes: start -> process -> enrich -> end. Is this a valid pipeline graph? Why or why not?"
+        ),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("  LLM Response: {}", gen.message.content().text());
+    }
+
+    println!("\n=== Graph Validation Demo Complete ===");
+    Ok(())
 }

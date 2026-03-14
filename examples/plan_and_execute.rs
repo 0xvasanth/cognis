@@ -12,7 +12,7 @@
 
 mod shared;
 use cognis::agents::plan_and_execute::{
-    PlanAndExecuteAgent, PlanStep, PlanStepStatus, Planner, SimplePlanner, TemplatePlanner,
+    PlanAndExecuteAgent, PlanStepStatus, Planner, SimplePlanner, TemplatePlanner,
     ToolStepExecutor,
 };
 
@@ -173,6 +173,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (desc, res) in &result.step_results {
         println!("    - {}: {}", desc, res);
     }
+
+    // -----------------------------------------------------------------------
+    // 7. LLM-Powered Planning
+    // -----------------------------------------------------------------------
+    println!("\n--- 7. LLM-Powered Planning ---");
+    println!("Uses a real LLM (Ollama) to generate a plan from a high-level goal.\n");
+
+    let fake_plan_response = vec![
+        "Here is a step-by-step plan to build a CLI tool in Rust:\n\
+         1. Define the CLI argument structure using clap\n\
+         2. Implement input parsing and validation\n\
+         3. Build the core processing logic\n\
+         4. Add formatted output and error messages\n\
+         5. Write unit tests and integration tests\n\
+         6. Add documentation and usage examples"
+            .to_string(),
+    ];
+
+    let model = shared::get_chat_model(fake_plan_response);
+
+    let planning_goal = "build a CLI tool in Rust";
+    let prompt = format!(
+        "Create a short numbered plan (5-6 steps) to {}. \
+         Reply with only the numbered steps, one per line.",
+        planning_goal
+    );
+
+    let messages = vec![cognis_core::messages::Message::human(&prompt)];
+    let ai_response = model.invoke_messages(&messages, None).await?;
+    let response_text = ai_response.base.content.text();
+
+    println!("LLM response:\n{}\n", response_text);
+
+    // Parse the LLM response into a plan using SimplePlanner
+    let llm_plan = SimplePlanner::new().create_plan(&response_text)?;
+
+    println!("Parsed plan for '{}':", planning_goal);
+    println!("  Steps ({} total):", llm_plan.steps.len());
+    for step in &llm_plan.steps {
+        println!("    Step {}: {}", step.index, step.description);
+    }
+    println!(
+        "\n  This demonstrates real LLM-powered planning vs the template-based approach above."
+    );
 
     println!("\n=== Plan-and-Execute Example Complete ===");
     Ok(())

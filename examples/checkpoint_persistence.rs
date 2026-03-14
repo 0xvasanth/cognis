@@ -444,5 +444,38 @@ fn main() {
         serde_json::to_string_pretty(&stats_json).unwrap()
     );
 
+    // -----------------------------------------------------------------------
+    // 9. Real LLM Demo — Generate a summary of checkpoint state
+    // -----------------------------------------------------------------------
+    println!("\n--- 9. Real LLM Demo ---");
+    println!("Use an LLM to summarize the current checkpoint state.\n");
+
+    let model = shared::get_chat_model(vec![
+        "The checkpoint system has 9 checkpoints across 3 threads (A, B, C). Thread B has the most checkpoints (4). All threads are progressing normally.".into(),
+    ]);
+
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a concise system status reporter.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            &format!(
+                "Summarize this checkpoint state in 2-3 sentences: total_checkpoints={}, threads={}, avg_steps_per_thread={:.1}",
+                stats.total_checkpoints, stats.threads, stats.avg_steps_per_thread
+            ),
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let ai_msg = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        model.invoke_messages(&messages, None).await
+    });
+
+    match ai_msg {
+        Ok(response) => println!("  LLM summary: {}", response.content),
+        Err(e) => println!("  LLM error: {}", e),
+    }
+
     println!("\n=== Checkpoint Persistence Example Complete ===");
 }

@@ -14,12 +14,14 @@
 //! Run with: `cargo run -p cognis-examples --example resilience_demo`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis::resilience::{
     Bulkhead, CircuitBreaker, FallbackChain, ResilienceMetrics, ResiliencePolicy, RetryConfig,
     RetryStrategy,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Resilience Patterns Demo ===\n");
 
     // -----------------------------------------------------------------------
@@ -421,5 +423,25 @@ fn main() {
         serde_json::to_string_pretty(&metrics.to_json()).unwrap()
     );
 
+    // -----------------------------------------------------------------------
+    // 8. Real LLM Demo — LLM call with resilience context
+    // -----------------------------------------------------------------------
+    println!("\n--- 8. Real LLM Demo ---");
+    println!("Demonstrate an LLM call that would benefit from resilience patterns.\n");
+
+    let model = shared::get_chat_model(vec![
+        "Key resilience patterns for LLM APIs: 1) Retry with exponential backoff for transient errors, 2) Circuit breaker to stop cascading failures, 3) Bulkhead to limit concurrent requests, 4) Fallback chain to switch providers when one is down.".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            "What resilience patterns are most important when calling LLM APIs in production?"
+        ),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("  LLM Response: {}", gen.message.content().text());
+    }
+
     println!("\n=== Resilience Patterns Demo Complete ===");
+    Ok(())
 }

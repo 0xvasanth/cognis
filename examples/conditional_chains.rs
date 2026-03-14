@@ -13,6 +13,8 @@ use cognis::chains::{
     BranchChain, ClosureCondition, ConditionalChain, KeyContainsCondition, KeyEqualsCondition,
     KeyExistsCondition, SwitchChain,
 };
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognis_core::runnables::{Runnable, RunnableLambda};
 
 /// Helper: create a lambda that uppercases the "text" field.
@@ -228,6 +230,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             result["status"],
             result["body"]
         );
+    }
+
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Using an LLM to classify a request, then routing it conditionally.\n");
+
+    let model = shared::get_chat_model(vec!["technical".into()]);
+    let messages = vec![
+        Message::system("Classify the following request as one of: technical, billing, general. Reply with just the category."),
+        Message::human("How do I configure async timeouts in Rust?"),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        let category = gen.message.content().text().trim().to_lowercase();
+        println!("LLM classified request as: '{}'", category);
+
+        let route_input = json!({ "language": category, "code": "user request" });
+        let route_result = switch.invoke(route_input, None).await?;
+        let tag = route_result["tag"].as_str().unwrap_or("(none)");
+        println!("Routed to handler with tag: {}", tag);
     }
 
     println!("\n=== Conditional Chains Example Complete ===");

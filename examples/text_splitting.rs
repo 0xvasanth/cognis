@@ -15,6 +15,8 @@ use cognis::text_splitter::{
     Language, RecursiveCharacterTextSplitter, SentenceTextSplitter, TextSplitter,
 };
 use cognis_core::documents::Document;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 
 /// Sample long-form text for demonstrating recursive splitting.
 const SAMPLE_TEXT: &str = r#"Rust is a multi-paradigm, general-purpose programming language that emphasizes performance, type safety, and concurrency. It enforces memory safety without a garbage collector. Rust was originally designed by Graydon Hoare at Mozilla Research, with contributions from Dave Herman and others. The designers refined the language while working on the experimental Servo browser engine and the Rust compiler itself.
@@ -266,6 +268,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     for (i, chunk) in sentence_chunks.iter().enumerate() {
         println!("  Chunk {}: {} chars - \"{}\"", i + 1, chunk.len(), chunk);
+    }
+
+    // -------------------------------------------------------------------------
+    // Part 6: Real LLM Demo — Summarize split text
+    // -------------------------------------------------------------------------
+    println!("\n--- Part 6: Real LLM Demo ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "This text describes Rust as a performance-focused, memory-safe language originally created at Mozilla, now widely adopted by major tech companies.".into(),
+    ]);
+
+    let summary_splitter = RecursiveCharacterTextSplitter::new()
+        .with_chunk_size(200)
+        .with_chunk_overlap(30);
+    let summary_chunks = summary_splitter.split_text(SAMPLE_TEXT);
+    if let Some(first_chunk) = summary_chunks.first() {
+        let messages = vec![
+            Message::system("Summarize the following text chunk in one concise sentence."),
+            Message::human(first_chunk),
+        ];
+        let result = model._generate(&messages, None).await?;
+        if let Some(gen) = result.generations.first() {
+            println!("First chunk ({} chars): {:?}...", first_chunk.len(), &first_chunk[..first_chunk.len().min(60)]);
+            println!("LLM summary: {}", gen.message.content().text());
+        }
     }
 
     println!("\nDone!");

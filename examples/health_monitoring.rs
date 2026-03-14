@@ -12,6 +12,7 @@
 //! Run with: `cargo run -p cognis-examples --example health_monitoring`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -282,6 +283,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Unhealthy components: {}", unhealthy_components.len());
     for c in unhealthy_components {
         println!("    - {}: {}", c.name, status_detail(&c.status));
+    }
+
+    // -----------------------------------------------------------------------
+    // 10. Real LLM Demo — LLM health check
+    // -----------------------------------------------------------------------
+    println!("\n--- 10. Real LLM Health Check Demo ---");
+    println!("Verify LLM connectivity by sending a simple prompt.\n");
+
+    let model = shared::get_chat_model(vec![
+        "LLM health check passed. Model is responsive and generating coherent output.".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human("Respond with a brief health status confirmation."),
+    ];
+    let llm_result = model._generate(&messages, None).await?;
+    if let Some(gen) = llm_result.generations.first() {
+        let response = gen.message.content().text();
+        println!("  LLM Health Check: {}", if response.is_empty() { "UNHEALTHY (empty response)" } else { "HEALTHY" });
+        println!("  Response: {}", response);
     }
 
     println!("\n=== Health Monitoring Example Complete ===");

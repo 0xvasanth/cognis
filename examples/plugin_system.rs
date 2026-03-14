@@ -17,9 +17,11 @@
 //! Run with: `cargo run -p cognis-examples --example plugin_system`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognisagent::plugins::{Plugin, PluginCapability, PluginRegistry, SimplePlugin};
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Plugin System Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -243,5 +245,25 @@ fn main() {
         registry.get("web-search").is_some()
     );
 
+    // -----------------------------------------------------------------------
+    // 8. Real LLM Demo — LLM call in plugin context
+    // -----------------------------------------------------------------------
+    println!("\n--- 8. Real LLM Demo ---");
+    println!("Use an LLM to describe how plugins extend agent capabilities.\n");
+
+    let model = shared::get_chat_model(vec![
+        "Plugins extend agent capabilities by providing modular tool providers, middleware hooks, and event handlers that can be loaded, activated, and deactivated at runtime without modifying the core agent code.".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            "How do plugins extend the capabilities of an AI agent system?"
+        ),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("  LLM Response: {}", gen.message.content().text());
+    }
+
     println!("\n=== Plugin System Example Complete ===");
+    Ok(())
 }

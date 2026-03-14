@@ -13,6 +13,8 @@ use serde_json::json;
 
 use cognis::chains::{create_qa_chain, CitedAnswer, QAChain, QAChainType, QAConfig, QAResult};
 use cognis_core::documents::Document;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognis_core::runnables::Runnable;
 
 /// Create a sample document with source metadata.
@@ -236,6 +238,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match result {
         Err(e) => println!("  Empty question error: {}", e),
         Ok(_) => println!("  Empty question: (unexpected success)"),
+    }
+
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Using an LLM to answer a question based on retrieved documents.\n");
+
+    let chain = create_qa_chain(QAConfig::default());
+    let qa_prompt = chain.answer("What is Rust's mascot?", &documents)?;
+
+    let model = shared::get_chat_model(vec![
+        "Based on the provided context, Ferris is the unofficial mascot of Rust. Ferris is a red crab, chosen because Rust developers are called 'Rustaceans'.".into(),
+    ]);
+    let messages = vec![
+        Message::system("Answer the question using only the provided context."),
+        Message::human(&qa_prompt.answer),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("Question: What is Rust's mascot?");
+        println!("LLM Answer: {}", gen.message.content().text());
     }
 
     println!("\n=== QA Chain Example Complete ===");

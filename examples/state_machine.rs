@@ -17,12 +17,15 @@
 //! Run with: `cargo run -p cognis-examples --example state_machine`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognisgraph::graph::{
     StateHistory, StateId, StateMachine, StateMachineBuilder, StateMachineValidator, Transition,
 };
 use serde_json::json;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== State Machine Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -357,5 +360,24 @@ fn main() {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // 8. Real LLM Demo — LLM-guided state transition
+    // -----------------------------------------------------------------------
+    println!("\n--- 8. Real LLM Demo ---");
+    println!("Ask an LLM to decide the next state transition.\n");
+
+    let model = shared::get_chat_model(vec![
+        "The order should transition to 'confirmed' because all required fields are present and valid.".into(),
+    ]);
+    let messages = vec![
+        Message::system("You are a state machine advisor. Given a state and context, suggest the next transition."),
+        Message::human("Current state: 'pending', context: {\"order_id\": \"ORD-003\", \"items\": 3, \"payment\": \"verified\"}. What transition should fire next?"),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("LLM transition advice: {}", gen.message.content().text());
+    }
+
     println!("\n=== State Machine Example Complete ===");
+    Ok(())
 }

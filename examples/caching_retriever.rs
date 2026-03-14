@@ -18,6 +18,8 @@ use async_trait::async_trait;
 use cognis::retrievers::caching::{CacheConfig, CachingRetriever};
 use cognis_core::documents::Document;
 use cognis_core::error::Result;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognis_core::retrievers::BaseRetriever;
 
 /// A mock retriever that returns fixed documents and counts how many times
@@ -227,6 +229,33 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     );
     println!("    Total inner calls: {}\n", inner5.calls());
 
-    println!("=== Done ===");
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Using retrieved documents with an LLM to answer a question.\n");
+
+    let retriever_docs = vec![
+        Document::new("Rust was first released in 2010."),
+        Document::new("Rust is maintained by the Rust Foundation."),
+    ];
+    let inner_llm = Arc::new(MockRetriever::new(retriever_docs));
+    let caching_llm = CachingRetriever::with_defaults(inner_llm.clone());
+
+    let docs = caching_llm.get_relevant_documents("What is Rust?").await?;
+    let context: String = docs.iter().map(|d| d.page_content.as_str()).collect::<Vec<_>>().join(" ");
+
+    let model = shared::get_chat_model(vec![
+        "Based on the retrieved documents: Rust was first released in 2010 and is maintained by the Rust Foundation.".into(),
+    ]);
+    let messages = vec![
+        Message::system("Answer based on the following context only."),
+        Message::human(&format!("Context: {}\n\nQuestion: What do we know about Rust?", context)),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("Retrieved {} documents, then asked the LLM.", docs.len());
+        println!("LLM Answer: {}", gen.message.content().text());
+    }
+
+    println!("\n=== Done ===");
     Ok(())
 }

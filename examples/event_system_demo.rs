@@ -553,5 +553,70 @@ fn main() {
 
     println!("\n  Events per type: {:?}", metrics.events_per_type());
 
+    // -----------------------------------------------------------------------
+    // 10. Real LLM Demo — LLM call with event tracking
+    // -----------------------------------------------------------------------
+    println!("\n--- 10. Real LLM Demo (LLM Call with Event Tracking) ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "Event-driven architectures allow you to decouple components, track execution flow, and build observable LLM pipelines.".into(),
+    ]);
+
+    // Set up event tracking for the LLM call
+    let mut llm_log = EventLog::new();
+    let mut llm_metrics = EventMetrics::new();
+
+    // Record LlmStart event
+    let start_event = Event::new(
+        EventType::LlmStart,
+        json!({"model": "ollama/llama3.2", "question": "What are event-driven architectures?"}),
+    )
+    .with_source("real_llm_demo");
+    llm_log.record(start_event);
+    llm_metrics.record_event(&EventType::LlmStart);
+
+    let start_time = std::time::Instant::now();
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a helpful assistant. Answer concisely in 1-2 sentences.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            "Why are event-driven architectures useful for LLM applications?",
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let result = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        model.invoke_messages(&messages, None).await
+    });
+    let elapsed_ms = start_time.elapsed().as_millis() as u64;
+
+    match result {
+        Ok(response) => {
+            // Record LlmEnd event
+            let end_event = Event::new(
+                EventType::LlmEnd,
+                json!({"response_length": response.content.len()}),
+            )
+            .with_source("real_llm_demo");
+            llm_log.record(end_event);
+            llm_metrics.record_event(&EventType::LlmEnd);
+            llm_metrics.record_processing_time(&EventType::LlmEnd, elapsed_ms);
+
+            println!("  LLM response: {}", response.content);
+            println!("  Duration: {}ms", elapsed_ms);
+            println!("  Events logged: {}", llm_log.len());
+            println!("  Total events tracked: {}", llm_metrics.total_events());
+        }
+        Err(e) => {
+            let error_event = Event::new(EventType::Error, json!({"error": e.to_string()}))
+                .with_source("real_llm_demo");
+            llm_log.record(error_event);
+            llm_metrics.record_event(&EventType::Error);
+            println!("  LLM error: {}", e);
+        }
+    }
+
     println!("\n=== Event System Demo Complete ===");
 }

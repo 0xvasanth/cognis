@@ -21,6 +21,8 @@ use cognis::callbacks::manager::{
     CallbackDataBuilder, CallbackHandler, CallbackManager, CallbackPhase, CallbackScope,
     ConsoleCallbackHandler, FilteredHandler, MetricsCallbackHandler,
 };
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -47,7 +49,8 @@ impl CallbackHandler for SharedMetrics {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Callback Manager Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -435,5 +438,37 @@ fn main() {
         custom_filter.handles_phase(&CallbackPhase::Custom("other".into()))
     );
 
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Using an LLM call with callback instrumentation.\n");
+
+    let cb_console = Arc::new(ConsoleCallbackHandler::new());
+    let cb_metrics = Arc::new(MetricsCallbackHandler::new());
+    let cb_manager = CallbackManager::new();
+    cb_manager.add_handler(Box::new(SharedConsole(cb_console.clone())));
+    cb_manager.add_handler(Box::new(SharedMetrics(cb_metrics.clone())));
+
+    let run_id = CallbackManager::new_run_id();
+    cb_manager.emit_phase(CallbackPhase::LlmStart, &run_id, json!({"model": "shared_model"}));
+
+    let model = shared::get_chat_model(vec![
+        "Callbacks are essential for observability in LLM applications.".into(),
+    ]);
+    let messages = vec![Message::human("Why are callbacks important in LLM frameworks?")];
+    let result = model._generate(&messages, None).await?;
+
+    if let Some(gen) = result.generations.first() {
+        let response_text = gen.message.content().text();
+        cb_manager.emit_phase(CallbackPhase::LlmEnd, &run_id, json!({"response": response_text}));
+        println!("LLM Response: {}", response_text);
+    }
+
+    println!("\nCallback logs from LLM call:");
+    for log in &cb_console.logs() {
+        println!("  {}", log);
+    }
+    println!("Total callback events: {}", cb_metrics.total_events());
+
     println!("\n=== Callback Manager Example Complete ===");
+    Ok(())
 }

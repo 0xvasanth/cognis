@@ -23,9 +23,12 @@ use cognis::vectorstores::memory::{
     InMemoryVectorStore, MaxMarginalRelevance, SearchQuery, SimilarityMetric, VectorEntry,
     VectorStoreStats,
 };
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use serde_json::Value;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Vector Store Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -351,5 +354,34 @@ fn main() {
         empty_stats.avg_vector_magnitude
     );
 
+    // -----------------------------------------------------------------------
+    // 7. Real LLM Demo — Q&A with vector store results
+    // -----------------------------------------------------------------------
+    println!("\n--- 7. Real LLM Demo ---");
+    println!("Search the vector store, then ask an LLM to answer based on results.\n");
+
+    let qa_query = SearchQuery::builder(vec![0.4, 0.8, 0.3]).top_k(2).build();
+    let qa_results = store.search(&qa_query);
+
+    let context: String = qa_results
+        .iter()
+        .map(|r| format!("- {}", r.entry.document))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let model = shared::get_chat_model(vec![
+        "Based on the retrieved documents, the topics most related to your query are machine learning with neural networks and large language models with transformers. Both are subfields of artificial intelligence.".into(),
+    ]);
+    let messages = vec![
+        Message::system("Answer the user's question using only the provided context documents."),
+        Message::human(&format!("Context:\n{}\n\nQuestion: What topics are most related to AI in this collection?", context)),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("Retrieved context:\n{}\n", context);
+        println!("LLM answer: {}", gen.message.content().text());
+    }
+
     println!("\n=== Vector Store Example Complete ===");
+    Ok(())
 }

@@ -228,7 +228,55 @@ fn main() {
     );
     println!();
 
-    println!("=== Graph Debug Demo Complete ===");
+    // -----------------------------------------------------------------------
+    // 6. Real LLM Demo — LLM call in debug demo graph
+    // -----------------------------------------------------------------------
+    println!("--- 6. Real LLM Demo (LLM in Debug Graph) ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "The profiler shows that 'process' is the slowest node, which is expected as it performs the most computation. Consider optimizing this node or parallelizing its workload.".into(),
+    ]);
+
+    // Record a debug step for the LLM call
+    let llm_state = json!({"query": "Analyze profiler results", "profiler_data": profiler.to_json()});
+    session.record_step("llm_analysis", llm_state);
+
+    // Profile the LLM call
+    profiler.start_node("llm_analysis");
+
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a performance analysis expert. Analyze profiling data concisely.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            &format!(
+                "Analyze these node execution times and suggest which node to optimize first. Answer in 1-2 sentences.\nProfiler data: {}",
+                serde_json::to_string(&profiler.to_json()).unwrap()
+            ),
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let ai_msg = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        model.invoke_messages(&messages, None).await
+    });
+
+    profiler.end_node("llm_analysis");
+
+    match ai_msg {
+        Ok(response) => {
+            println!("  LLM analysis: {}", response.content);
+            if let Some(avg) = profiler.average_time("llm_analysis") {
+                println!("  LLM node execution time: {:.2} ms", avg);
+            }
+        }
+        Err(e) => println!("  LLM error: {}", e),
+    }
+
+    println!("  Total debug steps: {}", session.step_count());
+
+    println!("\n=== Graph Debug Demo Complete ===");
 }
 
 /// Simulate work by doing some computation. Returns a value to prevent

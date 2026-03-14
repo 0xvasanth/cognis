@@ -11,8 +11,11 @@ mod shared;
 use cognis::agents::{
     AgentOutputParser, JsonOutputParser, ReActOutputParser, ToolCallOutputParser, XmlOutputParser,
 };
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Agent Output Parsing Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -215,5 +218,27 @@ Action Input: quantum computing basics";
         Err(e) => println!("Error (expected): {e}\n"),
     }
 
-    println!("=== Done ===");
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Asking a real LLM to respond in ReAct format, then parsing it.\n");
+
+    let model = shared::get_chat_model(vec![
+        "Thought: The user asked about Rust.\nFinal Answer: Rust is a systems programming language focused on safety and performance.".into(),
+    ]);
+    let messages = vec![
+        Message::system("Respond using the ReAct format: Thought: <your reasoning>\nFinal Answer: <your answer>"),
+        Message::human("What is Rust?"),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        let text = gen.message.content().text();
+        println!("Raw LLM output:\n{}\n", text);
+        match react_parser.parse(&text) {
+            Ok(output) => println!("Parsed as ReAct: {output:#?}"),
+            Err(e) => println!("Parse error (model may not follow format exactly): {e}"),
+        }
+    }
+
+    println!("\n=== Done ===");
+    Ok(())
 }

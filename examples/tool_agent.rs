@@ -149,5 +149,17 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     println!("\nFinal output: {}", result.output);
 
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    let real_model = shared::get_chat_model(vec![
+        "The result of 2 + 2 is 4.".into(),
+    ]);
+    let simple_messages = vec![Message::human("What is 2 + 2?")];
+    let real_result = real_model._generate(&simple_messages, None).await?;
+    if let Some(gen) = real_result.generations.first() {
+        println!("Question: What is 2 + 2?");
+        println!("LLM Response: {}", gen.message.content().text());
+    }
+
     Ok(())
 }

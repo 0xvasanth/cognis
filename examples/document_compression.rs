@@ -236,5 +236,41 @@ fn main() {
     }
     println!();
 
+    // -----------------------------------------------------------------------
+    // 9. Real LLM Demo — Summarize compressed documents
+    // -----------------------------------------------------------------------
+    println!("--- 9. Real LLM Demo (Summarize Compressed Docs) ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "The compressed documents discuss Rust's ownership system and memory safety features, including the borrow checker that enforces rules at compile time.".into(),
+    ]);
+
+    let compressed_text: String = pipeline_result
+        .iter()
+        .enumerate()
+        .map(|(i, doc)| format!("Doc {}: {}", i, doc.page_content))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a helpful summarizer. Provide a brief summary of the given documents.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            &format!("Summarize these compressed documents in 2-3 sentences:\n{}", compressed_text),
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let ai_msg = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        model.invoke_messages(&messages, None).await
+    });
+
+    match ai_msg {
+        Ok(response) => println!("  LLM summary: {}\n", response.content),
+        Err(e) => println!("  LLM error: {}\n", e),
+    }
+
     println!("=== Document Compression Example Complete ===");
 }

@@ -17,9 +17,12 @@ use cognis::caching::{
     CacheEntry, CacheKey, CachePolicy, CacheStats, CacheStore, CacheWarmer, InMemoryCache,
     SemanticCache,
 };
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use serde_json::json;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Caching System Demo ===\n");
 
     // -----------------------------------------------------------------------
@@ -350,5 +353,50 @@ fn main() {
     println!("\nFinal statistics:");
     println!("  {}", stats.to_json());
 
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Demonstrating caching with a real LLM call.\n");
+
+    let model = shared::get_chat_model(vec![
+        "Rust's ownership system ensures memory safety without garbage collection by enforcing strict rules at compile time.".into(),
+    ]);
+
+    let cache_key = CacheKey::from_parts(
+        "shared_model",
+        &[json!({"role": "user", "content": "Explain Rust ownership"})],
+        Some(0.3),
+        None,
+    );
+
+    // First call: cache miss, call the LLM
+    let mut demo_cache = InMemoryCache::new(100);
+    let mut demo_stats = CacheStats::new();
+
+    if demo_cache.get(&cache_key).is_none() {
+        demo_stats.record_miss();
+        println!("Cache MISS - calling LLM...");
+        let messages = vec![Message::human("Explain Rust ownership in one sentence.")];
+        let result = model._generate(&messages, None).await?;
+        if let Some(gen) = result.generations.first() {
+            let response_text = gen.message.content().text();
+            println!("LLM Response: {}", response_text);
+            let entry = CacheEntry::new(json!(response_text), "shared_model").with_ttl_secs(600);
+            demo_cache.put(cache_key.clone(), entry);
+            demo_stats.record_insertion();
+            println!("Response cached.");
+        }
+    }
+
+    // Second call: cache hit
+    if let Some(entry) = demo_cache.get(&cache_key) {
+        entry.record_hit();
+        demo_stats.record_hit();
+        println!("\nCache HIT: {}", entry.response);
+        println!("Saved an LLM call!");
+    }
+
+    println!("Cache stats: {}", demo_stats.to_json());
+
     println!("\n=== Caching Demo Complete ===");
+    Ok(())
 }

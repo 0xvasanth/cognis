@@ -15,8 +15,11 @@ mod shared;
 use cognis::streaming::{
     FilterTransformer, StreamBuffer, StreamEvent, StreamStats, StreamTransformer, TokenAggregator,
 };
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Streaming Utilities Demo ===\n");
 
     // -----------------------------------------------------------------------
@@ -241,5 +244,33 @@ fn main() {
     println!("  Total tokens: {}", pipeline_stats.total_tokens());
     println!("  Stream complete: {}", pipeline_buffer.is_complete());
 
+    // -----------------------------------------------------------------------
+    // 7. Real LLM Demo — Generate streaming-style content
+    // -----------------------------------------------------------------------
+    println!("\n--- 7. Real LLM Demo ---");
+    println!("Use a real LLM to generate content and collect it in a StreamBuffer.\n");
+
+    let model = shared::get_chat_model(vec![
+        "Streaming allows LLMs to send tokens incrementally, reducing perceived latency and enabling real-time display of generated text.".into(),
+    ]);
+    let messages = vec![
+        Message::human("Explain in one sentence why streaming is useful for LLM applications."),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        let text = gen.message.content().text();
+        println!("LLM response: {}", text);
+
+        // Feed the response into a StreamBuffer as tokens
+        let mut llm_buffer = StreamBuffer::new();
+        for word in text.split_whitespace() {
+            llm_buffer.push(StreamEvent::Token(format!("{} ", word)));
+        }
+        llm_buffer.push(StreamEvent::Done);
+        println!("Collected {} events, complete: {}", llm_buffer.event_count(), llm_buffer.is_complete());
+        println!("Reconstructed: \"{}\"", llm_buffer.tokens().trim());
+    }
+
     println!("\n=== Done ===");
+    Ok(())
 }

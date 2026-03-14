@@ -21,6 +21,7 @@ mod shared;
 use cognis::memory::summary_buffer::{
     SimpleSummarizer, SummaryBufferMemory, SummaryStrategy, TemplateSummarizer,
 };
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 
 #[tokio::main]
@@ -225,6 +226,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mem_built.message_count(),
         mem_built.has_summary()
     );
+
+    // -----------------------------------------------------------------------
+    // 7. Real LLM Demo — LLM-generated summary
+    // -----------------------------------------------------------------------
+    println!("\n--- 7. Real LLM Demo ---");
+    println!("Ask an LLM to summarize a conversation.\n");
+
+    let model = shared::get_chat_model(vec![
+        "The user asked about European capitals. The assistant identified Paris as France's capital, Berlin as Germany's, and Madrid as Spain's.".into(),
+    ]);
+    let conversation = "Human: What is the capital of France?\nAI: Paris.\nHuman: And Germany?\nAI: Berlin.\nHuman: What about Spain?\nAI: Madrid.";
+    let llm_messages = vec![
+        Message::system("Summarize the following conversation in one concise sentence."),
+        Message::human(conversation),
+    ];
+    let result = model._generate(&llm_messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("LLM-generated summary: {}", gen.message.content().text());
+    }
 
     println!("\n=== Summary Buffer Memory Example Complete ===");
     Ok(())

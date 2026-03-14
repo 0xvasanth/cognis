@@ -15,6 +15,7 @@ use cognis::memory::token_buffer::{CharBasedTokenCounter, SimpleTokenCounter, To
 use cognis::memory::{
     BaseMemory, ConversationBufferMemory, ConversationWindowMemory, EntityMemory,
 };
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 
 #[tokio::main]
@@ -242,6 +243,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "    Value (as text): {:?}\n",
         vars.get("chat_log").unwrap().as_str().unwrap()
     );
+
+    // -----------------------------------------------------------------------
+    // 5. Memory with Real LLM
+    // -----------------------------------------------------------------------
+    println!("--- 5. Memory with Real LLM ---");
+    println!("Demonstrates memory-augmented conversation with an actual model.\n");
+
+    let llm_mem = ConversationBufferMemory::new();
+
+    let model = shared::get_chat_model(vec![
+        "That's great! Rust is an excellent choice.".to_string(),
+        "Your favorite programming language is Rust!".to_string(),
+    ]);
+
+    // Turn 1: User tells the model about their favorite language
+    let user_msg_1 = Message::human("My favorite programming language is Rust");
+    let ai_response_1 = model.invoke_messages(&[user_msg_1.clone()], None).await?;
+    let ai_text_1 = ai_response_1.base.content.text();
+    let ai_msg_1 = Message::ai(&ai_text_1);
+
+    llm_mem.save_context(&user_msg_1, &ai_msg_1).await?;
+    println!("  Turn 1:");
+    println!("    User: My favorite programming language is Rust");
+    println!("    AI:   {}\n", ai_text_1);
+
+    // Turn 2: Ask the model to recall — include history from memory
+    let vars = llm_mem.load_memory_variables().await?;
+    let history_msgs = vars.get("history").unwrap().as_array().unwrap();
+
+    // Build message list: history + new user question
+    let mut messages: Vec<Message> = history_msgs
+        .iter()
+        .map(|v| serde_json::from_value::<Message>(v.clone()).unwrap())
+        .collect();
+    let user_msg_2 = Message::human("What's my favorite language?");
+    messages.push(user_msg_2.clone());
+
+    let ai_response_2 = model.invoke_messages(&messages, None).await?;
+    let ai_text_2 = ai_response_2.base.content.text();
+    let ai_msg_2 = Message::ai(&ai_text_2);
+
+    llm_mem.save_context(&user_msg_2, &ai_msg_2).await?;
+    println!("  Turn 2 (with memory context):");
+    println!("    User: What's my favorite language?");
+    println!("    AI:   {}\n", ai_text_2);
+
+    // Show final memory contents
+    let final_vars = llm_mem.load_memory_variables().await?;
+    let final_history = final_vars.get("history").unwrap().as_array().unwrap();
+    println!("  Memory now contains {} messages (2 turns)\n", final_history.len());
 
     println!("=== Done ===");
     Ok(())

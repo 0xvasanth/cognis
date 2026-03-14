@@ -24,6 +24,11 @@ use cognis::chains::{
     execute_with_metrics, ChainMetrics, ChainPipeline, ChainStep, CompositionConditionalChain,
     CompositionSequentialChain, CompositionTransformChain, MapChain, ParallelChain,
 };
+use cognis_core::chain;
+use cognis_core::language_models::ChatModelRunnable;
+use cognis_core::output_parsers::StrOutputParser;
+use cognis_core::prompts::ChatPromptTemplate;
+use cognis_core::runnables::Runnable;
 use serde_json::{json, Value};
 
 // ---------------------------------------------------------------------------
@@ -85,7 +90,8 @@ fn length_handler() -> Handler {
     })
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Chain Composition Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -438,5 +444,35 @@ fn main() {
     println!("  Metrics JSON:");
     println!("  {}", serde_json::to_string_pretty(&metrics_json).unwrap());
 
+    // -----------------------------------------------------------------------
+    // 9. LLM Chain — Prompt -> Model -> Parser with real or fake model
+    // -----------------------------------------------------------------------
+    println!("\n--- 9. LLM Chain (Prompt -> Model -> Parser) ---");
+    println!("Demonstrates composing a prompt template, chat model, and output parser.\n");
+
+    let prompt = ChatPromptTemplate::from_messages(vec![
+        ("system", "You are a helpful assistant that explains topics concisely."),
+        ("human", "Explain {topic} in one sentence."),
+    ])?;
+
+    let model = shared::get_chat_model(vec![
+        "A chain composes multiple processing steps into a single callable unit, passing each step's output as the next step's input.".into(),
+    ]);
+
+    let parser = StrOutputParser;
+    let model_runnable = ChatModelRunnable::new(model);
+    let llm_chain = chain!(prompt, model_runnable, parser)?;
+
+    let input = json!({ "topic": "chain composition in LLM frameworks" });
+    let result = llm_chain.invoke(input.clone(), None).await?;
+
+    let text = match result.as_str() {
+        Some(s) => s.to_string(),
+        None => result.to_string(),
+    };
+    println!("  Input:    {}", input);
+    println!("  Response: {}", text);
+
     println!("\n=== Chain Composition Example Complete ===");
+    Ok(())
 }

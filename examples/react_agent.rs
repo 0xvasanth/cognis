@@ -18,13 +18,15 @@
 //! Run with: `cargo run -p cognis-examples --example react_agent`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognisgraph::prebuilt::agents::{
     create_react_agent, create_tool_node, AgentState, ReactAgentConfig, ToolCall, ToolChoice,
     ToolDefinition,
 };
 use serde_json::json;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== ReAct Agent (Prebuilt Agents) Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -363,5 +365,25 @@ fn main() {
         zero_state.tool_calls[0].is_resolved()
     );
 
+    // -----------------------------------------------------------------------
+    // 8. Real LLM Demo — LLM showing real agent behavior
+    // -----------------------------------------------------------------------
+    println!("\n--- 8. Real LLM Demo ---");
+    println!("Use an LLM to demonstrate real reasoning in a ReAct agent context.\n");
+
+    let model = shared::get_chat_model(vec![
+        "To solve '15 * 7 + 23', I would use the calculator tool: first compute 15 * 7 = 105, then add 23 to get 128. The final answer is 128.".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            "Using a ReAct approach, explain step by step how you would solve: 15 * 7 + 23"
+        ),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("  LLM Response: {}", gen.message.content().text());
+    }
+
     println!("\n=== ReAct Agent (Prebuilt Agents) Example Complete ===");
+    Ok(())
 }

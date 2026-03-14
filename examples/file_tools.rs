@@ -221,6 +221,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => println!("  Writing in read-only mode: (unexpected success)"),
     }
 
+    // =========================================================================
+    // 8. Real LLM Demo — Generate content with LLM and write to file
+    // =========================================================================
+    println!("\n--- 8. Real LLM Demo (LLM-Generated File Content) ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "# Cognis Framework\n\nCognis is a Rust-based LLM framework providing chat models, tools, and graph-based workflows.\n\n## Features\n- Chat model abstractions\n- File management tools\n- Graph execution engine".into(),
+    ]);
+
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a technical writer. Generate concise markdown content.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            "Write a short README.md for a Rust LLM framework called Cognis. Include a title, brief description, and 3 bullet-point features. Keep it under 10 lines.",
+        )),
+    ];
+
+    use cognis_core::language_models::chat_model::BaseChatModel;
+    let result = model.invoke_messages(&messages, None).await;
+
+    match result {
+        Ok(response) => {
+            println!("  LLM generated content ({} chars)", response.content.len());
+
+            // Write the LLM-generated content using file tools
+            let write_result = write_tool
+                ._run(structured_input(&[
+                    ("path", "llm_generated.md"),
+                    ("content", &response.content),
+                ]))
+                .await?;
+            println!("  {}", extract_content_str(&write_result));
+
+            // Read it back to verify
+            let read_result = read_tool._run(text_input("llm_generated.md")).await?;
+            println!("  Read back:\n    {}", extract_content_str(&read_result).replace('\n', "\n    "));
+        }
+        Err(e) => println!("  LLM error: {}", e),
+    }
+
     println!("\n=== File Management Tools Example Complete ===");
     Ok(())
 }

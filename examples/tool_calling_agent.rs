@@ -19,6 +19,7 @@ use serde_json::{json, Value};
 
 use cognis::agents::AgentExecutor;
 use cognis::tools::cached::CachedTool;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::language_models::FakeMessagesListChatModel;
 use cognis_core::messages::tool_types::ToolCall;
 use cognis_core::messages::{AIMessage, Message};
@@ -268,6 +269,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\n  Final output: {}", result.output);
+
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    let real_model = shared::get_chat_model(vec![
+        "Rust achieves memory safety through its ownership system with zero-cost abstractions.".into(),
+    ]);
+    let simple_messages = vec![Message::human("Explain Rust's ownership model in one sentence.")];
+    let real_result = real_model._generate(&simple_messages, None).await?;
+    if let Some(gen) = real_result.generations.first() {
+        println!("Question: Explain Rust's ownership model in one sentence.");
+        println!("LLM Response: {}", gen.message.content().text());
+    }
 
     println!("\nDone!");
     Ok(())

@@ -276,5 +276,49 @@ fn main() {
         serde_json::to_string_pretty(&result_with_usage.to_json()).unwrap()
     );
 
+    // -----------------------------------------------------------------------
+    // 9. Real LLM Demo — Chat + Embeddings Together
+    // -----------------------------------------------------------------------
+    println!("\n--- 9. Real LLM Demo (Chat + Embeddings) ---");
+    println!("Demonstrate using a chat model alongside embeddings.\n");
+
+    let chat_model = shared::get_chat_model(vec![
+        "Embeddings are dense vector representations of text that capture semantic meaning. They enable similarity search by mapping text into a continuous vector space where similar concepts are close together.".into(),
+    ]);
+
+    // First, embed some texts
+    let embed_model = FakeEmbeddingModel::new(8);
+    let texts_to_embed = vec!["embeddings", "vectors", "similarity search"];
+    let embeddings = embed_model.embed_batch(&texts_to_embed).unwrap();
+    println!("  Embedded {} texts into {}-dim vectors", texts_to_embed.len(), embed_model.dimensions());
+
+    // Find most similar to "embeddings"
+    let query_embedding = &embeddings[0];
+    let candidates: Vec<Vec<f64>> = embeddings[1..].to_vec();
+    let similar = EmbeddingDistance::most_similar(query_embedding, &candidates, 1);
+    let most_similar_text = texts_to_embed[similar[0].0 + 1]; // +1 because candidates starts at index 1
+    println!("  Most similar to 'embeddings': '{}'", most_similar_text);
+
+    // Now ask the LLM to explain embeddings
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a helpful AI teacher. Explain concepts concisely.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            "What are text embeddings and why are they useful for similarity search? Answer in 2-3 sentences.",
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let ai_msg = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        chat_model.invoke_messages(&messages, None).await
+    });
+
+    match ai_msg {
+        Ok(response) => println!("\n  LLM explanation: {}", response.content),
+        Err(e) => println!("\n  LLM error: {}", e),
+    }
+
     println!("\n=== Embedding Models Example Complete ===");
 }

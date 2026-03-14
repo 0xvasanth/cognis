@@ -13,13 +13,16 @@
 //! Run with: `cargo run -p cognis-examples --example context_management_demo`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognisagent::context::{
     ContextCompressor, ContextEntry, ContextFilter, ContextPolicy, ContextRole, ContextSnapshot,
     ContextStats, ContextWindow,
 };
 use serde_json::Value;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Context Management Demo ===\n");
 
     // -----------------------------------------------------------------------
@@ -304,5 +307,48 @@ fn main() {
         system_count
     );
 
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Using an LLM within a managed context window.\n");
+
+    let mut llm_window = ContextWindow::new(500);
+    llm_window.push(ContextEntry::new(
+        ContextRole::System,
+        "You are a concise coding assistant.",
+    ));
+    llm_window.push(ContextEntry::new(
+        ContextRole::User,
+        "How do I read a file in Rust?",
+    ));
+
+    println!("Context window: {} entries, {} tokens used, {} remaining",
+        llm_window.len(), llm_window.total_tokens(), llm_window.remaining_tokens());
+
+    let model = shared::get_chat_model(vec![
+        "Use std::fs::read_to_string(\"path\") to read a file into a String in Rust.".into(),
+    ]);
+
+    // Build messages from context window entries
+    let messages: Vec<Message> = llm_window.entries().iter().map(|e| {
+        match &e.role {
+            ContextRole::System => Message::system(&e.content),
+            ContextRole::User => Message::human(&e.content),
+            ContextRole::Assistant => Message::ai(&e.content),
+            ContextRole::Tool(_) => Message::human(&e.content),
+        }
+    }).collect();
+
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        let reply = gen.message.content().text();
+        println!("LLM Response: {}", reply);
+
+        // Add the response back into the context window
+        llm_window.push(ContextEntry::new(ContextRole::Assistant, &reply));
+        println!("Context window after LLM reply: {} entries, {} tokens, {:.1}% utilization",
+            llm_window.len(), llm_window.total_tokens(), llm_window.utilization() * 100.0);
+    }
+
     println!("\n=== Context Management Demo Complete ===");
+    Ok(())
 }

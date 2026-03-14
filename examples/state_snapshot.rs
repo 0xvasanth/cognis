@@ -12,12 +12,15 @@
 //! Run with: `cargo run -p cognis-examples --example state_snapshot`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognisgraph::graph::{
     SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot, TimeTravelDebugger,
 };
 use serde_json::json;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== State Snapshot Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -258,5 +261,27 @@ fn main() {
     println!("  Remaining steps: {:?}", history);
     println!();
 
-    println!("=== State Snapshot Example Complete ===");
+    // -----------------------------------------------------------------------
+    // 10. Real LLM Demo — Analyze snapshot diff
+    // -----------------------------------------------------------------------
+    println!("--- 10. Real LLM Demo ---");
+    println!("Ask an LLM to analyze the state changes between snapshots.\n");
+
+    let model = shared::get_chat_model(vec![
+        "Between step 0 and step 4, the graph processed a user message, generated a response, executed a search tool, and reached completion. The key changes were: messages grew from empty to 4 entries, status changed from 'initialized' to 'complete', and tool_calls was added with value 1.".into(),
+    ]);
+    let messages = vec![
+        Message::system("You are a debugging assistant. Analyze state snapshot diffs and explain what happened."),
+        Message::human(&format!(
+            "Here is the diff between step 0 and step 4 of a graph execution:\n{}",
+            diff.summary()
+        )),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("LLM analysis: {}", gen.message.content().text());
+    }
+
+    println!("\n=== State Snapshot Example Complete ===");
+    Ok(())
 }

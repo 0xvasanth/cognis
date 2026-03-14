@@ -20,11 +20,13 @@
 //! Run with: `cargo run -p cognis-examples --example message_graph`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use cognisgraph::graph::{
     GraphMessage, MessageGraph, MessageGraphBuilder, MessageNode, MessageRole, MessageState,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Message Graph Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -417,5 +419,25 @@ fn main() {
         Err(e) => println!("  Builder validation: {}", e),
     }
 
+    // -----------------------------------------------------------------------
+    // 9. Real LLM Demo — LLM in message graph context
+    // -----------------------------------------------------------------------
+    println!("\n--- 9. Real LLM Demo ---");
+    println!("Use an LLM to generate a response in a message graph context.\n");
+
+    let model = shared::get_chat_model(vec![
+        "In a message graph, nodes process messages sequentially or conditionally, allowing you to build conversational workflows with routing logic.".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            "Explain how message graphs help build conversational AI workflows."
+        ),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("  LLM Response: {}", gen.message.content().text());
+    }
+
     println!("\n=== Message Graph Example Complete ===");
+    Ok(())
 }

@@ -9,6 +9,7 @@
 //! Run with: `cargo run -p cognis-examples --example planning_middleware`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use std::sync::Arc;
 
 use serde_json::json;
@@ -252,6 +253,25 @@ Build an API server:
         deserialized.get_step(0).unwrap().status
     );
 
-    println!("=== Done ===");
+    // -----------------------------------------------------------------------
+    // 7. Real LLM Demo — LLM in planning middleware
+    // -----------------------------------------------------------------------
+    println!("\n--- 7. Real LLM Demo ---");
+    println!("Use an LLM to generate a plan from a natural language goal.\n");
+
+    let model = shared::get_chat_model(vec![
+        "To build a REST API:\n1. Define data models and database schema\n2. Implement CRUD endpoints\n3. Add authentication middleware\n4. Write integration tests\n5. Deploy with CI/CD pipeline".into(),
+    ]);
+    let messages = vec![
+        cognis_core::messages::Message::human(
+            "Break down the goal 'Build a REST API server' into actionable steps."
+        ),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("  LLM Plan:\n  {}", gen.message.content().text());
+    }
+
+    println!("\n=== Done ===");
     Ok(())
 }

@@ -20,11 +20,14 @@
 //! Run with: `cargo run -p cognis-examples --example agent_memory`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognisagent::memory::{
     LongTermMemory, MemoryCategory, MemoryEntry, MemoryIndex, MemoryManager, ShortTermMemory,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Agent Memory Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -394,5 +397,33 @@ fn main() {
     println!("\n  Stats as JSON:");
     println!("  {}", serde_json::to_string_pretty(&stats_json).unwrap());
 
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Using an LLM to generate a memory-worthy fact, then storing it.\n");
+
+    let model = shared::get_chat_model(vec![
+        "The Rust programming language was first released in 2010 by Graydon Hoare at Mozilla.".into(),
+    ]);
+    let messages = vec![Message::human("Tell me a key fact about Rust's history in one sentence.")];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        let fact_text = gen.message.content().text();
+        println!("LLM generated fact: {}", fact_text);
+
+        // Store the LLM-generated fact in the memory manager
+        manager.remember(
+            "llm_rust_fact",
+            serde_json::json!(fact_text),
+            MemoryCategory::Fact,
+            0.85,
+        );
+        println!("Stored in memory manager as 'llm_rust_fact'");
+
+        if let Some(entry) = manager.recall("llm_rust_fact") {
+            println!("Recalled: key={}, value={}", entry.key, entry.value);
+        }
+    }
+
     println!("\n=== Agent Memory Example Complete ===");
+    Ok(())
 }

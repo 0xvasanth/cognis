@@ -401,5 +401,52 @@ fn main() {
     println!("  case_count: {}", report_json["case_count"]);
     println!("  duration_ms: {}", report_json["duration_ms"]);
 
+    // -----------------------------------------------------------------------
+    // 9. Real LLM Demo — LLM-powered evaluation
+    // -----------------------------------------------------------------------
+    println!("\n--- 9. Real LLM Demo (LLM-Powered Evaluation) ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "Paris".into(),
+    ]);
+
+    // Ask the LLM a question and evaluate the response
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "Answer questions with just the answer, no explanation.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            "What is the capital of France?",
+        )),
+    ];
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let result = rt.block_on(async {
+        use cognis_core::language_models::chat_model::BaseChatModel;
+        model.invoke_messages(&messages, None).await
+    });
+
+    match result {
+        Ok(response) => {
+            let llm_answer = response.content.trim().to_string();
+            println!("  LLM answer: \"{}\"", llm_answer);
+
+            // Evaluate the LLM response using our metrics
+            let expected = json!("Paris");
+            let actual = json!(llm_answer);
+
+            let exact_score = ExactMatchMetric.evaluate(&expected, &actual);
+            let contains_score = ContainsMetric::new(true).evaluate(&expected, &actual);
+
+            println!("  ExactMatch score: {:.2}", exact_score.score);
+            println!("  Contains score:   {:.2}", contains_score.score);
+            println!(
+                "  Evaluation: {}",
+                if contains_score.is_passing(0.5) { "PASS" } else { "FAIL" }
+            );
+        }
+        Err(e) => println!("  LLM error: {}", e),
+    }
+
     println!("\n=== Evaluation Framework Example Complete ===");
 }

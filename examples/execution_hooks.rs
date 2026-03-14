@@ -210,6 +210,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         other => println!("  Non-object state: {:?}", other),
     }
 
+    // -----------------------------------------------------------------------
+    // 6. Real LLM Demo — LLM call in graph execution with hooks
+    // -----------------------------------------------------------------------
+    println!("\n--- 6. Real LLM Demo (LLM Call with Execution Hooks) ---\n");
+
+    let model = shared::get_chat_model(vec![
+        "Execution hooks provide observability into graph workflows by capturing state before and after each node executes.".into(),
+    ]);
+
+    // Create hooks to monitor the LLM call
+    let llm_timing = Arc::new(TimingHook::new());
+    let llm_snapshot = Arc::new(StateSnapshotHook::new());
+    let mut llm_registry = HookRegistry::new();
+    llm_registry.register(Arc::new(LoggingHook));
+    llm_registry.register(llm_timing.clone());
+    llm_registry.register(llm_snapshot.clone());
+
+    // Before LLM node
+    let before_ctx = HookContext::new(
+        HookPhase::BeforeNode,
+        json!({"question": "What are execution hooks?"}),
+        0,
+    )
+    .with_node("llm_call");
+    llm_registry.dispatch(&before_ctx).await?;
+
+    let messages = vec![
+        cognis_core::messages::Message::System(cognis_core::messages::SystemMessage::new(
+            "You are a helpful assistant. Answer concisely in 1-2 sentences.",
+        )),
+        cognis_core::messages::Message::Human(cognis_core::messages::HumanMessage::new(
+            "What are execution hooks in graph-based workflows?",
+        )),
+    ];
+
+    use cognis_core::language_models::chat_model::BaseChatModel;
+    let result = model.invoke_messages(&messages, None).await;
+
+    match result {
+        Ok(response) => {
+            // After LLM node
+            let after_ctx = HookContext::new(
+                HookPhase::AfterNode,
+                json!({"question": "What are execution hooks?", "answer": response.content.clone()}),
+                0,
+            )
+            .with_node("llm_call");
+            llm_registry.dispatch(&after_ctx).await?;
+
+            println!("  LLM response: {}", response.content);
+
+            let snaps = llm_snapshot.snapshots_for_node("llm_call").await;
+            println!("  Snapshots captured for 'llm_call': {}", snaps.len());
+        }
+        Err(e) => println!("  LLM error: {}", e),
+    }
+
     println!("\n=== Execution Hooks Example Complete ===");
     Ok(())
 }

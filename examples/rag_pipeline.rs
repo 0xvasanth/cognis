@@ -14,6 +14,8 @@ use cognis::document_loaders::text::TextLoader;
 use cognis::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
 use cognis_core::document_loaders::BaseLoader;
 use cognis_core::embeddings_fake::DeterministicFakeEmbedding;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::{HumanMessage, Message, SystemMessage};
 use cognis_core::retrievers::BaseRetriever;
 use cognis_core::vectorstores::base::{SearchType, VectorStore};
 use cognis_core::vectorstores::in_memory::InMemoryVectorStore;
@@ -144,6 +146,45 @@ Futures are lazy and only make progress when polled by a runtime."#;
         };
         println!("    {}: {}", i + 1, preview);
     }
+
+    // Step 7: Ask the LLM using retrieved context
+    println!("\nStep 7: Asking LLM with retrieved context\n");
+
+    let query = "How does Rust achieve memory safety?";
+
+    // Build context string from retrieved documents
+    let context: String = retrieved
+        .iter()
+        .enumerate()
+        .map(|(i, doc)| format!("[{}] {}", i + 1, doc.page_content.replace('\n', " ")))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let model: Arc<dyn BaseChatModel> = shared::get_chat_model(vec![
+        "Based on the retrieved context, Rust achieves memory safety through its ownership \
+         system. The ownership system has three rules: each value has an owner, there can \
+         only be one owner at a time, and when the owner goes out of scope the value is \
+         dropped. Additionally, Rust's type system and borrow checker catch many common \
+         bugs at compile time, eliminating data races, null pointer dereferences, and \
+         buffer overflows — all without needing a garbage collector."
+            .into(),
+    ]);
+
+    let messages = vec![
+        Message::System(SystemMessage::new(
+            "You are a helpful assistant. Answer the user's question based only on the \
+             provided context. Be concise and accurate.",
+        )),
+        Message::Human(HumanMessage::new(&format!(
+            "Context:\n{context}\n\nQuestion: {query}"
+        ))),
+    ];
+
+    let result = model._generate(&messages, None).await?;
+    let answer = &result.generations[0].text;
+
+    println!("  Question: \"{query}\"");
+    println!("  Answer: {answer}");
 
     println!("\nDone!");
     Ok(())

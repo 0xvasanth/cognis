@@ -19,9 +19,12 @@ use cognis::memory::conversation::{
     BufferMemory, ConversationMessage, ConversationStore, MemorySearch, MemoryStats, MessageRole,
     SummaryMemory, TokenBufferMemory, WindowMemory,
 };
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use serde_json::json;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Conversation Memory Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -166,5 +169,51 @@ fn main() {
         .with_metadata("confidence", json!(0.99));
     println!("Message JSON: {}", msg.to_json());
 
+    // --- Real LLM Demo ---
+    println!("\n--- Real LLM Demo ---\n");
+    println!("Multi-turn conversation with memory.\n");
+
+    let model = shared::get_chat_model(vec![
+        "Rust is a systems programming language focused on safety, speed, and concurrency.".into(),
+        "The borrow checker is Rust's compile-time mechanism that enforces ownership rules to prevent data races and memory errors.".into(),
+    ]);
+
+    let mut conv_buffer = BufferMemory::new();
+
+    // Turn 1
+    let q1 = "What is Rust?";
+    conv_buffer.add_message(ConversationMessage::new(MessageRole::Human, q1));
+    let messages = vec![Message::human(q1)];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        let reply = gen.message.content().text();
+        conv_buffer.add_message(ConversationMessage::new(MessageRole::Ai, &reply));
+        println!("Turn 1 - Q: {}", q1);
+        println!("Turn 1 - A: {}\n", reply);
+    }
+
+    // Turn 2
+    let q2 = "What is the borrow checker?";
+    conv_buffer.add_message(ConversationMessage::new(MessageRole::Human, q2));
+    let mut turn2_msgs: Vec<Message> = conv_buffer.messages().iter().map(|m| {
+        match m.role {
+            MessageRole::Human => Message::human(&m.content),
+            MessageRole::Ai => Message::ai(&m.content),
+            _ => Message::human(&m.content),
+        }
+    }).collect();
+    // Remove last since it's the question we just added
+    let result = model._generate(&turn2_msgs, None).await?;
+    if let Some(gen) = result.generations.first() {
+        let reply = gen.message.content().text();
+        conv_buffer.add_message(ConversationMessage::new(MessageRole::Ai, &reply));
+        println!("Turn 2 - Q: {}", q2);
+        println!("Turn 2 - A: {}\n", reply);
+    }
+
+    println!("Conversation history ({} messages):", conv_buffer.len());
+    println!("{}", conv_buffer.to_prompt_string("User", "Assistant"));
+
     println!("\n=== Conversation Memory Example Complete ===");
+    Ok(())
 }

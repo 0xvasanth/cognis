@@ -16,12 +16,15 @@
 //! Run with: `cargo run -p cognis-examples --example topic_channels`
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::Message;
 use cognisgraph::channels::topic::{
     DeadLetterQueue, TopicBus, TopicChannel, TopicFilter, TopicMessage, TopicRouter,
 };
 use serde_json::{json, Value};
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Topic Channels Example ===\n");
 
     // -----------------------------------------------------------------------
@@ -270,5 +273,24 @@ fn main() {
         );
     }
 
+    // -----------------------------------------------------------------------
+    // 7. Real LLM Demo — LLM-driven topic routing
+    // -----------------------------------------------------------------------
+    println!("\n--- 7. Real LLM Demo ---");
+    println!("Ask an LLM to classify a message into a topic.\n");
+
+    let model = shared::get_chat_model(vec![
+        "This message is about an order being placed, so it should be routed to the topic 'orders.created'.".into(),
+    ]);
+    let messages = vec![
+        Message::system("You are a message router. Given a message, classify it into one of these topics: orders.created, orders.shipped, logs.info, logs.error, metrics.cpu"),
+        Message::human("Customer #42 just placed an order for 3 items totaling $127.50"),
+    ];
+    let result = model._generate(&messages, None).await?;
+    if let Some(gen) = result.generations.first() {
+        println!("LLM topic classification: {}", gen.message.content().text());
+    }
+
     println!("\n=== Topic Channels Example Complete ===");
+    Ok(())
 }
