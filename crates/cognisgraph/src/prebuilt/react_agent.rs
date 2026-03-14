@@ -60,8 +60,24 @@ pub fn create_react_agent(
     model: Arc<dyn BaseChatModel>,
     tools: Vec<Arc<dyn BaseTool>>,
 ) -> Result<CompiledStateGraph, LangGraphError> {
+    // Bind tool schemas to the model so it knows what tools are available.
+    let tool_schemas: Vec<cognis_core::tools::base::ToolSchema> = tools
+        .iter()
+        .map(|t| cognis_core::tools::base::ToolSchema {
+            name: t.name().to_string(),
+            description: t.description().to_string(),
+            parameters: t.args_schema(),
+            extras: None,
+        })
+        .collect();
+
+    let bound_model: Arc<dyn BaseChatModel> = match model.bind_tools(&tool_schemas, None) {
+        Ok(boxed) => Arc::from(boxed),
+        Err(_) => model.clone(), // Fallback: use original model if bind_tools is not supported
+    };
+
     // Build the agent node: calls the model with current messages.
-    let agent_model = model.clone();
+    let agent_model = bound_model.clone();
     let agent_node: AsyncNodeAction = Arc::new(move |state: Value| {
         let model = agent_model.clone();
         Box::pin(async move {
