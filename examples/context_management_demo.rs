@@ -13,7 +13,6 @@
 //! Run with: `cargo run -p cognis-examples --example context_management_demo`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognisagent::context::{
     ContextCompressor, ContextEntry, ContextFilter, ContextPolicy, ContextRole, ContextSnapshot,

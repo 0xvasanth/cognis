@@ -17,7 +17,6 @@
 //! Run with: `cargo run -p cognis-examples --example state_machine`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognisgraph::graph::{
     StateHistory, StateId, StateMachine, StateMachineBuilder, StateMachineValidator, Transition,

@@ -21,7 +21,6 @@ use cognis::callbacks::manager::{
     CallbackDataBuilder, CallbackHandler, CallbackManager, CallbackPhase, CallbackScope,
     ConsoleCallbackHandler, FilteredHandler, MetricsCallbackHandler,
 };
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use serde_json::json;
 use std::sync::Arc;
@@ -83,7 +82,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nDisplay formatting: {}", CallbackPhase::ChainStart);
 
     // Equality and hashing
-    assert_eq!(CallbackPhase::LlmStart, CallbackPhase::LlmStart);
+    let phase_a = CallbackPhase::LlmStart;
+    let phase_b = CallbackPhase::LlmStart;
+    assert_eq!(phase_a, phase_b);
     assert_ne!(CallbackPhase::LlmStart, CallbackPhase::LlmEnd);
     println!("LlmStart == LlmStart: true");
     println!("LlmStart == LlmEnd: false");

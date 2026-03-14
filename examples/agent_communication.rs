@@ -18,7 +18,6 @@
 //! Run with: `cargo run -p cognis-examples --example agent_communication`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognisagent::communication::{
     AgentMessage, Channel, CommunicationHub, Mailbox, MessageFilter, MessagePriority, SharedState,

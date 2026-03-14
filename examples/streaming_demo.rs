@@ -15,7 +15,6 @@ mod shared;
 use cognis::streaming::{
     FilterTransformer, StreamBuffer, StreamEvent, StreamStats, StreamTransformer, TokenAggregator,
 };
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 
 #[tokio::main]

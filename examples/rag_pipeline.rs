@@ -7,14 +7,14 @@
 //! No API keys required -- uses deterministic fake embeddings.
 
 mod shared;
+use cognis_core::language_models::chat_model::BaseChatModel;
 use std::io::Write;
 use std::sync::Arc;
 
 use cognis::document_loaders::text::TextLoader;
-use cognis::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
+use cognis::text_splitter::RecursiveCharacterTextSplitter;
 use cognis_core::document_loaders::BaseLoader;
 use cognis_core::embeddings_fake::DeterministicFakeEmbedding;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{HumanMessage, Message, SystemMessage};
 use cognis_core::retrievers::BaseRetriever;
 use cognis_core::vectorstores::base::{SearchType, VectorStore};

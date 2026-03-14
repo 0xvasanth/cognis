@@ -422,7 +422,6 @@ fn main() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let result = rt.block_on(async {
-        use cognis_core::language_models::chat_model::BaseChatModel;
         model.invoke_messages(&messages, None).await
     });
 

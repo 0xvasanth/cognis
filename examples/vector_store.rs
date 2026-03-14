@@ -23,7 +23,6 @@ use cognis::vectorstores::memory::{
     InMemoryVectorStore, MaxMarginalRelevance, SearchQuery, SimilarityMetric, VectorEntry,
     VectorStoreStats,
 };
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use serde_json::Value;
 

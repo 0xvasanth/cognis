@@ -13,7 +13,6 @@ use serde_json::json;
 
 use cognis::chains::{create_qa_chain, CitedAnswer, QAChain, QAChainType, QAConfig, QAResult};
 use cognis_core::documents::Document;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognis_core::runnables::Runnable;
 

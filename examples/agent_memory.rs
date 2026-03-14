@@ -20,7 +20,6 @@
 //! Run with: `cargo run -p cognis-examples --example agent_memory`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognisagent::memory::{
     LongTermMemory, MemoryCategory, MemoryEntry, MemoryIndex, MemoryManager, ShortTermMemory,

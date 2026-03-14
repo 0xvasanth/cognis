@@ -13,7 +13,6 @@
 //! Run with: `cargo run -p cognis-examples --example agent_lifecycle_demo`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognisagent::lifecycle::{
     AgentLifecycle, GracefulShutdown, HealthCheck, LifecycleMonitor, RestartPolicy,

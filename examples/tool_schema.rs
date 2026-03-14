@@ -18,7 +18,6 @@
 //! Run with: `cargo run -p cognis-examples --example tool_schema`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognis_core::tools::schema::{
     PropertySchema, SchemaObject, SchemaRegistry, SchemaValidator, ToolSchema, ToolSchemaGenerator,

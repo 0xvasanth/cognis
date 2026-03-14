@@ -18,7 +18,6 @@ use async_trait::async_trait;
 use cognis::retrievers::caching::{CacheConfig, CachingRetriever};
 use cognis_core::documents::Document;
 use cognis_core::error::Result;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognis_core::retrievers::BaseRetriever;
 

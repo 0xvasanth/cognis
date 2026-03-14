@@ -19,7 +19,6 @@ use serde_json::{json, Value};
 
 use cognis::agents::AgentExecutor;
 use cognis::tools::cached::CachedTool;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::language_models::FakeMessagesListChatModel;
 use cognis_core::messages::tool_types::ToolCall;
 use cognis_core::messages::{AIMessage, Message};

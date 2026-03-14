@@ -9,7 +9,6 @@ mod shared;
 
 use futures::StreamExt;
 
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{HumanMessage, Message};
 
 #[tokio::main]

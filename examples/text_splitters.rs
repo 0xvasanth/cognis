@@ -26,7 +26,6 @@ use cognis::text_splitters::{
     RecursiveCharacterTextSplitter, SplitConfig, TextSplitter, TokenTextSplitter,
 };
 use cognis_core::documents::Document;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use serde_json::json;
 

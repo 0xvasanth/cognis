@@ -13,7 +13,6 @@ mod shared;
 use cognis::output_parsers::structured::{
     JsonType, OutputRepairer, SchemaEnforcer, StructuredParser,
 };
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 
 #[tokio::main]

@@ -13,12 +13,12 @@
 
 mod shared;
 
+use cognis_core::language_models::chat_model::BaseChatModel;
 use std::sync::Arc;
 
 use cognis::chains::extraction::{
     ExtractionChain, ExtractionSchema, FieldType, SchemaFieldBuilder,
 };
-use cognis_core::language_models::chat_model::BaseChatModel;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

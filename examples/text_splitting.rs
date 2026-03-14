@@ -15,7 +15,6 @@ use cognis::text_splitter::{
     Language, RecursiveCharacterTextSplitter, SentenceTextSplitter, TextSplitter,
 };
 use cognis_core::documents::Document;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 
 /// Sample long-form text for demonstrating recursive splitting.

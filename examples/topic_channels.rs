@@ -16,7 +16,6 @@
 //! Run with: `cargo run -p cognis-examples --example topic_channels`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognisgraph::channels::topic::{
     DeadLetterQueue, TopicBus, TopicChannel, TopicFilter, TopicMessage, TopicRouter,

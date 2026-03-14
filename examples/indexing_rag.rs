@@ -11,6 +11,7 @@
 
 mod shared;
 
+use cognis_core::language_models::chat_model::BaseChatModel;
 use std::sync::Arc;
 
 use cognis::chains::RetrievalQAChain;
@@ -19,7 +20,6 @@ use cognis::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
 use cognis_core::documents::Document;
 use cognis_core::embeddings::Embeddings;
 use cognis_core::embeddings_fake::DeterministicFakeEmbedding;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::retrievers::BaseRetriever;
 use cognis_core::vectorstores::base::{SearchType, VectorStore};
 use cognis_core::vectorstores::in_memory::InMemoryVectorStore;

@@ -245,7 +245,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )),
     ];
 
-    use cognis_core::language_models::chat_model::BaseChatModel;
     let result = model.invoke_messages(&messages, None).await;
 
     match result {

@@ -25,7 +25,6 @@ use cognis::chat_models::registry::{
     ChatRequest, ChatResponse, ModelCapability, ModelConfig, ModelInfo, ModelRegistry,
     ModelSelector, TokenUsage,
 };
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 
 #[tokio::main]

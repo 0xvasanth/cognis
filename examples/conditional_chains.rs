@@ -13,7 +13,6 @@ use cognis::chains::{
     BranchChain, ClosureCondition, ConditionalChain, KeyContainsCondition, KeyEqualsCondition,
     KeyExistsCondition, SwitchChain,
 };
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognis_core::runnables::{Runnable, RunnableLambda};
 

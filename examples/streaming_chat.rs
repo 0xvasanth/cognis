@@ -18,7 +18,6 @@ use uuid::Uuid;
 
 use cognis_core::callbacks::base::CallbackHandler;
 use cognis_core::callbacks::handlers::{LogLevel, LoggingCallbackHandler, MetricsCallbackHandler};
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{HumanMessage, Message};
 use cognis_core::outputs::LLMResult;
 

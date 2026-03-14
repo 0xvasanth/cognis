@@ -50,9 +50,11 @@ fn main() {
     }
 
     println!("\nEventType display: {}", EventType::LlmStart);
+    let chain_start_a = EventType::ChainStart;
+    let chain_start_b = EventType::ChainStart;
     println!(
         "EventType equality: ChainStart == ChainStart? {}",
-        EventType::ChainStart == EventType::ChainStart
+        chain_start_a == chain_start_b
     );
     println!(
         "EventType equality: ChainStart == ChainEnd? {}",
@@ -587,7 +589,6 @@ fn main() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let result = rt.block_on(async {
-        use cognis_core::language_models::chat_model::BaseChatModel;
         model.invoke_messages(&messages, None).await
     });
     let elapsed_ms = start_time.elapsed().as_millis() as u64;

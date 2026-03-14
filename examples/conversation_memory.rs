@@ -19,7 +19,6 @@ use cognis::memory::conversation::{
     BufferMemory, ConversationMessage, ConversationStore, MemorySearch, MemoryStats, MessageRole,
     SummaryMemory, TokenBufferMemory, WindowMemory,
 };
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use serde_json::json;
 

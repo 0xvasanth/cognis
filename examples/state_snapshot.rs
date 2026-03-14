@@ -12,10 +12,9 @@
 //! Run with: `cargo run -p cognis-examples --example state_snapshot`
 
 mod shared;
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognisgraph::graph::{
-    SnapshotComparator, SnapshotDiff, SnapshotId, SnapshotStore, StateSnapshot, TimeTravelDebugger,
+    SnapshotComparator, SnapshotStore, StateSnapshot, TimeTravelDebugger,
 };
 use serde_json::json;
 

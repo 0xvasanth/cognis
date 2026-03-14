@@ -17,7 +17,6 @@ use cognis::caching::{
     CacheEntry, CacheKey, CachePolicy, CacheStats, CacheStore, CacheWarmer, InMemoryCache,
     SemanticCache,
 };
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use serde_json::json;
 

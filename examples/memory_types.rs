@@ -15,7 +15,6 @@ use cognis::memory::token_buffer::{CharBasedTokenCounter, SimpleTokenCounter, To
 use cognis::memory::{
     BaseMemory, ConversationBufferMemory, ConversationWindowMemory, EntityMemory,
 };
-use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 
 #[tokio::main]

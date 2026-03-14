@@ -10,7 +10,6 @@
 
 mod shared;
 
-use std::sync::Arc;
 
 use serde_json::json;
 
