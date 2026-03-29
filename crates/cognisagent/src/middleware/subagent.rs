@@ -52,6 +52,14 @@ fn default_max_iterations() -> u32 {
 /// A pre-compiled sub-agent with a ready-to-invoke function.
 ///
 /// Matches Python's `CompiledSubAgent` TypedDict from DeepAgents.
+/// An async function that invokes a compiled sub-agent.
+pub type SubAgentInvokeFn = dyn Fn(
+        Value,
+    )
+        -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, DeepAgentError>> + Send>>
+    + Send
+    + Sync;
+
 /// The invoke function accepts JSON state (must contain `"messages"`)
 /// and returns the final state.
 pub struct CompiledSubAgentSpec {
@@ -60,14 +68,7 @@ pub struct CompiledSubAgentSpec {
     /// What this sub-agent does.
     pub description: String,
     /// The compiled invoke function.
-    pub invoke: Box<
-        dyn Fn(
-                Value,
-            ) -> std::pin::Pin<
-                Box<dyn std::future::Future<Output = Result<Value, DeepAgentError>> + Send>,
-            > + Send
-            + Sync,
-    >,
+    pub invoke: Box<SubAgentInvokeFn>,
 }
 
 impl std::fmt::Debug for CompiledSubAgentSpec {

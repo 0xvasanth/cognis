@@ -51,6 +51,7 @@ pub mod versioning;
 pub use annotations::{
     apply_annotations, AnnotatedState, AnnotatedStateBuilder, AnnotatedStateGraph,
     CompiledAnnotatedStateGraph, FieldAnnotation, GraphStateField, GraphStateSchema, JsonType,
+    ReducerFn,
 };
 pub use ascii::{to_ascii, AsciiGraphRenderer, AsciiRenderOptions, NodeStyle};
 pub use audit::{
