@@ -30,6 +30,7 @@ pub mod sequence;
 pub mod serialization;
 pub mod timeout;
 pub mod tracing;
+pub mod typed;
 
 use std::pin::Pin;
 
@@ -113,6 +114,7 @@ pub use tracing::{
     CompactTraceFormatter, JsonTraceFormatter, SpanResult, TextTraceFormatter, TraceCollector,
     TraceEntry, TraceExporter, TraceFormatter, TraceLevel, TraceSpan,
 };
+pub use typed::{DynRunnable, FromDynRunnable, TypedRunnable, TypedSequence};
 
 /// Creates a `RunnableSequence` from a list of runnables.
 ///

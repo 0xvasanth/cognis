@@ -231,6 +231,10 @@ pub type AsyncModelHandler = Box<
 /// - `wrap_tool_call` — intercept tool execution
 ///
 /// All methods have default no-op implementations.
+#[deprecated(
+    since = "0.2.0",
+    note = "Use cognisagent::middleware::Middleware instead. AgentMiddleware is not invoked by the executor and will be removed in a future release."
+)]
 #[async_trait]
 pub trait AgentMiddleware: Send + Sync {
     /// The name of this middleware.

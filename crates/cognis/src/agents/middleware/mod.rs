@@ -1,7 +1,18 @@
-//! Agent middleware system.
+//! Agent middleware building blocks.
 //!
-//! Provides middleware hooks for intercepting and modifying agent behavior
-//! at various points in the execution loop.
+//! # Deprecation Notice
+//!
+//! The [`AgentMiddleware`](types::AgentMiddleware) trait defined here is
+//! **deprecated**. For agent orchestration middleware, use
+//! `cognisagent::middleware::Middleware` instead.
+//!
+//! The concrete middleware implementations in this module (retry, rate
+//! limiting, PII detection, model fallback, etc.) are **reusable policy
+//! building blocks**. They currently implement the deprecated
+//! `AgentMiddleware` trait but their logic can be adapted for use with
+//! `cognisagent::Middleware`.
+
+#![allow(deprecated)]
 
 pub mod context_editing;
 pub mod execution;
