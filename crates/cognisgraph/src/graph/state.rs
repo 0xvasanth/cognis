@@ -1460,8 +1460,15 @@ impl CompiledStateGraph {
         );
 
         // Load the latest checkpoint, or create an empty one.
+        // Store the current checkpoint_id so the new checkpoint has proper parent linkage.
         let mut checkpoint = match saver.get(&config).await? {
-            Some(tuple) => tuple.checkpoint,
+            Some(tuple) => {
+                config.insert(
+                    "checkpoint_id".to_string(),
+                    Value::String(tuple.checkpoint.id.clone()),
+                );
+                tuple.checkpoint
+            }
             None => crate::pregel::checkpoint::empty_checkpoint(),
         };
 

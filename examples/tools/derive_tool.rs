@@ -133,7 +133,10 @@ impl BaseTool for SearchTool {
 
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
         let query = match &input {
-            ToolInput::Text(s) => s.clone(),
+            ToolInput::Text(s) => serde_json::from_str::<Value>(s)
+                .ok()
+                .and_then(|v| v.get("query").and_then(|q| q.as_str()).map(str::to_string))
+                .unwrap_or_else(|| s.clone()),
             ToolInput::Structured(map) => map
                 .get("query")
                 .and_then(|v| v.as_str())

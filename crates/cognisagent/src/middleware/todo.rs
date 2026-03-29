@@ -92,12 +92,13 @@ impl Middleware for TodoListMiddleware {
 
             // Replace an existing todo-list system message if present,
             // otherwise insert a new one. This prevents accumulation
-            // across multiple model calls.
-            let is_todo_system = messages
-                .first()
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_str())
-                .is_some_and(|c| c.starts_with("Current task list:"));
+            // across multiple model calls. Check both type and content.
+            let is_todo_system = messages.first().is_some_and(|m| {
+                m.get("type").and_then(|t| t.as_str()) == Some("system")
+                    && m.get("content")
+                        .and_then(|c| c.as_str())
+                        .is_some_and(|c| c.starts_with("Current task list:"))
+            });
 
             if is_todo_system {
                 messages[0] = todo_msg;

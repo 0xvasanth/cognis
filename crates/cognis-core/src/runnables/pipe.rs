@@ -137,19 +137,55 @@ impl PipeBuilder {
 /// let chain = prompt | model | parser;
 /// ```
 ///
-/// Each `|` produces a new `RunnableRef` wrapping a `RunnableSequence`.
+/// Internally collects steps and builds a single flat `RunnableSequence`
+/// so that `a | b | c` produces `Seq([a, b, c])` rather than nested
+/// `Seq([Seq([a, b]), c])`. This avoids consuming one recursion limit
+/// level per `|` operator.
 #[derive(Clone)]
-pub struct RunnableRef(pub Arc<dyn Runnable>);
+pub struct RunnableRef {
+    /// The composed runnable (built on first access or at `|`).
+    pub(crate) inner: Arc<dyn Runnable>,
+    /// Accumulated steps for flattening. Empty once finalized into `inner`.
+    steps: Vec<Arc<dyn Runnable>>,
+}
 
 impl RunnableRef {
     /// Wrap any `Runnable` for use with the `|` operator.
     pub fn new(r: Arc<dyn Runnable>) -> Self {
-        Self(r)
+        Self {
+            inner: r.clone(),
+            steps: vec![r],
+        }
     }
 
     /// Unwrap into the inner `Arc<dyn Runnable>`.
+    ///
+    /// If multiple steps have been composed with `|`, this builds and
+    /// returns a flat `RunnableSequence`.
     pub fn into_inner(self) -> Arc<dyn Runnable> {
-        self.0
+        if self.steps.len() <= 1 {
+            self.inner
+        } else {
+            self.build_sequence()
+        }
+    }
+
+    /// Access the composed runnable.
+    ///
+    /// Builds a flat sequence from accumulated `|` steps if needed.
+    pub fn runnable(&self) -> Arc<dyn Runnable> {
+        if self.steps.len() <= 1 {
+            self.inner.clone()
+        } else {
+            self.build_sequence()
+        }
+    }
+
+    fn build_sequence(&self) -> Arc<dyn Runnable> {
+        match crate::runnables::RunnableSequence::new(self.steps.clone()) {
+            Ok(seq) => Arc::new(seq),
+            Err(_) => self.inner.clone(),
+        }
     }
 }
 
@@ -157,12 +193,14 @@ impl std::ops::BitOr for RunnableRef {
     type Output = RunnableRef;
 
     fn bitor(self, rhs: RunnableRef) -> RunnableRef {
-        // The vec always has 2 elements, satisfying RunnableSequence's >=1 precondition.
-        let seq = match crate::runnables::RunnableSequence::new(vec![self.0, rhs.0]) {
-            Ok(s) => s,
-            Err(_) => unreachable!("pipe operator always provides 2 steps"),
+        // Collect all steps into a flat list for a single RunnableSequence.
+        let mut steps = self.steps;
+        steps.extend(rhs.steps);
+        let inner = match crate::runnables::RunnableSequence::new(steps.clone()) {
+            Ok(seq) => Arc::new(seq) as Arc<dyn Runnable>,
+            Err(_) => unreachable!("pipe operator always provides at least 2 steps"),
         };
-        RunnableRef(Arc::new(seq))
+        RunnableRef { inner, steps }
     }
 }
 
@@ -404,7 +442,7 @@ mod pipe_operator_tests {
         )));
 
         let chain = add_one | double;
-        let result = chain.0.invoke(json!(5), None).await.unwrap();
+        let result = chain.runnable().invoke(json!(5), None).await.unwrap();
         assert_eq!(result, json!(12)); // (5 + 1) * 2
     }
 
@@ -424,7 +462,7 @@ mod pipe_operator_tests {
         })));
 
         let chain = a | b | c;
-        let result = chain.0.invoke(json!(5), None).await.unwrap();
+        let result = chain.runnable().invoke(json!(5), None).await.unwrap();
         assert_eq!(result, json!(9)); // ((5 + 1) * 2) - 3
     }
 }

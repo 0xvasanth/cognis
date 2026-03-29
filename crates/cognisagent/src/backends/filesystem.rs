@@ -24,8 +24,19 @@ impl FilesystemBackend {
         Self { dir: dir.into() }
     }
 
-    fn session_path(&self, session_id: &str) -> PathBuf {
-        self.dir.join(format!("{session_id}.json"))
+    fn session_path(&self, session_id: &str) -> Result<PathBuf> {
+        // Reject session IDs that could escape the storage directory.
+        if session_id.contains('/')
+            || session_id.contains('\\')
+            || session_id.contains("..")
+            || session_id.is_empty()
+        {
+            return Err(DeepAgentError::Other(format!(
+                "invalid session_id '{}': must not contain path separators or '..'",
+                session_id
+            )));
+        }
+        Ok(self.dir.join(format!("{session_id}.json")))
     }
 
     /// Validate that a path does not escape the base directory.
@@ -70,6 +81,10 @@ impl FilesystemBackend {
     }
 
     /// Validate a path for write operations (file may not exist yet).
+    ///
+    /// Rejects `..` and absolute paths. If the target already exists (e.g.
+    /// overwriting or following a symlink), canonicalizes to ensure the
+    /// resolved path stays inside the base directory.
     fn validate_path_for_write(&self, path: &str) -> Result<PathBuf> {
         if std::path::Path::new(path).is_absolute() {
             return Err(DeepAgentError::Other(format!(
@@ -85,7 +100,25 @@ impl FilesystemBackend {
                 )));
             }
         }
-        Ok(self.dir.join(path))
+        let full_path = self.dir.join(path);
+        // If the target already exists (e.g. a symlink), verify it resolves
+        // inside the base directory to prevent symlink escapes.
+        if full_path.exists() {
+            let canonical = full_path
+                .canonicalize()
+                .map_err(|e| DeepAgentError::Other(format!("path '{}': {}", path, e)))?;
+            let base = self
+                .dir
+                .canonicalize()
+                .map_err(|e| DeepAgentError::Other(format!("base dir: {}", e)))?;
+            if !canonical.starts_with(&base) {
+                return Err(DeepAgentError::Other(format!(
+                    "path '{}': escapes base directory via symlink",
+                    path
+                )));
+            }
+        }
+        Ok(full_path)
     }
 }
 
@@ -99,7 +132,7 @@ impl Backend for FilesystemBackend {
         let data = serde_json::to_string_pretty(state)
             .map_err(|e| DeepAgentError::BackendError(e.to_string()))?;
 
-        tokio::fs::write(self.session_path(session_id), data)
+        tokio::fs::write(self.session_path(session_id)?, data)
             .await
             .map_err(|e| DeepAgentError::BackendError(e.to_string()))?;
 
@@ -107,7 +140,7 @@ impl Backend for FilesystemBackend {
     }
 
     async fn load_state(&self, session_id: &str) -> Result<Option<Value>> {
-        let path = self.session_path(session_id);
+        let path = self.session_path(session_id)?;
         if !path.exists() {
             return Ok(None);
         }

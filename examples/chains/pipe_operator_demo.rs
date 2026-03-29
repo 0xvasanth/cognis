@@ -75,18 +75,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("--- Chain Composition ---\n");
     let chain = prompt | call_model | extract;
-    println!("Chain: {}\n", chain.0.name());
+    println!("Chain: {}\n", chain.runnable().name());
 
     // ── Schema introspection ────────────────────────────────────────
 
     println!("--- Schema Introspection ---\n");
-    println!("Input schema:  {}", chain.0.input_schema());
-    println!("Output schema: {}\n", chain.0.output_schema());
+    println!("Input schema:  {}", chain.runnable().input_schema());
+    println!("Output schema: {}\n", chain.runnable().output_schema());
 
     // ── Single invocation ───────────────────────────────────────────
 
     println!("--- Single Invocation ---\n");
-    let result = chain.0.invoke(json!("Rust"), None).await?;
+    let result = chain.runnable().invoke(json!("Rust"), None).await?;
     println!("Topic: Rust");
     println!("Result: {}\n", result);
 
@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("--- Batch Invocation ---\n");
     let results = chain
-        .0
+        .runnable()
         .batch(vec![json!("Python"), json!("TypeScript")], None)
         .await?;
     for (i, r) in results.iter().enumerate() {

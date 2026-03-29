@@ -94,14 +94,21 @@ pub fn derive_graph_state(input: DeriveInput) -> TokenStream {
             },
             "add" => quote! {
                 Box::new(|current: &serde_json::Value, update: &serde_json::Value| -> serde_json::Value {
-                    let a = current.as_f64().unwrap_or(0.0);
-                    let b = update.as_f64().unwrap_or(0.0);
-                    let sum = a + b;
-                    // Preserve integer type when both inputs are integers.
-                    if current.is_i64() && update.is_i64() {
-                        serde_json::json!(sum as i64)
-                    } else {
-                        serde_json::json!(sum)
+                    // Use native i64 addition when both are integers to avoid
+                    // f64 precision loss for large values. Fall back to f64 otherwise.
+                    match (current.as_i64(), update.as_i64()) {
+                        (Some(a), Some(b)) => match a.checked_add(b) {
+                            Some(sum) => serde_json::json!(sum),
+                            None => {
+                                // Overflow: fall back to f64 which has wider range.
+                                serde_json::json!((a as f64) + (b as f64))
+                            }
+                        },
+                        _ => {
+                            let a = current.as_f64().unwrap_or(0.0);
+                            let b = update.as_f64().unwrap_or(0.0);
+                            serde_json::json!(a + b)
+                        }
                     }
                 })
             },

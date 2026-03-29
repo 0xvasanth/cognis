@@ -39,6 +39,10 @@ impl Default for PromptCachingConfig {
 
 /// Middleware that injects `_cache_control` metadata into agent state before
 /// model calls, signalling the provider to cache the prompt prefix.
+///
+/// **Note:** Chat model providers (e.g. `ChatAnthropic`) must read the
+/// `_cache_control` key from the state and include the appropriate cache
+/// headers in their API requests for this middleware to have effect.
 pub struct PromptCachingMiddleware {
     config: PromptCachingConfig,
 }
@@ -94,6 +98,7 @@ impl Middleware for PromptCachingMiddleware {
             "type": self.config.cache_type,
             "cache_system_prompt": self.config.cache_system_prompt,
             "message_count": message_count,
+            "_injected_by": "prompt_caching_middleware",
         });
 
         if let Some(obj) = state.as_object_mut() {
@@ -104,8 +109,19 @@ impl Middleware for PromptCachingMiddleware {
     }
 
     async fn after_model(&self, state: &mut AgentState) -> Result<()> {
-        if let Some(obj) = state.as_object_mut() {
-            obj.remove("_cache_control");
+        // Only remove _cache_control if it was injected by this middleware
+        // (identified by our private sentinel). This avoids clobbering
+        // caller-provided cache control state.
+        let was_injected_by_us = state
+            .get("_cache_control")
+            .and_then(|v| v.get("_injected_by"))
+            .and_then(|v| v.as_str())
+            == Some("prompt_caching_middleware");
+
+        if was_injected_by_us {
+            if let Some(obj) = state.as_object_mut() {
+                obj.remove("_cache_control");
+            }
         }
         Ok(())
     }

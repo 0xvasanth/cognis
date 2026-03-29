@@ -433,8 +433,6 @@ fn unwrap_option_type(ty: &Type) -> (&Type, bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     fn to_snake_case(s: &str) -> String {
         let mut result = String::new();
         for (i, ch) in s.chars().enumerate() {

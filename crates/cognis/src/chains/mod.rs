@@ -16,7 +16,7 @@
 //! ```ignore
 //! use cognis_core::runnables::pipe::RunnableRef;
 //! let chain = RunnableRef::new(prompt) | RunnableRef::new(model) | RunnableRef::new(parser);
-//! let result = chain.0.invoke(json!("input"), None).await?;
+//! let result = chain.runnable().invoke(json!("input"), None).await?;
 //! ```
 //!
 //! Existing chain types remain available for backward compatibility but will

@@ -82,22 +82,20 @@ pub trait Runnable: Send + Sync {
 
     /// Returns the JSON Schema describing valid inputs for this runnable.
     ///
-    /// Default returns a permissive object schema. Implementations should
-    /// override to provide specific schemas for validation, documentation,
-    /// and API serving.
+    /// Default returns a permissive schema that accepts any JSON value.
+    /// Implementations should override to provide specific schemas for
+    /// validation, documentation, and API serving.
     fn input_schema(&self) -> Value {
         serde_json::json!({
-            "type": "object",
             "description": format!("Input for {}", self.name())
         })
     }
 
     /// Returns the JSON Schema describing the output of this runnable.
     ///
-    /// Default returns a permissive object schema.
+    /// Default returns a permissive schema that accepts any JSON value.
     fn output_schema(&self) -> Value {
         serde_json::json!({
-            "type": "object",
             "description": format!("Output of {}", self.name())
         })
     }
@@ -280,7 +278,8 @@ mod tests {
     fn test_default_input_schema() {
         let r = RunnableLambda::new("test_fn", |v: Value| async move { Ok(v) });
         let schema = r.input_schema();
-        assert_eq!(schema["type"], "object");
+        // Default schema is permissive (no "type" restriction) with a description.
+        assert!(schema.get("type").is_none());
         assert!(schema["description"].as_str().unwrap().contains("test_fn"));
     }
 
@@ -288,7 +287,7 @@ mod tests {
     fn test_default_output_schema() {
         let r = RunnableLambda::new("test_fn", |v: Value| async move { Ok(v) });
         let schema = r.output_schema();
-        assert_eq!(schema["type"], "object");
+        assert!(schema.get("type").is_none());
         assert!(schema["description"].as_str().unwrap().contains("test_fn"));
     }
 }

@@ -264,7 +264,7 @@ Use `cognis-macros` for derive macros that eliminate boilerplate:
 
 - `#[derive(JsonSchema)]` — generate JSON Schema from struct fields
 - `#[derive(ToolSchema)]` — generate tool metadata (name, description, args_schema)
-- `#[derive(GraphState)]` (planned) — generate state reducers from field attributes
+- `#[derive(GraphState)]` — generate state reducers from field attributes
 
 Macros must produce code that is **readable when expanded** (`cargo expand`). No hidden magic.
 
