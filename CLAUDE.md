@@ -303,3 +303,23 @@ Some Python patterns should be **deliberately skipped or redesigned** in Rust:
 - Clippy must pass: `cargo clippy --workspace --all-targets -- -D warnings`
 - Format with `cargo fmt` before every commit
 - Every new public API needs at least one unit test and one doc-test
+
+## Pre-Push Checklist
+
+Before pushing to remote or creating a PR, run these checks locally **in order**:
+
+```bash
+# 1. Format
+cargo fmt --all
+
+# 2. Clippy (matches CI exactly)
+cargo clippy --workspace --features all-providers -- -D warnings
+
+# 3. Tests
+cargo test --workspace
+
+# 4. Code review with Cubic
+cubic review
+```
+
+All four must pass before pushing. If `cubic review` flags issues, fix them before pushing — do not defer review findings to the PR cycle.
