@@ -48,5 +48,6 @@ pub mod utils;
 
 pub use constants::{END, START};
 pub use errors::{LangGraphError, Result};
+pub use graph::{GraphStateField, GraphStateSchema};
 pub use runtime::Runtime;
 pub use types::*;

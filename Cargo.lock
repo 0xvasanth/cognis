@@ -265,6 +265,7 @@ dependencies = [
  "base64",
  "chrono",
  "cognis-core",
+ "cognis-macros",
  "flate2",
  "futures",
  "serde",

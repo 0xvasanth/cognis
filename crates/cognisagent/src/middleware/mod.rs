@@ -15,6 +15,8 @@
 //! - [`logging::LoggingMiddleware`] — structured logging with redaction
 //! - [`context::ContextMiddleware`] — dynamic context injection
 //! - [`planning::PlanningMiddleware`] — plan-then-execute support with step tracking, dependencies, and status injection
+//! - [`prompt_caching::PromptCachingMiddleware`] — Anthropic-style prompt caching with cache control injection
+//! - [`todo::TodoListMiddleware`] — todo list tracking with status injection
 
 pub mod context;
 pub mod filesystem;
@@ -23,10 +25,12 @@ pub mod memory;
 pub mod patch_tool_calls;
 pub mod pipeline;
 pub mod planning;
+pub mod prompt_caching;
 pub mod rate_limiter;
 pub mod skills;
 pub mod subagent;
 pub mod summarization;
+pub mod todo;
 
 use async_trait::async_trait;
 use serde_json::Value;

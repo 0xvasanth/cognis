@@ -130,6 +130,80 @@ impl PipeBuilder {
     }
 }
 
+/// A newtype wrapper around `Arc<dyn Runnable>` that supports the `|` operator.
+///
+/// This enables LCEL-style composition:
+/// ```ignore
+/// let chain = prompt | model | parser;
+/// ```
+///
+/// Internally collects steps and builds a single flat `RunnableSequence`
+/// so that `a | b | c` produces `Seq([a, b, c])` rather than nested
+/// `Seq([Seq([a, b]), c])`. This avoids consuming one recursion limit
+/// level per `|` operator.
+#[derive(Clone)]
+pub struct RunnableRef {
+    /// The composed runnable (built on first access or at `|`).
+    pub(crate) inner: Arc<dyn Runnable>,
+    /// Accumulated steps for flattening. Empty once finalized into `inner`.
+    steps: Vec<Arc<dyn Runnable>>,
+}
+
+impl RunnableRef {
+    /// Wrap any `Runnable` for use with the `|` operator.
+    pub fn new(r: Arc<dyn Runnable>) -> Self {
+        Self {
+            inner: r.clone(),
+            steps: vec![r],
+        }
+    }
+
+    /// Unwrap into the inner `Arc<dyn Runnable>`.
+    ///
+    /// If multiple steps have been composed with `|`, this builds and
+    /// returns a flat `RunnableSequence`.
+    pub fn into_inner(self) -> Arc<dyn Runnable> {
+        if self.steps.len() <= 1 {
+            self.inner
+        } else {
+            self.build_sequence()
+        }
+    }
+
+    /// Access the composed runnable.
+    ///
+    /// Builds a flat sequence from accumulated `|` steps if needed.
+    pub fn runnable(&self) -> Arc<dyn Runnable> {
+        if self.steps.len() <= 1 {
+            self.inner.clone()
+        } else {
+            self.build_sequence()
+        }
+    }
+
+    fn build_sequence(&self) -> Arc<dyn Runnable> {
+        match crate::runnables::RunnableSequence::new(self.steps.clone()) {
+            Ok(seq) => Arc::new(seq),
+            Err(_) => self.inner.clone(),
+        }
+    }
+}
+
+impl std::ops::BitOr for RunnableRef {
+    type Output = RunnableRef;
+
+    fn bitor(self, rhs: RunnableRef) -> RunnableRef {
+        // Collect all steps into a flat list for a single RunnableSequence.
+        let mut steps = self.steps;
+        steps.extend(rhs.steps);
+        let inner = match crate::runnables::RunnableSequence::new(steps.clone()) {
+            Ok(seq) => Arc::new(seq) as Arc<dyn Runnable>,
+            Err(_) => unreachable!("pipe operator always provides at least 2 steps"),
+        };
+        RunnableRef { inner, steps }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,5 +415,54 @@ mod tests {
         let inputs = vec![json!(1), json!(2), json!(3)];
         let results = piped.batch(inputs, None).await.unwrap();
         assert_eq!(results, vec![json!(4), json!(6), json!(8)]);
+    }
+}
+
+#[cfg(test)]
+mod pipe_operator_tests {
+    use super::*;
+    use crate::runnables::lambda::RunnableLambda;
+    use serde_json::{json, Value};
+
+    #[tokio::test]
+    async fn test_pipe_operator_two_steps() {
+        let add_one = RunnableRef::new(Arc::new(RunnableLambda::new(
+            "add_one",
+            |v: Value| async move {
+                let n = v.as_i64().unwrap_or(0);
+                Ok(json!(n + 1))
+            },
+        )));
+        let double = RunnableRef::new(Arc::new(RunnableLambda::new(
+            "double",
+            |v: Value| async move {
+                let n = v.as_i64().unwrap_or(0);
+                Ok(json!(n * 2))
+            },
+        )));
+
+        let chain = add_one | double;
+        let result = chain.runnable().invoke(json!(5), None).await.unwrap();
+        assert_eq!(result, json!(12)); // (5 + 1) * 2
+    }
+
+    #[tokio::test]
+    async fn test_pipe_operator_three_steps() {
+        let a = RunnableRef::new(Arc::new(RunnableLambda::new("a", |v: Value| async move {
+            let n = v.as_i64().unwrap_or(0);
+            Ok(json!(n + 1))
+        })));
+        let b = RunnableRef::new(Arc::new(RunnableLambda::new("b", |v: Value| async move {
+            let n = v.as_i64().unwrap_or(0);
+            Ok(json!(n * 2))
+        })));
+        let c = RunnableRef::new(Arc::new(RunnableLambda::new("c", |v: Value| async move {
+            let n = v.as_i64().unwrap_or(0);
+            Ok(json!(n - 3))
+        })));
+
+        let chain = a | b | c;
+        let result = chain.runnable().invoke(json!(5), None).await.unwrap();
+        assert_eq!(result, json!(9)); // ((5 + 1) * 2) - 3
     }
 }

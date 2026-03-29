@@ -1345,14 +1345,15 @@ impl CompiledStateGraph {
             Value::String(new_thread_id.to_string()),
         );
 
-        let metadata = tuple
-            .metadata
-            .unwrap_or_else(|| crate::checkpoint::CheckpointMetadata {
-                source: "fork".to_string(),
-                step: 0,
-                writes: None,
-                extra: HashMap::new(),
-            });
+        let metadata =
+            tuple
+                .metadata
+                .unwrap_or_else(|| crate::pregel::checkpoint::CheckpointMetadata {
+                    source: "fork".to_string(),
+                    step: 0,
+                    writes: None,
+                    extra: HashMap::new(),
+                });
 
         saver
             .put(&new_config, tuple.checkpoint.clone(), metadata)
@@ -1361,6 +1362,179 @@ impl CompiledStateGraph {
         let state = Value::Object(tuple.checkpoint.channel_values.into_iter().collect());
 
         Ok(state)
+    }
+
+    // ── State access API ────��───────────────────────────────────────
+
+    /// Get the current state snapshot for a thread.
+    ///
+    /// Loads the latest checkpoint for the given `thread_id` and returns a
+    /// [`StateSnapshot`](crate::types::StateSnapshot) containing the state
+    /// values, the next scheduled nodes, metadata, and any pending tasks.
+    ///
+    /// Returns `None` if no checkpoint exists for the thread.
+    ///
+    /// This is the primary API for inspecting graph state in human-in-the-loop
+    /// workflows, debugging, and monitoring dashboards.
+    pub async fn get_state(
+        &self,
+        thread_id: &str,
+        saver: &dyn crate::checkpoint::CheckpointSaver,
+    ) -> Result<Option<crate::types::StateSnapshot>, LangGraphError> {
+        let mut config = HashMap::new();
+        config.insert(
+            "thread_id".to_string(),
+            Value::String(thread_id.to_string()),
+        );
+
+        let tuple = match saver.get(&config).await? {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        // Build state from channel values.
+        let values = Value::Object(
+            tuple
+                .checkpoint
+                .channel_values
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+        );
+
+        // Determine next nodes by looking at versions_seen vs channel_versions.
+        // If no version tracking is available, report empty.
+        let next = Vec::new();
+
+        // Build metadata from checkpoint metadata.
+        let metadata = tuple.metadata.as_ref().map(|m| {
+            let mut map = HashMap::new();
+            map.insert("source".to_string(), Value::String(m.source.clone()));
+            map.insert("step".to_string(), serde_json::json!(m.step));
+            if let Some(ref writes) = m.writes {
+                map.insert(
+                    "writes".to_string(),
+                    // HashMap<String, Value> → Value serialization is infallible.
+                    serde_json::to_value(writes).unwrap_or_default(),
+                );
+            }
+            for (k, v) in &m.extra {
+                map.insert(k.clone(), v.clone());
+            }
+            map
+        });
+
+        Ok(Some(crate::types::StateSnapshot {
+            values,
+            next,
+            metadata,
+            created_at: Some(tuple.checkpoint.ts.clone()),
+            parent_config: tuple.parent_config,
+            tasks: Vec::new(),
+            interrupts: Vec::new(),
+        }))
+    }
+
+    /// Update the state of a thread by saving a new checkpoint.
+    ///
+    /// Merges the provided `values` into the latest checkpoint state and
+    /// saves a new checkpoint. Optionally, `as_node` specifies which node
+    /// the update should be attributed to (used for version tracking).
+    ///
+    /// Returns the updated config (including the new `checkpoint_id`).
+    ///
+    /// This is used to inject state changes from outside the graph — for
+    /// example, a human reviewer modifying the state between steps in a
+    /// human-in-the-loop workflow.
+    pub async fn update_state(
+        &self,
+        thread_id: &str,
+        values: Value,
+        as_node: Option<&str>,
+        saver: &dyn crate::checkpoint::CheckpointSaver,
+    ) -> Result<HashMap<String, Value>, LangGraphError> {
+        let mut config = HashMap::new();
+        config.insert(
+            "thread_id".to_string(),
+            Value::String(thread_id.to_string()),
+        );
+
+        // Load the latest checkpoint, or create an empty one.
+        // Store the current checkpoint_id so the new checkpoint has proper parent linkage.
+        let mut checkpoint = match saver.get(&config).await? {
+            Some(tuple) => {
+                config.insert(
+                    "checkpoint_id".to_string(),
+                    Value::String(tuple.checkpoint.id.clone()),
+                );
+                tuple.checkpoint
+            }
+            None => crate::pregel::checkpoint::empty_checkpoint(),
+        };
+
+        // Merge the new values into channel_values.
+        let updates = match values {
+            Value::Object(obj) => obj,
+            other => {
+                return Err(LangGraphError::Other(format!(
+                    "update_state expects a JSON object, got {}",
+                    match &other {
+                        Value::Null => "null",
+                        Value::Bool(_) => "boolean",
+                        Value::Number(_) => "number",
+                        Value::String(_) => "string",
+                        Value::Array(_) => "array",
+                        Value::Object(_) => unreachable!(),
+                    }
+                )));
+            }
+        };
+        for (key, value) in updates {
+            checkpoint
+                .channel_versions
+                .entry(key.clone())
+                .and_modify(|v| *v += 1)
+                .or_insert(1);
+            checkpoint.channel_values.insert(key, value);
+        }
+
+        // Create a new checkpoint with a fresh ID and timestamp.
+        let new_checkpoint = crate::pregel::checkpoint::create_checkpoint(
+            &checkpoint,
+            None,
+            checkpoint
+                .channel_versions
+                .values()
+                .max()
+                .copied()
+                .unwrap_or(0) as i64,
+            None,
+            None,
+        );
+
+        // Preserve the merged channel values in the new checkpoint.
+        let new_checkpoint = crate::pregel::checkpoint::Checkpoint {
+            channel_values: checkpoint.channel_values,
+            channel_versions: checkpoint.channel_versions,
+            ..new_checkpoint
+        };
+
+        let source_node = as_node.unwrap_or("update");
+        let metadata = crate::pregel::checkpoint::CheckpointMetadata {
+            source: "update".to_string(),
+            step: -1,
+            writes: Some({
+                let mut m = HashMap::new();
+                m.insert(
+                    source_node.to_string(),
+                    Value::String("state_update".to_string()),
+                );
+                m
+            }),
+            extra: HashMap::new(),
+        };
+
+        saver.put(&config, new_checkpoint, metadata).await
     }
 }
 

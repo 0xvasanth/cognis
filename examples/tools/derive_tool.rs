@@ -1,53 +1,23 @@
 //! Derive Tool Example
 //!
-//! Demonstrates `#[derive(Tool)]` for auto-generating OpenAPI-compatible
-//! tool schemas from Rust structs, including nested structs and enums.
+//! Demonstrates `#[derive(ToolSchema)]` and `#[derive(JsonSchema)]` for
+//! auto-generating OpenAPI-compatible JSON schemas from Rust structs,
+//! and how to combine them with `BaseTool` to build tools with rich schemas.
+//!
+//! Run with: `cargo run -p cognis-examples --example derive_tool`
 
+use async_trait::async_trait;
 use cognis_core::error::Result;
-use cognis_core::tools::{BaseTool, ToolInput, ToolJsonSchema, ToolOutput};
-use cognis_core::{Tool, ToolSchema};
+use cognis_core::tools::types::{ToolInput, ToolOutput};
+use cognis_core::tools::BaseTool;
+use cognis_macros::{JsonSchema, ToolSchema};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 
-/// Performs basic arithmetic on two numbers.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-#[tool(name = "calculator", description = "Perform arithmetic on two numbers")]
-struct CalculatorTool {
-    /// The first operand
-    a: f64,
-    /// The second operand
-    b: f64,
-    /// The operation: add, sub, mul, div
-    operation: String,
-}
-
-impl CalculatorTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        let result = match self.operation.as_str() {
-            "add" => self.a + self.b,
-            "sub" => self.a - self.b,
-            "mul" => self.a * self.b,
-            "div" if self.b != 0.0 => self.a / self.b,
-            "div" => {
-                return Err(cognis_core::error::CognisError::ToolException(
-                    "Division by zero".into(),
-                ))
-            }
-            _ => {
-                return Err(cognis_core::error::CognisError::ToolException(format!(
-                    "Unknown op: {}",
-                    self.operation
-                )))
-            }
-        };
-        Ok(ToolOutput::Content(
-            json!({"result": result, "expression": format!("{} {} {} = {}", self.a, self.operation, self.b, result)}),
-        ))
-    }
-}
+// ─── Schema-only structs (for nested types) ─────────────────────────
 
 /// Configuration for filtering search results.
-#[derive(Debug, Clone, Serialize, Deserialize, ToolSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct SearchFilter {
     /// Minimum relevance score (0.0 to 1.0)
     min_score: f64,
@@ -57,28 +27,7 @@ struct SearchFilter {
     categories: Option<Vec<String>>,
 }
 
-/// Search for documents matching a query.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-#[tool(name = "search", description = "Search for documents matching a query")]
-struct SearchTool {
-    /// The search query string
-    query: String,
-    /// Filter configuration
-    filter: SearchFilter,
-    /// Whether to include snippets
-    #[serde(default)]
-    include_snippets: bool,
-}
-
-impl SearchTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        Ok(ToolOutput::Content(json!({
-            "query": self.query,
-            "results": [{"title": "Doc 1", "score": 0.95}, {"title": "Doc 2", "score": 0.87}],
-        })))
-    }
-}
-
+/// Output format for summarization.
 #[derive(Debug, Clone, Serialize, Deserialize, ToolSchema)]
 enum OutputFormat {
     #[serde(rename = "json")]
@@ -89,78 +38,188 @@ enum OutputFormat {
     PlainText,
 }
 
-/// Summarize a piece of text.
-#[derive(Debug, Clone, Serialize, Deserialize, Tool)]
-#[tool(name = "summarize", description = "Summarize text in a given format")]
-struct SummarizeTool {
-    /// The text to summarize
-    text: String,
-    /// Desired output format
-    format: OutputFormat,
-    /// Maximum length in words
-    max_words: Option<i32>,
+// ─── Tool: Calculator ───────────────────────────────────────────────
+
+/// Performs basic arithmetic on two numbers.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct CalculatorArgs {
+    /// The first operand
+    a: f64,
+    /// The second operand
+    b: f64,
+    /// The operation: add, sub, mul, div
+    operation: String,
 }
 
-impl SummarizeTool {
-    async fn execute(&self) -> Result<ToolOutput> {
-        let summary = if self.text.len() > 100 {
-            format!("{}...", &self.text[..100])
-        } else {
-            self.text.clone()
+struct CalculatorTool;
+
+#[async_trait]
+impl BaseTool for CalculatorTool {
+    fn name(&self) -> &str {
+        "calculator"
+    }
+
+    fn description(&self) -> &str {
+        "Perform arithmetic on two numbers"
+    }
+
+    fn args_schema(&self) -> Option<Value> {
+        Some(CalculatorArgs::json_schema())
+    }
+
+    async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
+        let args: CalculatorArgs = match &input {
+            ToolInput::Text(s) => serde_json::from_str(s)
+                .map_err(|e| cognis_core::error::CognisError::ToolException(e.to_string()))?,
+            ToolInput::Structured(map) => serde_json::from_value(json!(map))
+                .map_err(|e| cognis_core::error::CognisError::ToolException(e.to_string()))?,
+            ToolInput::ToolCall(tc) => serde_json::from_value(json!(tc.args))
+                .map_err(|e| cognis_core::error::CognisError::ToolException(e.to_string()))?,
         };
-        Ok(ToolOutput::Content(
-            json!({"summary": summary, "word_count": summary.split_whitespace().count()}),
-        ))
+
+        let result = match args.operation.as_str() {
+            "add" => args.a + args.b,
+            "sub" => args.a - args.b,
+            "mul" => args.a * args.b,
+            "div" if args.b != 0.0 => args.a / args.b,
+            "div" => {
+                return Err(cognis_core::error::CognisError::ToolException(
+                    "Division by zero".into(),
+                ))
+            }
+            op => {
+                return Err(cognis_core::error::CognisError::ToolException(format!(
+                    "Unknown operation: {}",
+                    op
+                )))
+            }
+        };
+
+        Ok(ToolOutput::Content(json!({
+            "result": result,
+            "expression": format!("{} {} {} = {}", args.a, args.operation, args.b, result)
+        })))
     }
 }
 
+// ─── Tool: Search ───────────────────────────────────────────────────
+
+/// Search for documents matching a query.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct SearchArgs {
+    /// The search query string
+    query: String,
+    /// Minimum relevance score
+    min_score: Option<f64>,
+    /// Maximum results to return
+    max_results: Option<i32>,
+}
+
+struct SearchTool;
+
+#[async_trait]
+impl BaseTool for SearchTool {
+    fn name(&self) -> &str {
+        "search"
+    }
+
+    fn description(&self) -> &str {
+        "Search for documents matching a query"
+    }
+
+    fn args_schema(&self) -> Option<Value> {
+        Some(SearchArgs::json_schema())
+    }
+
+    async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
+        let query = match &input {
+            ToolInput::Text(s) => serde_json::from_str::<Value>(s)
+                .ok()
+                .and_then(|v| v.get("query").and_then(|q| q.as_str()).map(str::to_string))
+                .unwrap_or_else(|| s.clone()),
+            ToolInput::Structured(map) => map
+                .get("query")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string(),
+            ToolInput::ToolCall(tc) => tc
+                .args
+                .get("query")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string(),
+        };
+
+        Ok(ToolOutput::Content(json!({
+            "query": query,
+            "results": [
+                {"title": "Doc 1", "score": 0.95},
+                {"title": "Doc 2", "score": 0.87}
+            ],
+        })))
+    }
+}
+
+// ─── Main ───────────────────────────────────────────────────────────
+
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    println!("=== Derive Tool Examples ===\n");
+    println!("=== Derive Tool Schema Examples ===\n");
 
-    let empty = ToolInput::Text(String::new());
+    // 1. Show generated JSON schemas
+    println!("--- Generated JSON Schemas ---\n");
 
-    let calc = CalculatorTool {
-        a: 10.0,
-        b: 3.0,
-        operation: "mul".into(),
-    };
     println!(
-        "{} schema: {}",
-        calc.name(),
+        "CalculatorArgs:\n{}\n",
+        serde_json::to_string_pretty(&CalculatorArgs::json_schema())?
+    );
+
+    println!(
+        "SearchFilter:\n{}\n",
+        serde_json::to_string_pretty(&SearchFilter::json_schema())?
+    );
+
+    println!(
+        "OutputFormat:\n{}\n",
+        serde_json::to_string_pretty(&OutputFormat::json_schema())?
+    );
+
+    // 2. Use tools with their schemas
+    println!("--- Tool Execution ---\n");
+
+    let calc = CalculatorTool;
+    println!("Tool: {} — {}", calc.name(), calc.description());
+    println!(
+        "Schema: {}",
         serde_json::to_string(&calc.args_schema().unwrap())?
     );
-    println!("Result: {:?}\n", calc._run(empty.clone()).await?);
 
-    let search = SearchTool {
-        query: "rust async".into(),
-        filter: SearchFilter {
-            min_score: 0.8,
-            max_results: 5,
-            categories: Some(vec!["rust".into()]),
-        },
-        include_snippets: true,
-    };
+    let result = calc
+        ._run(ToolInput::Text(
+            r#"{"a": 10, "b": 3, "operation": "mul"}"#.into(),
+        ))
+        .await?;
+    println!("Result: {:?}\n", result);
+
+    let search = SearchTool;
+    println!("Tool: {} — {}", search.name(), search.description());
     println!(
-        "{}: {:?}\n",
-        search.name(),
-        search._run(empty.clone()).await?
+        "Schema: {}",
+        serde_json::to_string(&search.args_schema().unwrap())?
     );
 
-    let summ = SummarizeTool {
-        text: "Rust is a systems language focused on safety and concurrency.".into(),
-        format: OutputFormat::Markdown,
-        max_words: Some(50),
-    };
-    println!("{}: {:?}\n", summ.name(), summ._run(empty).await?);
+    let result = search
+        ._run(ToolInput::Text(r#"{"query": "rust async"}"#.into()))
+        .await?;
+    println!("Result: {:?}\n", result);
 
+    // 3. Show tool_call_schema (used by LLM providers)
+    println!("--- OpenAI-compatible tool_call_schema ---\n");
     println!(
-        "OutputFormat: {}",
-        serde_json::to_string(&OutputFormat::json_schema())?
+        "{}",
+        serde_json::to_string_pretty(&calc.tool_call_schema())?
     );
-    println!(
-        "SearchFilter: {}",
-        serde_json::to_string(&SearchFilter::json_schema())?
-    );
+
+    println!("\n=== Done ===");
     Ok(())
 }

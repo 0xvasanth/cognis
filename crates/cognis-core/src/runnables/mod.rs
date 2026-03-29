@@ -82,7 +82,7 @@ pub use middleware::{
 };
 pub use parallel::RunnableParallel;
 pub use passthrough::RunnablePassthrough;
-pub use pipe::{pipe as pipe_fn, PipeBuilder, RunnablePipe};
+pub use pipe::{pipe as pipe_fn, PipeBuilder, RunnablePipe, RunnableRef};
 pub use pipeline::{
     ParallelPipeline, Pipeline, PipelineBuilder, PipelineMetrics, PipelineResult, PipelineStage,
 };
