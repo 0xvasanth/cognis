@@ -64,7 +64,8 @@ crates/
 - `cognisgraph` depends only on `cognis-core`
 - `cognis` depends only on `cognis-core`
 - `cognisagent` depends on `cognis-core`, `cognis`, and `cognisgraph`
-- Agent-level middleware (filesystem, memory, subagent, planning, skills) belongs **only** in `cognisagent`, never in `cognis`
+- Agent **orchestration** middleware (filesystem, memory, subagent, planning, skills, todo, prompt caching) belongs in `cognisagent`
+- Agent **policy** building blocks (retry, rate limiting, PII, redaction, model fallback) live in `cognis` — these implement the deprecated `AgentMiddleware` trait and will migrate to `cognisagent::Middleware` in a future release
 - `cognis` contains **provider implementations, data utilities, and composable building blocks** — not agent orchestration
 
 ## Feature Flags

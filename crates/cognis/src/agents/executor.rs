@@ -33,6 +33,7 @@ use cognis_core::runnables::config::RunnableConfig;
 use cognis_core::tools::base::BaseTool;
 use uuid::Uuid;
 
+#[allow(deprecated)]
 use super::middleware::types::AgentMiddleware;
 
 /// What to do when the agent hits the iteration or time limit.
@@ -111,6 +112,7 @@ pub struct AgentResult {
 pub struct AgentExecutorBuilder {
     model: Option<Arc<dyn BaseChatModel>>,
     tools: Vec<Arc<dyn BaseTool>>,
+    #[allow(deprecated)]
     middleware: Vec<Arc<dyn AgentMiddleware>>,
     max_iterations: usize,
     max_execution_time_secs: Option<u64>,
@@ -155,6 +157,7 @@ impl AgentExecutorBuilder {
     }
 
     /// Add a middleware.
+    #[allow(deprecated)]
     pub fn middleware(mut self, mw: Arc<dyn AgentMiddleware>) -> Self {
         self.middleware.push(mw);
         self
@@ -247,6 +250,7 @@ pub struct AgentExecutor {
     /// Available tools keyed by name.
     pub tools: HashMap<String, Arc<dyn BaseTool>>,
     /// Middleware pipeline (currently stored but not invoked in the base loop).
+    #[allow(deprecated)]
     pub middleware: Vec<Arc<dyn AgentMiddleware>>,
     /// Maximum iterations before stopping.
     pub max_iterations: usize,

@@ -22,6 +22,7 @@ pub use executor::{
     AgentResult, AgentStep, EarlyStoppingMethod, ExecutorConfig, ExecutorResult,
     PlannerAgentExecutor, PlannerAgentStep, ToolExecutor,
 };
+#[allow(deprecated)]
 pub use middleware::types::{
     AgentMiddleware, AgentState, JumpTo, ModelCallResult, ModelRequest, ModelResponse,
 };

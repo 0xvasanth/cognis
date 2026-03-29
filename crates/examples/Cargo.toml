@@ -341,3 +341,7 @@ path = "../../examples/resilience/rate_limiter.rs"
 [[example]]
 name = "ollama_tool_calling"
 path = "../../examples/tools/ollama_tool_calling.rs"
+
+[[example]]
+name = "typed_runnable_demo"
+path = "../../examples/chains/typed_runnable_demo.rs"
