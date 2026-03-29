@@ -323,9 +323,21 @@ name = "embedding_similarity"
 path = "../../examples/models/embedding_similarity.rs"
 
 [[example]]
+name = "graph_state_management"
+path = "../../examples/graphs/graph_state_management.rs"
+
+[[example]]
 name = "graph_metrics"
 path = "../../examples/graphs/graph_metrics.rs"
 
 [[example]]
+name = "pipe_operator_demo"
+path = "../../examples/chains/pipe_operator_demo.rs"
+
+[[example]]
 name = "rate_limiter"
 path = "../../examples/resilience/rate_limiter.rs"
+
+[[example]]
+name = "ollama_tool_calling"
+path = "../../examples/tools/ollama_tool_calling.rs"

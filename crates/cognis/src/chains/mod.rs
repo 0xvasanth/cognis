@@ -1,5 +1,29 @@
 //! Chain abstractions for composing prompts, models, and sequential pipelines.
 //!
+//! # Deprecation Notice
+//!
+//! **Standalone chain types are soft-deprecated** in favor of composable
+//! [`Runnable`](cognis_core::runnables::Runnable) pipelines using the `|`
+//! operator via [`RunnableRef`](cognis_core::runnables::RunnableRef).
+//!
+//! Instead of:
+//! ```ignore
+//! let chain = LLMChain::new(prompt, model);
+//! let result = chain.run("input").await?;
+//! ```
+//!
+//! Prefer:
+//! ```ignore
+//! use cognis_core::runnables::pipe::RunnableRef;
+//! let chain = RunnableRef::new(prompt) | RunnableRef::new(model) | RunnableRef::new(parser);
+//! let result = chain.0.invoke(json!("input"), None).await?;
+//! ```
+//!
+//! Existing chain types remain available for backward compatibility but will
+//! not receive new features. New workflows should use Runnable composition.
+//!
+//! ---
+//!
 //! This module provides a variety of chain types for building LLM workflows:
 //!
 //! - [`llm`] -- Basic LLM chain (prompt -> model -> output).

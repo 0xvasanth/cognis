@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
@@ -13,7 +14,71 @@ use cognis_core::messages::{HumanMessage, Message};
 use cognis_core::tools::base::BaseTool;
 use cognis_core::tools::types::{ToolInput, ToolOutput};
 
+use crate::agent::DeepAgentError;
 use crate::middleware::Middleware;
+
+/// Declarative specification for a sub-agent.
+///
+/// Matches Python's `SubAgent` TypedDict from DeepAgents.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubAgentSpec {
+    /// Unique identifier for the sub-agent.
+    pub name: String,
+    /// What this sub-agent does — used by the main agent to decide delegation.
+    pub description: String,
+    /// System prompt / instructions for the sub-agent.
+    pub system_prompt: String,
+    /// Model identifier (e.g., `"openai:gpt-4o"`). Inherits main agent's model if None.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Tool names available to this sub-agent.
+    #[serde(default)]
+    pub tools: Vec<String>,
+    /// Skill source paths for SkillsMiddleware.
+    #[serde(default)]
+    pub skills: Vec<String>,
+    /// Tool names that require human approval before execution.
+    #[serde(default)]
+    pub interrupt_on: Vec<String>,
+    /// Maximum iterations before the sub-agent stops.
+    #[serde(default = "default_max_iterations")]
+    pub max_iterations: u32,
+}
+
+fn default_max_iterations() -> u32 {
+    25
+}
+
+/// A pre-compiled sub-agent with a ready-to-invoke function.
+///
+/// Matches Python's `CompiledSubAgent` TypedDict from DeepAgents.
+/// The invoke function accepts JSON state (must contain `"messages"`)
+/// and returns the final state.
+pub struct CompiledSubAgentSpec {
+    /// Unique identifier.
+    pub name: String,
+    /// What this sub-agent does.
+    pub description: String,
+    /// The compiled invoke function.
+    pub invoke: Box<
+        dyn Fn(
+                Value,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<Value, DeepAgentError>> + Send>,
+            > + Send
+            + Sync,
+    >,
+}
+
+impl std::fmt::Debug for CompiledSubAgentSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompiledSubAgentSpec")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("invoke", &"<async fn>")
+            .finish()
+    }
+}
 
 /// Status of a sub-agent execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -352,5 +417,67 @@ mod tests {
         assert_eq!(handle.status, SubAgentStatus::Completed);
         assert_eq!(handle.result.as_deref(), Some("done"));
         assert_eq!(handle.task, "Do something");
+    }
+}
+
+#[cfg(test)]
+mod spec_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_subagent_spec_serialization_roundtrip() {
+        let spec = SubAgentSpec {
+            name: "researcher".into(),
+            description: "Searches for information".into(),
+            system_prompt: "You are a research assistant.".into(),
+            model: Some("openai:gpt-4o".into()),
+            tools: vec!["web_search".into()],
+            skills: vec![],
+            interrupt_on: vec![],
+            max_iterations: 10,
+        };
+        let json = serde_json::to_value(&spec).unwrap();
+        assert_eq!(json["name"], "researcher");
+        assert_eq!(json["max_iterations"], 10);
+        let deserialized: SubAgentSpec = serde_json::from_value(json).unwrap();
+        assert_eq!(deserialized.name, "researcher");
+    }
+
+    #[test]
+    fn test_subagent_spec_defaults() {
+        let json = json!({
+            "name": "helper",
+            "description": "Helps",
+            "system_prompt": "Be helpful."
+        });
+        let spec: SubAgentSpec = serde_json::from_value(json).unwrap();
+        assert_eq!(spec.model, None);
+        assert!(spec.tools.is_empty());
+        assert_eq!(spec.max_iterations, 25);
+    }
+
+    #[tokio::test]
+    async fn test_compiled_subagent_invoke() {
+        let compiled = CompiledSubAgentSpec {
+            name: "echo".into(),
+            description: "Echoes input".into(),
+            invoke: Box::new(|state| Box::pin(async move { Ok(state) })),
+        };
+        let input = json!({"messages": [{"type": "human", "content": "hi"}]});
+        let result = (compiled.invoke)(input.clone()).await.unwrap();
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn test_compiled_subagent_debug() {
+        let compiled = CompiledSubAgentSpec {
+            name: "test".into(),
+            description: "test agent".into(),
+            invoke: Box::new(|s| Box::pin(async move { Ok(s) })),
+        };
+        let debug = format!("{:?}", compiled);
+        assert!(debug.contains("test"));
+        assert!(debug.contains("<async fn>"));
     }
 }

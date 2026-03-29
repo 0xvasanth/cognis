@@ -28,5 +28,7 @@ sqlite = ["dep:sqlx"]
 postgres = ["dep:sqlx"]
 
 [dev-dependencies]
+cognis-macros.workspace = true
+serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"

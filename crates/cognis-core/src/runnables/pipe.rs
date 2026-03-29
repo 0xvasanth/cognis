@@ -130,6 +130,42 @@ impl PipeBuilder {
     }
 }
 
+/// A newtype wrapper around `Arc<dyn Runnable>` that supports the `|` operator.
+///
+/// This enables LCEL-style composition:
+/// ```ignore
+/// let chain = prompt | model | parser;
+/// ```
+///
+/// Each `|` produces a new `RunnableRef` wrapping a `RunnableSequence`.
+#[derive(Clone)]
+pub struct RunnableRef(pub Arc<dyn Runnable>);
+
+impl RunnableRef {
+    /// Wrap any `Runnable` for use with the `|` operator.
+    pub fn new(r: Arc<dyn Runnable>) -> Self {
+        Self(r)
+    }
+
+    /// Unwrap into the inner `Arc<dyn Runnable>`.
+    pub fn into_inner(self) -> Arc<dyn Runnable> {
+        self.0
+    }
+}
+
+impl std::ops::BitOr for RunnableRef {
+    type Output = RunnableRef;
+
+    fn bitor(self, rhs: RunnableRef) -> RunnableRef {
+        // The vec always has 2 elements, satisfying RunnableSequence's >=1 precondition.
+        let seq = match crate::runnables::RunnableSequence::new(vec![self.0, rhs.0]) {
+            Ok(s) => s,
+            Err(_) => unreachable!("pipe operator always provides 2 steps"),
+        };
+        RunnableRef(Arc::new(seq))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,5 +377,54 @@ mod tests {
         let inputs = vec![json!(1), json!(2), json!(3)];
         let results = piped.batch(inputs, None).await.unwrap();
         assert_eq!(results, vec![json!(4), json!(6), json!(8)]);
+    }
+}
+
+#[cfg(test)]
+mod pipe_operator_tests {
+    use super::*;
+    use crate::runnables::lambda::RunnableLambda;
+    use serde_json::{json, Value};
+
+    #[tokio::test]
+    async fn test_pipe_operator_two_steps() {
+        let add_one = RunnableRef::new(Arc::new(RunnableLambda::new(
+            "add_one",
+            |v: Value| async move {
+                let n = v.as_i64().unwrap_or(0);
+                Ok(json!(n + 1))
+            },
+        )));
+        let double = RunnableRef::new(Arc::new(RunnableLambda::new(
+            "double",
+            |v: Value| async move {
+                let n = v.as_i64().unwrap_or(0);
+                Ok(json!(n * 2))
+            },
+        )));
+
+        let chain = add_one | double;
+        let result = chain.0.invoke(json!(5), None).await.unwrap();
+        assert_eq!(result, json!(12)); // (5 + 1) * 2
+    }
+
+    #[tokio::test]
+    async fn test_pipe_operator_three_steps() {
+        let a = RunnableRef::new(Arc::new(RunnableLambda::new("a", |v: Value| async move {
+            let n = v.as_i64().unwrap_or(0);
+            Ok(json!(n + 1))
+        })));
+        let b = RunnableRef::new(Arc::new(RunnableLambda::new("b", |v: Value| async move {
+            let n = v.as_i64().unwrap_or(0);
+            Ok(json!(n * 2))
+        })));
+        let c = RunnableRef::new(Arc::new(RunnableLambda::new("c", |v: Value| async move {
+            let n = v.as_i64().unwrap_or(0);
+            Ok(json!(n - 3))
+        })));
+
+        let chain = a | b | c;
+        let result = chain.0.invoke(json!(5), None).await.unwrap();
+        assert_eq!(result, json!(9)); // ((5 + 1) * 2) - 3
     }
 }

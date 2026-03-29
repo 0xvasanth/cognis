@@ -41,6 +41,8 @@
 //! | Nested struct with `#[derive(JsonSchema)]` | recursive object schema |
 //! | Enum with `#[derive(JsonSchema)]` | `{"type": "string", "enum": [...]}` |
 
+mod graph_state;
+
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
@@ -82,6 +84,24 @@ pub fn derive_tool_schema(input: TokenStream) -> TokenStream {
         Ok(tokens) => tokens.into(),
         Err(err) => err.to_compile_error().into(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// #[derive(GraphState)]
+// ---------------------------------------------------------------------------
+
+/// Derive macro for generating graph state schemas with per-field reducers.
+///
+/// # Attributes
+///
+/// - `#[reducer(append)]` — append arrays/values
+/// - `#[reducer(last_value)]` — overwrite with latest (default)
+/// - `#[reducer(add)]` — add numeric values
+/// - `#[reducer(merge)]` — deep-merge JSON objects
+#[proc_macro_derive(GraphState, attributes(reducer))]
+pub fn derive_graph_state(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    graph_state::derive_graph_state(input).into()
 }
 
 // =========================================================================
