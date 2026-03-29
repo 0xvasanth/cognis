@@ -105,11 +105,18 @@ pub fn derive_graph_state(input: DeriveInput) -> TokenStream {
                     }
                 })
             },
-            _ => quote! {
+            "last_value" => quote! {
                 Box::new(|_current: &serde_json::Value, update: &serde_json::Value| -> serde_json::Value {
                     update.clone()
                 })
             },
+            unknown => {
+                let msg = format!(
+                    "unknown reducer '{}'. Expected one of: append, last_value, add, merge",
+                    unknown
+                );
+                return syn::Error::new_spanned(field, msg).to_compile_error();
+            }
         };
 
         let desc_token = match &description {

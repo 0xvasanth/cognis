@@ -201,7 +201,11 @@ pub fn apply_annotations(
     let cur_obj = current.as_object().cloned().unwrap_or_default();
     let upd_obj = match update.as_object() {
         Some(o) => o,
-        None => return Ok(update.clone()),
+        None => {
+            return Err(LangGraphError::Other(
+                "apply_annotations: update must be a JSON object".into(),
+            ));
+        }
     };
 
     let mut result = cur_obj;
