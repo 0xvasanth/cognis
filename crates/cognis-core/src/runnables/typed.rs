@@ -7,9 +7,12 @@
 //! For heterogeneous composition (mixing different I/O types), use
 //! [`DynRunnable`] to erase types back to `Value`.
 
+use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures::stream::{self, StreamExt};
+use futures::Stream;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
@@ -18,6 +21,9 @@ use crate::error::{CognisError, Result};
 
 use super::base::Runnable;
 use super::config::RunnableConfig;
+
+/// A type-safe stream of output items.
+pub type TypedStream<O> = Pin<Box<dyn Stream<Item = Result<O>> + Send>>;
 
 /// A runnable with concrete input and output types.
 #[async_trait]
@@ -39,6 +45,12 @@ where
             results.push(self.invoke(input, config).await?);
         }
         Ok(results)
+    }
+
+    /// Stream the output. Default yields a single result from invoke.
+    async fn stream(&self, input: I, config: Option<&RunnableConfig>) -> Result<TypedStream<O>> {
+        let result = self.invoke(input, config).await;
+        Ok(Box::pin(stream::once(async { result })))
     }
 }
 
@@ -78,6 +90,27 @@ where
         let typed_output = self.inner.invoke(typed_input, config).await?;
         serde_json::to_value(typed_output)
             .map_err(|e| CognisError::Other(format!("output serialization: {}", e)))
+    }
+
+    async fn stream(
+        &self,
+        input: Value,
+        config: Option<&RunnableConfig>,
+    ) -> Result<super::RunnableStream> {
+        let typed_input: I = serde_json::from_value(input)
+            .map_err(|e| CognisError::Other(format!("input deserialization: {}", e)))?;
+
+        let typed_stream = self.inner.stream(typed_input, config).await?;
+
+        // Map typed items to Value
+        let value_stream = typed_stream.map(|item| {
+            item.and_then(|val| {
+                serde_json::to_value(val)
+                    .map_err(|e| CognisError::Other(format!("output serialization: {}", e)))
+            })
+        });
+
+        Ok(Box::pin(value_stream))
     }
 }
 
@@ -256,5 +289,25 @@ mod tests {
         let result = dynamic.invoke(json!("not a number"), None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("deserialization"));
+    }
+
+    #[tokio::test]
+    async fn test_typed_stream_single_item() {
+        use futures::StreamExt;
+        let stream = AddOne.stream(5, None).await.unwrap();
+        let items: Vec<Result<i64>> = stream.collect().await;
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].as_ref().unwrap(), &6);
+    }
+
+    #[tokio::test]
+    async fn test_dyn_runnable_stream_bridge() {
+        use futures::StreamExt;
+        let typed: Arc<dyn TypedRunnable<i64, i64>> = Arc::new(AddOne);
+        let dynamic: Arc<dyn Runnable> = Arc::new(DynRunnable::new(typed));
+        let stream = dynamic.stream(json!(10), None).await.unwrap();
+        let items: Vec<_> = stream.collect().await;
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].as_ref().unwrap(), &json!(11));
     }
 }

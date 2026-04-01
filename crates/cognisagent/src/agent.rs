@@ -45,6 +45,12 @@ pub enum DeepAgentError {
     Other(String),
 }
 
+impl From<cognis_core::error::CognisError> for DeepAgentError {
+    fn from(err: cognis_core::error::CognisError) -> Self {
+        DeepAgentError::Other(err.to_string())
+    }
+}
+
 /// Build a Deep Agent from the given configuration.
 ///
 /// This constructs a LangGraph [`CompiledStateGraph`] with two nodes:
