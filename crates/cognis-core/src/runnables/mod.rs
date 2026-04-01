@@ -114,7 +114,7 @@ pub use tracing::{
     CompactTraceFormatter, JsonTraceFormatter, SpanResult, TextTraceFormatter, TraceCollector,
     TraceEntry, TraceExporter, TraceFormatter, TraceLevel, TraceSpan,
 };
-pub use typed::{DynRunnable, FromDynRunnable, TypedRunnable, TypedSequence};
+pub use typed::{DynRunnable, FromDynRunnable, TypedRunnable, TypedSequence, TypedStream};
 
 /// Creates a `RunnableSequence` from a list of runnables.
 ///

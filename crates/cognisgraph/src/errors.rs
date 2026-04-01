@@ -59,6 +59,12 @@ pub enum LangGraphError {
     Other(String),
 }
 
+impl From<cognis_core::error::CognisError> for LangGraphError {
+    fn from(err: cognis_core::error::CognisError) -> Self {
+        LangGraphError::Other(err.to_string())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, LangGraphError>;
 
 /// Create an error message with a troubleshooting link.
