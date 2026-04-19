@@ -118,7 +118,7 @@ fn tool_message_error() {
 
 #[test]
 fn tool_message_artifact() {
-    let msg = ToolMessage::new("ok", "call_3").with_artifact(json!({"data": [1, 2, 3]}));
+    let msg = ToolMessage::with_artifact("ok", "call_3", json!({"data": [1, 2, 3]}));
     assert!(msg.artifact.is_some());
 }
 
