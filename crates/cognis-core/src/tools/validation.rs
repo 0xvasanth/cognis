@@ -16,3 +16,85 @@
 //! is the feature's main purpose — don't add one without the other.
 
 use crate::error::{CognisError, Result};
+
+/// Validate that `value` lies within `[min, max]` (inclusive on both ends).
+///
+/// `None` bounds are skipped. `NaN` inputs are rejected explicitly (they
+/// silently fail all comparisons otherwise).
+pub fn check_range(field: &str, value: f64, min: Option<f64>, max: Option<f64>) -> Result<()> {
+    if value.is_nan() {
+        return Err(CognisError::ToolValidationError(format!(
+            "field `{field}`: value is NaN"
+        )));
+    }
+    if let Some(m) = min {
+        if value < m {
+            return Err(CognisError::ToolValidationError(format!(
+                "field `{field}`: {value} is less than minimum {m}"
+            )));
+        }
+    }
+    if let Some(m) = max {
+        if value > m {
+            return Err(CognisError::ToolValidationError(format!(
+                "field `{field}`: {value} is greater than maximum {m}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::CognisError;
+
+    fn assert_validation_err(r: Result<()>, needle: &str) {
+        match r {
+            Err(CognisError::ToolValidationError(msg)) => assert!(
+                msg.contains(needle),
+                "expected msg to contain {needle:?}, got {msg:?}"
+            ),
+            other => panic!("expected ToolValidationError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn range_passes_within_bounds() {
+        assert!(check_range("limit", 5.0, Some(1.0), Some(50.0)).is_ok());
+    }
+
+    #[test]
+    fn range_passes_on_boundaries_inclusive() {
+        assert!(check_range("x", 1.0, Some(1.0), Some(50.0)).is_ok());
+        assert!(check_range("x", 50.0, Some(1.0), Some(50.0)).is_ok());
+    }
+
+    #[test]
+    fn range_rejects_below_min() {
+        assert_validation_err(check_range("limit", 0.5, Some(1.0), Some(50.0)), "limit");
+    }
+
+    #[test]
+    fn range_rejects_above_max() {
+        assert_validation_err(
+            check_range("limit", 100.0, Some(1.0), Some(50.0)),
+            "maximum",
+        );
+    }
+
+    #[test]
+    fn range_with_only_min_ignores_max() {
+        assert!(check_range("x", 1e9, Some(0.0), None).is_ok());
+    }
+
+    #[test]
+    fn range_with_only_max_ignores_min() {
+        assert!(check_range("x", -1e9, None, Some(10.0)).is_ok());
+    }
+
+    #[test]
+    fn range_rejects_nan() {
+        assert_validation_err(check_range("x", f64::NAN, Some(0.0), Some(10.0)), "NaN");
+    }
+}
