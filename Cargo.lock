@@ -186,6 +186,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "toml",
  "uuid",
 ]

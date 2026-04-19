@@ -544,6 +544,80 @@ impl AgentExecutor {
             }
         }
     }
+
+    /// Execute the agent and stream all intermediate events as they occur.
+    ///
+    /// Returns a `Stream` of [`StreamEvent`] values. Each event represents a
+    /// step in the agent loop: LLM invocations, tool calls, agent decisions,
+    /// and the final result. This is the Rust equivalent of Python LangChain's
+    /// `Runnable.astream_events(version="v2")`.
+    ///
+    /// The stream completes when the agent finishes or errors out.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use futures::StreamExt;
+    ///
+    /// let mut stream = executor.astream_events(messages).await?;
+    /// while let Some(event) = stream.next().await {
+    ///     let ev = event?;
+    ///     // Match on ev.event (EventType enum) to handle each phase.
+    /// }
+    /// ```
+    pub async fn astream_events(
+        &self,
+        initial_messages: Vec<cognis_core::messages::Message>,
+    ) -> cognis_core::error::Result<
+        std::pin::Pin<
+            Box<
+                dyn futures::Stream<
+                        Item = cognis_core::error::Result<
+                            cognis_core::tracers::event_stream::StreamEvent,
+                        >,
+                    > + Send,
+            >,
+        >,
+    > {
+        use cognis_core::callbacks::CallbackHandler;
+        use cognis_core::tracers::event_stream::EventStreamCallbackHandler;
+        use futures::StreamExt;
+        use std::sync::Arc;
+        use tokio_stream::wrappers::ReceiverStream;
+
+        // Create the event stream handler and take its receiver.
+        let handler = Arc::new(EventStreamCallbackHandler::with_defaults());
+        let rx = handler
+            .take_receiver()
+            .expect("fresh EventStreamCallbackHandler must have a receiver");
+
+        // Build a new executor that includes the event handler in its callbacks.
+        // Clone the inner fields; AgentExecutor itself isn't Clone.
+        let mut callbacks = self.callbacks.clone();
+        callbacks.push(handler as Arc<dyn CallbackHandler>);
+
+        #[allow(deprecated)]
+        let spawned_executor = AgentExecutor {
+            model: self.model.clone(),
+            tools: self.tools.clone(),
+            middleware: self.middleware.clone(),
+            max_iterations: self.max_iterations,
+            max_execution_time_secs: self.max_execution_time_secs,
+            return_intermediate_steps: self.return_intermediate_steps,
+            early_stopping_method: self.early_stopping_method,
+            handle_parsing_errors: self.handle_parsing_errors,
+            callbacks,
+        };
+
+        // Spawn the run in the background. Errors surface as OnChainError events.
+        tokio::spawn(async move {
+            let _ = spawned_executor.run(&initial_messages).await;
+        });
+
+        // Wrap the mpsc receiver in a Stream; each item is Ok(StreamEvent).
+        let stream = ReceiverStream::new(rx).map(Ok);
+        Ok(Box::pin(stream))
+    }
 }
 
 /// Implements the `Runnable` trait so `AgentExecutor` can be composed in LCEL chains.

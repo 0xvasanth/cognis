@@ -345,3 +345,7 @@ path = "../../examples/tools/ollama_tool_calling.rs"
 [[example]]
 name = "typed_runnable_demo"
 path = "../../examples/chains/typed_runnable_demo.rs"
+
+[[example]]
+name = "streaming_agent_events"
+path = "../../examples/agents/streaming_agent_events.rs"
