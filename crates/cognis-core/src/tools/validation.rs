@@ -44,6 +44,29 @@ pub fn check_range(field: &str, value: f64, min: Option<f64>, max: Option<f64>) 
     Ok(())
 }
 
+/// Validate that `len` lies within `[min, max]` (inclusive on both ends).
+///
+/// Callers pass `.chars().count()` for `String` (Unicode-correct length) or
+/// `.len()` for `Vec<T>`. See [`check_format`] for format-specific string
+/// validation.
+pub fn check_length(field: &str, len: usize, min: Option<usize>, max: Option<usize>) -> Result<()> {
+    if let Some(m) = min {
+        if len < m {
+            return Err(CognisError::ToolValidationError(format!(
+                "field `{field}`: length {len} is less than minimum {m}"
+            )));
+        }
+    }
+    if let Some(m) = max {
+        if len > m {
+            return Err(CognisError::ToolValidationError(format!(
+                "field `{field}`: length {len} is greater than maximum {m}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,5 +119,26 @@ mod tests {
     #[test]
     fn range_rejects_nan() {
         assert_validation_err(check_range("x", f64::NAN, Some(0.0), Some(10.0)), "NaN");
+    }
+
+    #[test]
+    fn length_passes_within_bounds() {
+        assert!(check_length("name", 5, Some(1), Some(10)).is_ok());
+    }
+
+    #[test]
+    fn length_rejects_below_min() {
+        assert_validation_err(check_length("name", 0, Some(1), Some(10)), "minimum");
+    }
+
+    #[test]
+    fn length_rejects_above_max() {
+        assert_validation_err(check_length("name", 11, Some(1), Some(10)), "maximum");
+    }
+
+    #[test]
+    fn length_boundaries_inclusive() {
+        assert!(check_length("name", 1, Some(1), Some(10)).is_ok());
+        assert!(check_length("name", 10, Some(1), Some(10)).is_ok());
     }
 }
