@@ -136,6 +136,20 @@ pub enum Format {
     Ipv6,
 }
 
+impl Format {
+    /// Canonical JSON-Schema `format` keyword value for this variant.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Format::Email => "email",
+            Format::Uri => "uri",
+            Format::Uuid => "uuid",
+            Format::DateTime => "date-time",
+            Format::Ipv4 => "ipv4",
+            Format::Ipv6 => "ipv6",
+        }
+    }
+}
+
 // Infallible regex construction: patterns are static string literals that are
 // validated by the test suite. `OnceLock::get_or_init` takes an infallible
 // closure, so `expect` is the idiomatic way to surface a compile-time-known
@@ -172,15 +186,18 @@ fn ipv6_regex() -> &'static regex::Regex {
 /// Validate that `value` matches the named format.
 ///
 /// Regex-backed for `Email`, `Uuid`, `Ipv4`, `Ipv6`. Schema-only for `Uri` and
-/// `DateTime` — these always return `Ok` at runtime.
+/// `DateTime` — these always return `Ok` at runtime. For `Uri` and `DateTime`,
+/// any input is accepted at runtime; parse inside the tool body if you need
+/// strict validation.
 pub fn check_format(field: &str, value: &str, format: Format) -> Result<()> {
-    let (re, name): (&regex::Regex, &str) = match format {
-        Format::Email => (email_regex(), "email"),
-        Format::Uuid => (uuid_regex(), "uuid"),
-        Format::Ipv4 => (ipv4_regex(), "ipv4"),
-        Format::Ipv6 => (ipv6_regex(), "ipv6"),
+    let re: &regex::Regex = match format {
+        Format::Email => email_regex(),
+        Format::Uuid => uuid_regex(),
+        Format::Ipv4 => ipv4_regex(),
+        Format::Ipv6 => ipv6_regex(),
         Format::Uri | Format::DateTime => return Ok(()),
     };
+    let name = format.as_str();
     if re.is_match(value) {
         Ok(())
     } else {
@@ -363,5 +380,36 @@ mod tests {
         }
         assert!(Y { limit: 10 }.validate().is_ok());
         assert_validation_err(Y { limit: 100 }.validate(), "maximum");
+    }
+
+    #[test]
+    fn format_as_str_returns_canonical_names() {
+        assert_eq!(Format::Email.as_str(), "email");
+        assert_eq!(Format::DateTime.as_str(), "date-time");
+        assert_eq!(Format::Uri.as_str(), "uri");
+    }
+
+    #[test]
+    fn length_with_no_bounds_accepts_anything() {
+        assert!(check_length("x", 0, None, None).is_ok());
+        assert!(check_length("x", 1_000_000, None, None).is_ok());
+    }
+
+    #[test]
+    fn enum_rejects_empty_string_when_not_listed() {
+        assert_validation_err(check_enum("x", "", &["a", "b"]), "must be one of");
+    }
+
+    #[test]
+    fn length_uses_unicode_char_count_contract() {
+        // 5 Japanese chars = 15 UTF-8 bytes — the doc contract says callers
+        // use .chars().count(), so these tests encode the call-site expectation.
+        let s = "こんにちは";
+        assert_eq!(s.chars().count(), 5);
+        assert!(check_length("greeting", s.chars().count(), Some(1), Some(5)).is_ok());
+        assert_validation_err(
+            check_length("greeting", s.chars().count(), Some(1), Some(4)),
+            "maximum",
+        );
     }
 }
