@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::agents::{AgentAction, AgentFinish};
-use crate::callbacks::CallbackHandler;
+use crate::callbacks::{CallbackHandler, ToolEndEvent, ToolErrorEvent, ToolStartEvent};
 use crate::documents::Document;
 use crate::error::Result;
 use crate::messages::Message;
@@ -636,96 +636,80 @@ impl CallbackHandler for EventStreamCallbackHandler {
         Ok(())
     }
 
-    async fn on_tool_start(
-        &self,
-        serialized: &Value,
-        input_str: &str,
-        run_id: Uuid,
-        parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        let name = assign_name(None, serialized);
+    async fn on_tool_start(&self, event: ToolStartEvent) -> Result<()> {
+        let name = assign_name(None, &event.serialized);
         let run_type = "tool".to_string();
-        let inputs = Some(Value::String(input_str.to_string()));
+        let inputs = Some(Value::String(event.input_str.clone()));
 
         self.write_run_start_info(
-            run_id,
+            event.run_id,
             name.clone(),
             run_type.clone(),
             Vec::new(),
             HashMap::new(),
-            parent_run_id,
+            event.parent_run_id,
             inputs.clone(),
         );
 
-        let event = StreamEvent {
+        let stream_event = StreamEvent {
             event: EventType::OnToolStart,
             name,
             data: EventData {
                 input: inputs,
                 ..Default::default()
             },
-            run_id: run_id.to_string(),
-            parent_ids: self.get_parent_ids(run_id),
+            run_id: event.run_id.to_string(),
+            parent_ids: self.get_parent_ids(event.run_id),
             tags: Vec::new(),
             metadata: HashMap::new(),
         };
-        self.send_event(event, &run_type);
+        self.send_event(stream_event, &run_type);
         Ok(())
     }
 
-    async fn on_tool_end(
-        &self,
-        output: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        let run_info = match self.pop_run_info(run_id) {
+    async fn on_tool_end(&self, event: ToolEndEvent) -> Result<()> {
+        let run_info = match self.pop_run_info(event.run_id) {
             Some(info) => info,
             None => return Ok(()),
         };
 
-        let event = StreamEvent {
+        let stream_event = StreamEvent {
             event: EventType::OnToolEnd,
             name: run_info.name,
             data: EventData {
-                output: Some(Value::String(output.to_string())),
+                output: Some(Value::String(event.output_str.clone())),
                 input: run_info.inputs,
                 ..Default::default()
             },
-            run_id: run_id.to_string(),
-            parent_ids: self.get_parent_ids(run_id),
+            run_id: event.run_id.to_string(),
+            parent_ids: self.get_parent_ids(event.run_id),
             tags: run_info.tags,
             metadata: run_info.metadata,
         };
-        self.send_event(event, &run_info.run_type);
+        self.send_event(stream_event, &run_info.run_type);
         Ok(())
     }
 
-    async fn on_tool_error(
-        &self,
-        error: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        let run_info = match self.pop_run_info(run_id) {
+    async fn on_tool_error(&self, event: ToolErrorEvent) -> Result<()> {
+        let run_info = match self.pop_run_info(event.run_id) {
             Some(info) => info,
             None => return Ok(()),
         };
 
-        let event = StreamEvent {
+        let stream_event = StreamEvent {
             event: EventType::OnToolError,
             name: run_info.name,
             data: EventData {
-                error: Some(error.to_string()),
+                error: Some(event.error.clone()),
                 input: run_info.inputs,
                 ..Default::default()
             },
-            run_id: run_id.to_string(),
-            parent_ids: self.get_parent_ids(run_id),
+            run_id: event.run_id.to_string(),
+            parent_ids: self.get_parent_ids(event.run_id),
             tags: run_info.tags,
             metadata: run_info.metadata,
         };
-        self.send_event(event, &run_info.run_type);
+        self.send_event(stream_event, &run_info.run_type);
         Ok(())
     }
 
@@ -916,6 +900,52 @@ mod tests {
         json!({"name": name})
     }
 
+    fn start_event(
+        serialized: &Value,
+        input: &str,
+        run_id: Uuid,
+        parent: Option<Uuid>,
+    ) -> ToolStartEvent {
+        ToolStartEvent {
+            tool: serialized
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            serialized: serialized.clone(),
+            input_str: input.to_string(),
+            inputs: Value::Null,
+            tool_call_id: None,
+            run_id,
+            parent_run_id: parent,
+            tags: vec![],
+            metadata: HashMap::new(),
+        }
+    }
+
+    fn end_event(out: &str, run_id: Uuid) -> ToolEndEvent {
+        ToolEndEvent {
+            tool: "".into(),
+            output_str: out.into(),
+            output_value: Value::String(out.into()),
+            artifact: None,
+            tool_call_id: None,
+            run_id,
+            parent_run_id: None,
+        }
+    }
+
+    fn error_event(err: &str, run_id: Uuid) -> ToolErrorEvent {
+        ToolErrorEvent {
+            tool: "".into(),
+            error: err.into(),
+            error_kind: crate::callbacks::ToolErrorKind::Execution,
+            tool_call_id: None,
+            run_id,
+            parent_run_id: None,
+        }
+    }
+
     #[tokio::test]
     async fn test_llm_start_end_events() {
         let handler = EventStreamCallbackHandler::with_defaults();
@@ -990,7 +1020,12 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         handler
-            .on_tool_start(&make_serialized("my-tool"), "tool input", run_id, None)
+            .on_tool_start(start_event(
+                &make_serialized("my-tool"),
+                "tool input",
+                run_id,
+                None,
+            ))
             .await
             .unwrap();
 
@@ -999,7 +1034,7 @@ mod tests {
         assert_eq!(evt.name, "my-tool");
 
         handler
-            .on_tool_end("tool output", run_id, None)
+            .on_tool_end(end_event("tool output", run_id))
             .await
             .unwrap();
 
@@ -1130,12 +1165,12 @@ mod tests {
         // Tool error
         let run_id = Uuid::new_v4();
         handler
-            .on_tool_start(&make_serialized("err-tool"), "", run_id, None)
+            .on_tool_start(start_event(&make_serialized("err-tool"), "", run_id, None))
             .await
             .unwrap();
         let _ = rx.try_recv();
         handler
-            .on_tool_error("tool failed", run_id, None)
+            .on_tool_error(error_event("tool failed", run_id))
             .await
             .unwrap();
         let evt = rx.try_recv().unwrap();
@@ -1187,12 +1222,12 @@ mod tests {
 
         // Grandchild tool
         handler
-            .on_tool_start(
+            .on_tool_start(start_event(
                 &make_serialized("grandchild"),
                 "",
                 grandchild_id,
                 Some(child_id),
-            )
+            ))
             .await
             .unwrap();
         let evt = rx.try_recv().unwrap();

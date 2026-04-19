@@ -202,8 +202,18 @@ async fn test_run_manager_for_tool() {
     let run_mgr = RunManagerForTool::new(run_id, vec![h.clone()], vec![h], None);
     assert_eq!(run_mgr.run_id(), run_id);
 
-    run_mgr.on_tool_end("output").await.unwrap();
-    run_mgr.on_tool_error("error").await.unwrap();
+    run_mgr
+        .on_tool_end(
+            "output".into(),
+            serde_json::Value::String("output".into()),
+            None,
+        )
+        .await
+        .unwrap();
+    run_mgr
+        .on_tool_error("error".into(), ToolErrorKind::Execution)
+        .await
+        .unwrap();
     run_mgr.on_text("text").await.unwrap();
 
     let child = run_mgr.get_child();

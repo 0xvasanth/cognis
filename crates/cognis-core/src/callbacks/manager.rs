@@ -5,6 +5,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::base::CallbackHandler;
+use super::events::{ToolEndEvent, ToolErrorEvent, ToolStartEvent};
 use crate::agents::{AgentAction, AgentFinish};
 use crate::error::Result;
 use crate::outputs::LLMResult;
@@ -249,34 +250,23 @@ impl CallbackManager {
         Ok(())
     }
 
-    pub async fn on_tool_start(
-        &self,
-        serialized: &Value,
-        input_str: &str,
-        run_id: Uuid,
-    ) -> Result<()> {
+    pub async fn on_tool_start(&self, event: ToolStartEvent) -> Result<()> {
         for handler in &self.handlers {
-            handler
-                .on_tool_start(serialized, input_str, run_id, self.parent_run_id)
-                .await?;
+            handler.on_tool_start(event.clone()).await?;
         }
         Ok(())
     }
 
-    pub async fn on_tool_end(&self, output: &str, run_id: Uuid) -> Result<()> {
+    pub async fn on_tool_end(&self, event: ToolEndEvent) -> Result<()> {
         for handler in &self.handlers {
-            handler
-                .on_tool_end(output, run_id, self.parent_run_id)
-                .await?;
+            handler.on_tool_end(event.clone()).await?;
         }
         Ok(())
     }
 
-    pub async fn on_tool_error(&self, error: &str, run_id: Uuid) -> Result<()> {
+    pub async fn on_tool_error(&self, event: ToolErrorEvent) -> Result<()> {
         for handler in &self.handlers {
-            handler
-                .on_tool_error(error, run_id, self.parent_run_id)
-                .await?;
+            handler.on_tool_error(event.clone()).await?;
         }
         Ok(())
     }
@@ -354,6 +344,43 @@ mod tests {
         }
     }
 
+    fn start_event(run_id: Uuid, input: &str) -> ToolStartEvent {
+        ToolStartEvent {
+            tool: "test".into(),
+            serialized: json!({}),
+            input_str: input.into(),
+            inputs: json!({}),
+            tool_call_id: None,
+            run_id,
+            parent_run_id: None,
+            tags: vec![],
+            metadata: HashMap::new(),
+        }
+    }
+
+    fn end_event(run_id: Uuid, out: &str) -> ToolEndEvent {
+        ToolEndEvent {
+            tool: "test".into(),
+            output_str: out.into(),
+            output_value: Value::String(out.into()),
+            artifact: None,
+            tool_call_id: None,
+            run_id,
+            parent_run_id: None,
+        }
+    }
+
+    fn error_event(run_id: Uuid, err: &str) -> ToolErrorEvent {
+        ToolErrorEvent {
+            tool: "test".into(),
+            error: err.into(),
+            error_kind: crate::callbacks::ToolErrorKind::Execution,
+            tool_call_id: None,
+            run_id,
+            parent_run_id: None,
+        }
+    }
+
     #[tokio::test]
     async fn test_dispatch_to_multiple_handlers() {
         let logging = Arc::new(LoggingCallbackHandler::new(LogLevel::Info));
@@ -406,7 +433,7 @@ mod tests {
             .await
             .unwrap();
         manager
-            .on_tool_start(&json!({}), "search query", run_id)
+            .on_tool_start(start_event(run_id, "search query"))
             .await
             .unwrap();
 
@@ -443,7 +470,7 @@ mod tests {
 
         // One tool call
         manager
-            .on_tool_start(&json!({}), "input", run_id)
+            .on_tool_start(start_event(run_id, "input"))
             .await
             .unwrap();
 
@@ -520,11 +547,14 @@ mod tests {
         manager.on_chain_end(&json!({}), run_id).await.unwrap();
         manager.on_chain_error("err", run_id).await.unwrap();
         manager
-            .on_tool_start(&json!({}), "in", run_id)
+            .on_tool_start(start_event(run_id, "in"))
             .await
             .unwrap();
-        manager.on_tool_end("out", run_id).await.unwrap();
-        manager.on_tool_error("err", run_id).await.unwrap();
+        manager.on_tool_end(end_event(run_id, "out")).await.unwrap();
+        manager
+            .on_tool_error(error_event(run_id, "err"))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -567,11 +597,14 @@ mod tests {
         manager.on_chain_end(&json!({}), run_id).await.unwrap();
         manager.on_chain_error("err", run_id).await.unwrap();
         manager
-            .on_tool_start(&json!({}), "in", run_id)
+            .on_tool_start(start_event(run_id, "in"))
             .await
             .unwrap();
-        manager.on_tool_end("out", run_id).await.unwrap();
-        manager.on_tool_error("err", run_id).await.unwrap();
+        manager.on_tool_end(end_event(run_id, "out")).await.unwrap();
+        manager
+            .on_tool_error(error_event(run_id, "err"))
+            .await
+            .unwrap();
 
         let logs = logging.get_logs();
         assert_eq!(logs.len(), 9);

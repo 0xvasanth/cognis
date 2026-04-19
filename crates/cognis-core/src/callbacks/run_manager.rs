@@ -5,6 +5,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::base::CallbackHandler;
+use super::events::{ToolEndEvent, ToolErrorEvent, ToolErrorKind};
 use super::manager::CallbackManager;
 use crate::agents::{AgentAction, AgentFinish};
 use crate::documents::Document;
@@ -227,6 +228,8 @@ pub struct RunManagerForTool {
     handlers: Vec<Arc<dyn CallbackHandler>>,
     inheritable_handlers: Vec<Arc<dyn CallbackHandler>>,
     parent_run_id: Option<Uuid>,
+    tool_name: Option<String>,
+    tool_call_id: Option<String>,
 }
 
 impl RunManagerForTool {
@@ -241,7 +244,22 @@ impl RunManagerForTool {
             handlers,
             inheritable_handlers,
             parent_run_id,
+            tool_name: None,
+            tool_call_id: None,
         }
+    }
+
+    /// Set the tool name associated with this run (used when forwarding
+    /// `ToolEndEvent` / `ToolErrorEvent` to handlers).
+    pub fn with_tool_name(mut self, name: impl Into<String>) -> Self {
+        self.tool_name = Some(name.into());
+        self
+    }
+
+    /// Set the tool-call id associated with this run.
+    pub fn with_tool_call_id(mut self, id: impl Into<String>) -> Self {
+        self.tool_call_id = Some(id.into());
+        self
     }
 
     pub fn run_id(&self) -> Uuid {
@@ -253,19 +271,39 @@ impl RunManagerForTool {
         CallbackManager::new(self.inheritable_handlers.clone(), Some(self.run_id))
     }
 
-    pub async fn on_tool_end(&self, output: &str) -> Result<()> {
+    pub async fn on_tool_end(
+        &self,
+        output_str: String,
+        output_value: Value,
+        artifact: Option<Value>,
+    ) -> Result<()> {
         for handler in &self.handlers {
             handler
-                .on_tool_end(output, self.run_id, self.parent_run_id)
+                .on_tool_end(ToolEndEvent {
+                    tool: self.tool_name.clone().unwrap_or_default(),
+                    output_str: output_str.clone(),
+                    output_value: output_value.clone(),
+                    artifact: artifact.clone(),
+                    tool_call_id: self.tool_call_id.clone(),
+                    run_id: self.run_id,
+                    parent_run_id: self.parent_run_id,
+                })
                 .await?;
         }
         Ok(())
     }
 
-    pub async fn on_tool_error(&self, error: &str) -> Result<()> {
+    pub async fn on_tool_error(&self, error: String, kind: ToolErrorKind) -> Result<()> {
         for handler in &self.handlers {
             handler
-                .on_tool_error(error, self.run_id, self.parent_run_id)
+                .on_tool_error(ToolErrorEvent {
+                    tool: self.tool_name.clone().unwrap_or_default(),
+                    error: error.clone(),
+                    error_kind: kind.clone(),
+                    tool_call_id: self.tool_call_id.clone(),
+                    run_id: self.run_id,
+                    parent_run_id: self.parent_run_id,
+                })
                 .await?;
         }
         Ok(())

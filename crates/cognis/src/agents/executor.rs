@@ -25,6 +25,7 @@ use serde_json::Value;
 
 use cognis_core::callbacks::base::CallbackHandler;
 use cognis_core::callbacks::manager::CallbackManager;
+use cognis_core::callbacks::{ToolEndEvent, ToolErrorEvent, ToolErrorKind, ToolStartEvent};
 use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{Message, ToolMessage};
@@ -402,33 +403,74 @@ impl AgentExecutor {
 
                 let tool_run_id = Uuid::new_v4();
                 let serialized_tool = serde_json::json!({"name": &tool_call.name});
-                let tool_input_str = serde_json::to_string(&tool_call.args).unwrap_or_default();
+                let args_value = serde_json::to_value(&tool_call.args).unwrap_or_default();
+                let tool_input_str = serde_json::to_string(&args_value).unwrap_or_default();
+                let tool_call_id_opt = tool_call.id.clone();
+
                 let _ = cb
-                    .on_tool_start(&serialized_tool, &tool_input_str, tool_run_id)
+                    .on_tool_start(ToolStartEvent {
+                        tool: tool_call.name.clone(),
+                        serialized: serialized_tool.clone(),
+                        input_str: tool_input_str.clone(),
+                        inputs: args_value.clone(),
+                        tool_call_id: tool_call_id_opt.clone(),
+                        run_id: tool_run_id,
+                        parent_run_id: Some(chain_run_id),
+                        tags: vec![],
+                        metadata: Default::default(),
+                    })
                     .await;
 
                 let result_text = match self.tools.get(&tool_call.name) {
                     Some(tool) => {
-                        let args_value = serde_json::to_value(&tool_call.args).unwrap_or_default();
                         match tool.run_json(&args_value).await {
                             Ok(value) => {
                                 let text = match value {
                                     serde_json::Value::String(s) => s,
                                     other => other.to_string(),
                                 };
-                                let _ = cb.on_tool_end(&text, tool_run_id).await;
+                                let _ = cb
+                                    .on_tool_end(ToolEndEvent {
+                                        tool: tool_call.name.clone(),
+                                        output_str: text.clone(),
+                                        // TEMPORARY: Task 6 will replace this with the real Value.
+                                        output_value: serde_json::Value::String(text.clone()),
+                                        artifact: None,
+                                        tool_call_id: tool_call_id_opt.clone(),
+                                        run_id: tool_run_id,
+                                        parent_run_id: Some(chain_run_id),
+                                    })
+                                    .await;
                                 text
                             }
                             Err(e) => {
                                 let err_text = format!("Error: {e}");
-                                let _ = cb.on_tool_error(&err_text, tool_run_id).await;
+                                let _ = cb
+                                    .on_tool_error(ToolErrorEvent {
+                                        tool: tool_call.name.clone(),
+                                        error: err_text.clone(),
+                                        error_kind: ToolErrorKind::Execution,
+                                        tool_call_id: tool_call_id_opt.clone(),
+                                        run_id: tool_run_id,
+                                        parent_run_id: Some(chain_run_id),
+                                    })
+                                    .await;
                                 err_text
                             }
                         }
                     }
                     None => {
                         let err_text = format!("Error: tool '{}' not found", tool_call.name);
-                        let _ = cb.on_tool_error(&err_text, tool_run_id).await;
+                        let _ = cb
+                            .on_tool_error(ToolErrorEvent {
+                                tool: tool_call.name.clone(),
+                                error: err_text.clone(),
+                                error_kind: ToolErrorKind::NotFound,
+                                tool_call_id: tool_call_id_opt.clone(),
+                                run_id: tool_run_id,
+                                parent_run_id: Some(chain_run_id),
+                            })
+                            .await;
                         err_text
                     }
                 };
@@ -1307,33 +1349,17 @@ mod tests {
             Ok(())
         }
 
-        async fn on_tool_start(
-            &self,
-            _serialized: &Value,
-            _input_str: &str,
-            _run_id: Uuid,
-            _parent_run_id: Option<Uuid>,
-        ) -> cognis_core::error::Result<()> {
+        async fn on_tool_start(&self, _event: ToolStartEvent) -> cognis_core::error::Result<()> {
             self.events.lock().unwrap().push("tool_start".to_string());
             Ok(())
         }
 
-        async fn on_tool_end(
-            &self,
-            _output: &str,
-            _run_id: Uuid,
-            _parent_run_id: Option<Uuid>,
-        ) -> cognis_core::error::Result<()> {
+        async fn on_tool_end(&self, _event: ToolEndEvent) -> cognis_core::error::Result<()> {
             self.events.lock().unwrap().push("tool_end".to_string());
             Ok(())
         }
 
-        async fn on_tool_error(
-            &self,
-            _error: &str,
-            _run_id: Uuid,
-            _parent_run_id: Option<Uuid>,
-        ) -> cognis_core::error::Result<()> {
+        async fn on_tool_error(&self, _event: ToolErrorEvent) -> cognis_core::error::Result<()> {
             self.events.lock().unwrap().push("tool_error".to_string());
             Ok(())
         }

@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use uuid::Uuid;
 
+use super::events::{ToolEndEvent, ToolErrorEvent, ToolStartEvent};
 use crate::agents::{AgentAction, AgentFinish};
 use crate::documents::Document;
 use crate::error::Result;
@@ -130,31 +131,15 @@ pub trait CallbackHandler: Send + Sync {
         Ok(())
     }
 
-    async fn on_tool_start(
-        &self,
-        _serialized: &Value,
-        _input_str: &str,
-        _run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_start(&self, _event: ToolStartEvent) -> Result<()> {
         Ok(())
     }
 
-    async fn on_tool_end(
-        &self,
-        _output: &str,
-        _run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_end(&self, _event: ToolEndEvent) -> Result<()> {
         Ok(())
     }
 
-    async fn on_tool_error(
-        &self,
-        _error: &str,
-        _run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_error(&self, _event: ToolErrorEvent) -> Result<()> {
         Ok(())
     }
 
