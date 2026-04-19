@@ -21,6 +21,30 @@ pub trait BaseToolkit: Send + Sync {
     fn get_tools(&self) -> Vec<Box<dyn BaseTool>>;
 }
 
+/// Apply an error-handler policy to a tool error, converting it (where
+/// configured) into a `Value::String` observation the agent can feed back
+/// to the model, or re-raising the error for caller-side handling.
+///
+/// Used by `BaseTool::run` and the agent executor (which calls `_run`
+/// directly and must replicate policy outside the trait).
+pub fn apply_error_handler(handler: &ErrorHandler, error: CognisError) -> Result<Value> {
+    match error {
+        CognisError::ToolException(msg) => match handler {
+            ErrorHandler::Propagate => Err(CognisError::ToolException(msg)),
+            ErrorHandler::DefaultMessage => Ok(Value::String(msg)),
+            ErrorHandler::StaticMessage(s) => Ok(Value::String(s.clone())),
+            ErrorHandler::Dynamic(f) => Ok(Value::String(f(&msg))),
+        },
+        CognisError::ToolValidationError(msg) => match handler {
+            ErrorHandler::Propagate => Err(CognisError::ToolValidationError(msg)),
+            ErrorHandler::DefaultMessage => Ok(Value::String(msg)),
+            ErrorHandler::StaticMessage(s) => Ok(Value::String(s.clone())),
+            ErrorHandler::Dynamic(f) => Ok(Value::String(f(&msg))),
+        },
+        other => Err(other),
+    }
+}
+
 /// Interface for tools that can be called by agents.
 #[async_trait]
 pub trait BaseTool: Send + Sync {
@@ -82,25 +106,16 @@ pub trait BaseTool: Send + Sync {
     /// Run the tool with error handling.
     async fn run(&self, input: ToolInput, _tool_call_id: Option<&str>) -> Result<Value> {
         match self._run(input).await {
-            Ok(output) => {
-                let content = match output {
-                    ToolOutput::Content(v) => v,
-                    ToolOutput::ContentAndArtifact { content, .. } => content,
-                };
-                Ok(content)
+            Ok(output) => Ok(match output {
+                ToolOutput::Content(v) => v,
+                ToolOutput::ContentAndArtifact { content, .. } => content,
+            }),
+            Err(e @ CognisError::ToolException(_)) => {
+                apply_error_handler(self.handle_tool_error(), e)
             }
-            Err(CognisError::ToolException(msg)) => match self.handle_tool_error() {
-                ErrorHandler::Propagate => Err(CognisError::ToolException(msg)),
-                ErrorHandler::DefaultMessage => Ok(Value::String(msg)),
-                ErrorHandler::StaticMessage(s) => Ok(Value::String(s.clone())),
-                ErrorHandler::Dynamic(f) => Ok(Value::String(f(&msg))),
-            },
-            Err(CognisError::ToolValidationError(msg)) => match self.handle_validation_error() {
-                ErrorHandler::Propagate => Err(CognisError::ToolValidationError(msg)),
-                ErrorHandler::DefaultMessage => Ok(Value::String(msg)),
-                ErrorHandler::StaticMessage(s) => Ok(Value::String(s.clone())),
-                ErrorHandler::Dynamic(f) => Ok(Value::String(f(&msg))),
-            },
+            Err(e @ CognisError::ToolValidationError(_)) => {
+                apply_error_handler(self.handle_validation_error(), e)
+            }
             Err(e) => Err(e),
         }
     }
@@ -118,5 +133,39 @@ pub trait BaseTool: Send + Sync {
             _ => return self.run(ToolInput::Text(input.to_string()), None).await,
         };
         self.run(ToolInput::Structured(map), None).await
+    }
+}
+
+#[cfg(test)]
+mod error_handler_tests {
+    use super::*;
+
+    #[test]
+    fn propagate_returns_err() {
+        let handler = ErrorHandler::Propagate;
+        let result = apply_error_handler(&handler, CognisError::ToolException("boom".into()));
+        assert!(matches!(result, Err(CognisError::ToolException(_))));
+    }
+
+    #[test]
+    fn default_message_returns_error_text() {
+        let handler = ErrorHandler::DefaultMessage;
+        let result = apply_error_handler(&handler, CognisError::ToolException("boom".into()));
+        assert_eq!(result.unwrap(), Value::String("boom".to_string()));
+    }
+
+    #[test]
+    fn static_message_returns_configured_text() {
+        let handler = ErrorHandler::StaticMessage("safe fallback".into());
+        let result = apply_error_handler(&handler, CognisError::ToolException("boom".into()));
+        assert_eq!(result.unwrap(), Value::String("safe fallback".to_string()));
+    }
+
+    #[test]
+    fn dynamic_uses_callback() {
+        let handler =
+            ErrorHandler::Dynamic(std::sync::Arc::new(|msg: &str| format!("wrapped: {msg}")));
+        let result = apply_error_handler(&handler, CognisError::ToolException("boom".into()));
+        assert_eq!(result.unwrap(), Value::String("wrapped: boom".to_string()));
     }
 }
