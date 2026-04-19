@@ -19,6 +19,21 @@ use std::sync::OnceLock;
 
 use crate::error::{CognisError, Result};
 
+/// Trait for types that can validate their own field constraints after
+/// deserialization. Typically implemented by code generated from
+/// `#[cognis::tool]` — each struct's `validate()` is a list of calls into the
+/// `check_*` helpers in this module.
+///
+/// The default impl returns `Ok(())`, making it cheap to derive on structs
+/// with no validators.
+pub trait ValidateArgs {
+    /// Run all field validators. Returns the first violation found as a
+    /// [`CognisError::ToolValidationError`].
+    fn validate(&self) -> Result<()> {
+        Ok(())
+    }
+}
+
 /// Validate that `value` lies within `[min, max]` (inclusive on both ends).
 ///
 /// `None` bounds are skipped. `NaN` inputs are rejected explicitly (they
@@ -71,7 +86,7 @@ pub fn check_length(field: &str, len: usize, min: Option<usize>, max: Option<usi
 
 /// Validate that `value` is one of the `allowed` variants.
 pub fn check_enum(field: &str, value: &str, allowed: &[&str]) -> Result<()> {
-    if allowed.iter().any(|a| *a == value) {
+    if allowed.contains(&value) {
         Ok(())
     } else {
         let list = allowed
@@ -322,5 +337,26 @@ mod tests {
     fn format_uri_is_schema_only_passthrough() {
         assert!(check_format("link", "anything goes here", Format::Uri).is_ok());
         assert!(check_format("t", "whatever", Format::DateTime).is_ok());
+    }
+
+    #[test]
+    fn validate_args_default_impl_compiles() {
+        struct X;
+        impl ValidateArgs for X {}
+        assert!(X.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_args_custom_impl_surfaces_error() {
+        struct Y {
+            limit: u32,
+        }
+        impl ValidateArgs for Y {
+            fn validate(&self) -> Result<()> {
+                check_range("limit", self.limit as f64, Some(1.0), Some(50.0))
+            }
+        }
+        assert!(Y { limit: 10 }.validate().is_ok());
+        assert_validation_err(Y { limit: 100 }.validate(), "maximum");
     }
 }
