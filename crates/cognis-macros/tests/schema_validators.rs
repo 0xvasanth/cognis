@@ -16,6 +16,8 @@ struct Sample {
     contact: String,
     #[schema(pattern("^[a-z]+$"))]
     slug: String,
+    #[schema(length(min = 1, max = 5))]
+    tags: Vec<String>,
 }
 
 #[test]
@@ -25,6 +27,15 @@ fn schema_has_length_keys_on_string() {
     assert_eq!(query["minLength"], json!(1));
     assert_eq!(query["maxLength"], json!(100));
     assert_eq!(query["description"], json!("Search query"));
+    // Inverse: the array-branch keys must NOT fire on a string field.
+    assert!(
+        query.get("minItems").is_none(),
+        "minItems should not fire on a string field"
+    );
+    assert!(
+        query.get("maxItems").is_none(),
+        "maxItems should not fire on a string field"
+    );
 }
 
 #[test]
@@ -33,24 +44,46 @@ fn schema_has_range_keys_on_optional_int() {
     let limit = &s["properties"]["limit"];
     assert_eq!(limit["minimum"], json!(1));
     assert_eq!(limit["maximum"], json!(50));
+    assert!(limit.get("minLength").is_none());
+    assert!(limit.get("pattern").is_none());
 }
 
 #[test]
 fn schema_has_enum_keys() {
     let s = Sample::json_schema();
     assert_eq!(s["properties"]["order"]["enum"], json!(["asc", "desc"]));
+    let order = &s["properties"]["order"];
+    assert!(order.get("pattern").is_none());
+    assert!(order.get("format").is_none());
 }
 
 #[test]
 fn schema_has_format_key() {
     let s = Sample::json_schema();
     assert_eq!(s["properties"]["contact"]["format"], json!("email"));
+    let contact = &s["properties"]["contact"];
+    assert!(contact.get("pattern").is_none());
+    assert!(contact.get("minLength").is_none());
 }
 
 #[test]
 fn schema_has_pattern_key() {
     let s = Sample::json_schema();
     assert_eq!(s["properties"]["slug"]["pattern"], json!("^[a-z]+$"));
+    let slug = &s["properties"]["slug"];
+    assert!(slug.get("enum").is_none());
+    assert!(slug.get("format").is_none());
+}
+
+#[test]
+fn schema_has_items_keys_on_vec() {
+    let s = Sample::json_schema();
+    let tags = &s["properties"]["tags"];
+    assert_eq!(tags["minItems"], json!(1));
+    assert_eq!(tags["maxItems"], json!(5));
+    // Inverse: the string-branch keys must NOT fire on an array field.
+    assert!(tags.get("minLength").is_none());
+    assert!(tags.get("maxLength").is_none());
 }
 
 #[test]
