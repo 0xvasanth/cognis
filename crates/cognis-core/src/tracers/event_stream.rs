@@ -118,6 +118,9 @@ pub struct EventData {
     /// Streaming chunk (present on stream events).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chunk: Option<Value>,
+    /// Structured artifact payload from tools (present on tool end events).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<Value>,
     /// Error description (present on error events).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
