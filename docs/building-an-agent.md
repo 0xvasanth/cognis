@@ -129,7 +129,7 @@ Do this when you need custom error types, retries inside the tool, access to per
 
 > **Built-ins** — `cognis` ships `calculator`, `shell`, `filesystem`, HTTP, and more. Check `cognis::tools::*` before writing your own.
 >
-> **Derive** — `cognis-macros` provides `#[derive(Tool)]` which generates `BaseTool` from a struct. See [`examples/tools/derive_tool.rs`](../examples/tools/derive_tool.rs).
+> **Derive helpers** — `cognis-macros` provides `#[derive(JsonSchema)]` and `#[derive(ToolSchema)]` to auto-generate the args schema from a Rust struct, which you then return from `args_schema()` in your `BaseTool` impl. See [`examples/tools/derive_tool.rs`](../examples/tools/derive_tool.rs).
 
 ---
 
@@ -269,7 +269,7 @@ let executor = AgentExecutor::builder()
     .build();
 ```
 
-Per-phase hooks available: `on_llm_start/new_token/end/error`, `on_chain_start/end/error`, `on_tool_start/end/error`, `on_agent_action/finish`, `on_retriever_start/end/error`. Filter flags (`ignore_llm`, `ignore_tool`, etc.) let a handler opt out of categories. For token streaming specifically, pair this with FR-1 once it lands — `on_llm_new_token` is already wired.
+Per-phase hooks available: `on_llm_start/new_token/end/error`, `on_chain_start/end/error`, `on_tool_start/end/error`, `on_agent_action/finish`, `on_retriever_start/end/error`. Filter flags (`ignore_llm`, `ignore_chain`, `ignore_agent`, `ignore_retriever`, `ignore_chat_model`, `ignore_retry`, `ignore_custom_event`) let a handler opt out of categories — tool events are delivered unconditionally. For token streaming specifically, pair this with FR-1 once it lands — `on_llm_new_token` is already wired.
 
 ---
 
@@ -306,13 +306,19 @@ let result = structured._generate(&messages, None).await?;
 If the model still hands you a malformed blob (trailing commas, stray prose), wrap your parser in `OutputFixingParser`:
 
 ```rust
+use serde_json::Value;
 use cognis::output_parsers::OutputFixingParser;
+use cognis_core::runnables::base::Runnable;
 
 let robust = OutputFixingParser::builder()
     .parser(json_parser)
     .llm(model.clone())
     .build();
-// robust.parse() retries malformed output through the LLM with the error attached.
+
+// Use the async Runnable interface — it tries the inner parser first, and on
+// failure feeds the malformed text + error back to the LLM asking for a fix.
+// (The sync `parse()` method only runs the inner parser and does NOT fix.)
+let fixed: Value = robust.invoke(Value::String(raw_text), None).await?;
 ```
 
 ---
