@@ -67,6 +67,22 @@ pub fn check_length(field: &str, len: usize, min: Option<usize>, max: Option<usi
     Ok(())
 }
 
+/// Validate that `value` is one of the `allowed` variants.
+pub fn check_enum(field: &str, value: &str, allowed: &[&str]) -> Result<()> {
+    if allowed.iter().any(|a| *a == value) {
+        Ok(())
+    } else {
+        let list = allowed
+            .iter()
+            .map(|a| format!("\"{a}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Err(CognisError::ToolValidationError(format!(
+            "field `{field}`: \"{value}\" must be one of [{list}]"
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,5 +156,23 @@ mod tests {
     fn length_boundaries_inclusive() {
         assert!(check_length("name", 1, Some(1), Some(10)).is_ok());
         assert!(check_length("name", 10, Some(1), Some(10)).is_ok());
+    }
+
+    #[test]
+    fn enum_accepts_listed_value() {
+        assert!(check_enum("order", "asc", &["asc", "desc"]).is_ok());
+        assert!(check_enum("order", "desc", &["asc", "desc"]).is_ok());
+    }
+
+    #[test]
+    fn enum_rejects_unlisted_value() {
+        assert_validation_err(check_enum("order", "random", &["asc", "desc"]), "one of");
+    }
+
+    #[test]
+    fn enum_error_includes_allowed_values() {
+        let err = check_enum("order", "x", &["asc", "desc"]).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("asc") && msg.contains("desc"), "got {msg}");
     }
 }
