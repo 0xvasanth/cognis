@@ -15,6 +15,8 @@
 //! enforces the same constraint after deserialization. Keeping them in sync
 //! is the feature's main purpose — don't add one without the other.
 
+use std::sync::OnceLock;
+
 use crate::error::{CognisError, Result};
 
 /// Validate that `value` lies within `[min, max]` (inclusive on both ends).
@@ -93,6 +95,83 @@ pub fn check_pattern(field: &str, value: &str, re: &regex::Regex) -> Result<()> 
         Err(CognisError::ToolValidationError(format!(
             "field `{field}`: \"{value}\" does not match pattern `{pat}`",
             pat = re.as_str(),
+        )))
+    }
+}
+
+/// String formats supported by `#[schema(format(...))]`.
+///
+/// `Email`, `Uuid`, `Ipv4`, `Ipv6` are regex-checked at runtime. `Uri` and
+/// `DateTime` are emitted into the JSON Schema (for the LLM) but **not**
+/// enforced at runtime — their real-world grammars are too permissive for a
+/// cheap check to add value. Users who need strict parsing should validate
+/// inside the tool body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    /// RFC 5322-ish email (regex-checked).
+    Email,
+    /// URI — schema-only; not validated at runtime.
+    Uri,
+    /// RFC 4122 UUID (regex-checked, case-insensitive).
+    Uuid,
+    /// ISO 8601 date-time — schema-only; not validated at runtime.
+    DateTime,
+    /// Dotted-quad IPv4 address (regex-checked).
+    Ipv4,
+    /// Colon-separated IPv6 address (regex-checked).
+    Ipv6,
+}
+
+// Infallible regex construction: patterns are static string literals that are
+// validated by the test suite. `OnceLock::get_or_init` takes an infallible
+// closure, so `expect` is the idiomatic way to surface a compile-time-known
+// panic if the regex source were ever corrupted during refactoring.
+fn email_regex() -> &'static regex::Regex {
+    static R: OnceLock<regex::Regex> = OnceLock::new();
+    R.get_or_init(|| regex::Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").expect("valid email regex"))
+}
+
+fn uuid_regex() -> &'static regex::Regex {
+    static R: OnceLock<regex::Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        regex::Regex::new(r"(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+            .expect("valid uuid regex")
+    })
+}
+
+fn ipv4_regex() -> &'static regex::Regex {
+    static R: OnceLock<regex::Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        regex::Regex::new(r"^(25[0-5]|2[0-4]\d|[01]?\d?\d)(\.(25[0-5]|2[0-4]\d|[01]?\d?\d)){3}$")
+            .expect("valid ipv4 regex")
+    })
+}
+
+fn ipv6_regex() -> &'static regex::Regex {
+    static R: OnceLock<regex::Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        regex::Regex::new(r"^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^(([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4})?::(([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4})?$")
+            .expect("valid ipv6 regex")
+    })
+}
+
+/// Validate that `value` matches the named format.
+///
+/// Regex-backed for `Email`, `Uuid`, `Ipv4`, `Ipv6`. Schema-only for `Uri` and
+/// `DateTime` — these always return `Ok` at runtime.
+pub fn check_format(field: &str, value: &str, format: Format) -> Result<()> {
+    let (re, name): (&regex::Regex, &str) = match format {
+        Format::Email => (email_regex(), "email"),
+        Format::Uuid => (uuid_regex(), "uuid"),
+        Format::Ipv4 => (ipv4_regex(), "ipv4"),
+        Format::Ipv6 => (ipv6_regex(), "ipv6"),
+        Format::Uri | Format::DateTime => return Ok(()),
+    };
+    if re.is_match(value) {
+        Ok(())
+    } else {
+        Err(CognisError::ToolValidationError(format!(
+            "field `{field}`: \"{value}\" is not a valid {name}"
         )))
     }
 }
@@ -207,5 +286,41 @@ mod tests {
         let re = regex::Regex::new("^[a-z]+$").unwrap();
         let err = check_pattern("slug", "Hi", &re).unwrap_err();
         assert!(err.to_string().contains("^[a-z]+$"), "got {err}");
+    }
+
+    #[test]
+    fn format_email_accepts_basic_address() {
+        assert!(check_format("to", "a@b.c", Format::Email).is_ok());
+    }
+
+    #[test]
+    fn format_email_rejects_bare_token() {
+        assert_validation_err(check_format("to", "no-at-sign", Format::Email), "email");
+    }
+
+    #[test]
+    fn format_uuid_accepts_v4() {
+        assert!(check_format("id", "550e8400-e29b-41d4-a716-446655440000", Format::Uuid,).is_ok());
+    }
+
+    #[test]
+    fn format_uuid_rejects_non_uuid() {
+        assert_validation_err(check_format("id", "not-a-uuid", Format::Uuid), "uuid");
+    }
+
+    #[test]
+    fn format_ipv4_accepts() {
+        assert!(check_format("ip", "192.168.1.1", Format::Ipv4).is_ok());
+    }
+
+    #[test]
+    fn format_ipv4_rejects() {
+        assert_validation_err(check_format("ip", "300.1.1.1", Format::Ipv4), "ipv4");
+    }
+
+    #[test]
+    fn format_uri_is_schema_only_passthrough() {
+        assert!(check_format("link", "anything goes here", Format::Uri).is_ok());
+        assert!(check_format("t", "whatever", Format::DateTime).is_ok());
     }
 }
