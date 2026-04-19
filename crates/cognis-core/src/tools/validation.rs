@@ -83,6 +83,20 @@ pub fn check_enum(field: &str, value: &str, allowed: &[&str]) -> Result<()> {
     }
 }
 
+/// Validate that `value` matches `re`. The `Regex` is expected to be
+/// precompiled once (typically via `std::sync::OnceLock` in macro-generated
+/// code) and passed in by reference.
+pub fn check_pattern(field: &str, value: &str, re: &regex::Regex) -> Result<()> {
+    if re.is_match(value) {
+        Ok(())
+    } else {
+        Err(CognisError::ToolValidationError(format!(
+            "field `{field}`: \"{value}\" does not match pattern `{pat}`",
+            pat = re.as_str(),
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,5 +188,24 @@ mod tests {
         let err = check_enum("order", "x", &["asc", "desc"]).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("asc") && msg.contains("desc"), "got {msg}");
+    }
+
+    #[test]
+    fn pattern_accepts_match() {
+        let re = regex::Regex::new("^[a-z]+$").unwrap();
+        assert!(check_pattern("slug", "hello", &re).is_ok());
+    }
+
+    #[test]
+    fn pattern_rejects_non_match() {
+        let re = regex::Regex::new("^[a-z]+$").unwrap();
+        assert_validation_err(check_pattern("slug", "Hello", &re), "pattern");
+    }
+
+    #[test]
+    fn pattern_error_includes_pattern_string() {
+        let re = regex::Regex::new("^[a-z]+$").unwrap();
+        let err = check_pattern("slug", "Hi", &re).unwrap_err();
+        assert!(err.to_string().contains("^[a-z]+$"), "got {err}");
     }
 }
