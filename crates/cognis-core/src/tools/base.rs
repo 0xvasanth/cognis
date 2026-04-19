@@ -104,6 +104,11 @@ pub trait BaseTool: Send + Sync {
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput>;
 
     /// Run the tool with error handling.
+    ///
+    /// Returns only the content `Value`. If the tool produces
+    /// `ToolOutput::ContentAndArtifact`, the artifact is discarded.
+    /// Callers that need the artifact (such as UI callback consumers)
+    /// should call [`_run`](Self::_run) directly and match on `ToolOutput`.
     async fn run(&self, input: ToolInput, _tool_call_id: Option<&str>) -> Result<Value> {
         match self._run(input).await {
             Ok(output) => Ok(match output {
@@ -121,11 +126,17 @@ pub trait BaseTool: Send + Sync {
     }
 
     /// Convenience method to run the tool with a string input.
+    ///
+    /// Returns only the content `Value`; see [`run`](Self::run) for the
+    /// artifact-discard caveat.
     async fn run_str(&self, input: &str) -> Result<Value> {
         self.run(ToolInput::Text(input.to_string()), None).await
     }
 
     /// Run the tool with structured (JSON) input.
+    ///
+    /// Returns only the content `Value`; see [`run`](Self::run) for the
+    /// artifact-discard caveat.
     async fn run_json(&self, input: &Value) -> Result<Value> {
         let map: HashMap<String, Value> = match input {
             Value::Object(m) => m.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
