@@ -18,6 +18,25 @@ pub struct ToolCallInput {
     pub args: HashMap<String, Value>,
 }
 
+impl ToolInput {
+    /// Lower a `ToolInput` into a single `serde_json::Value` suitable for
+    /// deserialization into a typed args struct (used by
+    /// `#[cognis::tool]`-generated `_run` methods).
+    ///
+    /// - `Text(s)` → `Value::String(s)`
+    /// - `Structured(map)` → `Value::Object(map)`
+    /// - `ToolCall(call)` → `Value::Object(call.args)` (the `id` / `name`
+    ///   fields are dropped — callers already have them via the surrounding
+    ///   context)
+    pub fn into_json(self) -> Value {
+        match self {
+            ToolInput::Text(s) => Value::String(s),
+            ToolInput::Structured(m) => Value::Object(m.into_iter().collect()),
+            ToolInput::ToolCall(call) => Value::Object(call.args.into_iter().collect()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ResponseFormat {
     #[default]
@@ -48,5 +67,36 @@ impl std::fmt::Debug for ErrorHandler {
             Self::StaticMessage(s) => write!(f, "StaticMessage({:?})", s),
             Self::Dynamic(_) => write!(f, "Dynamic(...)"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn into_json_text_becomes_string() {
+        let v = ToolInput::Text("hello".into()).into_json();
+        assert_eq!(v, json!("hello"));
+    }
+
+    #[test]
+    fn into_json_structured_becomes_object() {
+        let mut m = HashMap::new();
+        m.insert("k".to_string(), json!(1));
+        let v = ToolInput::Structured(m).into_json();
+        assert_eq!(v, json!({ "k": 1 }));
+    }
+
+    #[test]
+    fn into_json_tool_call_uses_args() {
+        let v = ToolInput::ToolCall(ToolCallInput {
+            id: "1".into(),
+            name: "x".into(),
+            args: HashMap::from([("a".to_string(), json!(2))]),
+        })
+        .into_json();
+        assert_eq!(v, json!({ "a": 2 }));
     }
 }
