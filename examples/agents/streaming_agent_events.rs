@@ -78,8 +78,21 @@ impl BaseTool for CalculatorTool {
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!("=== Streaming Agent Events Demo ===\n");
 
-    let model =
-        shared::get_chat_model(vec!["I'll compute 7 + 5 for you. The answer is 12.".into()]);
+    // Use the tool-calling fallback helper: real Ollama if available, otherwise
+    // a scripted fake model that issues a tool call then a final answer. This
+    // ensures the example demonstrates OnAgentAction/OnToolStart/OnToolEnd
+    // events even without a live LLM.
+    let model = shared::get_tool_calling_model(vec![
+        Message::ai_with_tool_calls(
+            "",
+            vec![json!({
+                "name": "calculator",
+                "args": {"a": 7, "b": 5},
+                "id": "call_1"
+            })],
+        ),
+        Message::ai("7 + 5 = 12"),
+    ]);
 
     let executor = AgentExecutor::builder()
         .model(model)

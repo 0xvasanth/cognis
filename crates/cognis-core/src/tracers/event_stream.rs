@@ -80,18 +80,17 @@ pub enum EventType {
     /// Retriever error.
     #[serde(rename = "on_retriever_error")]
     OnRetrieverError,
-    /// Agent execution started.
-    #[serde(rename = "on_agent_start")]
-    OnAgentStart,
     /// Agent decided to take an action (invoke a tool).
+    ///
+    /// Agent lifecycle (start/end) is represented via the enclosing
+    /// `OnChainStart`/`OnChainEnd` events on the agent executor itself,
+    /// so dedicated `OnAgentStart`/`OnAgentEnd` variants are intentionally
+    /// omitted.
     #[serde(rename = "on_agent_action")]
     OnAgentAction,
     /// Agent finished (produced final answer).
     #[serde(rename = "on_agent_finish")]
     OnAgentFinish,
-    /// Agent execution ended (loop exited).
-    #[serde(rename = "on_agent_end")]
-    OnAgentEnd,
     /// Custom event.
     #[serde(rename = "on_custom_event")]
     OnCustomEvent,
@@ -1364,20 +1363,12 @@ mod tests {
     #[test]
     fn test_agent_event_types_serialize() {
         assert_eq!(
-            serde_json::to_string(&EventType::OnAgentStart).unwrap(),
-            "\"on_agent_start\""
-        );
-        assert_eq!(
             serde_json::to_string(&EventType::OnAgentAction).unwrap(),
             "\"on_agent_action\""
         );
         assert_eq!(
             serde_json::to_string(&EventType::OnAgentFinish).unwrap(),
             "\"on_agent_finish\""
-        );
-        assert_eq!(
-            serde_json::to_string(&EventType::OnAgentEnd).unwrap(),
-            "\"on_agent_end\""
         );
     }
 
