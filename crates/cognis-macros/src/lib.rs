@@ -42,6 +42,7 @@
 //! | Enum with `#[derive(JsonSchema)]` | `{"type": "string", "enum": [...]}` |
 
 mod graph_state;
+mod schema_attr;
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
