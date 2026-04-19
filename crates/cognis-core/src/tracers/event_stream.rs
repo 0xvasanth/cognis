@@ -15,6 +15,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use crate::agents::{AgentAction, AgentFinish};
 use crate::callbacks::CallbackHandler;
 use crate::documents::Document;
 use crate::error::Result;
@@ -79,6 +80,17 @@ pub enum EventType {
     /// Retriever error.
     #[serde(rename = "on_retriever_error")]
     OnRetrieverError,
+    /// Agent decided to take an action (invoke a tool).
+    ///
+    /// Agent lifecycle (start/end) is represented via the enclosing
+    /// `OnChainStart`/`OnChainEnd` events on the agent executor itself,
+    /// so dedicated `OnAgentStart`/`OnAgentEnd` variants are intentionally
+    /// omitted.
+    #[serde(rename = "on_agent_action")]
+    OnAgentAction,
+    /// Agent finished (produced final answer).
+    #[serde(rename = "on_agent_finish")]
+    OnAgentFinish,
     /// Custom event.
     #[serde(rename = "on_custom_event")]
     OnCustomEvent,
@@ -714,6 +726,61 @@ impl CallbackHandler for EventStreamCallbackHandler {
         Ok(())
     }
 
+    async fn on_agent_action(
+        &self,
+        action: &AgentAction,
+        run_id: Uuid,
+        parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        // Record parent link so get_parent_ids() works.
+        {
+            let mut parent_map = self.parent_map.lock().unwrap();
+            parent_map.insert(run_id, parent_run_id);
+        }
+        let event = StreamEvent {
+            event: EventType::OnAgentAction,
+            name: action.tool.clone(),
+            data: EventData {
+                input: Some(action.tool_input.clone()),
+                ..Default::default()
+            },
+            run_id: run_id.to_string(),
+            parent_ids: self.get_parent_ids(run_id),
+            tags: Vec::new(),
+            metadata: HashMap::new(),
+        };
+        self.send_event(event, "agent");
+        Ok(())
+    }
+
+    async fn on_agent_finish(
+        &self,
+        finish: &AgentFinish,
+        run_id: Uuid,
+        parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        {
+            let mut parent_map = self.parent_map.lock().unwrap();
+            parent_map.insert(run_id, parent_run_id);
+        }
+        let output_value =
+            serde_json::to_value(&finish.return_values).unwrap_or(serde_json::Value::Null);
+        let event = StreamEvent {
+            event: EventType::OnAgentFinish,
+            name: "AgentExecutor".to_string(),
+            data: EventData {
+                output: Some(output_value),
+                ..Default::default()
+            },
+            run_id: run_id.to_string(),
+            parent_ids: self.get_parent_ids(run_id),
+            tags: Vec::new(),
+            metadata: HashMap::new(),
+        };
+        self.send_event(event, "agent");
+        Ok(())
+    }
+
     async fn on_retriever_start(
         &self,
         serialized: &Value,
@@ -1291,5 +1358,63 @@ mod tests {
         assert_eq!(deserialized.event, EventType::OnChainEnd);
         assert_eq!(deserialized.name, "my-chain");
         assert_eq!(deserialized.data.output, Some(json!({"answer": 42})));
+    }
+
+    #[test]
+    fn test_agent_event_types_serialize() {
+        assert_eq!(
+            serde_json::to_string(&EventType::OnAgentAction).unwrap(),
+            "\"on_agent_action\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EventType::OnAgentFinish).unwrap(),
+            "\"on_agent_finish\""
+        );
+    }
+
+    #[test]
+    fn test_agent_event_types_display() {
+        assert_eq!(EventType::OnAgentAction.to_string(), "on_agent_action");
+    }
+
+    #[tokio::test]
+    async fn test_handler_receives_agent_events() {
+        use crate::agents::{AgentAction, AgentFinish};
+        use std::collections::HashMap;
+
+        let handler = EventStreamCallbackHandler::with_defaults();
+        let mut rx = handler.take_receiver().unwrap();
+        let run_id = Uuid::new_v4();
+
+        let action = AgentAction::new(
+            "calculator",
+            serde_json::json!({"a": 1, "b": 2}),
+            "thought: use calculator",
+        );
+        handler
+            .on_agent_action(&action, run_id, None)
+            .await
+            .unwrap();
+
+        let mut rv = HashMap::new();
+        rv.insert("output".to_string(), serde_json::json!("done"));
+        let finish = AgentFinish::new(rv, "final answer");
+        handler
+            .on_agent_finish(&finish, run_id, None)
+            .await
+            .unwrap();
+
+        // Drop handler to close sender so rx.recv() returns None at end.
+        drop(handler);
+
+        let ev1 = rx.recv().await.unwrap();
+        assert_eq!(ev1.event, EventType::OnAgentAction);
+        assert_eq!(ev1.name, "calculator");
+        assert_eq!(ev1.data.input, Some(serde_json::json!({"a": 1, "b": 2})));
+
+        let ev2 = rx.recv().await.unwrap();
+        assert_eq!(ev2.event, EventType::OnAgentFinish);
+        assert_eq!(ev2.name, "AgentExecutor");
+        assert!(ev2.data.output.is_some());
     }
 }
