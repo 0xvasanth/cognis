@@ -677,7 +677,8 @@ impl CallbackHandler for EventStreamCallbackHandler {
             event: EventType::OnToolEnd,
             name: run_info.name,
             data: EventData {
-                output: Some(Value::String(event.output_str.clone())),
+                output: Some(event.output_value),
+                artifact: event.artifact,
                 input: run_info.inputs,
                 ..Default::default()
             },
@@ -1044,6 +1045,49 @@ mod tests {
             evt.data.output,
             Some(Value::String("tool output".to_string()))
         );
+    }
+
+    #[tokio::test]
+    async fn on_tool_end_preserves_structured_value() {
+        let handler = EventStreamCallbackHandler::with_defaults();
+        let mut rx = handler.take_receiver().unwrap();
+        let run_id = Uuid::new_v4();
+
+        handler
+            .on_tool_start(ToolStartEvent {
+                tool: "search".into(),
+                serialized: json!({"name": "search"}),
+                input_str: "\"q\"".into(),
+                inputs: json!("q"),
+                tool_call_id: None,
+                run_id,
+                parent_run_id: None,
+                tags: vec![],
+                metadata: HashMap::new(),
+            })
+            .await
+            .unwrap();
+
+        let typed = json!({"hits": [1, 2, 3]});
+        handler
+            .on_tool_end(ToolEndEvent {
+                tool: "search".into(),
+                output_str: typed.to_string(),
+                output_value: typed.clone(),
+                artifact: Some(json!({"source": "cache"})),
+                tool_call_id: None,
+                run_id,
+                parent_run_id: None,
+            })
+            .await
+            .unwrap();
+
+        // Drain the start event; the end event is what matters.
+        let _ = rx.recv().await.unwrap();
+        let end_event = rx.recv().await.unwrap();
+        assert_eq!(end_event.event, EventType::OnToolEnd);
+        assert_eq!(end_event.data.output, Some(typed));
+        assert_eq!(end_event.data.artifact, Some(json!({"source": "cache"})));
     }
 
     #[tokio::test]
