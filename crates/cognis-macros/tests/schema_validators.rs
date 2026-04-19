@@ -18,6 +18,10 @@ struct Sample {
     slug: String,
     #[schema(length(min = 1, max = 5))]
     tags: Vec<String>,
+    #[schema(items(range(min = 0, max = 10)))]
+    scores: Vec<u32>,
+    #[schema(range(min = 0.5, max = 1.5))]
+    ratio: f64,
 }
 
 #[test]
@@ -97,6 +101,25 @@ fn optional_fields_not_in_required() {
         .collect();
     assert!(required.contains(&"query".to_string()));
     assert!(!required.contains(&"limit".to_string()));
+}
+
+#[test]
+fn schema_has_nested_items_keys_on_vec() {
+    let s = Sample::json_schema();
+    let scores = &s["properties"]["scores"];
+    // Base array schema preserved
+    assert_eq!(scores["type"], json!("array"));
+    // Nested range constraints merged into items subschema
+    assert_eq!(scores["items"]["minimum"], json!(0));
+    assert_eq!(scores["items"]["maximum"], json!(10));
+}
+
+#[test]
+fn schema_range_preserves_fractional_f64() {
+    let s = Sample::json_schema();
+    let ratio = &s["properties"]["ratio"];
+    assert_eq!(ratio["minimum"], json!(0.5));
+    assert_eq!(ratio["maximum"], json!(1.5));
 }
 
 #[derive(JsonSchema, Serialize, Deserialize)]
