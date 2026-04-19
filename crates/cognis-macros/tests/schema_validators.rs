@@ -65,3 +65,20 @@ fn optional_fields_not_in_required() {
     assert!(required.contains(&"query".to_string()));
     assert!(!required.contains(&"limit".to_string()));
 }
+
+#[derive(JsonSchema, Serialize, Deserialize)]
+#[allow(dead_code)]
+struct Multi {
+    #[schema(length(min = 1, max = 100))]
+    #[schema(pattern("^[a-z]+$"))]
+    slug: String,
+}
+
+#[test]
+fn multiple_schema_attrs_are_all_applied() {
+    let s = Multi::json_schema();
+    let slug = &s["properties"]["slug"];
+    assert_eq!(slug["minLength"], json!(1));
+    assert_eq!(slug["maxLength"], json!(100));
+    assert_eq!(slug["pattern"], json!("^[a-z]+$"));
+}

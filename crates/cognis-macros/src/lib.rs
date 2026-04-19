@@ -538,14 +538,29 @@ fn emit_schema_merge(attr: &schema_attr::SchemaAttr) -> TokenStream2 {
     quote! { #(#inserts)* }
 }
 
-/// Extract the first `#[schema(...)]` attribute from a field's attrs, if any.
+/// Accumulate validators from **all** `#[schema(...)]` attributes on a field.
+///
+/// Users may reasonably split validators across multiple `#[schema]` lines:
+///
+/// ```ignore
+/// #[schema(length(min = 1, max = 100))]
+/// #[schema(pattern("^[a-z]+$"))]
+/// name: String,
+/// ```
+///
+/// Every attribute contributes its parsed validators to the combined result,
+/// rather than the first match winning and the rest being silently dropped.
 fn parse_schema_attr(attrs: &[syn::Attribute]) -> syn::Result<Option<schema_attr::SchemaAttr>> {
+    let mut combined = schema_attr::SchemaAttr::default();
+    let mut any = false;
     for a in attrs {
         if a.path().is_ident("schema") {
-            return Ok(Some(a.parse_args::<schema_attr::SchemaAttr>()?));
+            any = true;
+            let parsed = a.parse_args::<schema_attr::SchemaAttr>()?;
+            combined.validators.extend(parsed.validators);
         }
     }
-    Ok(None)
+    Ok(if any { Some(combined) } else { None })
 }
 
 #[cfg(test)]
