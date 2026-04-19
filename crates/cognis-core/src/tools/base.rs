@@ -144,7 +144,10 @@ mod error_handler_tests {
     fn propagate_returns_err() {
         let handler = ErrorHandler::Propagate;
         let result = apply_error_handler(&handler, CognisError::ToolException("boom".into()));
-        assert!(matches!(result, Err(CognisError::ToolException(_))));
+        match result {
+            Err(CognisError::ToolException(msg)) => assert_eq!(msg, "boom"),
+            other => panic!("expected ToolException, got {other:?}"),
+        }
     }
 
     #[test]
@@ -167,5 +170,42 @@ mod error_handler_tests {
             ErrorHandler::Dynamic(std::sync::Arc::new(|msg: &str| format!("wrapped: {msg}")));
         let result = apply_error_handler(&handler, CognisError::ToolException("boom".into()));
         assert_eq!(result.unwrap(), Value::String("wrapped: boom".to_string()));
+    }
+
+    #[test]
+    fn validation_error_respects_static_message() {
+        let handler = ErrorHandler::StaticMessage("bad input".into());
+        let result = apply_error_handler(
+            &handler,
+            CognisError::ToolValidationError("schema mismatch".into()),
+        );
+        assert_eq!(result.unwrap(), Value::String("bad input".to_string()));
+    }
+
+    #[test]
+    fn validation_error_propagate_preserves_variant_and_message() {
+        let handler = ErrorHandler::Propagate;
+        let result = apply_error_handler(
+            &handler,
+            CognisError::ToolValidationError("schema mismatch".into()),
+        );
+        match result {
+            Err(CognisError::ToolValidationError(msg)) => assert_eq!(msg, "schema mismatch"),
+            other => panic!("expected ToolValidationError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn non_tool_error_passes_through_unchanged() {
+        // `CognisError::Other` is not a tool-level error; the `other => Err(other)`
+        // fallthrough in `apply_error_handler` must propagate it unchanged
+        // regardless of the handler policy.
+        let handler = ErrorHandler::DefaultMessage;
+        let error = CognisError::Other("unexpected failure".into());
+        let result = apply_error_handler(&handler, error);
+        match result {
+            Err(CognisError::Other(msg)) => assert_eq!(msg, "unexpected failure"),
+            other => panic!("expected Other, got {other:?}"),
+        }
     }
 }
