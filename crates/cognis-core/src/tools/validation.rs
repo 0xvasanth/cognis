@@ -85,19 +85,18 @@ pub fn check_length(field: &str, len: usize, min: Option<usize>, max: Option<usi
 }
 
 /// Validate that `value` is one of the `allowed` variants.
-pub fn check_enum(field: &str, value: &str, allowed: &[&str]) -> Result<()> {
-    if allowed.contains(&value) {
-        Ok(())
-    } else {
-        let list = allowed
-            .iter()
-            .map(|a| format!("\"{a}\""))
-            .collect::<Vec<_>>()
-            .join(", ");
-        Err(CognisError::ToolValidationError(format!(
-            "field `{field}`: \"{value}\" must be one of [{list}]"
-        )))
+pub fn check_enum<S: AsRef<str>>(field: &str, value: &str, allowed: &[S]) -> Result<()> {
+    if allowed.iter().any(|a| a.as_ref() == value) {
+        return Ok(());
     }
+    let list = allowed
+        .iter()
+        .map(|a| format!("`{}`", a.as_ref()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(CognisError::ToolValidationError(format!(
+        "field `{field}`: \"{value}\" must be one of [{list}]"
+    )))
 }
 
 /// Validate that `value` matches `re`. The `Regex` is expected to be
@@ -194,7 +193,6 @@ pub fn check_format(field: &str, value: &str, format: Format) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::CognisError;
 
     fn assert_validation_err(r: Result<()>, needle: &str) {
         match r {
@@ -282,6 +280,13 @@ mod tests {
         let err = check_enum("order", "x", &["asc", "desc"]).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("asc") && msg.contains("desc"), "got {msg}");
+    }
+
+    #[test]
+    fn enum_accepts_owned_strings() {
+        let allowed = vec!["asc".to_string(), "desc".to_string()];
+        assert!(check_enum("order", "asc", &allowed).is_ok());
+        assert_validation_err(check_enum("order", "nope", &allowed), "nope");
     }
 
     #[test]
