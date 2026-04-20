@@ -1,0 +1,5 @@
+error: #[tool] method receiver must be `&self` (not `&mut self`)
+  --> tests/ui/tool_attr/mut_self.rs:10:19
+   |
+10 |     async fn bump(&mut self) -> cognis_core::error::Result<cognis_core::tools::ToolOutput> {
+   |                   ^^^^^^^^^

@@ -1,0 +1,5 @@
+error: #[tool] args must be owned types (e.g. `String`, not `&str`) — the macro deserializes via `serde_json::from_value`
+ --> tests/ui/tool_attr/ref_arg.rs:7:25
+  |
+7 | async fn borrow_arg(_q: &str) -> cognis_core::error::Result<cognis_core::tools::ToolOutput> {
+  |                         ^^^^

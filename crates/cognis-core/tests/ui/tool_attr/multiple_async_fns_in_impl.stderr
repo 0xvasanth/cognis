@@ -1,0 +1,7 @@
+error: #[tool] impl block must contain exactly one `async fn`; found multiple — split the extra async methods into a separate `impl` block
+  --> tests/ui/tool_attr/multiple_async_fns_in_impl.rs:13:5
+   |
+13 | /     async fn also_search(&self, _q: String) -> cognis_core::error::Result<cognis_core::tools::ToolOutput> {
+14 | |         Ok(cognis_core::tools::ToolOutput::Content(serde_json::json!(null)))
+15 | |     }
+   | |_____^
