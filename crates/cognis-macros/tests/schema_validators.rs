@@ -138,3 +138,18 @@ fn multiple_schema_attrs_are_all_applied() {
     assert_eq!(slug["maxLength"], json!(100));
     assert_eq!(slug["pattern"], json!("^[a-z]+$"));
 }
+
+#[derive(JsonSchema, Serialize, Deserialize)]
+#[allow(dead_code)]
+struct Signed {
+    #[schema(range(min = -10, max = 10))]
+    offset: i32,
+}
+
+#[test]
+fn schema_range_emits_negative_minimum() {
+    let s = Signed::json_schema();
+    let offset = &s["properties"]["offset"];
+    assert_eq!(offset["minimum"], json!(-10));
+    assert_eq!(offset["maximum"], json!(10));
+}

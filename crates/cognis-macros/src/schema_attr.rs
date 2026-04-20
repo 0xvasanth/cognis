@@ -14,7 +14,7 @@
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    LitFloat, LitInt, LitStr, Result, Token,
+    LitInt, LitStr, Result, Token,
 };
 
 /// One fully-parsed `#[schema(...)]` attribute (may hold multiple validators).
@@ -128,21 +128,31 @@ impl Parse for Validator {
 fn parse_range(input: ParseStream) -> Result<Validator> {
     let mut min = None;
     let mut max = None;
-    let pairs: Punctuated<(syn::Ident, LitFloat), Token![,]> =
+    let pairs: Punctuated<(syn::Ident, f64), Token![,]> =
         Punctuated::parse_separated_nonempty_with(input, |i| {
             let k: syn::Ident = i.parse()?;
             let _: Token![=] = i.parse()?;
-            // Accept both int and float literals; convert int → float.
-            let v: LitFloat = if i.peek(LitFloat) {
-                i.parse()?
-            } else {
-                let n: LitInt = i.parse()?;
-                LitFloat::new(&format!("{}.0", n.base10_digits()), n.span())
+            let negate = i.peek(Token![-]);
+            if negate {
+                let _: Token![-] = i.parse()?;
+            }
+            let lit: syn::Lit = i.parse()?;
+            let mut val: f64 = match &lit {
+                syn::Lit::Int(n) => n.base10_parse::<i64>()? as f64,
+                syn::Lit::Float(f) => f.base10_parse::<f64>()?,
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        &lit,
+                        "expected numeric literal for range bound",
+                    ))
+                }
             };
-            Ok((k, v))
+            if negate {
+                val = -val;
+            }
+            Ok((k, val))
         })?;
-    for (k, v) in pairs {
-        let val: f64 = v.base10_parse()?;
+    for (k, val) in pairs {
         match k.to_string().as_str() {
             "min" => min = Some(val),
             "max" => max = Some(val),
@@ -287,6 +297,24 @@ mod tests {
         assert!(
             err.to_string().contains("unknown schema validator"),
             "got {err}"
+        );
+    }
+
+    #[test]
+    fn range_accepts_negative_min() {
+        let a: syn::Attribute = parse_quote!(#[schema(range(min = -1, max = 10))]);
+        let r = a.parse_args::<SchemaAttr>().unwrap();
+        assert!(
+            matches!(r.validators[0], Validator::Range { min: Some(v), max: Some(10.0) } if v == -1.0)
+        );
+    }
+
+    #[test]
+    fn range_accepts_negative_float() {
+        let a: syn::Attribute = parse_quote!(#[schema(range(min = -0.5, max = 0.5))]);
+        let r = a.parse_args::<SchemaAttr>().unwrap();
+        assert!(
+            matches!(r.validators[0], Validator::Range { min: Some(v), max: Some(w) } if v == -0.5 && w == 0.5)
         );
     }
 }
