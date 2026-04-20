@@ -21,6 +21,16 @@ use cognis_core::messages::{
 use cognis_core::outputs::{ChatGeneration, ChatGenerationChunk, ChatResult};
 use cognis_core::tools::ToolSchema;
 
+/// Case-insensitive check for headers the framework owns and must not let
+/// callers override via `extra_header` / `extra_headers`. Keeps auth and
+/// content-type policy authoritative regardless of what the caller passes.
+fn is_reserved_header(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "authorization" | "content-type" | "openai-organization"
+    )
+}
+
 /// Builder for constructing a [`ChatOpenAI`] instance.
 #[derive(Debug)]
 pub struct ChatOpenAIBuilder {
@@ -37,6 +47,7 @@ pub struct ChatOpenAIBuilder {
     stop: Option<Vec<String>>,
     max_retries: Option<u32>,
     streaming: Option<bool>,
+    extra_headers: HashMap<String, String>,
 }
 
 impl ChatOpenAIBuilder {
@@ -56,6 +67,7 @@ impl ChatOpenAIBuilder {
             stop: None,
             max_retries: None,
             streaming: None,
+            extra_headers: HashMap::new(),
         }
     }
 
@@ -137,6 +149,82 @@ impl ChatOpenAIBuilder {
         self
     }
 
+    /// Add a custom HTTP header that will be sent on every request.
+    ///
+    /// Useful for OpenAI-compatible gateways that require attribution or
+    /// routing headers — for example OpenRouter's `HTTP-Referer` and
+    /// `X-Title`, or Together.ai's custom routing tags. Calling this method
+    /// multiple times with the same key overwrites the prior value.
+    ///
+    /// The standard `Authorization`, `Content-Type`, and `OpenAI-Organization`
+    /// headers are reserved — passing any of those as an extra header is
+    /// ignored (with a `tracing::warn!`), since the framework sets them
+    /// itself.
+    ///
+    /// Header names are stored case-sensitively internally. To avoid sending
+    /// duplicate headers with different casings, pick a single canonical
+    /// casing per header (e.g. `X-Title`, not a mix of `x-title` and
+    /// `X-Title`).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use cognis::chat_models::openai::ChatOpenAI;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let model = ChatOpenAI::builder()
+    ///     .model("meta-llama/llama-3.3-70b-instruct:free")
+    ///     .api_key("sk-or-...")
+    ///     .base_url("https://openrouter.ai/api")
+    ///     .extra_header("HTTP-Referer", "https://mysite.com")
+    ///     .extra_header("X-Title", "my-app")
+    ///     .build()?;
+    /// # let _ = model;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn extra_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        let key = key.into();
+        if is_reserved_header(&key) {
+            tracing::warn!(
+                header = %key,
+                "ChatOpenAIBuilder::extra_header: reserved header ignored \
+                 (framework sets this itself)",
+            );
+            return self;
+        }
+        self.extra_headers.insert(key, value.into());
+        self
+    }
+
+    /// Replace the entire set of extra HTTP headers.
+    ///
+    /// Prefer [`extra_header`](Self::extra_header) for additive use. This
+    /// method is intended for cases where the caller already has a header
+    /// map (e.g. loaded from config).
+    ///
+    /// Reserved headers (`Authorization`, `Content-Type`,
+    /// `OpenAI-Organization`) are filtered out of the incoming map with a
+    /// `tracing::warn!`, matching the contract of
+    /// [`extra_header`](Self::extra_header).
+    pub fn extra_headers(mut self, headers: HashMap<String, String>) -> Self {
+        self.extra_headers = headers
+            .into_iter()
+            .filter(|(k, _)| {
+                if is_reserved_header(k) {
+                    tracing::warn!(
+                        header = %k,
+                        "ChatOpenAIBuilder::extra_headers: reserved header ignored",
+                    );
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
+        self
+    }
+
     /// Build the [`ChatOpenAI`] instance.
     ///
     /// Returns an error if `model` is not set or if the API key cannot be
@@ -174,6 +262,7 @@ impl ChatOpenAIBuilder {
             stop: self.stop,
             max_retries: self.max_retries.unwrap_or(2),
             streaming: self.streaming.unwrap_or(false),
+            extra_headers: self.extra_headers,
             client: Client::new(),
             bound_tools: Vec::new(),
             tool_choice: None,
@@ -230,6 +319,11 @@ pub struct ChatOpenAI {
     pub max_retries: u32,
     /// Whether streaming is the default mode.
     pub streaming: bool,
+    /// Custom HTTP headers applied to every request, used for attribution or
+    /// routing on OpenAI-compatible gateways (OpenRouter, Together.ai, Groq,
+    /// Fireworks, etc.). Applied before the standard auth/content-type
+    /// headers so those cannot be overridden.
+    pub extra_headers: HashMap<String, String>,
     /// HTTP client.
     client: Client,
     /// Tools bound via `bind_tools`.
@@ -567,9 +661,16 @@ impl ChatOpenAI {
         let mut last_error = CognisError::Other("No attempts made".into());
 
         for attempt in 0..=self.max_retries {
-            let mut req = self
-                .client
-                .post(&url)
+            let mut req = self.client.post(&url);
+
+            for (k, v) in &self.extra_headers {
+                if is_reserved_header(k) {
+                    continue;
+                }
+                req = req.header(k.as_str(), v.as_str());
+            }
+
+            req = req
                 .header(
                     "Authorization",
                     format!("Bearer {}", self.api_key.expose_secret()),
@@ -618,9 +719,16 @@ impl ChatOpenAI {
     ) -> Result<std::pin::Pin<Box<dyn futures::Stream<Item = Result<Value>> + Send>>> {
         let url = format!("{}/v1/chat/completions", self.base_url);
 
-        let mut req = self
-            .client
-            .post(&url)
+        let mut req = self.client.post(&url);
+
+        for (k, v) in &self.extra_headers {
+            if is_reserved_header(k) {
+                continue;
+            }
+            req = req.header(k.as_str(), v.as_str());
+        }
+
+        req = req
             .header(
                 "Authorization",
                 format!("Bearer {}", self.api_key.expose_secret()),
@@ -707,6 +815,44 @@ impl ChatOpenAI {
             "function": function
         })
     }
+
+    /// Bind tools and return a concrete [`ChatOpenAI`] (not a trait object).
+    ///
+    /// This is the concrete counterpart to
+    /// [`BaseChatModel::bind_tools`](cognis_core::language_models::chat_model::BaseChatModel::bind_tools),
+    /// which returns `Box<dyn BaseChatModel>`. Preserving the concrete type is
+    /// useful for tests and for callers that need to inspect or further
+    /// configure the bound model before boxing.
+    ///
+    /// All state from `self` — including `extra_headers` — is cloned into the
+    /// returned `ChatOpenAI`.
+    pub fn bind_tools_concrete(
+        &self,
+        tools: &[ToolSchema],
+        tool_choice: Option<ToolChoice>,
+    ) -> ChatOpenAI {
+        let bound_tools: Vec<Value> = tools.iter().map(Self::tool_schema_to_openai).collect();
+
+        ChatOpenAI {
+            model: self.model.clone(),
+            api_key: self.api_key.clone(),
+            base_url: self.base_url.clone(),
+            organization: self.organization.clone(),
+            max_tokens: self.max_tokens,
+            temperature: self.temperature,
+            top_p: self.top_p,
+            frequency_penalty: self.frequency_penalty,
+            presence_penalty: self.presence_penalty,
+            seed: self.seed,
+            stop: self.stop.clone(),
+            max_retries: self.max_retries,
+            streaming: self.streaming,
+            extra_headers: self.extra_headers.clone(),
+            client: self.client.clone(),
+            bound_tools,
+            tool_choice,
+        }
+    }
 }
 
 #[async_trait]
@@ -740,26 +886,7 @@ impl BaseChatModel for ChatOpenAI {
         tools: &[ToolSchema],
         tool_choice: Option<ToolChoice>,
     ) -> Result<Box<dyn BaseChatModel>> {
-        let bound_tools: Vec<Value> = tools.iter().map(Self::tool_schema_to_openai).collect();
-
-        Ok(Box::new(ChatOpenAI {
-            model: self.model.clone(),
-            api_key: self.api_key.clone(),
-            base_url: self.base_url.clone(),
-            organization: self.organization.clone(),
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            top_p: self.top_p,
-            frequency_penalty: self.frequency_penalty,
-            presence_penalty: self.presence_penalty,
-            seed: self.seed,
-            stop: self.stop.clone(),
-            max_retries: self.max_retries,
-            streaming: self.streaming,
-            client: self.client.clone(),
-            bound_tools,
-            tool_choice,
-        }))
+        Ok(Box::new(self.bind_tools_concrete(tools, tool_choice)))
     }
 
     fn profile(&self) -> ModelProfile {
@@ -1033,6 +1160,172 @@ mod tests {
         assert_eq!(payload["messages"].as_array().unwrap().len(), 1);
         assert!(payload.get("stream").is_none());
         assert!(payload.get("tools").is_none());
+    }
+
+    #[test]
+    fn test_extra_headers_on_builder() {
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("HTTP-Referer", "https://mysite.com")
+            .extra_header("X-Title", "assistant")
+            .build()
+            .unwrap();
+
+        assert_eq!(model.extra_headers.len(), 2);
+        assert_eq!(
+            model.extra_headers.get("HTTP-Referer").map(String::as_str),
+            Some("https://mysite.com"),
+        );
+        assert_eq!(
+            model.extra_headers.get("X-Title").map(String::as_str),
+            Some("assistant"),
+        );
+    }
+
+    #[test]
+    fn test_extra_header_overwrites_same_key() {
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("X-Title", "first")
+            .extra_header("X-Title", "second")
+            .build()
+            .unwrap();
+
+        assert_eq!(model.extra_headers.len(), 1);
+        assert_eq!(
+            model.extra_headers.get("X-Title").map(String::as_str),
+            Some("second"),
+        );
+    }
+
+    #[test]
+    fn test_extra_headers_map_replaces_all() {
+        let mut headers = HashMap::new();
+        headers.insert("X-Custom".to_string(), "value".to_string());
+
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("HTTP-Referer", "https://old.com")
+            .extra_headers(headers)
+            .build()
+            .unwrap();
+
+        assert_eq!(model.extra_headers.len(), 1);
+        assert!(model.extra_headers.contains_key("X-Custom"));
+        assert!(!model.extra_headers.contains_key("HTTP-Referer"));
+    }
+
+    #[test]
+    fn extra_header_filters_reserved_authorization() {
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("Authorization", "Bearer stolen")
+            .build()
+            .unwrap();
+
+        // The reserved header must have been filtered at insert time.
+        assert!(!model.extra_headers.contains_key("Authorization"));
+        assert!(!model.extra_headers.contains_key("authorization"));
+    }
+
+    #[test]
+    fn extra_header_reserved_filter_is_case_insensitive() {
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("authorization", "Bearer stolen")
+            .extra_header("CONTENT-TYPE", "text/plain")
+            .extra_header("OpenAI-Organization", "org-evil")
+            .extra_header("X-Title", "keepme")
+            .build()
+            .unwrap();
+
+        assert_eq!(model.extra_headers.len(), 1);
+        assert_eq!(
+            model.extra_headers.get("X-Title").map(String::as_str),
+            Some("keepme"),
+        );
+    }
+
+    #[test]
+    fn extra_headers_map_filters_reserved() {
+        let mut headers = HashMap::new();
+        headers.insert("Authorization".to_string(), "Bearer stolen".to_string());
+        headers.insert("X-Title".to_string(), "keepme".to_string());
+
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_headers(headers)
+            .build()
+            .unwrap();
+
+        assert_eq!(model.extra_headers.len(), 1);
+        assert!(model.extra_headers.contains_key("X-Title"));
+    }
+
+    #[test]
+    fn extra_headers_survive_bind_tools() {
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("X-Title", "assistant")
+            .extra_header("HTTP-Referer", "https://mysite.com")
+            .build()
+            .unwrap();
+
+        // bind_tools_concrete returns a concrete ChatOpenAI so we can inspect
+        // extra_headers directly without needing `Any` downcasting on the
+        // trait object returned by `BaseChatModel::bind_tools`.
+        let bound = model.bind_tools_concrete(&[], None);
+
+        assert_eq!(
+            bound.extra_headers.get("X-Title").map(String::as_str),
+            Some("assistant"),
+        );
+        assert_eq!(
+            bound.extra_headers.get("HTTP-Referer").map(String::as_str),
+            Some("https://mysite.com"),
+        );
+        assert_eq!(bound.extra_headers.len(), 2);
+    }
+
+    #[test]
+    fn extra_headers_survive_bind_tools_with_real_tools() {
+        use cognis_core::tools::ToolSchema;
+
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("X-Title", "assistant")
+            .build()
+            .unwrap();
+
+        let tools = vec![ToolSchema {
+            name: "search".to_string(),
+            description: "Search the web".to_string(),
+            parameters: Some(json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"}
+                }
+            })),
+            extras: None,
+        }];
+
+        let bound = model.bind_tools_concrete(&tools, Some(ToolChoice::Auto));
+
+        // Headers survive even when tools and tool_choice are actually provided.
+        assert_eq!(
+            bound.extra_headers.get("X-Title").map(String::as_str),
+            Some("assistant"),
+        );
+        // And the tools were actually bound.
+        assert_eq!(bound.bound_tools.len(), 1);
     }
 
     #[test]
