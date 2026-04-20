@@ -812,6 +812,44 @@ impl ChatOpenAI {
             "function": function
         })
     }
+
+    /// Bind tools and return a concrete [`ChatOpenAI`] (not a trait object).
+    ///
+    /// This is the concrete counterpart to
+    /// [`BaseChatModel::bind_tools`](cognis_core::language_models::chat_model::BaseChatModel::bind_tools),
+    /// which returns `Box<dyn BaseChatModel>`. Preserving the concrete type is
+    /// useful for tests and for callers that need to inspect or further
+    /// configure the bound model before boxing.
+    ///
+    /// All state from `self` — including `extra_headers` — is cloned into the
+    /// returned `ChatOpenAI`.
+    pub fn bind_tools_concrete(
+        &self,
+        tools: &[ToolSchema],
+        tool_choice: Option<ToolChoice>,
+    ) -> ChatOpenAI {
+        let bound_tools: Vec<Value> = tools.iter().map(Self::tool_schema_to_openai).collect();
+
+        ChatOpenAI {
+            model: self.model.clone(),
+            api_key: self.api_key.clone(),
+            base_url: self.base_url.clone(),
+            organization: self.organization.clone(),
+            max_tokens: self.max_tokens,
+            temperature: self.temperature,
+            top_p: self.top_p,
+            frequency_penalty: self.frequency_penalty,
+            presence_penalty: self.presence_penalty,
+            seed: self.seed,
+            stop: self.stop.clone(),
+            max_retries: self.max_retries,
+            streaming: self.streaming,
+            extra_headers: self.extra_headers.clone(),
+            client: self.client.clone(),
+            bound_tools,
+            tool_choice,
+        }
+    }
 }
 
 #[async_trait]
@@ -845,27 +883,7 @@ impl BaseChatModel for ChatOpenAI {
         tools: &[ToolSchema],
         tool_choice: Option<ToolChoice>,
     ) -> Result<Box<dyn BaseChatModel>> {
-        let bound_tools: Vec<Value> = tools.iter().map(Self::tool_schema_to_openai).collect();
-
-        Ok(Box::new(ChatOpenAI {
-            model: self.model.clone(),
-            api_key: self.api_key.clone(),
-            base_url: self.base_url.clone(),
-            organization: self.organization.clone(),
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            top_p: self.top_p,
-            frequency_penalty: self.frequency_penalty,
-            presence_penalty: self.presence_penalty,
-            seed: self.seed,
-            stop: self.stop.clone(),
-            max_retries: self.max_retries,
-            streaming: self.streaming,
-            extra_headers: self.extra_headers.clone(),
-            client: self.client.clone(),
-            bound_tools,
-            tool_choice,
-        }))
+        Ok(Box::new(self.bind_tools_concrete(tools, tool_choice)))
     }
 
     fn profile(&self) -> ModelProfile {
@@ -1245,6 +1263,66 @@ mod tests {
 
         assert_eq!(model.extra_headers.len(), 1);
         assert!(model.extra_headers.contains_key("X-Title"));
+    }
+
+    #[test]
+    fn extra_headers_survive_bind_tools() {
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("X-Title", "assistant")
+            .extra_header("HTTP-Referer", "https://mysite.com")
+            .build()
+            .unwrap();
+
+        // bind_tools_concrete returns a concrete ChatOpenAI so we can inspect
+        // extra_headers directly without needing `Any` downcasting on the
+        // trait object returned by `BaseChatModel::bind_tools`.
+        let bound = model.bind_tools_concrete(&[], None);
+
+        assert_eq!(
+            bound.extra_headers.get("X-Title").map(String::as_str),
+            Some("assistant"),
+        );
+        assert_eq!(
+            bound.extra_headers.get("HTTP-Referer").map(String::as_str),
+            Some("https://mysite.com"),
+        );
+        assert_eq!(bound.extra_headers.len(), 2);
+    }
+
+    #[test]
+    fn extra_headers_survive_bind_tools_with_real_tools() {
+        use cognis_core::tools::ToolSchema;
+
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("X-Title", "assistant")
+            .build()
+            .unwrap();
+
+        let tools = vec![ToolSchema {
+            name: "search".to_string(),
+            description: "Search the web".to_string(),
+            parameters: Some(json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"}
+                }
+            })),
+            extras: None,
+        }];
+
+        let bound = model.bind_tools_concrete(&tools, Some(ToolChoice::Auto));
+
+        // Headers survive even when tools and tool_choice are actually provided.
+        assert_eq!(
+            bound.extra_headers.get("X-Title").map(String::as_str),
+            Some("assistant"),
+        );
+        // And the tools were actually bound.
+        assert_eq!(bound.bound_tools.len(), 1);
     }
 
     #[test]
