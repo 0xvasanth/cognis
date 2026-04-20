@@ -17,6 +17,7 @@ thiserror.workspace = true
 uuid.workspace = true
 futures.workspace = true
 tokio-stream.workspace = true
+tracing.workspace = true
 regex = "1"
 csv = "1"
 glob = "0.3"

@@ -21,6 +21,16 @@ use cognis_core::messages::{
 use cognis_core::outputs::{ChatGeneration, ChatGenerationChunk, ChatResult};
 use cognis_core::tools::ToolSchema;
 
+/// Case-insensitive check for headers the framework owns and must not let
+/// callers override via `extra_header` / `extra_headers`. Keeps auth and
+/// content-type policy authoritative regardless of what the caller passes.
+fn is_reserved_header(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "authorization" | "content-type" | "openai-organization"
+    )
+}
+
 /// Builder for constructing a [`ChatOpenAI`] instance.
 #[derive(Debug)]
 pub struct ChatOpenAIBuilder {
@@ -147,8 +157,14 @@ impl ChatOpenAIBuilder {
     /// multiple times with the same key overwrites the prior value.
     ///
     /// The standard `Authorization`, `Content-Type`, and `OpenAI-Organization`
-    /// headers are applied after extra headers, so they cannot be
-    /// accidentally overridden.
+    /// headers are reserved — passing any of those as an extra header is
+    /// ignored (with a `tracing::warn!`), since the framework sets them
+    /// itself.
+    ///
+    /// Header names are stored case-sensitively internally. To avoid sending
+    /// duplicate headers with different casings, pick a single canonical
+    /// casing per header (e.g. `X-Title`, not a mix of `x-title` and
+    /// `X-Title`).
     ///
     /// # Example
     ///
@@ -165,7 +181,16 @@ impl ChatOpenAIBuilder {
     ///     .unwrap();
     /// ```
     pub fn extra_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.extra_headers.insert(key.into(), value.into());
+        let key = key.into();
+        if is_reserved_header(&key) {
+            tracing::warn!(
+                header = %key,
+                "ChatOpenAIBuilder::extra_header: reserved header ignored \
+                 (framework sets this itself)",
+            );
+            return self;
+        }
+        self.extra_headers.insert(key, value.into());
         self
     }
 
@@ -174,8 +199,26 @@ impl ChatOpenAIBuilder {
     /// Prefer [`extra_header`](Self::extra_header) for additive use. This
     /// method is intended for cases where the caller already has a header
     /// map (e.g. loaded from config).
+    ///
+    /// Reserved headers (`Authorization`, `Content-Type`,
+    /// `OpenAI-Organization`) are filtered out of the incoming map with a
+    /// `tracing::warn!`, matching the contract of
+    /// [`extra_header`](Self::extra_header).
     pub fn extra_headers(mut self, headers: HashMap<String, String>) -> Self {
-        self.extra_headers = headers;
+        self.extra_headers = headers
+            .into_iter()
+            .filter(|(k, _)| {
+                if is_reserved_header(k) {
+                    tracing::warn!(
+                        header = %k,
+                        "ChatOpenAIBuilder::extra_headers: reserved header ignored",
+                    );
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
         self
     }
 
@@ -618,6 +661,9 @@ impl ChatOpenAI {
             let mut req = self.client.post(&url);
 
             for (k, v) in &self.extra_headers {
+                if is_reserved_header(k) {
+                    continue;
+                }
                 req = req.header(k.as_str(), v.as_str());
             }
 
@@ -673,6 +719,9 @@ impl ChatOpenAI {
         let mut req = self.client.post(&url);
 
         for (k, v) in &self.extra_headers {
+            if is_reserved_header(k) {
+                continue;
+            }
             req = req.header(k.as_str(), v.as_str());
         }
 
@@ -1146,6 +1195,56 @@ mod tests {
         assert_eq!(model.extra_headers.len(), 1);
         assert!(model.extra_headers.contains_key("X-Custom"));
         assert!(!model.extra_headers.contains_key("HTTP-Referer"));
+    }
+
+    #[test]
+    fn extra_header_filters_reserved_authorization() {
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("Authorization", "Bearer stolen")
+            .build()
+            .unwrap();
+
+        // The reserved header must have been filtered at insert time.
+        assert!(!model.extra_headers.contains_key("Authorization"));
+        assert!(!model.extra_headers.contains_key("authorization"));
+    }
+
+    #[test]
+    fn extra_header_reserved_filter_is_case_insensitive() {
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("authorization", "Bearer stolen")
+            .extra_header("CONTENT-TYPE", "text/plain")
+            .extra_header("OpenAI-Organization", "org-evil")
+            .extra_header("X-Title", "keepme")
+            .build()
+            .unwrap();
+
+        assert_eq!(model.extra_headers.len(), 1);
+        assert_eq!(
+            model.extra_headers.get("X-Title").map(String::as_str),
+            Some("keepme"),
+        );
+    }
+
+    #[test]
+    fn extra_headers_map_filters_reserved() {
+        let mut headers = HashMap::new();
+        headers.insert("Authorization".to_string(), "Bearer stolen".to_string());
+        headers.insert("X-Title".to_string(), "keepme".to_string());
+
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_headers(headers)
+            .build()
+            .unwrap();
+
+        assert_eq!(model.extra_headers.len(), 1);
+        assert!(model.extra_headers.contains_key("X-Title"));
     }
 
     #[test]
