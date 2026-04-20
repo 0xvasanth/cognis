@@ -231,7 +231,7 @@ let result = executor.run(&[Message::human("What's 42 * 7?")]).await?;
 ```rust
 use async_trait::async_trait;
 use uuid::Uuid;
-use cognis_core::callbacks::CallbackHandler;
+use cognis_core::callbacks::{CallbackHandler, ToolEndEvent};
 use cognis_core::agents::{AgentAction, AgentFinish};
 
 struct StepLogger;
@@ -247,10 +247,8 @@ impl CallbackHandler for StepLogger {
         Ok(())
     }
 
-    async fn on_tool_end(
-        &self, output: &str, _run_id: Uuid, _parent: Option<Uuid>,
-    ) -> cognis_core::error::Result<()> {
-        println!("← observation: {output}");
+    async fn on_tool_end(&self, event: ToolEndEvent) -> cognis_core::error::Result<()> {
+        println!("← [{}] {}", event.tool, event.output_str);
         Ok(())
     }
 
@@ -269,7 +267,9 @@ let executor = AgentExecutor::builder()
     .build();
 ```
 
-Per-phase hooks available: `on_llm_start/new_token/end/error`, `on_chain_start/end/error`, `on_tool_start/end/error`, `on_agent_action/finish`, `on_retriever_start/end/error`. Filter flags (`ignore_llm`, `ignore_chain`, `ignore_agent`, `ignore_retriever`, `ignore_chat_model`, `ignore_retry`, `ignore_custom_event`) let a handler opt out of categories — tool events are delivered unconditionally. For token streaming specifically, pair this with FR-1 once it lands — `on_llm_new_token` is already wired.
+Per-phase hooks available: `on_llm_start/new_token/end/error`, `on_chain_start/end/error`, `on_tool_start/end/error` (struct-based events: `ToolStartEvent`, `ToolEndEvent`, `ToolErrorEvent` — preserve the typed `output_value` and any `artifact`), `on_agent_action/finish`, `on_retriever_start/end/error`. Filter flags (`ignore_llm`, `ignore_chain`, `ignore_agent`, `ignore_retriever`, `ignore_chat_model`, `ignore_retry`, `ignore_custom_event`) let a handler opt out of categories — tool events are delivered unconditionally.
+
+> **Prefer a stream over a handler?** `AgentExecutor::astream_events(messages)` returns a `Stream<Item = Result<StreamEvent>>` that emits the same lifecycle events without the callback-trait boilerplate. See [`examples/agents/streaming_agent_events.rs`](../examples/agents/streaming_agent_events.rs). Callbacks are the underlying primitive; `astream_events` is the UI-ready wrapper.
 
 ---
 
