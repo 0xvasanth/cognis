@@ -66,3 +66,8 @@ pub mod vectorstores;
 
 // Re-export core for convenience
 pub use cognis_core as core;
+
+/// `#[cognis::tool]` — attribute macro that generates a `BaseTool`
+/// implementation from an `async fn` (or an `impl` block containing one).
+/// See [`cognis_core::tool`] for the full documentation.
+pub use cognis_core::tool;
