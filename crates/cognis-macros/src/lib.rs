@@ -1,11 +1,24 @@
-//! Standalone derive macros for generating OpenAPI-compatible JSON schemas.
+//! Proc macros for the Cognis framework.
 //!
-//! This crate is **framework-independent** — it has zero runtime dependencies
-//! and generates no code that references any external framework crate.
+//! This crate exposes two kinds of macros with different coupling guarantees:
 //!
-//! The only requirement for generated code is `serde_json` in scope.
+//! # Framework-independent derives
 //!
-//! # Usage
+//! [`JsonSchema`] / [`ToolSchema`] / [`GraphState`] are derive macros whose
+//! generated code references **only `serde_json`** (and, for `GraphState`, the
+//! reducer fn paths the user supplies). They don't reference `cognis_core` or
+//! any other workspace crate, so consumers can derive schemas in crates that
+//! don't depend on the framework.
+//!
+//! # Framework-coupled attributes
+//!
+//! [`tool`] is a `#[proc_macro_attribute]` that generates a
+//! `cognis_core::tools::BaseTool` implementation. Its output necessarily
+//! references `cognis_core::tools::{ValidateArgs, BaseTool, ToolInput,
+//! ToolOutput}` and `cognis_core::tools::validation::check_*`. Code annotated
+//! with `#[cognis::tool]` must therefore compile against the cognis framework.
+//!
+//! # Derive usage
 //!
 //! ```ignore
 //! use cognis_macros::JsonSchema;
@@ -26,7 +39,7 @@
 //! // {"type":"object","properties":{...},"required":["min_score","categories"]}
 //! ```
 //!
-//! # Supported types
+//! # `#[derive(JsonSchema)]` supported types
 //!
 //! | Rust type | JSON Schema |
 //! |-----------|-------------|
