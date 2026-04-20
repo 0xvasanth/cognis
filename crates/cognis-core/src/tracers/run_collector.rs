@@ -151,7 +151,7 @@ impl CallbackHandler for RunCollectorCallbackHandler {
     async fn on_tool_end(&self, event: ToolEndEvent) -> Result<()> {
         let mut runs = self.runs.lock().unwrap();
         if let Some(run) = runs.iter_mut().find(|r| r.id == event.run_id) {
-            run.outputs = Some(Value::String(event.output_str.clone()));
+            run.outputs = Some(event.output_value.clone());
         }
         Ok(())
     }
