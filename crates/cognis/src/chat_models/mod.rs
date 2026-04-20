@@ -27,6 +27,8 @@ pub mod load_balancer;
 pub mod ollama;
 #[cfg(feature = "openai")]
 pub mod openai;
+#[cfg(feature = "openai")]
+pub mod openrouter;
 pub mod rate_limited;
 pub mod retrying;
 pub mod routing;
