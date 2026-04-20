@@ -255,10 +255,28 @@ fn expand_impl(args: ToolArgs, item_impl: ItemImpl) -> syn::Result<TokenStream2>
         &arg_specs,
     );
 
+    // Strip #[schema(...)] (and helper-macro-only attrs) from the preserved
+    // impl block's method parameters. Those attrs were meaningful to *this*
+    // macro — they've already been consumed into `arg_specs`. Leaving them
+    // on the inherent method emits "cannot find attribute `schema`" because
+    // no derive is in scope there.
+    let mut cleaned_impl = item_impl.clone();
+    for item in cleaned_impl.items.iter_mut() {
+        if let ImplItem::Fn(m) = item {
+            if m.sig.asyncness.is_some() {
+                for input in m.sig.inputs.iter_mut() {
+                    if let FnArg::Typed(pt) = input {
+                        pt.attrs.retain(|a| !a.path().is_ident("schema"));
+                    }
+                }
+            }
+        }
+    }
+
     Ok(quote! {
         #args_struct
         #validate_impl
-        #item_impl
+        #cleaned_impl
         #base_tool_impl
     })
 }
