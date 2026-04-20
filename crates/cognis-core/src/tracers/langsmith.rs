@@ -547,6 +547,8 @@ mod tests {
             parent_run_id: parent,
             tags: vec![],
             metadata: HashMap::new(),
+            parallel: false,
+            batch_size: 1,
         }
     }
 

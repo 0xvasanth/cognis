@@ -247,6 +247,19 @@ impl Default for AgentExecutorBuilder {
 }
 
 /// Executes an agent loop: model generates, tools execute, repeat until done.
+///
+/// # Tool-call dispatch
+///
+/// When the model emits multiple `tool_calls` in a single assistant turn
+/// (common with `gpt-4o`, `claude-3.5+`, and other parallel-tool-capable
+/// models), the executor dispatches them **serially** by default: each call
+/// awaits the previous one's completion before starting. For workloads that
+/// routinely call 3–5 independent tools per turn, this multiplies latency.
+///
+/// Set [`AgentExecutorBuilder::parallel_tool_calls(true)`] to opt into
+/// parallel dispatch via [`futures::future::try_join_all`]. Tool order in the
+/// resulting `ToolMessage` sequence is preserved regardless of completion
+/// order, so downstream correlation by `tool_call_id` is unaffected.
 pub struct AgentExecutor {
     /// The chat model used for generation.
     pub model: Arc<dyn BaseChatModel>,
@@ -470,6 +483,8 @@ impl AgentExecutor {
                         parent_run_id: Some(chain_run_id),
                         tags: vec![],
                         metadata: Default::default(),
+                        parallel: false,
+                        batch_size: 1,
                     })
                     .await;
 

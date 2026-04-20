@@ -349,6 +349,8 @@ mod tests {
             parent_run_id: None,
             tags: vec![],
             metadata: std::collections::HashMap::new(),
+            parallel: false,
+            batch_size: 1,
         }
     }
 
