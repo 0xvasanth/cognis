@@ -293,6 +293,18 @@ impl CallbackManager {
         Ok(())
     }
 
+    /// Dispatch an agent-cancellation event to every non-ignoring handler.
+    pub async fn on_agent_cancelled(&self, reason: &str, run_id: Uuid) -> Result<()> {
+        for handler in &self.handlers {
+            if !handler.ignore_agent() {
+                handler
+                    .on_agent_cancelled(reason, run_id, self.parent_run_id)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn on_text(&self, text: &str, run_id: Uuid) -> Result<()> {
         for handler in &self.handlers {
             handler.on_text(text, run_id, self.parent_run_id).await?;

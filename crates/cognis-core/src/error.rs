@@ -72,6 +72,9 @@ pub enum CognisError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
+    #[error("Cancelled: {0}")]
+    Cancelled(String),
+
     #[error("{0}")]
     Other(String),
 }

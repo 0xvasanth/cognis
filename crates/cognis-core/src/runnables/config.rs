@@ -5,6 +5,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::callbacks::CallbackHandler;
+use crate::cancellation::CancellationToken;
 
 /// Configuration for a runnable invocation.
 #[derive(Clone)]
@@ -17,6 +18,13 @@ pub struct RunnableConfig {
     pub configurable: HashMap<String, Value>,
     pub run_id: Option<Uuid>,
     pub callbacks: Vec<Arc<dyn CallbackHandler>>,
+    /// Optional cooperative cancellation token.
+    ///
+    /// When set, runnables (and the callers that compose them) may observe
+    /// the token to abort in-flight work. Specifically, `AgentExecutor::run`
+    /// honours the token at iteration boundaries and wraps the model / tool
+    /// calls in a `tokio::select!` against `token.cancelled()`.
+    pub cancellation_token: Option<CancellationToken>,
 }
 
 impl Default for RunnableConfig {
@@ -30,6 +38,7 @@ impl Default for RunnableConfig {
             configurable: HashMap::new(),
             run_id: None,
             callbacks: Vec::new(),
+            cancellation_token: None,
         }
     }
 }
@@ -45,6 +54,7 @@ impl std::fmt::Debug for RunnableConfig {
             .field("configurable", &self.configurable)
             .field("run_id", &self.run_id)
             .field("callbacks", &format!("[{} handlers]", self.callbacks.len()))
+            .field("cancellation_token", &self.cancellation_token)
             .finish()
     }
 }
@@ -69,6 +79,7 @@ pub struct ConfigPatch {
     recursion_limit: Option<usize>,
     configurable: Option<HashMap<String, Value>>,
     run_id: Option<Uuid>,
+    cancellation_token: Option<CancellationToken>,
 }
 
 impl ConfigPatch {
@@ -82,6 +93,7 @@ impl ConfigPatch {
             recursion_limit: None,
             configurable: None,
             run_id: None,
+            cancellation_token: None,
         }
     }
 
@@ -117,6 +129,10 @@ impl ConfigPatch {
         self.run_id = Some(id);
         self
     }
+    pub fn with_cancellation_token(mut self, token: CancellationToken) -> Self {
+        self.cancellation_token = Some(token);
+        self
+    }
 
     /// Apply this patch to a config, returning a new config.
     pub fn apply(&self, config: &RunnableConfig) -> RunnableConfig {
@@ -138,6 +154,10 @@ impl ConfigPatch {
                 .clone()
                 .unwrap_or_else(|| config.configurable.clone()),
             run_id: self.run_id.or(config.run_id),
+            cancellation_token: self
+                .cancellation_token
+                .clone()
+                .or_else(|| config.cancellation_token.clone()),
         }
     }
 }
@@ -193,6 +213,10 @@ pub fn merge_configs(base: &RunnableConfig, overlay: &RunnableConfig) -> Runnabl
         configurable,
         run_id: overlay.run_id.or(base.run_id),
         callbacks,
+        cancellation_token: overlay
+            .cancellation_token
+            .clone()
+            .or_else(|| base.cancellation_token.clone()),
     }
 }
 

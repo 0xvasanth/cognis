@@ -199,6 +199,19 @@ pub trait CallbackHandler: Send + Sync {
         Ok(())
     }
 
+    /// Called when an agent run is cancelled via `CancellationToken`.
+    ///
+    /// The default implementation is a no-op so existing handlers remain
+    /// source-compatible.
+    async fn on_agent_cancelled(
+        &self,
+        _reason: &str,
+        _run_id: Uuid,
+        _parent_run_id: Option<Uuid>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     async fn on_text(
         &self,
         _text: &str,

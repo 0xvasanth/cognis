@@ -56,6 +56,7 @@ fn error_variant_name(err: &CognisError) -> &'static str {
         CognisError::TypeMismatch { .. } => "TypeMismatch",
         CognisError::HttpError { .. } => "HttpError",
         CognisError::IoError(_) => "IoError",
+        CognisError::Cancelled(_) => "Cancelled",
         CognisError::Other(_) => "Other",
     }
 }

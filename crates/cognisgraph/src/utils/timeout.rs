@@ -6,14 +6,18 @@
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use tokio::sync::Notify;
 
 use crate::errors::{LangGraphError, Result};
+
+/// Cooperative cancellation token, re-exported from `cognis_core`.
+///
+/// Promoted to core so that every crate in the workspace (including
+/// `cognis` and `cognisagent`) can share the same cancellation primitive.
+pub use cognis_core::CancellationToken;
 
 /// Default timeout duration for node execution (30 seconds).
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -222,63 +226,6 @@ impl NodeTimeout {
     }
 }
 
-/// Cooperative cancellation token for graph execution.
-///
-/// Allows signaling cancellation to running nodes. Uses an atomic boolean
-/// and a `Notify` to wake waiting tasks.
-#[derive(Debug, Clone)]
-pub struct CancellationToken {
-    cancelled: Arc<AtomicBool>,
-    notify: Arc<Notify>,
-}
-
-impl CancellationToken {
-    /// Create a new cancellation token.
-    pub fn new() -> Self {
-        Self {
-            cancelled: Arc::new(AtomicBool::new(false)),
-            notify: Arc::new(Notify::new()),
-        }
-    }
-
-    /// Signal cancellation.
-    pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::SeqCst);
-        self.notify.notify_waiters();
-    }
-
-    /// Check if cancellation has been requested.
-    pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
-    }
-
-    /// Returns a future that resolves when cancellation is signaled.
-    pub async fn cancelled(&self) {
-        if self.is_cancelled() {
-            return;
-        }
-        // Wait for notification. Re-check after wake since we might get
-        // spurious wakes or the token could be cancelled between check and wait.
-        loop {
-            self.notify.notified().await;
-            if self.is_cancelled() {
-                return;
-            }
-        }
-    }
-
-    /// Reset the token so it can be reused.
-    pub fn reset(&self) {
-        self.cancelled.store(false, Ordering::SeqCst);
-    }
-}
-
-impl Default for CancellationToken {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Tracks a time budget across multiple node executions.
 ///
 /// Useful for enforcing a total graph execution time limit while dynamically
@@ -419,6 +366,7 @@ impl Default for TimeoutManager {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::sync::atomic::Ordering;
 
     // ── TimeoutConfig tests ──
 
