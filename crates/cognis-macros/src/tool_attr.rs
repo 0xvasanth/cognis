@@ -255,18 +255,22 @@ fn expand_impl(args: ToolArgs, item_impl: ItemImpl) -> syn::Result<TokenStream2>
         &arg_specs,
     );
 
-    // Strip #[schema(...)] (and helper-macro-only attrs) from the preserved
-    // impl block's method parameters. Those attrs were meaningful to *this*
-    // macro — they've already been consumed into `arg_specs`. Leaving them
-    // on the inherent method emits "cannot find attribute `schema`" because
-    // no derive is in scope there.
+    // Strip helper attributes from the preserved impl block's method
+    // parameters. Both `#[schema(...)]` and `///` doc comments were
+    // already captured into `arg_specs`, and leaving them in place on
+    // the regenerated fn parameters would be a hard error:
+    //
+    // - `#[schema]` → "cannot find attribute `schema`" (no derive in scope)
+    // - `///` (doc) → "allow, cfg, ... are the only allowed built-in
+    //   attributes in function parameters" on stable Rust
     let mut cleaned_impl = item_impl.clone();
     for item in cleaned_impl.items.iter_mut() {
         if let ImplItem::Fn(m) = item {
             if m.sig.asyncness.is_some() {
                 for input in m.sig.inputs.iter_mut() {
                     if let FnArg::Typed(pt) = input {
-                        pt.attrs.retain(|a| !a.path().is_ident("schema"));
+                        pt.attrs
+                            .retain(|a| !a.path().is_ident("schema") && !a.path().is_ident("doc"));
                     }
                 }
             }

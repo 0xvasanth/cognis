@@ -127,3 +127,53 @@ async fn impl_form_exposes_schema() {
         json!(["en", "fr", "es", "de", "ja"])
     );
 }
+
+// ---------------------------------------------------------------------------
+// Regression — doc comments on impl-form args must be stripped from the
+// preserved inherent method (stable Rust rejects `///` on function
+// parameters with "only allow/cfg/.../warn are allowed").
+// ---------------------------------------------------------------------------
+
+pub struct DocParams;
+
+#[tool(name = "with_doc_params")]
+impl DocParams {
+    /// Tool whose args carry rustdoc comments — they should appear in
+    /// the generated JSON Schema but be stripped from the inherent fn.
+    async fn call(
+        &self,
+        /// First arg: the subject.
+        subject: String,
+        /// Second arg: optional adjective.
+        adjective: Option<String>,
+    ) -> Result<ToolOutput> {
+        Ok(ToolOutput::Content(json!({
+            "subject": subject,
+            "adjective": adjective,
+        })))
+    }
+}
+
+#[tokio::test]
+async fn impl_form_strips_doc_attrs_from_method_params() {
+    let t = DocParams;
+    let schema = t.args_schema().unwrap();
+    assert_eq!(
+        schema["properties"]["subject"]["description"],
+        json!("First arg: the subject.")
+    );
+    assert_eq!(
+        schema["properties"]["adjective"]["description"],
+        json!("Second arg: optional adjective.")
+    );
+
+    // Inherent method still callable (would have failed compilation if
+    // doc attrs hadn't been stripped from the preserved impl).
+    let out = t.call("cat".into(), Some("happy".into())).await.unwrap();
+    match out {
+        ToolOutput::Content(v) => {
+            assert_eq!(v, json!({ "subject": "cat", "adjective": "happy" }))
+        }
+        _ => panic!("expected Content"),
+    }
+}
