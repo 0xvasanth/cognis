@@ -37,6 +37,7 @@ pub struct ChatOpenAIBuilder {
     stop: Option<Vec<String>>,
     max_retries: Option<u32>,
     streaming: Option<bool>,
+    extra_headers: HashMap<String, String>,
 }
 
 impl ChatOpenAIBuilder {
@@ -56,6 +57,7 @@ impl ChatOpenAIBuilder {
             stop: None,
             max_retries: None,
             streaming: None,
+            extra_headers: HashMap::new(),
         }
     }
 
@@ -137,6 +139,46 @@ impl ChatOpenAIBuilder {
         self
     }
 
+    /// Add a custom HTTP header that will be sent on every request.
+    ///
+    /// Useful for OpenAI-compatible gateways that require attribution or
+    /// routing headers — for example OpenRouter's `HTTP-Referer` and
+    /// `X-Title`, or Together.ai's custom routing tags. Calling this method
+    /// multiple times with the same key overwrites the prior value.
+    ///
+    /// The standard `Authorization`, `Content-Type`, and `OpenAI-Organization`
+    /// headers are applied after extra headers, so they cannot be
+    /// accidentally overridden.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use cognis::chat_models::openai::ChatOpenAI;
+    ///
+    /// let model = ChatOpenAI::builder()
+    ///     .model("meta-llama/llama-3.3-70b-instruct:free")
+    ///     .api_key("sk-or-...")
+    ///     .base_url("https://openrouter.ai/api")
+    ///     .extra_header("HTTP-Referer", "https://mysite.com")
+    ///     .extra_header("X-Title", "my-app")
+    ///     .build()
+    ///     .unwrap();
+    /// ```
+    pub fn extra_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.extra_headers.insert(key.into(), value.into());
+        self
+    }
+
+    /// Replace the entire set of extra HTTP headers.
+    ///
+    /// Prefer [`extra_header`](Self::extra_header) for additive use. This
+    /// method is intended for cases where the caller already has a header
+    /// map (e.g. loaded from config).
+    pub fn extra_headers(mut self, headers: HashMap<String, String>) -> Self {
+        self.extra_headers = headers;
+        self
+    }
+
     /// Build the [`ChatOpenAI`] instance.
     ///
     /// Returns an error if `model` is not set or if the API key cannot be
@@ -174,6 +216,7 @@ impl ChatOpenAIBuilder {
             stop: self.stop,
             max_retries: self.max_retries.unwrap_or(2),
             streaming: self.streaming.unwrap_or(false),
+            extra_headers: self.extra_headers,
             client: Client::new(),
             bound_tools: Vec::new(),
             tool_choice: None,
@@ -230,6 +273,11 @@ pub struct ChatOpenAI {
     pub max_retries: u32,
     /// Whether streaming is the default mode.
     pub streaming: bool,
+    /// Custom HTTP headers applied to every request, used for attribution or
+    /// routing on OpenAI-compatible gateways (OpenRouter, Together.ai, Groq,
+    /// Fireworks, etc.). Applied before the standard auth/content-type
+    /// headers so those cannot be overridden.
+    pub extra_headers: HashMap<String, String>,
     /// HTTP client.
     client: Client,
     /// Tools bound via `bind_tools`.
@@ -567,9 +615,13 @@ impl ChatOpenAI {
         let mut last_error = CognisError::Other("No attempts made".into());
 
         for attempt in 0..=self.max_retries {
-            let mut req = self
-                .client
-                .post(&url)
+            let mut req = self.client.post(&url);
+
+            for (k, v) in &self.extra_headers {
+                req = req.header(k.as_str(), v.as_str());
+            }
+
+            req = req
                 .header(
                     "Authorization",
                     format!("Bearer {}", self.api_key.expose_secret()),
@@ -618,9 +670,13 @@ impl ChatOpenAI {
     ) -> Result<std::pin::Pin<Box<dyn futures::Stream<Item = Result<Value>> + Send>>> {
         let url = format!("{}/v1/chat/completions", self.base_url);
 
-        let mut req = self
-            .client
-            .post(&url)
+        let mut req = self.client.post(&url);
+
+        for (k, v) in &self.extra_headers {
+            req = req.header(k.as_str(), v.as_str());
+        }
+
+        req = req
             .header(
                 "Authorization",
                 format!("Bearer {}", self.api_key.expose_secret()),
@@ -756,6 +812,7 @@ impl BaseChatModel for ChatOpenAI {
             stop: self.stop.clone(),
             max_retries: self.max_retries,
             streaming: self.streaming,
+            extra_headers: self.extra_headers.clone(),
             client: self.client.clone(),
             bound_tools,
             tool_choice,
@@ -1033,6 +1090,62 @@ mod tests {
         assert_eq!(payload["messages"].as_array().unwrap().len(), 1);
         assert!(payload.get("stream").is_none());
         assert!(payload.get("tools").is_none());
+    }
+
+    #[test]
+    fn test_extra_headers_on_builder() {
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("HTTP-Referer", "https://mysite.com")
+            .extra_header("X-Title", "assistant")
+            .build()
+            .unwrap();
+
+        assert_eq!(model.extra_headers.len(), 2);
+        assert_eq!(
+            model.extra_headers.get("HTTP-Referer").map(String::as_str),
+            Some("https://mysite.com"),
+        );
+        assert_eq!(
+            model.extra_headers.get("X-Title").map(String::as_str),
+            Some("assistant"),
+        );
+    }
+
+    #[test]
+    fn test_extra_header_overwrites_same_key() {
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("X-Title", "first")
+            .extra_header("X-Title", "second")
+            .build()
+            .unwrap();
+
+        assert_eq!(model.extra_headers.len(), 1);
+        assert_eq!(
+            model.extra_headers.get("X-Title").map(String::as_str),
+            Some("second"),
+        );
+    }
+
+    #[test]
+    fn test_extra_headers_map_replaces_all() {
+        let mut headers = HashMap::new();
+        headers.insert("X-Custom".to_string(), "value".to_string());
+
+        let model = ChatOpenAI::builder()
+            .model("gpt-4o")
+            .api_key("test-key")
+            .extra_header("HTTP-Referer", "https://old.com")
+            .extra_headers(headers)
+            .build()
+            .unwrap();
+
+        assert_eq!(model.extra_headers.len(), 1);
+        assert!(model.extra_headers.contains_key("X-Custom"));
+        assert!(!model.extra_headers.contains_key("HTTP-Referer"));
     }
 
     #[test]
