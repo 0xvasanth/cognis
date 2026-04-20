@@ -81,6 +81,21 @@ pub enum AgentEventType {
         step: usize,
         status: String,
     },
+    /// A tool invocation is paused awaiting explicit human approval. The
+    /// `token` uniquely identifies this pending decision and must be passed
+    /// back to the resolver to approve or reject.
+    PendingApproval {
+        token: String,
+        tool: String,
+        input: Value,
+    },
+    /// A previously-emitted pending approval has been resolved.
+    ApprovalResolved {
+        token: String,
+        tool: String,
+        approved: bool,
+        reason: Option<String>,
+    },
     /// A custom application-defined event.
     Custom { name: String, data: Value },
 }
@@ -99,6 +114,8 @@ impl AgentEventType {
             Self::ToolCallError { .. } => "ToolCallError",
             Self::MiddlewareExecuted { .. } => "MiddlewareExecuted",
             Self::PlanUpdated { .. } => "PlanUpdated",
+            Self::PendingApproval { .. } => "PendingApproval",
+            Self::ApprovalResolved { .. } => "ApprovalResolved",
             Self::Custom { name, .. } => name.as_str(),
         }
     }
@@ -159,6 +176,19 @@ impl fmt::Display for AgentEventType {
                 step,
                 status,
             } => write!(f, "PlanUpdated({}, step {}, {})", plan_id, step, status),
+            Self::PendingApproval { token, tool, .. } => {
+                write!(f, "PendingApproval(tool={}, token={})", tool, token)
+            }
+            Self::ApprovalResolved {
+                token,
+                tool,
+                approved,
+                ..
+            } => write!(
+                f,
+                "ApprovalResolved(tool={}, token={}, approved={})",
+                tool, token, approved
+            ),
             Self::Custom { name, .. } => write!(f, "Custom({})", name),
         }
     }
@@ -885,6 +915,17 @@ mod tests {
                 step: 0,
                 status: "done".into(),
             },
+            AgentEventType::PendingApproval {
+                token: "tok-1".into(),
+                tool: "shell".into(),
+                input: Value::Null,
+            },
+            AgentEventType::ApprovalResolved {
+                token: "tok-1".into(),
+                tool: "shell".into(),
+                approved: true,
+                reason: None,
+            },
             AgentEventType::Custom {
                 name: "c".into(),
                 data: Value::Null,
@@ -894,7 +935,7 @@ mod tests {
         for t in types {
             bus.emit(t).await.unwrap();
         }
-        assert_eq!(h.count(), 11);
+        assert_eq!(h.count(), 13);
     }
 
     // 22. LoggingEventHandler does not error

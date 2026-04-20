@@ -17,7 +17,9 @@
 //! - [`planning::PlanningMiddleware`] — plan-then-execute support with step tracking, dependencies, and status injection
 //! - [`prompt_caching::PromptCachingMiddleware`] — Anthropic-style prompt caching with cache control injection
 //! - [`todo::TodoListMiddleware`] — todo list tracking with status injection
+//! - [`approval_gate::ApprovalGateMiddleware`] — async human-approval gate for tools that declare `requires_approval`
 
+pub mod approval_gate;
 pub mod context;
 pub mod filesystem;
 pub mod logging;
@@ -43,6 +45,24 @@ pub type Result<T> = std::result::Result<T, DeepAgentError>;
 /// A mutable reference to the agent state (a JSON object with at least a `"messages"` key).
 pub type AgentState = Value;
 
+/// The decision a middleware returns from [`Middleware::gate_tool`] to control
+/// whether a tool invocation should proceed.
+#[derive(Debug, Clone)]
+pub enum ToolGateDecision {
+    /// The tool invocation should proceed normally.
+    Continue,
+    /// The tool invocation should be skipped. The supplied `observation`
+    /// replaces the would-be tool result (typically a user-rejection message).
+    Reject { observation: String },
+}
+
+impl ToolGateDecision {
+    /// Whether this decision short-circuits tool execution.
+    pub fn is_rejected(&self) -> bool {
+        matches!(self, Self::Reject { .. })
+    }
+}
+
 /// Trait for pluggable middleware in the Deep Agent pipeline.
 ///
 /// All methods have default no-op implementations so that concrete
@@ -65,6 +85,23 @@ pub trait Middleware: Send + Sync {
     /// Called before a tool is executed.
     async fn before_tool(&self, _state: &mut AgentState, _tool_name: &str) -> Result<()> {
         Ok(())
+    }
+
+    /// Called before a tool is executed, with an opportunity to short-circuit.
+    ///
+    /// Unlike [`before_tool`](Self::before_tool), this hook returns a
+    /// [`ToolGateDecision`] that can reject the invocation and substitute an
+    /// observation instead of running the tool. Used by approval-gate
+    /// middleware to suspend execution until a human resolves the request.
+    ///
+    /// Default implementation is a no-op returning `Continue`.
+    async fn gate_tool(
+        &self,
+        _state: &mut AgentState,
+        _tool_name: &str,
+        _tool_input: &Value,
+    ) -> Result<ToolGateDecision> {
+        Ok(ToolGateDecision::Continue)
     }
 
     /// Called after a tool execution completes.
