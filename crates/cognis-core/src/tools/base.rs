@@ -70,6 +70,16 @@ pub trait BaseTool: Send + Sync {
         false
     }
 
+    /// Whether this tool requires explicit human approval before each execution.
+    ///
+    /// When `true`, an approval-gate middleware (such as
+    /// `cognisagent::middleware::approval_gate::ApprovalGateMiddleware`) should
+    /// intercept invocations, emit a pending-approval event with a token, and
+    /// suspend until the external consumer resolves the decision.
+    fn requires_approval(&self) -> bool {
+        false
+    }
+
     /// How to handle tool execution errors.
     fn handle_tool_error(&self) -> &ErrorHandler {
         &ErrorHandler::Propagate
