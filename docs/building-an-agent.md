@@ -272,6 +272,24 @@ let result = executor.run_with_cancel(&messages, cancel).await;
 
 The token is honoured at three points: iteration boundaries, around the model call (via `tokio::select!` — drops the in-flight `_generate` future and any `reqwest` request), and around each tool execution. Tools can read it from `RunnableConfig::cancellation_token` for their own cleanup.
 
+**Parallel tool calls** — when the model emits multiple `tool_calls` in a single turn (common with `gpt-4o`, `claude-3.5+`, and other parallel-tool-capable models), the executor dispatches them **serially by default**. For agents that routinely fan out to 3–5 independent tools per turn, that multiplies latency. Opt into concurrent dispatch:
+
+```rust
+let executor = AgentExecutor::builder()
+    .model(model)
+    .tools(vec![search, fetch, summarize])
+    .parallel_tool_calls(true)      // opt-in — default is serial
+    .build();
+```
+
+Semantics when enabled:
+
+- Multi-tool turns run via `futures::future::try_join_all`; single-tool turns use the serial path (no wasted fan-out).
+- **Tool order is preserved** in the resulting `ToolMessage` sequence regardless of completion order, so correlation by `tool_call_id` stays deterministic.
+- `ToolStartEvent` gains `parallel: true` and `batch_size: N` so callback handlers (or `astream_events` consumers) can render a "running N tools" UI group.
+- Any branch returning `CognisError::Cancelled` short-circuits the batch; other in-flight branches are dropped. Agent-level `on_agent_cancelled` / `on_chain_error` fire once.
+- Leave serial (the default) if your tools share mutable state, hit the same rate-limited endpoint, or have ordering dependencies. The model already decided to call all of them without seeing each other's output, so independent tools are the typical case — but the safe default is serial.
+
 ---
 
 ## 5. Streaming intermediate steps with `CallbackHandler`
@@ -426,6 +444,7 @@ See [`examples/agents/react_agent.rs`](../examples/agents/react_agent.rs) for a 
 | Domain-specific JSON-shaped prompts | `cognis::chat_models::structured::with_structured_output(schema)` |
 | `BaseTool` + args struct + `args_schema()` + `_run` deserialization, by hand | `#[cognis::tool]` on an async fn with `#[schema(...)]` validators |
 | `tokio::select!` + ad-hoc cancel flags around the agent loop | `AgentExecutor::run_with_cancel` with `CancellationToken` |
+| `tokio::join!`-ing tool futures yourself to avoid 3× latency on multi-call turns | `AgentExecutor::builder().parallel_tool_calls(true)` |
 
 ---
 
