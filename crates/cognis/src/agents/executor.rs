@@ -28,6 +28,7 @@ use cognis_core::callbacks::manager::CallbackManager;
 use cognis_core::callbacks::{ToolEndEvent, ToolErrorEvent, ToolErrorKind, ToolStartEvent};
 use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
+use cognis_core::messages::tool_types::ToolCall;
 use cognis_core::messages::{Message, ToolMessage};
 use cognis_core::runnables::base::Runnable;
 use cognis_core::runnables::config::RunnableConfig;
@@ -122,6 +123,7 @@ pub struct AgentExecutorBuilder {
     return_intermediate_steps: bool,
     early_stopping_method: Option<EarlyStoppingMethod>,
     handle_parsing_errors: bool,
+    parallel_tool_calls: bool,
     callbacks: Vec<Arc<dyn CallbackHandler>>,
 }
 
@@ -137,6 +139,7 @@ impl AgentExecutorBuilder {
             return_intermediate_steps: false,
             early_stopping_method: None,
             handle_parsing_errors: false,
+            parallel_tool_calls: false,
             callbacks: Vec::new(),
         }
     }
@@ -201,6 +204,24 @@ impl AgentExecutorBuilder {
         self
     }
 
+    /// Dispatch multi-tool-call turns in parallel (default: false).
+    ///
+    /// When the model emits more than one tool call in a single assistant
+    /// turn and this is `true`, the executor runs them concurrently via
+    /// [`futures::future::try_join_all`] instead of awaiting each in turn.
+    /// Output ordering in the resulting `ToolMessage` sequence is preserved,
+    /// so correlation by `tool_call_id` remains deterministic.
+    ///
+    /// Leave at the default (`false`) for tools with shared mutable state
+    /// or ordering dependencies. Turn on when tools are independent
+    /// (DB reads, API fetches, computations) — the model already decided
+    /// to call all of them without seeing each other's output, so parallel
+    /// execution is semantically equivalent.
+    pub fn parallel_tool_calls(mut self, yes: bool) -> Self {
+        self.parallel_tool_calls = yes;
+        self
+    }
+
     /// Add a single callback handler.
     pub fn callback(mut self, handler: Arc<dyn CallbackHandler>) -> Self {
         self.callbacks.push(handler);
@@ -235,6 +256,7 @@ impl AgentExecutorBuilder {
             return_intermediate_steps: self.return_intermediate_steps,
             early_stopping_method: self.early_stopping_method,
             handle_parsing_errors: self.handle_parsing_errors,
+            parallel_tool_calls: self.parallel_tool_calls,
             callbacks: self.callbacks,
         }
     }
@@ -247,6 +269,19 @@ impl Default for AgentExecutorBuilder {
 }
 
 /// Executes an agent loop: model generates, tools execute, repeat until done.
+///
+/// # Tool-call dispatch
+///
+/// When the model emits multiple `tool_calls` in a single assistant turn
+/// (common with `gpt-4o`, `claude-3.5+`, and other parallel-tool-capable
+/// models), the executor dispatches them **serially** by default: each call
+/// awaits the previous one's completion before starting. For workloads that
+/// routinely call 3–5 independent tools per turn, this multiplies latency.
+///
+/// Set [`AgentExecutorBuilder::parallel_tool_calls(true)`] to opt into
+/// parallel dispatch via [`futures::future::try_join_all`]. Tool order in the
+/// resulting `ToolMessage` sequence is preserved regardless of completion
+/// order, so downstream correlation by `tool_call_id` is unaffected.
 pub struct AgentExecutor {
     /// The chat model used for generation.
     pub model: Arc<dyn BaseChatModel>,
@@ -266,6 +301,8 @@ pub struct AgentExecutor {
     pub early_stopping_method: Option<EarlyStoppingMethod>,
     /// Whether to handle parsing errors by feeding the error back to the model.
     pub handle_parsing_errors: bool,
+    /// Whether to dispatch multi-tool-call turns in parallel.
+    pub parallel_tool_calls: bool,
     /// Callback handlers for observability events.
     pub callbacks: Vec<Arc<dyn CallbackHandler>>,
 }
@@ -452,145 +489,49 @@ impl AgentExecutor {
                 });
             }
 
-            // Execute each tool call
-            for tool_call in &ai_msg.tool_calls {
-                let tool_call_id_opt = tool_call.id.clone();
-                let tool_run_id = Uuid::new_v4();
-                let args_value = serde_json::to_value(&tool_call.args).unwrap_or_default();
-                let tool_input_str = serde_json::to_string(&args_value).unwrap_or_default();
+            // Dispatch tool calls — parallel or serial, per builder config.
+            let batch_size = ai_msg.tool_calls.len();
+            let parallel = self.parallel_tool_calls && batch_size > 1;
 
-                let _ = cb
-                    .on_tool_start(ToolStartEvent {
-                        tool: tool_call.name.clone(),
-                        serialized: serde_json::json!({ "name": &tool_call.name }),
-                        input_str: tool_input_str.clone(),
-                        inputs: args_value.clone(),
-                        tool_call_id: tool_call_id_opt.clone(),
-                        run_id: tool_run_id,
-                        parent_run_id: Some(chain_run_id),
-                        tags: vec![],
-                        metadata: Default::default(),
-                    })
-                    .await;
-
-                let (result_text, result_artifact) = match self.tools.get(&tool_call.name) {
-                    Some(tool) => {
-                        let input = value_to_tool_input(&args_value);
-                        let tool_result = tokio::select! {
-                            biased;
-                            _ = cancel.cancelled() => {
-                                let reason = "cancelled during tool call";
-                                let _ = cb
-                                    .on_tool_error(ToolErrorEvent {
-                                        tool: tool_call.name.clone(),
-                                        error: reason.into(),
-                                        error_kind: ToolErrorKind::Other,
-                                        tool_call_id: tool_call_id_opt.clone(),
-                                        run_id: tool_run_id,
-                                        parent_run_id: Some(chain_run_id),
-                                    })
-                                    .await;
+            let tool_results: Vec<(AgentStep, Message)> = if parallel {
+                let futures = ai_msg.tool_calls.iter().map(|tc| {
+                    self.execute_one_tool_call(tc, chain_run_id, &cb, &cancel, parallel, batch_size)
+                });
+                match futures::future::try_join_all(futures).await {
+                    Ok(results) => results,
+                    Err(e) => {
+                        // Any tool returning Cancelled short-circuits the
+                        // batch; surface agent-level cancel events once.
+                        if let CognisError::Cancelled(reason) = &e {
+                            let _ = cb.on_agent_cancelled(reason, chain_run_id).await;
+                            let _ = cb.on_chain_error(reason, chain_run_id).await;
+                        }
+                        return Err(e);
+                    }
+                }
+            } else {
+                let mut results = Vec::with_capacity(batch_size);
+                for tc in &ai_msg.tool_calls {
+                    match self
+                        .execute_one_tool_call(tc, chain_run_id, &cb, &cancel, parallel, batch_size)
+                        .await
+                    {
+                        Ok(r) => results.push(r),
+                        Err(e) => {
+                            if let CognisError::Cancelled(reason) = &e {
                                 let _ = cb.on_agent_cancelled(reason, chain_run_id).await;
                                 let _ = cb.on_chain_error(reason, chain_run_id).await;
-                                return Err(CognisError::Cancelled(reason.into()));
                             }
-                            r = tool._run(input) => r,
-                        };
-                        match tool_result {
-                            Ok(output) => {
-                                let (content, artifact) = match output {
-                                    ToolOutput::Content(v) => (v, None),
-                                    ToolOutput::ContentAndArtifact { content, artifact } => {
-                                        (content, Some(artifact))
-                                    }
-                                };
-                                let text = value_to_observation_str(&content);
-                                let _ = cb
-                                    .on_tool_end(ToolEndEvent {
-                                        tool: tool_call.name.clone(),
-                                        output_str: text.clone(),
-                                        output_value: content,
-                                        artifact: artifact.clone(),
-                                        tool_call_id: tool_call_id_opt.clone(),
-                                        run_id: tool_run_id,
-                                        parent_run_id: Some(chain_run_id),
-                                    })
-                                    .await;
-                                (text, artifact)
-                            }
-                            Err(e) => {
-                                let kind = match &e {
-                                    CognisError::ToolException(_)
-                                    | CognisError::ToolValidationError(_) => {
-                                        ToolErrorKind::Execution
-                                    }
-                                    _ => ToolErrorKind::Other,
-                                };
-                                // Apply the tool's configured error-handler policy.
-                                let handler_policy = match &e {
-                                    CognisError::ToolValidationError(_) => {
-                                        tool.handle_validation_error().clone()
-                                    }
-                                    _ => tool.handle_tool_error().clone(),
-                                };
-                                let err_fallback = format!("Error: {e}");
-                                let observation = apply_error_handler(&handler_policy, e)
-                                    .unwrap_or_else(|_| Value::String(err_fallback.clone()));
-                                let err_text = match &observation {
-                                    Value::String(s) => s.clone(),
-                                    other => other.to_string(),
-                                };
-                                let _ = cb
-                                    .on_tool_error(ToolErrorEvent {
-                                        tool: tool_call.name.clone(),
-                                        error: err_text.clone(),
-                                        error_kind: kind,
-                                        tool_call_id: tool_call_id_opt.clone(),
-                                        run_id: tool_run_id,
-                                        parent_run_id: Some(chain_run_id),
-                                    })
-                                    .await;
-                                (err_text, None)
-                            }
+                            return Err(e);
                         }
                     }
-                    None => {
-                        let err_text = format!("Error: tool '{}' not found", tool_call.name);
-                        let _ = cb
-                            .on_tool_error(ToolErrorEvent {
-                                tool: tool_call.name.clone(),
-                                error: err_text.clone(),
-                                error_kind: ToolErrorKind::NotFound,
-                                tool_call_id: tool_call_id_opt.clone(),
-                                run_id: tool_run_id,
-                                parent_run_id: Some(chain_run_id),
-                            })
-                            .await;
-                        (err_text, None)
-                    }
-                };
+                }
+                results
+            };
 
-                // Record intermediate step
-                intermediate_steps.push(AgentStep {
-                    action: AgentAction::new(
-                        tool_call.name.clone(),
-                        args_value.clone(),
-                        format!(
-                            "Calling tool `{}` with args: {}",
-                            tool_call.name, tool_input_str
-                        ),
-                    ),
-                    observation: result_text.clone(),
-                });
-
-                let tool_call_id = tool_call_id_opt.unwrap_or_default();
-                let tm = match result_artifact {
-                    Some(artifact) => {
-                        ToolMessage::with_artifact(&result_text, &tool_call_id, artifact)
-                    }
-                    None => ToolMessage::new(&result_text, &tool_call_id),
-                };
-                messages.push(Message::Tool(tm));
+            for (step, tool_message) in tool_results {
+                intermediate_steps.push(step);
+                messages.push(tool_message);
             }
         }
 
@@ -616,6 +557,168 @@ impl AgentExecutor {
                 Err(err)
             }
         }
+    }
+
+    /// Execute a single tool call end-to-end: emit `on_tool_start`, invoke
+    /// the tool (honouring `cancel`), emit `on_tool_end` / `on_tool_error`,
+    /// and return the resulting `AgentStep` + `ToolMessage` ready to be
+    /// appended to the conversation.
+    ///
+    /// Tool-level errors (including validation failures and missing-tool)
+    /// are converted to observation strings via `apply_error_handler` and
+    /// returned as `Ok` — matching the existing non-cancelling error model.
+    /// The only `Err` path is `CognisError::Cancelled`, which the caller
+    /// is responsible for surfacing as agent-level `on_agent_cancelled` /
+    /// `on_chain_error` events (fired once per batch in parallel mode).
+    ///
+    /// `parallel` and `batch_size` are threaded through to
+    /// [`ToolStartEvent`] so UIs can render "running N tools" groups.
+    async fn execute_one_tool_call(
+        &self,
+        tool_call: &ToolCall,
+        chain_run_id: Uuid,
+        cb: &CallbackManager,
+        cancel: &CancellationToken,
+        parallel: bool,
+        batch_size: usize,
+    ) -> Result<(AgentStep, Message)> {
+        let tool_call_id_opt = tool_call.id.clone();
+        let tool_run_id = Uuid::new_v4();
+        let args_value = serde_json::to_value(&tool_call.args).unwrap_or_default();
+        let tool_input_str = serde_json::to_string(&args_value).unwrap_or_default();
+
+        let _ = cb
+            .on_tool_start(ToolStartEvent {
+                tool: tool_call.name.clone(),
+                serialized: serde_json::json!({ "name": &tool_call.name }),
+                input_str: tool_input_str.clone(),
+                inputs: args_value.clone(),
+                tool_call_id: tool_call_id_opt.clone(),
+                run_id: tool_run_id,
+                parent_run_id: Some(chain_run_id),
+                tags: vec![],
+                metadata: Default::default(),
+                parallel,
+                batch_size,
+            })
+            .await;
+
+        let (result_text, result_artifact) = match self.tools.get(&tool_call.name) {
+            Some(tool) => {
+                let input = value_to_tool_input(&args_value);
+                let tool_result = tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => {
+                        let reason = "cancelled during tool call";
+                        let _ = cb
+                            .on_tool_error(ToolErrorEvent {
+                                tool: tool_call.name.clone(),
+                                error: reason.into(),
+                                error_kind: ToolErrorKind::Other,
+                                tool_call_id: tool_call_id_opt.clone(),
+                                run_id: tool_run_id,
+                                parent_run_id: Some(chain_run_id),
+                            })
+                            .await;
+                        return Err(CognisError::Cancelled(reason.into()));
+                    }
+                    r = tool._run(input) => r,
+                };
+                match tool_result {
+                    Ok(output) => {
+                        let (content, artifact) = match output {
+                            ToolOutput::Content(v) => (v, None),
+                            ToolOutput::ContentAndArtifact { content, artifact } => {
+                                (content, Some(artifact))
+                            }
+                        };
+                        let text = value_to_observation_str(&content);
+                        let _ = cb
+                            .on_tool_end(ToolEndEvent {
+                                tool: tool_call.name.clone(),
+                                output_str: text.clone(),
+                                output_value: content,
+                                artifact: artifact.clone(),
+                                tool_call_id: tool_call_id_opt.clone(),
+                                run_id: tool_run_id,
+                                parent_run_id: Some(chain_run_id),
+                            })
+                            .await;
+                        (text, artifact)
+                    }
+                    Err(e) => {
+                        let kind = match &e {
+                            CognisError::ToolException(_) | CognisError::ToolValidationError(_) => {
+                                ToolErrorKind::Execution
+                            }
+                            _ => ToolErrorKind::Other,
+                        };
+                        let handler_policy = match &e {
+                            CognisError::ToolValidationError(_) => {
+                                tool.handle_validation_error().clone()
+                            }
+                            _ => tool.handle_tool_error().clone(),
+                        };
+                        let err_fallback = format!("Error: {e}");
+                        let observation = apply_error_handler(&handler_policy, e)
+                            .unwrap_or_else(|_| Value::String(err_fallback.clone()));
+                        let err_text = match &observation {
+                            Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        };
+                        let _ = cb
+                            .on_tool_error(ToolErrorEvent {
+                                tool: tool_call.name.clone(),
+                                error: err_text.clone(),
+                                error_kind: kind,
+                                tool_call_id: tool_call_id_opt.clone(),
+                                run_id: tool_run_id,
+                                parent_run_id: Some(chain_run_id),
+                            })
+                            .await;
+                        (err_text, None)
+                    }
+                }
+            }
+            None => {
+                let err_text = format!("Error: tool '{}' not found", tool_call.name);
+                let _ = cb
+                    .on_tool_error(ToolErrorEvent {
+                        tool: tool_call.name.clone(),
+                        error: err_text.clone(),
+                        error_kind: ToolErrorKind::NotFound,
+                        tool_call_id: tool_call_id_opt.clone(),
+                        run_id: tool_run_id,
+                        parent_run_id: Some(chain_run_id),
+                    })
+                    .await;
+                (err_text, None)
+            }
+        };
+
+        let step = AgentStep {
+            action: AgentAction::new(
+                tool_call.name.clone(),
+                args_value,
+                format!(
+                    "Calling tool `{}` with args: {}",
+                    tool_call.name, tool_input_str
+                ),
+            ),
+            observation: result_text.clone(),
+        };
+
+        let tool_call_id = tool_call_id_opt.unwrap_or_default();
+        let tool_message = match result_artifact {
+            Some(artifact) => Message::Tool(ToolMessage::with_artifact(
+                &result_text,
+                &tool_call_id,
+                artifact,
+            )),
+            None => Message::Tool(ToolMessage::new(&result_text, &tool_call_id)),
+        };
+
+        Ok((step, tool_message))
     }
 
     /// Handle early stopping when the iteration or time limit is reached.
@@ -750,6 +853,7 @@ impl AgentExecutor {
             return_intermediate_steps: self.return_intermediate_steps,
             early_stopping_method: self.early_stopping_method,
             handle_parsing_errors: self.handle_parsing_errors,
+            parallel_tool_calls: self.parallel_tool_calls,
             callbacks,
         };
 

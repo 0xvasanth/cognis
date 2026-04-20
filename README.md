@@ -148,6 +148,38 @@ while let Some(chunk) = stream.next().await {
 }
 ```
 
+### Building an Agent
+
+Chains answer questions. *Agents* loop over a model, call tools, and decide what to do next. Don't hand-roll the loop — `AgentExecutor` drives it for you:
+
+```rust
+use std::sync::Arc;
+use cognis::agents::AgentExecutor;
+use cognis_core::messages::Message;
+use cognis_core::tools::base::BaseTool;
+use cognis_core::tools::simple::SimpleTool;
+
+let search = SimpleTool::new(
+    "search",
+    "Search for information about a topic",
+    |query: &str| Ok(format!("Results for '{query}': ...")),
+);
+
+let executor = AgentExecutor::builder()
+    .model(model)
+    .tool(Arc::new(search) as Arc<dyn BaseTool>)
+    .max_iterations(10)
+    .handle_parsing_errors(true)
+    .build();
+
+let result = executor.run(&[Message::human("What is Rust?")]).await?;
+println!("{}", result.output);
+```
+
+No JSON parser, no scratchpad formatting, no per-provider tool-call handling. The executor appends `ToolMessage`s with correct `tool_call_id`s, stops on `max_iterations`, and supports callbacks for streaming intermediate steps.
+
+For the full walk-through — `SimpleTool` vs `StructuredTool` vs custom `BaseTool`, `with_structured_output`, `OutputFixingParser`, `CallbackHandler`, and the graph-based `create_react_agent` — see **[docs/building-an-agent.md](docs/building-an-agent.md)**.
+
 ## What's Included
 
 | Layer              | Crate         | What it does                                                                                                               |

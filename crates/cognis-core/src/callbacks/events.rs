@@ -25,6 +25,12 @@ pub struct ToolStartEvent {
     pub tags: Vec<String>,
     /// Run-scoped metadata.
     pub metadata: HashMap<String, Value>,
+    /// Whether this tool invocation was dispatched in parallel with siblings
+    /// from the same assistant turn. `false` for serial dispatch.
+    pub parallel: bool,
+    /// Size of the dispatch batch (number of tool calls in the same assistant
+    /// turn). Always `1` in serial mode; `>= 1` in parallel mode.
+    pub batch_size: usize,
 }
 
 /// Emitted when a tool invocation completes successfully.

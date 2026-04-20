@@ -921,6 +921,8 @@ mod tests {
             parent_run_id: parent,
             tags: vec![],
             metadata: HashMap::new(),
+            parallel: false,
+            batch_size: 1,
         }
     }
 
@@ -1064,6 +1066,8 @@ mod tests {
                 parent_run_id: None,
                 tags: vec![],
                 metadata: HashMap::new(),
+                parallel: false,
+                batch_size: 1,
             })
             .await
             .unwrap();
