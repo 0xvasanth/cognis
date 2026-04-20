@@ -115,11 +115,12 @@ pub fn check_pattern(field: &str, value: &str, re: &regex::Regex) -> Result<()> 
 
 /// String formats supported by `#[schema(format(...))]`.
 ///
-/// `Email`, `Uuid`, `Ipv4`, `Ipv6` are regex-checked at runtime. `Uri` and
-/// `DateTime` are emitted into the JSON Schema (for the LLM) but **not**
-/// enforced at runtime — their real-world grammars are too permissive for a
-/// cheap check to add value. Users who need strict parsing should validate
-/// inside the tool body.
+/// `Email` and `Uuid` are regex-checked at runtime. `Ipv4` and `Ipv6` are
+/// parsed via `std::net::{Ipv4Addr, Ipv6Addr}` for strict RFC-compliant
+/// validation. `Uri` and `DateTime` are emitted into the JSON Schema (for
+/// the LLM) but **not** enforced at runtime — their real-world grammars are
+/// too permissive for a cheap check to add value. Users who need strict
+/// parsing should validate inside the tool body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     /// RFC 5322-ish email (regex-checked).
@@ -130,9 +131,9 @@ pub enum Format {
     Uuid,
     /// ISO 8601 date-time — schema-only; not validated at runtime.
     DateTime,
-    /// Dotted-quad IPv4 address (regex-checked).
+    /// Dotted-quad IPv4 address (parsed via `std::net::Ipv4Addr`).
     Ipv4,
-    /// Colon-separated IPv6 address (regex-checked).
+    /// Colon-separated IPv6 address (parsed via `std::net::Ipv6Addr`).
     Ipv6,
 }
 
@@ -167,43 +168,51 @@ fn uuid_regex() -> &'static regex::Regex {
     })
 }
 
-fn ipv4_regex() -> &'static regex::Regex {
-    static R: OnceLock<regex::Regex> = OnceLock::new();
-    R.get_or_init(|| {
-        regex::Regex::new(r"^(25[0-5]|2[0-4]\d|[01]?\d?\d)(\.(25[0-5]|2[0-4]\d|[01]?\d?\d)){3}$")
-            .expect("valid ipv4 regex")
-    })
-}
-
-fn ipv6_regex() -> &'static regex::Regex {
-    static R: OnceLock<regex::Regex> = OnceLock::new();
-    R.get_or_init(|| {
-        regex::Regex::new(r"^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^(([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4})?::(([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4})?$")
-            .expect("valid ipv6 regex")
-    })
-}
-
 /// Validate that `value` matches the named format.
 ///
-/// Regex-backed for `Email`, `Uuid`, `Ipv4`, `Ipv6`. Schema-only for `Uri` and
-/// `DateTime` — these always return `Ok` at runtime. For `Uri` and `DateTime`,
-/// any input is accepted at runtime; parse inside the tool body if you need
+/// `Email` and `Uuid` use regex-backed checks. `Ipv4` and `Ipv6` are parsed
+/// via `std::net::{Ipv4Addr, Ipv6Addr}` for strict RFC-compliant validation
+/// (the stdlib parsers reject edge cases like multiple `::` compressions
+/// that a regex can miss). `Uri` and `DateTime` are schema-only — they
+/// always return `Ok` at runtime; parse inside the tool body if you need
 /// strict validation.
 pub fn check_format(field: &str, value: &str, format: Format) -> Result<()> {
-    let re: &regex::Regex = match format {
-        Format::Email => email_regex(),
-        Format::Uuid => uuid_regex(),
-        Format::Ipv4 => ipv4_regex(),
-        Format::Ipv6 => ipv6_regex(),
-        Format::Uri | Format::DateTime => return Ok(()),
-    };
-    let name = format.as_str();
-    if re.is_match(value) {
-        Ok(())
-    } else {
-        Err(CognisError::ToolValidationError(format!(
-            "field `{field}`: \"{value}\" is not a valid {name}"
-        )))
+    match format {
+        Format::Email => {
+            if email_regex().is_match(value) {
+                Ok(())
+            } else {
+                Err(CognisError::ToolValidationError(format!(
+                    "field `{field}`: \"{value}\" is not a valid email"
+                )))
+            }
+        }
+        Format::Uuid => {
+            if uuid_regex().is_match(value) {
+                Ok(())
+            } else {
+                Err(CognisError::ToolValidationError(format!(
+                    "field `{field}`: \"{value}\" is not a valid uuid"
+                )))
+            }
+        }
+        Format::Ipv4 => value
+            .parse::<std::net::Ipv4Addr>()
+            .map(|_| ())
+            .map_err(|_| {
+                CognisError::ToolValidationError(format!(
+                    "field `{field}`: \"{value}\" is not a valid ipv4"
+                ))
+            }),
+        Format::Ipv6 => value
+            .parse::<std::net::Ipv6Addr>()
+            .map(|_| ())
+            .map_err(|_| {
+                CognisError::ToolValidationError(format!(
+                    "field `{field}`: \"{value}\" is not a valid ipv6"
+                ))
+            }),
+        Format::Uri | Format::DateTime => Ok(()),
     }
 }
 
@@ -359,6 +368,26 @@ mod tests {
     fn format_uri_is_schema_only_passthrough() {
         assert!(check_format("link", "anything goes here", Format::Uri).is_ok());
         assert!(check_format("t", "whatever", Format::DateTime).is_ok());
+    }
+
+    #[test]
+    fn format_ipv6_rejects_malformed_with_multiple_double_colons() {
+        // `::1::2` has two `::` compressions, which is invalid per RFC 4291
+        // — the old permissive regex was flagged by cubic for accepting cases
+        // like this. std::net::Ipv6Addr::from_str correctly rejects it.
+        assert_validation_err(check_format("ip", "::1::2", Format::Ipv6), "ipv6");
+    }
+
+    #[test]
+    fn format_ipv6_accepts_standard_forms() {
+        assert!(check_format("ip", "::1", Format::Ipv6).is_ok());
+        assert!(check_format("ip", "2001:db8::1", Format::Ipv6).is_ok());
+        assert!(check_format(
+            "ip",
+            "fe80:0000:0000:0000:0202:b3ff:fe1e:8329",
+            Format::Ipv6,
+        )
+        .is_ok());
     }
 
     #[test]
