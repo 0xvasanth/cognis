@@ -1,11 +1,24 @@
-//! Standalone derive macros for generating OpenAPI-compatible JSON schemas.
+//! Proc macros for the Cognis framework.
 //!
-//! This crate is **framework-independent** — it has zero runtime dependencies
-//! and generates no code that references any external framework crate.
+//! This crate exposes two kinds of macros with different coupling guarantees:
 //!
-//! The only requirement for generated code is `serde_json` in scope.
+//! # Framework-independent derives
 //!
-//! # Usage
+//! [`JsonSchema`] / [`ToolSchema`] / [`GraphState`] are derive macros whose
+//! generated code references **only `serde_json`** (and, for `GraphState`, the
+//! reducer fn paths the user supplies). They don't reference `cognis_core` or
+//! any other workspace crate, so consumers can derive schemas in crates that
+//! don't depend on the framework.
+//!
+//! # Framework-coupled attributes
+//!
+//! [`tool`] is a `#[proc_macro_attribute]` that generates a
+//! `cognis_core::tools::BaseTool` implementation. Its output necessarily
+//! references `cognis_core::tools::{ValidateArgs, BaseTool, ToolInput,
+//! ToolOutput}` and `cognis_core::tools::validation::check_*`. Code annotated
+//! with `#[cognis::tool]` must therefore compile against the cognis framework.
+//!
+//! # Derive usage
 //!
 //! ```ignore
 //! use cognis_macros::JsonSchema;
@@ -26,7 +39,7 @@
 //! // {"type":"object","properties":{...},"required":["min_score","categories"]}
 //! ```
 //!
-//! # Supported types
+//! # `#[derive(JsonSchema)]` supported types
 //!
 //! | Rust type | JSON Schema |
 //! |-----------|-------------|
@@ -43,6 +56,7 @@
 
 mod graph_state;
 mod schema_attr;
+mod tool_attr;
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -103,6 +117,41 @@ pub fn derive_tool_schema(input: TokenStream) -> TokenStream {
 pub fn derive_graph_state(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     graph_state::derive_graph_state(input).into()
+}
+
+// ---------------------------------------------------------------------------
+// #[cognis::tool] attribute macro
+// ---------------------------------------------------------------------------
+
+/// `#[cognis::tool]` — attribute macro that generates a
+/// [`cognis_core::tools::BaseTool`] implementation from an `async fn`.
+///
+/// Applies to either a standalone `async fn` or an `impl` block that
+/// contains exactly one `async fn` (the stateful form, where the tool
+/// struct holds configuration such as HTTP clients or API keys).
+///
+/// # Arguments
+///
+/// - `name = "..."` — overrides the tool name (defaults to the fn name).
+/// - `description = "..."` — overrides the fn's doc-comment description.
+/// - `return_direct = true|false` — passes through to `BaseTool::return_direct`.
+///
+/// # Field validators
+///
+/// `#[schema(range(...))]`, `#[schema(length(...))]`, `#[schema(pattern(...))]`,
+/// `#[schema(enum_values(...))]`, and `#[schema(format(...))]` on fn arguments
+/// emit matching runtime checks plus JSON Schema keywords.
+///
+/// See `cognis_core::tools::validation` for the helpers the generated
+/// code invokes.
+#[proc_macro_attribute]
+pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as tool_attr::ToolArgs);
+    let item_ts: TokenStream2 = item.into();
+    match tool_attr::expand(args, item_ts) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
 }
 
 // =========================================================================

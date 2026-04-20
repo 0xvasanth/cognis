@@ -23,3 +23,4 @@ cognis-macros.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
+trybuild = "1"

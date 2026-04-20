@@ -19,6 +19,14 @@ use std::sync::OnceLock;
 
 use crate::error::{CognisError, Result};
 
+/// Private re-export of the `regex` crate for use by `#[cognis::tool]`-
+/// generated code. Users of the macro do **not** need `regex` in their
+/// own `Cargo.toml` — the macro emits references through this path.
+#[doc(hidden)]
+pub mod __regex {
+    pub use regex::*;
+}
+
 /// Trait for types that can validate their own field constraints after
 /// deserialization. Typically implemented by code generated from
 /// `#[cognis::tool]` — each struct's `validate()` is a list of calls into the

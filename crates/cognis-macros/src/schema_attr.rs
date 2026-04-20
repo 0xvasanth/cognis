@@ -138,7 +138,7 @@ fn parse_range(input: ParseStream) -> Result<Validator> {
             }
             let lit: syn::Lit = i.parse()?;
             let mut val: f64 = match &lit {
-                syn::Lit::Int(n) => n.base10_parse::<i64>()? as f64,
+                syn::Lit::Int(n) => n.base10_parse::<f64>()?,
                 syn::Lit::Float(f) => f.base10_parse::<f64>()?,
                 _ => {
                     return Err(syn::Error::new_spanned(
@@ -316,5 +316,18 @@ mod tests {
         assert!(
             matches!(r.validators[0], Validator::Range { min: Some(v), max: Some(w) } if v == -0.5 && w == 0.5)
         );
+    }
+
+    #[test]
+    fn range_accepts_integer_beyond_i64_max() {
+        // u64::MAX overflows i64 but fits f64 (with expected precision loss —
+        // the f64 representation is still the right value for JSON Schema
+        // minimum/maximum). Identified by cubic as a P2 restriction.
+        let a: syn::Attribute = parse_quote!(#[schema(range(min = 0, max = 18446744073709551615))]);
+        let r = a.parse_args::<SchemaAttr>().unwrap();
+        assert!(matches!(
+            r.validators[0],
+            Validator::Range { min: Some(v), max: Some(_) } if v == 0.0
+        ));
     }
 }
