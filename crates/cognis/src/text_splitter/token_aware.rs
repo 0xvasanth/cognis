@@ -65,11 +65,9 @@ impl TokenAwareTextSplitter {
     /// recognized.
     pub fn from_model_context(model_name: &str, chunks_per_context: usize) -> Self {
         let context_window = get_model_context_window(model_name).unwrap_or(2000);
-        let max_tokens = if chunks_per_context > 0 {
-            context_window / chunks_per_context
-        } else {
-            context_window
-        };
+        let max_tokens = context_window
+            .checked_div(chunks_per_context)
+            .unwrap_or(context_window);
         Self {
             max_tokens,
             overlap_tokens: 50,

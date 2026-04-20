@@ -93,7 +93,7 @@ impl MultiVectorRetriever {
             "docs and summaries must have the same length"
         );
 
-        for (doc, mut summary) in docs.into_iter().zip(summaries.into_iter()) {
+        for (doc, mut summary) in docs.into_iter().zip(summaries) {
             let doc_id = Uuid::new_v4().to_string();
 
             // Store the full original document.

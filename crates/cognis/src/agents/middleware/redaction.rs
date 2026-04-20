@@ -534,7 +534,7 @@ pub fn apply_matches(
         return Ok(text.to_string());
     }
     // Sort by start position descending so replacements don't invalidate offsets.
-    matches.sort_by(|a, b| b.start.cmp(&a.start));
+    matches.sort_by_key(|b| std::cmp::Reverse(b.start));
     let mut result = text.to_string();
     for m in &matches {
         result = apply_strategy(&result, m, strategy)?;
@@ -550,7 +550,7 @@ pub fn apply_rules(
     mut rules: Vec<ResolvedRedactionRule>,
 ) -> std::result::Result<String, PIIDetectionError> {
     // Sort by start position descending so replacements don't invalidate offsets.
-    rules.sort_by(|a, b| b.pii_match.start.cmp(&a.pii_match.start));
+    rules.sort_by_key(|b| std::cmp::Reverse(b.pii_match.start));
     let mut result = text.to_string();
     for rule in &rules {
         result = apply_strategy(&result, &rule.pii_match, &rule.strategy)?;

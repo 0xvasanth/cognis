@@ -467,10 +467,8 @@ impl StreamAggregator {
             ChunkType::StateUpdate => {
                 self.state = Some(chunk.data.clone());
             }
-            ChunkType::NodeStart => {
-                if !self.order.contains(&chunk.node_id) {
-                    self.order.push(chunk.node_id.clone());
-                }
+            ChunkType::NodeStart if !self.order.contains(&chunk.node_id) => {
+                self.order.push(chunk.node_id.clone());
             }
             _ => {}
         }

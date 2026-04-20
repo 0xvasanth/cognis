@@ -530,7 +530,7 @@ pub fn format_report(report: &ProfileReport) -> String {
 
     // Collect and sort nodes by total duration descending.
     let mut nodes: Vec<&NodeProfile> = report.node_profiles.values().collect();
-    nodes.sort_by(|a, b| b.total_duration.cmp(&a.total_duration));
+    nodes.sort_by_key(|b| std::cmp::Reverse(b.total_duration));
 
     // Determine column widths.
     let node_width = nodes.iter().map(|n| n.name.len()).max().unwrap_or(4).max(4);

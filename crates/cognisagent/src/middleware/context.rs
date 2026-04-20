@@ -409,7 +409,7 @@ impl ContextManager {
             }
         }
         // Sort by priority descending.
-        entries.sort_by(|a, b| b.priority.cmp(&a.priority));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.priority));
         entries
     }
 
@@ -461,7 +461,7 @@ impl ContextManager {
             }
             PriorityMode::DropOldest => {
                 // Sort by creation time descending (newest first).
-                entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+                entries.sort_by_key(|b| std::cmp::Reverse(b.created_at));
                 let mut total = 0usize;
                 let mut kept = Vec::new();
                 for entry in entries {
