@@ -353,7 +353,7 @@ impl<E: CrossEncoder> CrossEncoder for CachedCrossEncoder<E> {
             let scores = self.inner.score_pairs(&miss_pairs).await?;
 
             let mut cache = self.cache.lock().unwrap();
-            for ((idx, pair), score) in misses.into_iter().zip(scores.into_iter()) {
+            for ((idx, pair), score) in misses.into_iter().zip(scores) {
                 cache.insert(pair, score);
                 results[idx] = score;
             }
