@@ -42,6 +42,7 @@
 //! | Enum with `#[derive(JsonSchema)]` | `{"type": "string", "enum": [...]}` |
 
 mod graph_state;
+mod schema_attr;
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -198,13 +199,22 @@ fn generate_schema_body(
         let has_default = has_serde_default(&field.attrs);
         let (inner_ty, is_option) = unwrap_option_type(&field.ty);
         let schema_expr = type_to_schema(inner_ty);
+        let schema_attr_opt = parse_schema_attr(&field.attrs)?;
+        let merge_tokens = match &schema_attr_opt {
+            Some(s) => emit_schema_merge(s),
+            None => quote! {},
+        };
 
-        let property_value = if let Some(desc) = &description {
+        let property_value = if description.is_some() || schema_attr_opt.is_some() {
+            let desc_insert = description.as_ref().map(|d| quote! {
+                __schema_obj.insert("description".to_string(), serde_json::Value::String(#d.to_string()));
+            });
             quote! {
                 {
                     let mut __schema = #schema_expr;
-                    if let Some(obj) = __schema.as_object_mut() {
-                        obj.insert("description".to_string(), serde_json::Value::String(#desc.to_string()));
+                    if let Some(__schema_obj) = __schema.as_object_mut() {
+                        #desc_insert
+                        #merge_tokens
                     }
                     __schema
                 }
@@ -429,6 +439,128 @@ fn unwrap_option_type(ty: &Type) -> (&Type, bool) {
         }
     }
     (ty, false)
+}
+
+// =========================================================================
+// #[schema(...)] → JSON Schema key emission
+// =========================================================================
+
+/// Emit a numeric literal token as integer if the value is a whole number
+/// within `i64` range, otherwise as a float. Keeps JSON Schema `minimum`/
+/// `maximum` keys rendered as ints when the user wrote `range(min = 1)`.
+fn number_token(v: f64) -> TokenStream2 {
+    if v.is_finite() && v.fract() == 0.0 && v >= i64::MIN as f64 && v <= i64::MAX as f64 {
+        let as_i64 = v as i64;
+        quote! { #as_i64 }
+    } else {
+        quote! { #v }
+    }
+}
+
+/// Build a `TokenStream` that, when evaluated, merges the validator-derived
+/// keys into a `serde_json::Map` named `__schema_obj` (must be an object).
+fn emit_schema_merge(attr: &schema_attr::SchemaAttr) -> TokenStream2 {
+    use schema_attr::Validator;
+
+    let mut inserts = Vec::new();
+    for v in &attr.validators {
+        match v {
+            Validator::Range { min, max } => {
+                if let Some(m) = min {
+                    let tok = number_token(*m);
+                    inserts.push(quote! {
+                        __schema_obj.insert("minimum".to_string(), serde_json::json!(#tok));
+                    });
+                }
+                if let Some(m) = max {
+                    let tok = number_token(*m);
+                    inserts.push(quote! {
+                        __schema_obj.insert("maximum".to_string(), serde_json::json!(#tok));
+                    });
+                }
+            }
+            Validator::Length { min, max } => {
+                // String → minLength/maxLength; Vec → minItems/maxItems.
+                // Dispatch at runtime by inspecting the base schema's "type"
+                // — cheaper than a second codegen pass and handles Option<T>
+                // correctly because Option<T> uses T's schema.
+                if let Some(m) = min {
+                    inserts.push(quote! {
+                        if __schema_obj.get("type") == Some(&serde_json::json!("string")) {
+                            __schema_obj.insert("minLength".to_string(), serde_json::json!(#m));
+                        } else if __schema_obj.get("type") == Some(&serde_json::json!("array")) {
+                            __schema_obj.insert("minItems".to_string(), serde_json::json!(#m));
+                        }
+                    });
+                }
+                if let Some(m) = max {
+                    inserts.push(quote! {
+                        if __schema_obj.get("type") == Some(&serde_json::json!("string")) {
+                            __schema_obj.insert("maxLength".to_string(), serde_json::json!(#m));
+                        } else if __schema_obj.get("type") == Some(&serde_json::json!("array")) {
+                            __schema_obj.insert("maxItems".to_string(), serde_json::json!(#m));
+                        }
+                    });
+                }
+            }
+            Validator::Pattern(p) => {
+                inserts.push(quote! {
+                    __schema_obj.insert("pattern".to_string(), serde_json::json!(#p));
+                });
+            }
+            Validator::EnumValues(values) => {
+                let list = values.iter().map(|v| quote! { #v }).collect::<Vec<_>>();
+                inserts.push(quote! {
+                    __schema_obj.insert(
+                        "enum".to_string(),
+                        serde_json::json!([#(#list),*]),
+                    );
+                });
+            }
+            Validator::Format(f) => {
+                let name = f.as_str();
+                inserts.push(quote! {
+                    __schema_obj.insert("format".to_string(), serde_json::json!(#name));
+                });
+            }
+            Validator::Items(inner) => {
+                let inner_merge = emit_schema_merge(inner);
+                inserts.push(quote! {
+                    if let Some(items_val) = __schema_obj.get_mut("items") {
+                        if let Some(__schema_obj) = items_val.as_object_mut() {
+                            #inner_merge
+                        }
+                    }
+                });
+            }
+        }
+    }
+    quote! { #(#inserts)* }
+}
+
+/// Accumulate validators from **all** `#[schema(...)]` attributes on a field.
+///
+/// Users may reasonably split validators across multiple `#[schema]` lines:
+///
+/// ```ignore
+/// #[schema(length(min = 1, max = 100))]
+/// #[schema(pattern("^[a-z]+$"))]
+/// name: String,
+/// ```
+///
+/// Every attribute contributes its parsed validators to the combined result,
+/// rather than the first match winning and the rest being silently dropped.
+fn parse_schema_attr(attrs: &[syn::Attribute]) -> syn::Result<Option<schema_attr::SchemaAttr>> {
+    let mut combined = schema_attr::SchemaAttr::default();
+    let mut any = false;
+    for a in attrs {
+        if a.path().is_ident("schema") {
+            any = true;
+            let parsed = a.parse_args::<schema_attr::SchemaAttr>()?;
+            combined.validators.extend(parsed.validators);
+        }
+    }
+    Ok(if any { Some(combined) } else { None })
 }
 
 #[cfg(test)]
