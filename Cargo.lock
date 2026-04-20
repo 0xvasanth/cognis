@@ -178,7 +178,7 @@ dependencies = [
 
 [[package]]
 name = "cognis"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "cognis-core",
@@ -205,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "cognis-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "base64",
@@ -244,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "cognis-macros"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -256,7 +256,7 @@ dependencies = [
 
 [[package]]
 name = "cognisagent"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "cognis",
@@ -274,7 +274,7 @@ dependencies = [
 
 [[package]]
 name = "cognisgraph"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "base64",
