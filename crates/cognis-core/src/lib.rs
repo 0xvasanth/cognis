@@ -35,6 +35,7 @@ pub use cognis_macros::{tool, JsonSchema, ToolSchema};
 pub mod agents;
 pub mod caches;
 pub mod callbacks;
+pub mod cancellation;
 pub mod chat_history;
 pub mod chat_loaders;
 pub mod chat_sessions;
@@ -68,3 +69,5 @@ pub mod tracing;
 pub mod types;
 pub mod utils;
 pub mod vectorstores;
+
+pub use cancellation::CancellationToken;

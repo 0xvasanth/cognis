@@ -33,6 +33,7 @@ use cognis_core::runnables::base::Runnable;
 use cognis_core::runnables::config::RunnableConfig;
 use cognis_core::tools::base::{apply_error_handler, BaseTool};
 use cognis_core::tools::types::{ToolInput, ToolOutput};
+use cognis_core::CancellationToken;
 use uuid::Uuid;
 
 #[allow(deprecated)]
@@ -286,7 +287,37 @@ impl AgentExecutor {
     ///    `early_stopping_method`.
     ///
     /// Callback events are fired throughout the loop for observability.
+    ///
+    /// This is a thin wrapper around [`run_with_cancel`](Self::run_with_cancel)
+    /// using a fresh (never-cancelled) token, preserving the historical
+    /// signature.
     pub async fn run(&self, initial_messages: &[Message]) -> Result<AgentResult> {
+        self.run_with_cancel(initial_messages, CancellationToken::new())
+            .await
+    }
+
+    /// Run the agent loop to completion, honouring a [`CancellationToken`].
+    ///
+    /// Identical to [`run`](Self::run) except that the caller can signal
+    /// cooperative cancellation through `cancel`. The executor honours the
+    /// token at three points:
+    ///
+    /// * at every iteration boundary, via [`CancellationToken::check`];
+    /// * around the model call, via `tokio::select!` — dropping the in-flight
+    ///   `_generate` future (and therefore any `reqwest` request) as soon as
+    ///   the token fires;
+    /// * around each tool execution, in the same fashion. Tools that want
+    ///   tool-specific cleanup can read the token from
+    ///   `RunnableConfig::cancellation_token`.
+    ///
+    /// On cancellation the executor emits `on_agent_cancelled` on every
+    /// configured callback handler and returns
+    /// [`CognisError::Cancelled`](cognis_core::error::CognisError::Cancelled).
+    pub async fn run_with_cancel(
+        &self,
+        initial_messages: &[Message],
+        cancel: CancellationToken,
+    ) -> Result<AgentResult> {
         let cb = CallbackManager::new(self.callbacks.clone(), None);
         let chain_run_id = Uuid::new_v4();
 
@@ -329,13 +360,36 @@ impl AgentExecutor {
                 }
             }
 
+            // Check cancellation at the iteration boundary. Covers both the
+            // pre-cancelled case and the case where a tool just completed and
+            // the client has since fired the token.
+            if cancel.is_cancelled() {
+                let reason = "cancelled between agent iterations";
+                let _ = cb.on_agent_cancelled(reason, chain_run_id).await;
+                let _ = cb.on_chain_error(reason, chain_run_id).await;
+                return Err(CognisError::Cancelled(reason.into()));
+            }
+
             let llm_run_id = Uuid::new_v4();
             let serialized_llm = serde_json::json!({"name": self.model.llm_type()});
             let prompts: Vec<String> = messages.iter().map(|m| m.content().text()).collect();
             let _ = cb.on_llm_start(&serialized_llm, &prompts, llm_run_id).await;
 
-            // Call the model
-            let chat_result = match self.model._generate(&messages, None).await {
+            // Call the model, honouring the cancellation token. Dropping the
+            // `_generate` future cancels any in-flight `reqwest` request.
+            let generate_result = tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    let reason = "cancelled during model call";
+                    let _ = cb.on_llm_error(reason, llm_run_id).await;
+                    let _ = cb.on_agent_cancelled(reason, chain_run_id).await;
+                    let _ = cb.on_chain_error(reason, chain_run_id).await;
+                    return Err(CognisError::Cancelled(reason.into()));
+                }
+                r = self.model._generate(&messages, None) => r,
+            };
+
+            let chat_result = match generate_result {
                 Ok(r) => {
                     let llm_result = cognis_core::outputs::LLMResult {
                         generations: vec![r
@@ -422,7 +476,27 @@ impl AgentExecutor {
                 let (result_text, result_artifact) = match self.tools.get(&tool_call.name) {
                     Some(tool) => {
                         let input = value_to_tool_input(&args_value);
-                        match tool._run(input).await {
+                        let tool_result = tokio::select! {
+                            biased;
+                            _ = cancel.cancelled() => {
+                                let reason = "cancelled during tool call";
+                                let _ = cb
+                                    .on_tool_error(ToolErrorEvent {
+                                        tool: tool_call.name.clone(),
+                                        error: reason.into(),
+                                        error_kind: ToolErrorKind::Other,
+                                        tool_call_id: tool_call_id_opt.clone(),
+                                        run_id: tool_run_id,
+                                        parent_run_id: Some(chain_run_id),
+                                    })
+                                    .await;
+                                let _ = cb.on_agent_cancelled(reason, chain_run_id).await;
+                                let _ = cb.on_chain_error(reason, chain_run_id).await;
+                                return Err(CognisError::Cancelled(reason.into()));
+                            }
+                            r = tool._run(input) => r,
+                        };
+                        match tool_result {
                             Ok(output) => {
                                 let (content, artifact) = match output {
                                     ToolOutput::Content(v) => (v, None),

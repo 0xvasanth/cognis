@@ -17,6 +17,7 @@ use serde_json::Value;
 
 use cognis_core::error::{CognisError, Result};
 use cognis_core::tools::base::BaseTool;
+use cognis_core::CancellationToken;
 
 /// A thread-safe function that generates plan text from a template string.
 type GeneratorFn = Box<dyn Fn(&str) -> Result<String> + Send + Sync>;
@@ -440,6 +441,31 @@ impl PlanAndExecuteAgent {
         goal: &str,
         on_step: impl Fn(&PlanStep),
     ) -> Result<PlanAndExecuteResult> {
+        self.run_with_cancel_and_callback(goal, CancellationToken::new(), on_step)
+            .await
+    }
+
+    /// Run the plan-and-execute loop honouring a [`CancellationToken`].
+    pub async fn run_with_cancel(
+        &self,
+        goal: &str,
+        cancel: CancellationToken,
+    ) -> Result<PlanAndExecuteResult> {
+        self.run_with_cancel_and_callback(goal, cancel, |_| {})
+            .await
+    }
+
+    /// Run the plan-and-execute loop with both a per-step callback and a
+    /// [`CancellationToken`]. The token is checked between every step and
+    /// the step executor is wrapped in `tokio::select!` so that in-flight
+    /// work is dropped when cancellation fires.
+    pub async fn run_with_cancel_and_callback(
+        &self,
+        goal: &str,
+        cancel: CancellationToken,
+        on_step: impl Fn(&PlanStep),
+    ) -> Result<PlanAndExecuteResult> {
+        cancel.check("cancelled before planning")?;
         let mut plan = self.planner.create_plan(goal)?;
         let mut replans = 0;
         let mut step_results: Vec<(String, String)> = Vec::new();
@@ -449,12 +475,22 @@ impl PlanAndExecuteAgent {
         loop {
             // Process all pending steps in the current plan.
             while let Some(step) = plan.next_step() {
+                cancel.check("cancelled between plan steps")?;
                 on_step(step);
                 step.status = PlanStepStatus::InProgress;
                 let desc = step.description.clone();
                 let idx = step.index;
 
-                match self.executor.execute_step(step, &context).await {
+                let exec_result = tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => {
+                        return Err(CognisError::Cancelled(
+                            "cancelled during plan-and-execute step".into(),
+                        ));
+                    }
+                    r = self.executor.execute_step(step, &context) => r,
+                };
+                match exec_result {
                     Ok(result) => {
                         // Re-borrow after the await.
                         plan.steps[idx].status = PlanStepStatus::Completed;
