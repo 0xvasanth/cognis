@@ -44,6 +44,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use cognis_core::CancellationToken;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::oneshot;
@@ -140,6 +141,10 @@ pub enum ApprovalError {
     /// Waiting for resolution timed out.
     #[error("timed out waiting for approval decision after {0:?}")]
     Timeout(Duration),
+    /// Waiting for resolution was cooperatively cancelled by a
+    /// [`CancellationToken`].
+    #[error("approval wait cancelled")]
+    Cancelled,
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +272,11 @@ pub struct ApprovalGateMiddleware {
     /// Optional upper bound on how long to wait for a decision. `None` means
     /// wait forever (until the registry is cleared).
     timeout: Option<Duration>,
+    /// Optional cooperative cancellation token. When set, a pending approval
+    /// that is still waiting for a decision aborts cleanly as soon as the
+    /// token fires, reporting `Action denied by human: cancelled` rather
+    /// than hanging indefinitely.
+    cancellation_token: Option<CancellationToken>,
 }
 
 impl fmt::Debug for ApprovalGateMiddleware {
@@ -275,6 +285,7 @@ impl fmt::Debug for ApprovalGateMiddleware {
             .field("registry", &self.registry)
             .field("event_bus", &self.event_bus)
             .field("timeout", &self.timeout)
+            .field("cancellation_token", &self.cancellation_token)
             .finish()
     }
 }
@@ -289,6 +300,7 @@ impl ApprovalGateMiddleware {
             event_bus,
             predicate: Arc::new(|_name, _input| true),
             timeout: None,
+            cancellation_token: None,
         }
     }
 
@@ -305,6 +317,7 @@ impl ApprovalGateMiddleware {
             event_bus,
             predicate,
             timeout: None,
+            cancellation_token: None,
         }
     }
 
@@ -319,6 +332,7 @@ impl ApprovalGateMiddleware {
             event_bus,
             predicate,
             timeout: None,
+            cancellation_token: None,
         }
     }
 
@@ -326,6 +340,17 @@ impl ApprovalGateMiddleware {
     /// gate rejects with a timeout observation.
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
+        self
+    }
+
+    /// Install a cooperative [`CancellationToken`].
+    ///
+    /// When set, a pending approval that is still waiting for a decision
+    /// aborts cleanly as soon as the token fires, with a rejection
+    /// observation of `Action denied by human: cancelled` so the agent
+    /// loop sees a well-formed tool result instead of hanging.
+    pub fn with_cancellation_token(mut self, token: CancellationToken) -> Self {
+        self.cancellation_token = Some(token);
         self
     }
 
@@ -343,13 +368,28 @@ impl ApprovalGateMiddleware {
         &self,
         rx: oneshot::Receiver<ApprovalDecision>,
     ) -> std::result::Result<ApprovalDecision, ApprovalError> {
-        match self.timeout {
-            Some(duration) => match tokio::time::timeout(duration, rx).await {
-                Ok(Ok(decision)) => Ok(decision),
-                Ok(Err(_)) => Err(ApprovalError::ResolverDropped),
-                Err(_) => Err(ApprovalError::Timeout(duration)),
+        // Always race against the cancellation token (if any) so that a
+        // cancelled run never leaves the gate waiting on a decision that
+        // will never arrive.
+        let cancel = self.cancellation_token.clone();
+        let wait_fut = async move {
+            match self.timeout {
+                Some(duration) => match tokio::time::timeout(duration, rx).await {
+                    Ok(Ok(decision)) => Ok(decision),
+                    Ok(Err(_)) => Err(ApprovalError::ResolverDropped),
+                    Err(_) => Err(ApprovalError::Timeout(duration)),
+                },
+                None => rx.await.map_err(|_| ApprovalError::ResolverDropped),
+            }
+        };
+
+        match cancel {
+            Some(token) => tokio::select! {
+                biased;
+                _ = token.cancelled() => Err(ApprovalError::Cancelled),
+                r = wait_fut => r,
             },
-            None => rx.await.map_err(|_| ApprovalError::ResolverDropped),
+            None => wait_fut.await,
         }
     }
 }
@@ -395,6 +435,14 @@ impl Middleware for ApprovalGateMiddleware {
             }
             Err(ApprovalError::UnknownToken(_)) => {
                 ApprovalDecision::reject("approval registry lost track of this token")
+            }
+            Err(ApprovalError::Cancelled) => {
+                // The run was cooperatively cancelled. Clean up the pending
+                // entry so the registry does not leak tokens, then surface a
+                // well-formed rejection so the agent loop sees a normal
+                // tool result rather than a hang.
+                let _ = self.registry.pending.lock().unwrap().remove(&token);
+                ApprovalDecision::reject("cancelled")
             }
         };
 
@@ -614,6 +662,65 @@ mod tests {
             other => panic!("expected Reject, got {:?}", other),
         }
         // Registry should be cleaned up after timeout.
+        assert_eq!(registry.pending_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn cancellation_token_aborts_pending_approval() {
+        // A pending approval that is still waiting for a decision must
+        // abort cleanly as soon as the cooperative cancellation token
+        // fires. The middleware returns a `Reject` observation rather
+        // than hanging so the agent loop sees a well-formed tool result.
+        let registry = Arc::new(ApprovalRegistry::new());
+        let bus = EventBus::new();
+        let cancel = CancellationToken::new();
+        let gate = ApprovalGateMiddleware::new(registry.clone(), bus)
+            .with_cancellation_token(cancel.clone());
+
+        let cancel_clone = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            cancel_clone.cancel();
+        });
+
+        let decision = tokio::time::timeout(
+            Duration::from_secs(2),
+            gate.gate_tool(&mut Value::Null, "shell", &json!({})),
+        )
+        .await
+        .expect("gate_tool must not hang past cancellation")
+        .unwrap();
+
+        match decision {
+            ToolGateDecision::Reject { observation } => {
+                assert!(
+                    observation.to_lowercase().contains("cancelled"),
+                    "expected observation to mention cancellation, got {observation:?}"
+                );
+            }
+            other => panic!("expected Reject, got {:?}", other),
+        }
+        // Registry should be cleaned up even though no one called
+        // `resolve` — the middleware must not leak pending entries.
+        assert_eq!(registry.pending_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn pre_cancelled_token_rejects_immediately() {
+        let registry = Arc::new(ApprovalRegistry::new());
+        let bus = EventBus::new();
+        let gate = ApprovalGateMiddleware::new(registry.clone(), bus)
+            .with_cancellation_token(CancellationToken::cancelled_now());
+
+        let decision = tokio::time::timeout(
+            Duration::from_millis(500),
+            gate.gate_tool(&mut Value::Null, "shell", &json!({})),
+        )
+        .await
+        .expect("pre-cancelled gate should resolve immediately")
+        .unwrap();
+
+        assert!(decision.is_rejected());
         assert_eq!(registry.pending_count(), 0);
     }
 
