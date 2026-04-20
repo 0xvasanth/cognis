@@ -357,3 +357,7 @@ path = "../../examples/tools/typed_search.rs"
 [[example]]
 name = "tool_stateful_http"
 path = "../../examples/tools/stateful_http.rs"
+
+[[example]]
+name = "cancellation"
+path = "../../examples/agents/cancellation.rs"
