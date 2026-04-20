@@ -382,7 +382,7 @@ impl AuditReport {
         if !self.event_counts.is_empty() {
             out.push_str("Event counts:\n");
             let mut counts: Vec<_> = self.event_counts.iter().collect();
-            counts.sort_by(|(a, _), (b, _)| a.cmp(b));
+            counts.sort_by_key(|(a, _)| *a);
             for (label, count) in counts {
                 out.push_str(&format!("  {label}: {count}\n"));
             }
@@ -391,7 +391,7 @@ impl AuditReport {
         if !self.node_activity.is_empty() {
             out.push_str("Node activity:\n");
             let mut activity: Vec<_> = self.node_activity.iter().collect();
-            activity.sort_by(|(a, _), (b, _)| a.cmp(b));
+            activity.sort_by_key(|(a, _)| *a);
             for (node, count) in activity {
                 out.push_str(&format!("  {node}: {count}\n"));
             }

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::callbacks::CallbackHandler;
+use crate::callbacks::{CallbackHandler, ToolEndEvent, ToolErrorEvent, ToolStartEvent};
 use crate::documents::Document;
 use crate::error::Result;
 use crate::messages::Message;
@@ -433,42 +433,30 @@ impl CallbackHandler for LangSmithTracer {
         Ok(())
     }
 
-    async fn on_tool_start(
-        &self,
-        serialized: &Value,
-        input_str: &str,
-        run_id: Uuid,
-        parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_start(&self, event: ToolStartEvent) -> Result<()> {
         let mut run = LangSmithRun::new(
-            run_id,
+            event.run_id,
             "tool",
             LangSmithRunType::Tool,
-            serde_json::json!({ "input": input_str }),
+            serde_json::json!({ "input": event.input_str }),
         );
-        run.parent_run_id = parent_run_id;
-        run.serialized = Some(serialized.clone());
+        run.parent_run_id = event.parent_run_id;
+        run.serialized = Some(event.serialized.clone());
         self.add_run(run);
         Ok(())
     }
 
-    async fn on_tool_end(
-        &self,
-        output: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        self.finish_run(run_id, Some(serde_json::json!({ "output": output })), None);
+    async fn on_tool_end(&self, event: ToolEndEvent) -> Result<()> {
+        self.finish_run(
+            event.run_id,
+            Some(serde_json::json!({ "output": event.output_str })),
+            None,
+        );
         Ok(())
     }
 
-    async fn on_tool_error(
-        &self,
-        error: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        self.finish_run(run_id, None, Some(error.to_string()));
+    async fn on_tool_error(&self, event: ToolErrorEvent) -> Result<()> {
+        self.finish_run(event.run_id, None, Some(event.error.clone()));
         Ok(())
     }
 
@@ -538,6 +526,41 @@ impl CallbackHandler for LangSmithTracer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn start_event(
+        serialized: Value,
+        input: &str,
+        run_id: Uuid,
+        parent: Option<Uuid>,
+    ) -> ToolStartEvent {
+        ToolStartEvent {
+            tool: serialized
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            serialized,
+            input_str: input.to_string(),
+            inputs: Value::Null,
+            tool_call_id: None,
+            run_id,
+            parent_run_id: parent,
+            tags: vec![],
+            metadata: HashMap::new(),
+        }
+    }
+
+    fn end_event(out: &str, run_id: Uuid) -> ToolEndEvent {
+        ToolEndEvent {
+            tool: "".into(),
+            output_str: out.into(),
+            output_value: Value::String(out.into()),
+            artifact: None,
+            tool_call_id: None,
+            run_id,
+            parent_run_id: None,
+        }
+    }
 
     fn test_config() -> LangSmithConfig {
         LangSmithConfig::new("test-api-key").with_project_name("test-project")
@@ -634,12 +657,12 @@ mod tests {
         let run_id = Uuid::new_v4();
 
         tracer
-            .on_tool_start(&Value::Null, "search query", run_id, None)
+            .on_tool_start(start_event(Value::Null, "search query", run_id, None))
             .await
             .unwrap();
 
         tracer
-            .on_tool_end("search result", run_id, None)
+            .on_tool_end(end_event("search result", run_id))
             .await
             .unwrap();
 
@@ -661,7 +684,12 @@ mod tests {
             .unwrap();
 
         tracer
-            .on_tool_start(&Value::Null, "child input", child_id, Some(parent_id))
+            .on_tool_start(start_event(
+                Value::Null,
+                "child input",
+                child_id,
+                Some(parent_id),
+            ))
             .await
             .unwrap();
 
@@ -765,7 +793,7 @@ mod tests {
 
         // Pending run (no end)
         tracer
-            .on_tool_start(&Value::Null, "input", pending_id, None)
+            .on_tool_start(start_event(Value::Null, "input", pending_id, None))
             .await
             .unwrap();
 
@@ -792,7 +820,7 @@ mod tests {
             .await
             .unwrap();
         tracer
-            .on_tool_start(&Value::Null, "t", Uuid::new_v4(), None)
+            .on_tool_start(start_event(Value::Null, "t", Uuid::new_v4(), None))
             .await
             .unwrap();
         tracer

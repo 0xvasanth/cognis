@@ -25,12 +25,14 @@ use serde_json::Value;
 
 use cognis_core::callbacks::base::CallbackHandler;
 use cognis_core::callbacks::manager::CallbackManager;
+use cognis_core::callbacks::{ToolEndEvent, ToolErrorEvent, ToolErrorKind, ToolStartEvent};
 use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::{Message, ToolMessage};
 use cognis_core::runnables::base::Runnable;
 use cognis_core::runnables::config::RunnableConfig;
-use cognis_core::tools::base::BaseTool;
+use cognis_core::tools::base::{apply_error_handler, BaseTool};
+use cognis_core::tools::types::{ToolInput, ToolOutput};
 use uuid::Uuid;
 
 #[allow(deprecated)]
@@ -398,38 +400,99 @@ impl AgentExecutor {
 
             // Execute each tool call
             for tool_call in &ai_msg.tool_calls {
-                let tool_call_id = tool_call.id.clone().unwrap_or_default();
-
+                let tool_call_id_opt = tool_call.id.clone();
                 let tool_run_id = Uuid::new_v4();
-                let serialized_tool = serde_json::json!({"name": &tool_call.name});
-                let tool_input_str = serde_json::to_string(&tool_call.args).unwrap_or_default();
+                let args_value = serde_json::to_value(&tool_call.args).unwrap_or_default();
+                let tool_input_str = serde_json::to_string(&args_value).unwrap_or_default();
+
                 let _ = cb
-                    .on_tool_start(&serialized_tool, &tool_input_str, tool_run_id)
+                    .on_tool_start(ToolStartEvent {
+                        tool: tool_call.name.clone(),
+                        serialized: serde_json::json!({ "name": &tool_call.name }),
+                        input_str: tool_input_str.clone(),
+                        inputs: args_value.clone(),
+                        tool_call_id: tool_call_id_opt.clone(),
+                        run_id: tool_run_id,
+                        parent_run_id: Some(chain_run_id),
+                        tags: vec![],
+                        metadata: Default::default(),
+                    })
                     .await;
 
-                let result_text = match self.tools.get(&tool_call.name) {
+                let (result_text, result_artifact) = match self.tools.get(&tool_call.name) {
                     Some(tool) => {
-                        let args_value = serde_json::to_value(&tool_call.args).unwrap_or_default();
-                        match tool.run_json(&args_value).await {
-                            Ok(value) => {
-                                let text = match value {
-                                    serde_json::Value::String(s) => s,
-                                    other => other.to_string(),
+                        let input = value_to_tool_input(&args_value);
+                        match tool._run(input).await {
+                            Ok(output) => {
+                                let (content, artifact) = match output {
+                                    ToolOutput::Content(v) => (v, None),
+                                    ToolOutput::ContentAndArtifact { content, artifact } => {
+                                        (content, Some(artifact))
+                                    }
                                 };
-                                let _ = cb.on_tool_end(&text, tool_run_id).await;
-                                text
+                                let text = value_to_observation_str(&content);
+                                let _ = cb
+                                    .on_tool_end(ToolEndEvent {
+                                        tool: tool_call.name.clone(),
+                                        output_str: text.clone(),
+                                        output_value: content,
+                                        artifact: artifact.clone(),
+                                        tool_call_id: tool_call_id_opt.clone(),
+                                        run_id: tool_run_id,
+                                        parent_run_id: Some(chain_run_id),
+                                    })
+                                    .await;
+                                (text, artifact)
                             }
                             Err(e) => {
-                                let err_text = format!("Error: {e}");
-                                let _ = cb.on_tool_error(&err_text, tool_run_id).await;
-                                err_text
+                                let kind = match &e {
+                                    CognisError::ToolException(_)
+                                    | CognisError::ToolValidationError(_) => {
+                                        ToolErrorKind::Execution
+                                    }
+                                    _ => ToolErrorKind::Other,
+                                };
+                                // Apply the tool's configured error-handler policy.
+                                let handler_policy = match &e {
+                                    CognisError::ToolValidationError(_) => {
+                                        tool.handle_validation_error().clone()
+                                    }
+                                    _ => tool.handle_tool_error().clone(),
+                                };
+                                let err_fallback = format!("Error: {e}");
+                                let observation = apply_error_handler(&handler_policy, e)
+                                    .unwrap_or_else(|_| Value::String(err_fallback.clone()));
+                                let err_text = match &observation {
+                                    Value::String(s) => s.clone(),
+                                    other => other.to_string(),
+                                };
+                                let _ = cb
+                                    .on_tool_error(ToolErrorEvent {
+                                        tool: tool_call.name.clone(),
+                                        error: err_text.clone(),
+                                        error_kind: kind,
+                                        tool_call_id: tool_call_id_opt.clone(),
+                                        run_id: tool_run_id,
+                                        parent_run_id: Some(chain_run_id),
+                                    })
+                                    .await;
+                                (err_text, None)
                             }
                         }
                     }
                     None => {
                         let err_text = format!("Error: tool '{}' not found", tool_call.name);
-                        let _ = cb.on_tool_error(&err_text, tool_run_id).await;
-                        err_text
+                        let _ = cb
+                            .on_tool_error(ToolErrorEvent {
+                                tool: tool_call.name.clone(),
+                                error: err_text.clone(),
+                                error_kind: ToolErrorKind::NotFound,
+                                tool_call_id: tool_call_id_opt.clone(),
+                                run_id: tool_run_id,
+                                parent_run_id: Some(chain_run_id),
+                            })
+                            .await;
+                        (err_text, None)
                     }
                 };
 
@@ -437,7 +500,7 @@ impl AgentExecutor {
                 intermediate_steps.push(AgentStep {
                     action: AgentAction::new(
                         tool_call.name.clone(),
-                        serde_json::to_value(&tool_call.args).unwrap_or_default(),
+                        args_value.clone(),
                         format!(
                             "Calling tool `{}` with args: {}",
                             tool_call.name, tool_input_str
@@ -446,7 +509,14 @@ impl AgentExecutor {
                     observation: result_text.clone(),
                 });
 
-                messages.push(Message::Tool(ToolMessage::new(&result_text, &tool_call_id)));
+                let tool_call_id = tool_call_id_opt.unwrap_or_default();
+                let tm = match result_artifact {
+                    Some(artifact) => {
+                        ToolMessage::with_artifact(&result_text, &tool_call_id, artifact)
+                    }
+                    None => ToolMessage::new(&result_text, &tool_call_id),
+                };
+                messages.push(Message::Tool(tm));
             }
         }
 
@@ -1023,6 +1093,30 @@ impl PlannerAgentExecutor {
     }
 }
 
+/// Render a tool-output `Value` as the observation string that will be fed
+/// back to the LLM. Strings are passed through verbatim; structured values are
+/// serialized to their JSON representation.
+fn value_to_observation_str(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// Convert a tool-call `args` JSON blob into the [`ToolInput`] variant the
+/// tool expects. Object -> `Structured`, String -> `Text`, other -> stringified
+/// `Text`.
+fn value_to_tool_input(v: &Value) -> ToolInput {
+    match v {
+        Value::Object(m) => {
+            let map = m.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            ToolInput::Structured(map)
+        }
+        Value::String(s) => ToolInput::Text(s.clone()),
+        other => ToolInput::Text(other.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1307,33 +1401,17 @@ mod tests {
             Ok(())
         }
 
-        async fn on_tool_start(
-            &self,
-            _serialized: &Value,
-            _input_str: &str,
-            _run_id: Uuid,
-            _parent_run_id: Option<Uuid>,
-        ) -> cognis_core::error::Result<()> {
+        async fn on_tool_start(&self, _event: ToolStartEvent) -> cognis_core::error::Result<()> {
             self.events.lock().unwrap().push("tool_start".to_string());
             Ok(())
         }
 
-        async fn on_tool_end(
-            &self,
-            _output: &str,
-            _run_id: Uuid,
-            _parent_run_id: Option<Uuid>,
-        ) -> cognis_core::error::Result<()> {
+        async fn on_tool_end(&self, _event: ToolEndEvent) -> cognis_core::error::Result<()> {
             self.events.lock().unwrap().push("tool_end".to_string());
             Ok(())
         }
 
-        async fn on_tool_error(
-            &self,
-            _error: &str,
-            _run_id: Uuid,
-            _parent_run_id: Option<Uuid>,
-        ) -> cognis_core::error::Result<()> {
+        async fn on_tool_error(&self, _event: ToolErrorEvent) -> cognis_core::error::Result<()> {
             self.events.lock().unwrap().push("tool_error".to_string());
             Ok(())
         }
@@ -2647,5 +2725,188 @@ mod tests {
         let json = finish.to_json();
         assert_eq!(json["return_values"]["confidence"], 0.95);
         assert_eq!(json["return_values"]["sources"][0], "doc1");
+    }
+}
+
+#[cfg(test)]
+mod tool_value_tests {
+    use super::*;
+    use async_trait::async_trait;
+    use cognis_core::callbacks::base::CallbackHandler;
+    use cognis_core::callbacks::ToolEndEvent;
+    use cognis_core::messages::tool_types::ToolCall;
+    use cognis_core::messages::{AIMessage, Message};
+    use cognis_core::outputs::{ChatGeneration, ChatResult};
+    use cognis_core::tools::types::{ToolInput, ToolOutput};
+    use serde_json::{json, Value};
+    use std::sync::Mutex;
+
+    /// Fake tool that returns a structured JSON object as the content value.
+    struct StructuredTool;
+
+    #[async_trait]
+    impl BaseTool for StructuredTool {
+        fn name(&self) -> &str {
+            "structured"
+        }
+
+        fn description(&self) -> &str {
+            "returns a structured value"
+        }
+
+        async fn _run(&self, _input: ToolInput) -> Result<ToolOutput> {
+            Ok(ToolOutput::Content(json!({"k": 1, "v": [2, 3]})))
+        }
+    }
+
+    /// Fake tool that returns both content and a structured artifact.
+    struct ArtifactTool;
+
+    #[async_trait]
+    impl BaseTool for ArtifactTool {
+        fn name(&self) -> &str {
+            "artifact_tool"
+        }
+
+        fn description(&self) -> &str {
+            "returns content + artifact"
+        }
+
+        async fn _run(&self, _input: ToolInput) -> Result<ToolOutput> {
+            Ok(ToolOutput::ContentAndArtifact {
+                content: Value::String("display text".into()),
+                artifact: json!({"chart": [1.0, 2.0]}),
+            })
+        }
+    }
+
+    /// A mock model that calls a given tool once, then answers with "done".
+    struct CallThenAnswerModel {
+        tool_name: String,
+        call_count: Mutex<u32>,
+    }
+
+    impl CallThenAnswerModel {
+        fn new(tool_name: impl Into<String>) -> Self {
+            Self {
+                tool_name: tool_name.into(),
+                call_count: Mutex::new(0),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl BaseChatModel for CallThenAnswerModel {
+        async fn _generate(
+            &self,
+            _messages: &[Message],
+            _stop: Option<&[String]>,
+        ) -> Result<ChatResult> {
+            let mut count = self.call_count.lock().unwrap();
+            *count += 1;
+            if *count == 1 {
+                let mut ai = AIMessage::new("calling tool");
+                ai.tool_calls.push(ToolCall {
+                    name: self.tool_name.clone(),
+                    args: HashMap::new(),
+                    id: Some("call_1".to_string()),
+                });
+                Ok(ChatResult {
+                    generations: vec![ChatGeneration::new(ai)],
+                    llm_output: None,
+                })
+            } else {
+                let ai = AIMessage::new("done");
+                Ok(ChatResult {
+                    generations: vec![ChatGeneration::new(ai)],
+                    llm_output: None,
+                })
+            }
+        }
+
+        fn llm_type(&self) -> &str {
+            "mock-call-then-answer"
+        }
+    }
+
+    /// Callback handler that records every `on_tool_end` event.
+    struct RecordingEnd(Arc<Mutex<Vec<ToolEndEvent>>>);
+
+    #[async_trait]
+    impl CallbackHandler for RecordingEnd {
+        async fn on_tool_end(&self, event: ToolEndEvent) -> cognis_core::error::Result<()> {
+            self.0.lock().unwrap().push(event);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_end_event_carries_typed_value() {
+        let recorded = Arc::new(Mutex::new(Vec::new()));
+        let handler: Arc<dyn CallbackHandler> = Arc::new(RecordingEnd(recorded.clone()));
+
+        let model: Arc<dyn BaseChatModel> = Arc::new(CallThenAnswerModel::new("structured"));
+        let tool: Arc<dyn BaseTool> = Arc::new(StructuredTool);
+        let executor = AgentExecutor::builder()
+            .model(model)
+            .tool(tool)
+            .callback(handler)
+            .build();
+
+        let result = executor
+            .run(&[Message::human("go")])
+            .await
+            .expect("should succeed");
+        assert_eq!(result.output, "done");
+
+        let events = recorded.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].output_value, json!({"k": 1, "v": [2, 3]}));
+        assert_eq!(
+            events[0].output_str,
+            json!({"k": 1, "v": [2, 3]}).to_string()
+        );
+        assert_eq!(events[0].artifact, None);
+    }
+
+    #[tokio::test]
+    async fn tool_end_event_carries_artifact_and_tool_message_stores_it() {
+        let recorded = Arc::new(Mutex::new(Vec::new()));
+        let handler: Arc<dyn CallbackHandler> = Arc::new(RecordingEnd(recorded.clone()));
+
+        let model: Arc<dyn BaseChatModel> = Arc::new(CallThenAnswerModel::new("artifact_tool"));
+        let tool: Arc<dyn BaseTool> = Arc::new(ArtifactTool);
+        let executor = AgentExecutor::builder()
+            .model(model)
+            .tool(tool)
+            .callback(handler)
+            .build();
+
+        let result = executor
+            .run(&[Message::human("go")])
+            .await
+            .expect("should succeed");
+        assert_eq!(result.output, "done");
+
+        // ToolEndEvent carries artifact + raw typed Value.
+        let events = recorded.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].artifact, Some(json!({"chart": [1.0, 2.0]})));
+        assert_eq!(events[0].output_str, "display text");
+        assert_eq!(events[0].output_value, Value::String("display text".into()));
+
+        // The appended ToolMessage has the artifact populated and the right
+        // tool_call_id.
+        let tool_msg = result
+            .messages
+            .iter()
+            .find_map(|m| match m {
+                Message::Tool(tm) => Some(tm.clone()),
+                _ => None,
+            })
+            .expect("a ToolMessage should have been appended");
+        assert_eq!(tool_msg.tool_call_id, "call_1");
+        assert_eq!(tool_msg.base.content.text(), "display text");
+        assert_eq!(tool_msg.artifact, Some(json!({"chart": [1.0, 2.0]})));
     }
 }

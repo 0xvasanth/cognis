@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::callbacks::CallbackHandler;
+use crate::callbacks::{CallbackHandler, ToolEndEvent, ToolErrorEvent, ToolStartEvent};
 use crate::documents::Document;
 use crate::error::Result;
 use crate::outputs::LLMResult;
@@ -251,43 +251,35 @@ impl CallbackHandler for OtelTraceCallbackHandler {
         Ok(())
     }
 
-    async fn on_tool_start(
-        &self,
-        serialized: &Value,
-        input_str: &str,
-        run_id: Uuid,
-        parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        let tool_name = serialized
+    async fn on_tool_start(&self, event: ToolStartEvent) -> Result<()> {
+        let tool_name = event
+            .serialized
             .get("name")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
         let mut attrs = HashMap::new();
         attrs.insert("tool_name".into(), Value::String(tool_name.to_string()));
-        attrs.insert("input".into(), Value::String(input_str.to_string()));
-        self.start_span(run_id, "tool", parent_run_id, attrs);
+        attrs.insert("input".into(), Value::String(event.input_str.clone()));
+        self.start_span(event.run_id, "tool", event.parent_run_id, attrs);
         Ok(())
     }
 
-    async fn on_tool_end(
-        &self,
-        output: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_end(&self, event: ToolEndEvent) -> Result<()> {
         let mut attrs = HashMap::new();
-        attrs.insert("output_length".into(), serde_json::json!(output.len()));
-        self.end_span(run_id, SpanStatus::Ok, attrs);
+        attrs.insert(
+            "output_length".into(),
+            serde_json::json!(event.output_str.len()),
+        );
+        self.end_span(event.run_id, SpanStatus::Ok, attrs);
         Ok(())
     }
 
-    async fn on_tool_error(
-        &self,
-        error: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        self.end_span(run_id, SpanStatus::Error(error.to_string()), HashMap::new());
+    async fn on_tool_error(&self, event: ToolErrorEvent) -> Result<()> {
+        self.end_span(
+            event.run_id,
+            SpanStatus::Error(event.error.clone()),
+            HashMap::new(),
+        );
         Ok(())
     }
 
@@ -341,6 +333,36 @@ impl CallbackHandler for OtelTraceCallbackHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn start_event(serialized: Value, input: &str, run_id: Uuid) -> ToolStartEvent {
+        ToolStartEvent {
+            tool: serialized
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            serialized,
+            input_str: input.to_string(),
+            inputs: Value::Null,
+            tool_call_id: None,
+            run_id,
+            parent_run_id: None,
+            tags: vec![],
+            metadata: std::collections::HashMap::new(),
+        }
+    }
+
+    fn end_event(out: &str, run_id: Uuid) -> ToolEndEvent {
+        ToolEndEvent {
+            tool: "".into(),
+            output_str: out.into(),
+            output_value: Value::String(out.into()),
+            artifact: None,
+            tool_call_id: None,
+            run_id,
+            parent_run_id: None,
+        }
+    }
 
     fn make_llm_result(generations_count: usize) -> LLMResult {
         use crate::outputs::Generation;
@@ -419,10 +441,10 @@ mod tests {
         let serialized = serde_json::json!({"name": "calculator"});
 
         handler
-            .on_tool_start(&serialized, "2+2", run_id, None)
+            .on_tool_start(start_event(serialized.clone(), "2+2", run_id))
             .await
             .unwrap();
-        handler.on_tool_end("4", run_id, None).await.unwrap();
+        handler.on_tool_end(end_event("4", run_id)).await.unwrap();
 
         let spans = handler.get_spans();
         assert_eq!(spans.len(), 1);
@@ -492,15 +514,17 @@ mod tests {
         // Tool span
         let tool_id = Uuid::new_v4();
         handler
-            .on_tool_start(
-                &serde_json::json!({"name": "search"}),
+            .on_tool_start(start_event(
+                serde_json::json!({"name": "search"}),
                 "query",
                 tool_id,
-                None,
-            )
+            ))
             .await
             .unwrap();
-        handler.on_tool_end("result", tool_id, None).await.unwrap();
+        handler
+            .on_tool_end(end_event("result", tool_id))
+            .await
+            .unwrap();
 
         // Chain span
         let chain_id = Uuid::new_v4();

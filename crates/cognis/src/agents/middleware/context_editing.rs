@@ -106,14 +106,13 @@ impl ClearToolUsesEdit {
                 MessageType::Tool => {
                     indices.push(i);
                 }
-                MessageType::Ai => {
+                MessageType::Ai
                     // Check if the AI message appears to have tool calls
                     // by looking at subsequent Tool messages
                     if i + 1 < messages.len() && messages[i + 1].message_type() == MessageType::Tool
-                    {
+                    => {
                         indices.push(i);
                     }
-                }
                 _ => {}
             }
         }

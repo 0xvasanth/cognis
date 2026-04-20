@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::callbacks::CallbackHandler;
+use crate::callbacks::{CallbackHandler, ToolEndEvent, ToolErrorEvent, ToolStartEvent};
 use crate::documents::Document;
 use crate::error::Result;
 use crate::messages::Message;
@@ -159,43 +159,27 @@ impl CallbackHandler for ConsoleCallbackHandler {
         Ok(())
     }
 
-    async fn on_tool_start(
-        &self,
-        _serialized: &Value,
-        input_str: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        self.print_header(COLOR_YELLOW, "tool/start", run_id);
+    async fn on_tool_start(&self, event: ToolStartEvent) -> Result<()> {
+        self.print_header(COLOR_YELLOW, "tool/start", event.run_id);
         let indent = self.indent();
-        println!("{}  input: {}", indent, input_str);
+        println!("{}  input: {}", indent, event.input_str);
         self.depth.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    async fn on_tool_end(
-        &self,
-        output: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_end(&self, event: ToolEndEvent) -> Result<()> {
         self.depth.fetch_sub(1, Ordering::Relaxed);
-        self.print_header(COLOR_YELLOW, "tool/end", run_id);
+        self.print_header(COLOR_YELLOW, "tool/end", event.run_id);
         let indent = self.indent();
-        println!("{}  output: {}", indent, output);
+        println!("{}  output: {}", indent, event.output_str);
         Ok(())
     }
 
-    async fn on_tool_error(
-        &self,
-        error: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_error(&self, event: ToolErrorEvent) -> Result<()> {
         self.depth.fetch_sub(1, Ordering::Relaxed);
-        self.print_header(COLOR_RED, "tool/error", run_id);
+        self.print_header(COLOR_RED, "tool/error", event.run_id);
         let indent = self.indent();
-        println!("{}  error: {}", indent, error);
+        println!("{}  error: {}", indent, event.error);
         Ok(())
     }
 

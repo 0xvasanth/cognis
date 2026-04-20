@@ -419,10 +419,12 @@ impl CompiledGraph {
 
         for edge in &self.edges {
             match edge {
-                CompiledEdge::Direct { from, to } if from == node => {
-                    if self.nodes.contains_key(to) && self.dfs_cycle(to, visited, stack) {
-                        return true;
-                    }
+                CompiledEdge::Direct { from, to }
+                    if from == node
+                        && self.nodes.contains_key(to)
+                        && self.dfs_cycle(to, visited, stack) =>
+                {
+                    return true;
                 }
                 CompiledEdge::Conditional { from, targets, .. } if from == node => {
                     for target in targets {
@@ -452,10 +454,10 @@ impl CompiledGraph {
             }
             for edge in &self.edges {
                 match edge {
-                    CompiledEdge::Direct { from, to } if from == &current => {
-                        if !reachable.contains(to) {
-                            queue.push_back(to.clone());
-                        }
+                    CompiledEdge::Direct { from, to }
+                        if from == &current && !reachable.contains(to) =>
+                    {
+                        queue.push_back(to.clone());
                     }
                     CompiledEdge::Conditional { from, targets, .. } if from == &current => {
                         for target in targets {

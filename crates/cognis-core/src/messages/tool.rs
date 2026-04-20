@@ -39,8 +39,39 @@ impl ToolMessage {
         self
     }
 
-    pub fn with_artifact(mut self, artifact: Value) -> Self {
-        self.artifact = Some(artifact);
-        self
+    /// Constructor that also sets the structured artifact payload.
+    ///
+    /// Use when the tool returned `ToolOutput::ContentAndArtifact`: `content`
+    /// goes to the LLM scratchpad, `artifact` is the structured payload for
+    /// UIs and callback consumers.
+    pub fn with_artifact(
+        content: impl Into<String>,
+        tool_call_id: impl Into<String>,
+        artifact: Value,
+    ) -> Self {
+        let mut msg = Self::new(content, tool_call_id);
+        msg.artifact = Some(artifact);
+        msg
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn with_artifact_sets_the_field() {
+        let artifact = json!({"chart": [1, 2, 3]});
+        let msg = ToolMessage::with_artifact("summary text", "call_abc", artifact.clone());
+        assert_eq!(msg.base.content.text(), "summary text");
+        assert_eq!(msg.tool_call_id, "call_abc");
+        assert_eq!(msg.artifact, Some(artifact));
+    }
+
+    #[test]
+    fn new_leaves_artifact_none() {
+        let msg = ToolMessage::new("just text", "call_abc");
+        assert_eq!(msg.artifact, None);
     }
 }

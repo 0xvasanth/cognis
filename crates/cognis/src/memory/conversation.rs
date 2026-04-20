@@ -524,11 +524,9 @@ impl MemoryStats {
 
     /// Average content length (in characters) per message, or 0 if empty.
     pub fn average_message_length(&self) -> usize {
-        if self.total_messages == 0 {
-            0
-        } else {
-            self.total_content_length / self.total_messages
-        }
+        self.total_content_length
+            .checked_div(self.total_messages)
+            .unwrap_or(0)
     }
 
     /// Serialize statistics to JSON.

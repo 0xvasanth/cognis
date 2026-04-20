@@ -304,14 +304,14 @@ impl GraphMetrics {
     /// Nodes sorted by total duration descending.
     pub fn nodes_by_duration(&self) -> Vec<&NodeMetrics> {
         let mut v: Vec<_> = self.node_metrics.values().collect();
-        v.sort_by(|a, b| b.total_duration.cmp(&a.total_duration));
+        v.sort_by_key(|b| std::cmp::Reverse(b.total_duration));
         v
     }
 
     /// Edges sorted by traversal count descending.
     pub fn edges_by_traversal(&self) -> Vec<&EdgeMetrics> {
         let mut v: Vec<_> = self.edge_metrics.values().collect();
-        v.sort_by(|a, b| b.traversal_count.cmp(&a.traversal_count));
+        v.sort_by_key(|b| std::cmp::Reverse(b.traversal_count));
         v
     }
 }
@@ -487,7 +487,7 @@ impl MetricsAggregator {
     /// Top N nodes by total duration.
     pub fn top_nodes_by_duration(&self, n: usize) -> Vec<&NodeMetrics> {
         let mut v: Vec<_> = self.node_metrics.values().collect();
-        v.sort_by(|a, b| b.total_duration.cmp(&a.total_duration));
+        v.sort_by_key(|b| std::cmp::Reverse(b.total_duration));
         v.truncate(n);
         v
     }
@@ -495,7 +495,7 @@ impl MetricsAggregator {
     /// Top N edges by traversal count.
     pub fn top_edges_by_traversal(&self, n: usize) -> Vec<&EdgeMetrics> {
         let mut v: Vec<_> = self.edge_metrics.values().collect();
-        v.sort_by(|a, b| b.traversal_count.cmp(&a.traversal_count));
+        v.sort_by_key(|b| std::cmp::Reverse(b.traversal_count));
         v.truncate(n);
         v
     }
@@ -559,7 +559,7 @@ impl MetricsReport {
 
         let node_summaries: Vec<NodeSummary> = {
             let mut nodes: Vec<_> = agg.node_metrics.values().collect();
-            nodes.sort_by(|a, b| b.total_duration.cmp(&a.total_duration));
+            nodes.sort_by_key(|b| std::cmp::Reverse(b.total_duration));
             nodes
                 .iter()
                 .map(|nm| NodeSummary {

@@ -239,7 +239,7 @@ impl MemoryCheckpointSaver {
             .filter(|((tid, _), _)| tid == thread_id)
             .collect();
 
-        entries.sort_by(|a, b| b.1.seq.cmp(&a.1.seq));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.1.seq));
 
         Ok(entries
             .into_iter()
@@ -452,7 +452,7 @@ impl CheckpointSaver for MemoryCheckpointSaver {
             .collect();
 
         // Sort newest first by sequence number.
-        entries.sort_by(|a, b| b.1.seq.cmp(&a.1.seq));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.1.seq));
 
         let mut results: Vec<CheckpointTuple> = entries
             .into_iter()

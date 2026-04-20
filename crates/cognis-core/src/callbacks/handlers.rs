@@ -8,6 +8,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::base::CallbackHandler;
+use super::events::{ToolEndEvent, ToolErrorEvent, ToolStartEvent};
 use crate::agents::{AgentAction, AgentFinish};
 use crate::documents::Document;
 use crate::error::Result;
@@ -255,29 +256,18 @@ impl CallbackHandler for FileCallbackHandler {
         Ok(())
     }
 
-    async fn on_tool_start(
-        &self,
-        _serialized: &Value,
-        input_str: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_start(&self, event: ToolStartEvent) -> Result<()> {
         self.write_line(&format!(
             "[tool/start] [{}] Entering tool run with input: {}",
-            run_id, input_str
+            event.run_id, event.input_str
         ));
         Ok(())
     }
 
-    async fn on_tool_end(
-        &self,
-        output: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_end(&self, event: ToolEndEvent) -> Result<()> {
         self.write_line(&format!(
             "[tool/end] [{}] Finished tool run with output: {}",
-            run_id, output
+            event.run_id, event.output_str
         ));
         Ok(())
     }
@@ -621,34 +611,26 @@ impl CallbackHandler for LoggingCallbackHandler {
         Ok(())
     }
 
-    async fn on_tool_start(
-        &self,
-        _serialized: &Value,
-        input_str: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        self.log("tool/start", &format!("input: {}", input_str), run_id);
+    async fn on_tool_start(&self, event: ToolStartEvent) -> Result<()> {
+        self.log(
+            "tool/start",
+            &format!("input: {}", event.input_str),
+            event.run_id,
+        );
         Ok(())
     }
 
-    async fn on_tool_end(
-        &self,
-        output: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        self.log("tool/end", &format!("output: {}", output), run_id);
+    async fn on_tool_end(&self, event: ToolEndEvent) -> Result<()> {
+        self.log(
+            "tool/end",
+            &format!("output: {}", event.output_str),
+            event.run_id,
+        );
         Ok(())
     }
 
-    async fn on_tool_error(
-        &self,
-        error: &str,
-        run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
-        self.log("tool/error", error, run_id);
+    async fn on_tool_error(&self, event: ToolErrorEvent) -> Result<()> {
+        self.log("tool/error", &event.error, event.run_id);
         Ok(())
     }
 
@@ -850,23 +832,12 @@ impl CallbackHandler for MetricsCallbackHandler {
         Ok(())
     }
 
-    async fn on_tool_start(
-        &self,
-        _serialized: &Value,
-        _input_str: &str,
-        _run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_start(&self, _event: ToolStartEvent) -> Result<()> {
         self.total_tool_calls.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    async fn on_tool_error(
-        &self,
-        _error: &str,
-        _run_id: Uuid,
-        _parent_run_id: Option<Uuid>,
-    ) -> Result<()> {
+    async fn on_tool_error(&self, _event: ToolErrorEvent) -> Result<()> {
         self.total_errors.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
