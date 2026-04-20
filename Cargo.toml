@@ -28,8 +28,8 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 secrecy = { version = "0.10", features = ["serde"] }
 
 
-cognis = { path = "crates/cognis", version = "0.1.0" }
-cognis-core = { path = "crates/cognis-core", version = "0.1.0" }
-cognis-macros = { path = "crates/cognis-macros", version = "0.1.0" }
-cognisgraph = { path = "crates/cognisgraph", version = "0.1.0" }
-cognisagent = { path = "crates/cognisagent", version = "0.1.0" }
+cognis = { path = "crates/cognis", version = "0.2.0" }
+cognis-core = { path = "crates/cognis-core", version = "0.2.0" }
+cognis-macros = { path = "crates/cognis-macros", version = "0.2.0" }
+cognisgraph = { path = "crates/cognisgraph", version = "0.2.0" }
+cognisagent = { path = "crates/cognisagent", version = "0.2.0" }
