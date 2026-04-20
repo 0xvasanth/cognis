@@ -42,7 +42,37 @@ The rest of this guide is the *why* and *when* behind each knob.
 
 ## 1. Authoring a `BaseTool`
 
-Three ways to define a tool, from easiest to most expressive:
+Four ways to define a tool, from most ergonomic to most expressive. **Start with `#[cognis::tool]`** unless a lower-level form fits better.
+
+### `#[cognis::tool]` — typed args via attribute macro (recommended)
+
+```rust
+use cognis_core::error::Result;
+use cognis_core::tool;
+use cognis_core::tools::ToolOutput;
+use serde_json::json;
+
+/// Search a mock knowledge base.
+#[tool(name = "search_kb")]
+async fn search_kb(
+    /// The search query — must be 1-200 chars.
+    #[schema(length(min = 1, max = 200))]
+    query: String,
+    /// Max results to return (1-50).
+    #[schema(range(min = 1, max = 50))]
+    limit: Option<u32>,
+) -> Result<ToolOutput> {
+    let limit = limit.unwrap_or(3);
+    Ok(ToolOutput::Content(json!({ "query": query, "limit": limit })))
+}
+
+// The macro emits a `SearchKb` unit struct implementing `BaseTool`.
+// Use it like any other tool: `Arc::new(SearchKb) as Arc<dyn BaseTool>`.
+```
+
+The macro generates the args struct, JSON Schema, validators (`length`, `range`, `pattern`, `enum_values`, `format`), input deserialization, and the `BaseTool` impl. Doc comments on parameters become schema `description`s. The function name becomes a PascalCase struct (`search_kb` → `SearchKb`), or set `#[tool(name = "...")]` to override.
+
+Also works on an inherent `impl` block for stateful tools (shared HTTP client, DB pool, etc.) — see [`examples/tools/stateful_http.rs`](../examples/tools/stateful_http.rs).
 
 ### `SimpleTool` — one string input, sync closure
 
@@ -129,7 +159,7 @@ Do this when you need custom error types, retries inside the tool, access to per
 
 > **Built-ins** — `cognis` ships `calculator`, `shell`, `filesystem`, HTTP, and more. Check `cognis::tools::*` before writing your own.
 >
-> **Derive helpers** — `cognis-macros` provides `#[derive(JsonSchema)]` and `#[derive(ToolSchema)]` to auto-generate the args schema from a Rust struct, which you then return from `args_schema()` in your `BaseTool` impl. See [`examples/tools/derive_tool.rs`](../examples/tools/derive_tool.rs).
+> **Derive helpers** — when you're implementing `BaseTool` by hand and want a Rust struct to drive the schema instead of a hand-written `json!({...})`, `cognis-macros` provides `#[derive(JsonSchema)]` and `#[derive(ToolSchema)]`. Return the generated schema from `args_schema()`. See [`examples/tools/derive_tool.rs`](../examples/tools/derive_tool.rs). Most users should reach for `#[cognis::tool]` first — these derives are the building blocks underneath.
 
 ---
 
@@ -223,6 +253,24 @@ let result = executor.run(&[Message::human("What's 42 * 7?")]).await?;
 | `early_stopping_method(..)` | What happens on limit hit: `Force` returns what you have; `GenerateResponse` asks the model for a final answer; unset returns `Err(RecursionLimitExceeded)`. |
 
 `AgentResult` gives you `messages` (full conversation), `output` (final string), and `intermediate_steps` (if requested).
+
+**Cooperative cancellation** — pass a `CancellationToken` for user-initiated cancel (a Stop button, a parent request being dropped, etc.):
+
+```rust
+use cognis_core::CancellationToken;
+
+let cancel = CancellationToken::new();
+let bg_cancel = cancel.clone();
+tokio::spawn(async move {
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    bg_cancel.cancel();  // user hit Stop
+});
+
+let result = executor.run_with_cancel(&messages, cancel).await;
+// On cancel: fires on_agent_cancelled on every callback, returns Err(CognisError::Cancelled).
+```
+
+The token is honoured at three points: iteration boundaries, around the model call (via `tokio::select!` — drops the in-flight `_generate` future and any `reqwest` request), and around each tool execution. Tools can read it from `RunnableConfig::cancellation_token` for their own cleanup.
 
 ---
 
@@ -372,17 +420,22 @@ See [`examples/agents/react_agent.rs`](../examples/agents/react_agent.rs) for a 
 | Multi-step loop with iteration cap | `cognis::agents::AgentExecutor` with `max_iterations` |
 | Tool-call history shoved into user messages | `Message::Tool(ToolMessage)` with `tool_call_id` |
 | Hand-written `parse_lenient` for malformed JSON | `cognis::output_parsers::OutputFixingParser` |
-| `mpsc::Sender<Thought>` for progress | `CallbackHandler` with per-phase hooks |
+| `mpsc::Sender<Thought>` for progress | `CallbackHandler` with per-phase hooks, or `AgentExecutor::astream_events` |
 | Hand-parsed `{"action": "tool", "tool": "..."}` | `cognis::agents::parse_ai_message_to_agent_output` (consumes native `tool_calls`) |
 | Domain-specific stringification of tool calls | `cognis::agents::format_to_tool_messages` |
 | Domain-specific JSON-shaped prompts | `cognis::chat_models::structured::with_structured_output(schema)` |
+| `BaseTool` + args struct + `args_schema()` + `_run` deserialization, by hand | `#[cognis::tool]` on an async fn with `#[schema(...)]` validators |
+| `tokio::select!` + ad-hoc cancel flags around the agent loop | `AgentExecutor::run_with_cancel` with `CancellationToken` |
 
 ---
 
 ## Where to go next
 
+- [`examples/tools/typed_search.rs`](../examples/tools/typed_search.rs) — `#[cognis::tool]` on a standalone async fn with `#[schema(...)]` validators
+- [`examples/tools/stateful_http.rs`](../examples/tools/stateful_http.rs) — `#[cognis::tool]` on an impl block sharing an HTTP client
 - [`examples/tools/tool_calling_agent.rs`](../examples/tools/tool_calling_agent.rs) — `SimpleTool`, `StructuredTool`, `CachedTool`, `AgentExecutor` together
 - [`examples/agents/react_agent.rs`](../examples/agents/react_agent.rs) — graph-based ReAct with Ollama
+- [`examples/agents/streaming_agent_events.rs`](../examples/agents/streaming_agent_events.rs) — `AgentExecutor::astream_events` for UI-ready progress
 - [`examples/agents/conversational_agent.rs`](../examples/agents/conversational_agent.rs) — memory + tools
 - [`examples/agents/plan_and_execute.rs`](../examples/agents/plan_and_execute.rs) — planner/executor split
 - [`examples/agents/execution_hooks.rs`](../examples/agents/execution_hooks.rs) — callback-driven observability
