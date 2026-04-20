@@ -10,9 +10,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use serde_json::json;
+use serde_json::{json, Value};
 
-use cognis::agents::AgentExecutor;
+use cognis::agents::{
+    AgentExecutor, Plan, PlanAndExecuteAgent, PlanStep, Planner, ReActAgent, StepExecutor,
+};
 use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::language_models::fake::FakeListChatModel;
@@ -178,6 +180,181 @@ async fn run_with_default_token_behaves_as_before() {
     let result = result.expect("run should succeed for final-text models");
     assert_eq!(result.output, "done");
 }
+
+// ---------------------------------------------------------------------------
+// ReActAgent cancellation
+// ---------------------------------------------------------------------------
+
+/// A fake chat model that always parses as an `Action: noop / Action Input: {}`
+/// so the ReAct loop keeps iterating until cancelled or max-iterations runs
+/// out. A per-call delay gives concurrent cancellation a reliable window.
+struct LoopingReActModel {
+    delay_ms: u64,
+}
+
+#[async_trait]
+impl BaseChatModel for LoopingReActModel {
+    async fn _generate(
+        &self,
+        _messages: &[Message],
+        _stop: Option<&[String]>,
+    ) -> Result<ChatResult> {
+        if self.delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+        }
+        // A response that parses as an `Action` step so the ReAct loop
+        // keeps running.
+        let body = "Thought: still thinking\nAction: noop\nAction Input: {}";
+        Ok(ChatResult {
+            generations: vec![ChatGeneration::new(AIMessage::new(body))],
+            llm_output: None,
+        })
+    }
+
+    fn llm_type(&self) -> &str {
+        "looping-react-model"
+    }
+}
+
+struct NoopTool;
+
+#[async_trait]
+impl BaseTool for NoopTool {
+    fn name(&self) -> &str {
+        "noop"
+    }
+    fn description(&self) -> &str {
+        "A tool that does nothing."
+    }
+    async fn _run(&self, _input: ToolInput) -> Result<ToolOutput> {
+        Ok(ToolOutput::Content(json!("ok")))
+    }
+}
+
+#[tokio::test]
+async fn react_run_with_cancel_honors_token() {
+    let model: Arc<dyn BaseChatModel> = Arc::new(LoopingReActModel { delay_ms: 5 });
+    let agent = ReActAgent::builder()
+        .model(model)
+        .tools(vec![Arc::new(NoopTool) as Arc<dyn BaseTool>])
+        .max_iterations(100)
+        .build()
+        .expect("build ReActAgent");
+
+    let cancel = CancellationToken::new();
+    let cancel_clone = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        cancel_clone.cancel();
+    });
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        agent.run_with_cancel("hello", cancel),
+    )
+    .await
+    .expect("ReAct should respond to cancel quickly");
+    match result {
+        Err(CognisError::Cancelled(_)) => {}
+        other => panic!("expected Cancelled, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn react_pre_cancelled_aborts_immediately() {
+    let model: Arc<dyn BaseChatModel> = Arc::new(LoopingReActModel { delay_ms: 0 });
+    let agent = ReActAgent::builder()
+        .model(model)
+        .tools(vec![Arc::new(NoopTool) as Arc<dyn BaseTool>])
+        .max_iterations(5)
+        .build()
+        .expect("build ReActAgent");
+
+    let cancel = CancellationToken::cancelled_now();
+    let result = agent.run_with_cancel("hi", cancel).await;
+    match result {
+        Err(CognisError::Cancelled(_)) => {}
+        other => panic!("expected Cancelled, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PlanAndExecute cancellation
+// ---------------------------------------------------------------------------
+
+/// A planner producing many pending steps so the loop has material to run.
+struct MultiStepPlanner;
+
+impl Planner for MultiStepPlanner {
+    fn create_plan(&self, goal: &str) -> Result<Plan> {
+        let steps: Vec<PlanStep> = (0..20)
+            .map(|i| PlanStep::new(i, format!("step {i}")))
+            .collect();
+        Ok(Plan::new(goal, steps))
+    }
+}
+
+/// A step executor that sleeps briefly so a concurrent cancel can fire.
+struct SlowStepExecutor {
+    delay_ms: u64,
+}
+
+#[async_trait]
+impl StepExecutor for SlowStepExecutor {
+    async fn execute_step(&self, step: &PlanStep, _context: &Value) -> Result<String> {
+        if self.delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+        }
+        Ok(format!("completed {}", step.description))
+    }
+}
+
+#[tokio::test]
+async fn plan_and_execute_run_with_cancel_honors_token() {
+    let agent = PlanAndExecuteAgent::builder()
+        .planner(MultiStepPlanner)
+        .executor(SlowStepExecutor { delay_ms: 10 })
+        .build()
+        .expect("build PlanAndExecuteAgent");
+
+    let cancel = CancellationToken::new();
+    let cancel_clone = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        cancel_clone.cancel();
+    });
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        agent.run_with_cancel("do things", cancel),
+    )
+    .await
+    .expect("plan-and-execute should respond to cancel quickly");
+    match result {
+        Err(CognisError::Cancelled(_)) => {}
+        other => panic!("expected Cancelled, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn plan_and_execute_pre_cancelled_aborts_before_planning() {
+    let agent = PlanAndExecuteAgent::builder()
+        .planner(MultiStepPlanner)
+        .executor(SlowStepExecutor { delay_ms: 0 })
+        .build()
+        .expect("build PlanAndExecuteAgent");
+
+    let cancel = CancellationToken::cancelled_now();
+    let result = agent.run_with_cancel("do things", cancel).await;
+    match result {
+        Err(CognisError::Cancelled(_)) => {}
+        other => panic!("expected Cancelled, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AgentExecutor: between-iteration check
+// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn cancel_between_iterations_emits_cancelled_error() {

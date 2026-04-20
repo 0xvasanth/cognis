@@ -17,6 +17,7 @@ use cognis_core::error::{CognisError, Result};
 use cognis_core::language_models::chat_model::BaseChatModel;
 use cognis_core::messages::Message;
 use cognis_core::tools::base::BaseTool;
+use cognis_core::CancellationToken;
 
 use super::output_parser::{AgentOutput, AgentOutputParser, ReActOutputParser};
 
@@ -214,7 +215,22 @@ impl ReActAgent {
 
     /// Run the ReAct loop on the given input and return the result.
     pub async fn run(&self, input: &str) -> Result<ReActResult> {
-        let (output, trace) = self.run_inner(input).await?;
+        self.run_with_cancel(input, CancellationToken::new()).await
+    }
+
+    /// Run the ReAct loop with cooperative cancellation support.
+    ///
+    /// Honours the token at iteration boundaries, around the model call, and
+    /// around each tool invocation. See [`AgentExecutor::run_with_cancel`] for
+    /// the full contract.
+    ///
+    /// [`AgentExecutor::run_with_cancel`]: super::executor::AgentExecutor::run_with_cancel
+    pub async fn run_with_cancel(
+        &self,
+        input: &str,
+        cancel: CancellationToken,
+    ) -> Result<ReActResult> {
+        let (output, trace) = self.run_inner(input, &cancel).await?;
         let tool_calls: Vec<(String, Value, String)> = trace
             .steps
             .iter()
@@ -237,7 +253,16 @@ impl ReActAgent {
 
     /// Run the ReAct loop and return both the output and a detailed trace.
     pub async fn run_with_trace(&self, input: &str) -> Result<(String, ReActTrace)> {
-        self.run_inner(input).await
+        self.run_inner(input, &CancellationToken::new()).await
+    }
+
+    /// Run the ReAct loop with a trace, honouring a [`CancellationToken`].
+    pub async fn run_with_trace_and_cancel(
+        &self,
+        input: &str,
+        cancel: CancellationToken,
+    ) -> Result<(String, ReActTrace)> {
+        self.run_inner(input, &cancel).await
     }
 
     /// Format a description of all available tools.
@@ -276,17 +301,31 @@ impl ReActAgent {
     // -----------------------------------------------------------------------
 
     /// The core ReAct loop shared by `run` and `run_with_trace`.
-    async fn run_inner(&self, input: &str) -> Result<(String, ReActTrace)> {
+    async fn run_inner(
+        &self,
+        input: &str,
+        cancel: &CancellationToken,
+    ) -> Result<(String, ReActTrace)> {
         let parser = ReActOutputParser::new();
         let mut trace = ReActTrace::new();
         let tool_names: Vec<&str> = self.tools.iter().map(|t| t.name()).collect();
 
         for _iteration in 0..self.max_iterations {
+            cancel.check("cancelled between ReAct iterations")?;
+
             let scratchpad = self.format_scratchpad(&trace.steps);
             let prompt = self.build_prompt(input, &scratchpad, &tool_names);
 
             let messages: Vec<Message> = self.build_messages(&prompt);
-            let ai_msg = self.model.invoke_messages(&messages, None).await?;
+            let ai_msg = tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    return Err(CognisError::Cancelled(
+                        "cancelled during ReAct model call".into(),
+                    ));
+                }
+                r = self.model.invoke_messages(&messages, None) => r?,
+            };
             let ai_text = ai_msg.base.content.text();
 
             // Approximate token tracking.
@@ -321,8 +360,18 @@ impl ReActAgent {
                     // Extract thought from text before Action:
                     let thought = extract_thought(&ai_text);
 
-                    // Find and execute the tool.
-                    let observation = self.execute_tool(&action.tool, &action.tool_input).await?;
+                    // Find and execute the tool. Honour cancellation so a
+                    // long-running tool (HTTP request, child process, …) can
+                    // be dropped as soon as the client signals stop.
+                    let observation = tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => {
+                            return Err(CognisError::Cancelled(
+                                "cancelled during ReAct tool call".into(),
+                            ));
+                        }
+                        r = self.execute_tool(&action.tool, &action.tool_input) => r?,
+                    };
                     let obs_str = match &observation {
                         Value::String(s) => s.clone(),
                         other => serde_json::to_string(other).unwrap_or_default(),
