@@ -9,6 +9,33 @@
 //! default endpoint.
 //!
 //! [#10](https://github.com/0xvasanth/cognis/issues/10).
+//!
+//! # Example
+//!
+//! ```no_run
+//! use cognis::chat_models::openrouter::ChatOpenRouter;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let model = ChatOpenRouter::builder()
+//!     .model("meta-llama/llama-3.3-70b-instruct:free")
+//!     .api_key("sk-or-...")
+//!     .app_name("my-assistant")
+//!     .app_url("https://example.com")
+//!     .build()?;
+//! # let _ = model;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # When to drop to `ChatOpenAI` directly
+//!
+//! This wrapper is deliberately focused on OpenRouter-relevant setters.
+//! If you need OpenAI-specific configuration such as the `organization`
+//! setter (sent as the `OpenAI-Organization` header), construct
+//! [`ChatOpenAI::builder`] directly and pass
+//! `.base_url("https://openrouter.ai/api")`.
+//!
+//! [`ChatOpenAI::builder`]: crate::chat_models::openai::ChatOpenAI::builder
 
 use std::collections::HashMap;
 

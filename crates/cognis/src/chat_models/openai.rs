@@ -171,14 +171,17 @@ impl ChatOpenAIBuilder {
     /// ```no_run
     /// use cognis::chat_models::openai::ChatOpenAI;
     ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let model = ChatOpenAI::builder()
     ///     .model("meta-llama/llama-3.3-70b-instruct:free")
     ///     .api_key("sk-or-...")
     ///     .base_url("https://openrouter.ai/api")
     ///     .extra_header("HTTP-Referer", "https://mysite.com")
     ///     .extra_header("X-Title", "my-app")
-    ///     .build()
-    ///     .unwrap();
+    ///     .build()?;
+    /// # let _ = model;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn extra_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         let key = key.into();
