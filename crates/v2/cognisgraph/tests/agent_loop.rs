@@ -2,14 +2,13 @@
 //!   "think" decides to act (if work remaining) or end.
 //!   "act"   does one unit of work, increments a counter, loops back.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use cognis2_core::prelude::*;
 use cognis2_core::CognisError;
 use cognis2_graph::{
-    node_fn, Checkpointer, CompiledGraph, Goto, Graph, GraphState, InMemoryCheckpointer,
-    NodeOut,
+    node_fn, Checkpointer, CompiledGraph, Goto, Graph, GraphState, InMemoryCheckpointer, NodeOut,
 };
 
 /// Simulated agent state: a list of "messages" (strings) and a step counter.
@@ -113,17 +112,13 @@ async fn observer_receives_node_events() {
 async fn recursion_limit_blocks_infinite_loops() {
     let agent = build_agent();
     let cfg = RunnableConfig::default().with_recursion_limit(2);
-    let err = agent
-        .invoke(AgentState::default(), cfg)
-        .await
-        .unwrap_err();
+    let err = agent.invoke(AgentState::default(), cfg).await.unwrap_err();
     assert!(matches!(err, CognisError::RecursionLimit { limit: 2 }));
 }
 
 #[tokio::test]
 async fn checkpointer_saves_each_step() {
-    let cp: Arc<dyn Checkpointer<AgentState>> =
-        Arc::new(InMemoryCheckpointer::<AgentState>::new());
+    let cp: Arc<dyn Checkpointer<AgentState>> = Arc::new(InMemoryCheckpointer::<AgentState>::new());
     let agent = build_agent().with_checkpointer(cp.clone());
     let cfg = RunnableConfig::default();
     let run_id = cfg.run_id;
@@ -139,8 +134,7 @@ async fn checkpointer_saves_each_step() {
 
 #[tokio::test]
 async fn time_travel_via_explicit_step() {
-    let cp: Arc<dyn Checkpointer<AgentState>> =
-        Arc::new(InMemoryCheckpointer::<AgentState>::new());
+    let cp: Arc<dyn Checkpointer<AgentState>> = Arc::new(InMemoryCheckpointer::<AgentState>::new());
     let agent = build_agent().with_checkpointer(cp.clone());
     let cfg = RunnableConfig::default();
     let run_id = cfg.run_id;

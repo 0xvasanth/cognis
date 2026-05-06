@@ -103,9 +103,10 @@ mod tests {
     }
 
     fn noop_node() -> impl crate::node::Node<S> + 'static {
-        node_fn::<S, _, _>("noop", |_, _| async move {
-            Ok(NodeOut::goto_only(Goto::end()))
-        })
+        node_fn::<S, _, _>(
+            "noop",
+            |_, _| async move { Ok(NodeOut::goto_only(Goto::end())) },
+        )
     }
 
     #[test]

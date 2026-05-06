@@ -109,8 +109,7 @@ mod tests {
     #[test]
     fn custom_closure_applies() {
         let mut s = String::from("hello");
-        Custom(|cur: &mut String, upd: String| cur.push_str(&upd))
-            .reduce(&mut s, " world".into());
+        Custom(|cur: &mut String, upd: String| cur.push_str(&upd)).reduce(&mut s, " world".into());
         assert_eq!(s, "hello world");
     }
 }

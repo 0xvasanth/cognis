@@ -28,7 +28,9 @@ impl<S: GraphState + Clone> Default for InMemoryCheckpointer<S> {
 impl<S: GraphState + Clone> InMemoryCheckpointer<S> {
     /// Empty checkpointer.
     pub fn new() -> Self {
-        Self { runs: Mutex::new(HashMap::new()) }
+        Self {
+            runs: Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -48,7 +50,9 @@ impl<S: GraphState + Clone> Checkpointer<S> for InMemoryCheckpointer<S> {
             .runs
             .lock()
             .map_err(|e| CognisError::Internal(format!("checkpointer mutex poisoned: {e}")))?;
-        let Some(steps) = runs.get(&run_id) else { return Ok(None) };
+        let Some(steps) = runs.get(&run_id) else {
+            return Ok(None);
+        };
         match step {
             Some(s) => Ok(steps.get(&s).cloned()),
             None => {

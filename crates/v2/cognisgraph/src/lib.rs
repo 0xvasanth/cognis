@@ -6,23 +6,23 @@
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
-pub mod state;
-pub mod reducer;
-pub mod goto;
-pub mod node;
 pub mod builder;
-pub(crate) mod validate;
+pub mod checkpoint;
 pub mod compiled;
 pub(crate) mod engine;
-pub mod checkpoint;
+pub mod goto;
+pub mod node;
+pub mod reducer;
+pub mod state;
+pub(crate) mod validate;
 
-pub use state::GraphState;
-pub use reducer::{Reducer, Append, Add, LastValue, Merge, Custom};
-pub use goto::Goto;
-pub use node::{Node, NodeCtx, NodeOut, NodeFn, node_fn};
 pub use builder::{Graph, LinearBuilder};
-pub use compiled::CompiledGraph;
 pub use checkpoint::{Checkpointer, InMemoryCheckpointer};
+pub use compiled::CompiledGraph;
+pub use goto::Goto;
+pub use node::{node_fn, Node, NodeCtx, NodeFn, NodeOut};
+pub use reducer::{Add, Append, Custom, LastValue, Merge, Reducer};
+pub use state::GraphState;
 
 /// Derive macro — generates `impl GraphState for <T>` with per-field reducers.
 /// The derive name shadows the trait name; both are imported via

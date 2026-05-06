@@ -57,7 +57,11 @@ where
             }
         }
 
-        let ctx = NodeCtx { run_id, step, config: &config };
+        let ctx = NodeCtx {
+            run_id,
+            step,
+            config: &config,
+        };
 
         ctx.emit(&Event::OnNodeStart {
             node: active_name.clone(),
@@ -146,5 +150,7 @@ where
         }
     }
 
-    Err(CognisError::RecursionLimit { limit: recursion_limit })
+    Err(CognisError::RecursionLimit {
+        limit: recursion_limit,
+    })
 }

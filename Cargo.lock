@@ -277,6 +277,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cognis2-graph"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cognis-macros",
+ "cognis2-core",
+ "futures",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "cognisagent"
 version = "0.2.1"
 dependencies = [

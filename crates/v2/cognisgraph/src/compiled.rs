@@ -31,7 +31,10 @@ impl<S: GraphState> std::fmt::Debug for CompiledGraph<S> {
 
 impl<S: GraphState> CompiledGraph<S> {
     pub(crate) fn new(graph: Graph<S>) -> Self {
-        Self { graph, checkpointer: None }
+        Self {
+            graph,
+            checkpointer: None,
+        }
     }
 
     /// Number of registered nodes — useful for testing / introspection.
@@ -175,7 +178,10 @@ mod tests {
 
         let cfg = RunnableConfig::default().with_recursion_limit(3);
         let err = g.invoke(Counter::default(), cfg).await.unwrap_err();
-        assert!(matches!(err, cognis2_core::CognisError::RecursionLimit { limit: 3 }));
+        assert!(matches!(
+            err,
+            cognis2_core::CognisError::RecursionLimit { limit: 3 }
+        ));
     }
 
     #[tokio::test]

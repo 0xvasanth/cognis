@@ -57,7 +57,10 @@ mod tests {
     #[test]
     fn targets_correct() {
         assert_eq!(Goto::node("a").targets(), vec!["a"]);
-        assert_eq!(Goto::Multiple(vec!["a".into(), "b".into()]).targets(), vec!["a", "b"]);
+        assert_eq!(
+            Goto::Multiple(vec!["a".into(), "b".into()]).targets(),
+            vec!["a", "b"]
+        );
         assert!(Goto::end().targets().is_empty());
     }
 }

@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use cognis2_core::{Event, Result, RunnableConfig};
 use cognis2_core::stream::Observer;
+use cognis2_core::{Event, Result, RunnableConfig};
 use uuid::Uuid;
 
 use crate::goto::Goto;
@@ -21,12 +21,18 @@ pub struct NodeOut<S: GraphState> {
 impl<S: GraphState> NodeOut<S> {
     /// Convenience: terminal node with a state update.
     pub fn end_with(update: S::Update) -> Self {
-        Self { update, goto: Goto::End }
+        Self {
+            update,
+            goto: Goto::End,
+        }
     }
 
     /// Convenience: route somewhere with no state delta (Default::default()).
     pub fn goto_only(goto: Goto) -> Self {
-        Self { update: S::Update::default(), goto }
+        Self {
+            update: S::Update::default(),
+            goto,
+        }
     }
 }
 

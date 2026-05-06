@@ -151,15 +151,21 @@ mod tests {
     #[test]
     fn build_with_nodes_and_start() {
         let g = Graph::<S>::new()
-            .node("a", node_fn::<S, _, _>("a", |_s, _c| async move {
-                Ok(NodeOut {
-                    update: SU { msg: "a".into() },
-                    goto: Goto::node("b"),
-                })
-            }))
-            .node("b", node_fn::<S, _, _>("b", |_s, _c| async move {
-                Ok(NodeOut::end_with(SU { msg: "b".into() }))
-            }))
+            .node(
+                "a",
+                node_fn::<S, _, _>("a", |_s, _c| async move {
+                    Ok(NodeOut {
+                        update: SU { msg: "a".into() },
+                        goto: Goto::node("b"),
+                    })
+                }),
+            )
+            .node(
+                "b",
+                node_fn::<S, _, _>("b", |_s, _c| async move {
+                    Ok(NodeOut::end_with(SU { msg: "b".into() }))
+                }),
+            )
             .start_at("a");
         assert_eq!(g.nodes.len(), 2);
         assert_eq!(g.start.as_deref(), Some("a"));
