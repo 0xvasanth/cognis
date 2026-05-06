@@ -1,0 +1,63 @@
+//! `Goto` — where the engine routes after a node finishes.
+
+/// Routing instruction returned by a node, telling the engine which node(s)
+/// to schedule next. Branching/looping is data: a node decides at runtime
+/// where to send execution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Goto {
+    /// Jump to a single named node.
+    Node(String),
+
+    /// Fan out to multiple named nodes in parallel.
+    /// In slice 1 the engine treats Multiple as sequential single-node
+    /// dispatch (first target); true parallelism lands in slice 2 with
+    /// the channel-write semantics worked out.
+    Multiple(Vec<String>),
+
+    /// Terminate the graph.
+    End,
+}
+
+impl Goto {
+    /// Convenience constructor: `Goto::node("think")` over `Goto::Node("think".into())`.
+    pub fn node(name: impl Into<String>) -> Self {
+        Goto::Node(name.into())
+    }
+
+    /// Convenience constructor: `Goto::end()` over `Goto::End`.
+    pub fn end() -> Self {
+        Goto::End
+    }
+
+    /// All node-name targets contained in this Goto. Empty for `End`.
+    pub fn targets(&self) -> Vec<&str> {
+        match self {
+            Goto::Node(n) => vec![n.as_str()],
+            Goto::Multiple(ns) => ns.iter().map(|s| s.as_str()).collect(),
+            Goto::End => vec![],
+        }
+    }
+
+    /// True if this Goto terminates the graph.
+    pub fn is_end(&self) -> bool {
+        matches!(self, Goto::End)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructors_work() {
+        assert_eq!(Goto::node("think"), Goto::Node("think".into()));
+        assert!(Goto::end().is_end());
+    }
+
+    #[test]
+    fn targets_correct() {
+        assert_eq!(Goto::node("a").targets(), vec!["a"]);
+        assert_eq!(Goto::Multiple(vec!["a".into(), "b".into()]).targets(), vec!["a", "b"]);
+        assert!(Goto::end().targets().is_empty());
+    }
+}

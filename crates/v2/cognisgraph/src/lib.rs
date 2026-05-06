@@ -8,8 +8,8 @@
 
 pub mod state;
 pub mod reducer;
-// pub mod node;
-// pub mod goto;
+pub mod goto;
+pub mod node;
 // pub mod builder;
 // pub mod validate;
 // pub mod compiled;
@@ -18,6 +18,8 @@ pub mod reducer;
 
 pub use state::GraphState;
 pub use reducer::{Reducer, Append, Add, LastValue, Merge, Custom};
+pub use goto::Goto;
+pub use node::{Node, NodeCtx, NodeOut, NodeFn, node_fn};
 
 /// Derive macro — generates `impl GraphState for <T>` with per-field reducers.
 /// The derive name shadows the trait name; both are imported via
