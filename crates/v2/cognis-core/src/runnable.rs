@@ -12,6 +12,7 @@ use crate::stream::Observer;
 
 /// Per-invocation configuration. Defaults are sensible; override only
 /// what you need.
+#[derive(Clone)]
 pub struct RunnableConfig {
     /// Maximum number of graph supersteps / chain depth before erroring with
     /// `CognisError::RecursionLimit`.
@@ -129,6 +130,23 @@ mod tests {
     fn cancel_default_false() {
         let c = RunnableConfig::default();
         assert!(!c.is_cancelled());
+    }
+
+    #[test]
+    fn config_clones_with_extras_emptied() {
+        let mut c = RunnableConfig::default()
+            .with_recursion_limit(50)
+            .with_max_concurrency(8)
+            .with_tag("test");
+        c.extras.insert(42u32);
+        assert!(c.extras.contains::<u32>());
+
+        let cloned = c.clone();
+        assert_eq!(cloned.recursion_limit, 50);
+        assert_eq!(cloned.max_concurrency, 8);
+        assert_eq!(cloned.tags, vec!["test"]);
+        // Per the Extensions::clone contract (Plan #2), extras don't deep-clone.
+        assert!(cloned.extras.is_empty());
     }
 }
 
