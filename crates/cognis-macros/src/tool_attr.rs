@@ -40,6 +40,27 @@ use syn::{
 
 use crate::schema_attr::{self, Validator};
 
+/// Convert a `crate_path` string like `"cognis_core"` or `"cognis2_core"`
+/// into an absolute path token (`::cognis_core` / `::cognis2_core`) that
+/// can be interpolated into generated code with `quote!`.
+fn root_path(crate_path: &str) -> syn::Path {
+    let segments: Vec<syn::Ident> = crate_path
+        .split("::")
+        .map(|seg| syn::Ident::new(seg, proc_macro2::Span::call_site()))
+        .collect();
+    syn::parse_quote!(:: #(#segments)::*)
+}
+
+/// Stringify a `syn::Path` in the form schemars's `crate =` attribute expects.
+fn path_to_string(p: &syn::Path) -> String {
+    let segs: Vec<String> = p.segments.iter().map(|s| s.ident.to_string()).collect();
+    if p.leading_colon.is_some() {
+        format!("::{}::schemars", segs.join("::"))
+    } else {
+        format!("{}::schemars", segs.join("::"))
+    }
+}
+
 /// Parsed arguments of the `#[tool(...)]` attribute.
 #[derive(Default)]
 pub(crate) struct ToolArgs {
@@ -134,8 +155,9 @@ fn expand_fn(args: ToolArgs, item_fn: ItemFn) -> syn::Result<TokenStream2> {
     let description = args.description.clone().or(fn_doc).unwrap_or_default();
     let return_direct = args.return_direct.unwrap_or(false);
 
-    let args_struct = emit_args_struct(&args_struct_ident, &arg_specs);
-    let validate_impl = emit_validate_impl(&args_struct_ident, &arg_specs)?;
+    let root = root_path(&args.crate_path);
+    let args_struct = emit_args_struct(&args_struct_ident, &arg_specs, &root);
+    let validate_impl = emit_validate_impl(&args_struct_ident, &arg_specs, &root)?;
     let body_fn = emit_body_fn(&body_fn_ident, &item_fn)?;
     let base_tool_impl = emit_base_tool_impl_standalone(
         vis,
@@ -146,6 +168,7 @@ fn expand_fn(args: ToolArgs, item_fn: ItemFn) -> syn::Result<TokenStream2> {
         &description,
         return_direct,
         &arg_specs,
+        &root,
     );
 
     Ok(quote! {
@@ -251,8 +274,9 @@ fn expand_impl(args: ToolArgs, item_impl: ItemImpl) -> syn::Result<TokenStream2>
     let description = args.description.clone().or(method_doc).unwrap_or_default();
     let return_direct = args.return_direct.unwrap_or(false);
 
-    let args_struct = emit_args_struct(&args_struct_ident, &arg_specs);
-    let validate_impl = emit_validate_impl(&args_struct_ident, &arg_specs)?;
+    let root = root_path(&args.crate_path);
+    let args_struct = emit_args_struct(&args_struct_ident, &arg_specs, &root);
+    let validate_impl = emit_validate_impl(&args_struct_ident, &arg_specs, &root)?;
     let base_tool_impl = emit_base_tool_impl_method(
         &struct_path,
         &args_struct_ident,
@@ -261,6 +285,7 @@ fn expand_impl(args: ToolArgs, item_impl: ItemImpl) -> syn::Result<TokenStream2>
         &description,
         return_direct,
         &arg_specs,
+        &root,
     );
 
     // Strip helper attributes from the preserved impl block's method
@@ -394,7 +419,7 @@ fn unwrap_option(ty: &Type) -> (Type, bool) {
 // Code emission
 // ---------------------------------------------------------------------------
 
-fn emit_args_struct(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> TokenStream2 {
+fn emit_args_struct(struct_ident: &syn::Ident, specs: &[ArgSpec], root: &syn::Path) -> TokenStream2 {
     let fields = specs.iter().map(|s| {
         let ident = &s.ident;
         let ty = &s.ty;
@@ -404,9 +429,10 @@ fn emit_args_struct(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> TokenStream
             pub #ident: #ty,
         }
     });
+    let crate_str = path_to_string(root);
     quote! {
-        #[derive(::serde::Deserialize, ::cognis_core::schemars::JsonSchema)]
-        #[schemars(crate = "::cognis_core::schemars")]
+        #[derive(::serde::Deserialize, #root::schemars::JsonSchema)]
+        #[schemars(crate = #crate_str)]
         #[allow(non_camel_case_types, non_snake_case, dead_code)]
         struct #struct_ident {
             #(#fields)*
@@ -414,7 +440,7 @@ fn emit_args_struct(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> TokenStream
     }
 }
 
-fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Result<TokenStream2> {
+fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec], root: &syn::Path) -> syn::Result<TokenStream2> {
     let mut pattern_statics = Vec::new();
     let mut validator_stmts = Vec::new();
 
@@ -430,7 +456,7 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
                     let min_tok = option_f64(min);
                     let max_tok = option_f64(max);
                     checks.push(quote! {
-                        ::cognis_core::tools::validation::check_range(
+                        #root::tools::validation::check_range(
                             #field_name,
                             (*__v) as f64,
                             #min_tok,
@@ -448,7 +474,7 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
                         TypeKind::Vec | TypeKind::Other => quote! { __v.len() },
                     };
                     checks.push(quote! {
-                        ::cognis_core::tools::validation::check_length(
+                        #root::tools::validation::check_length(
                             #field_name,
                             #len_expr,
                             #min_tok,
@@ -473,20 +499,20 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
                     pattern_statics.push(quote! {
                         static #static_ident:
                             ::std::sync::OnceLock<
-                                ::cognis_core::tools::validation::__regex::Regex,
+                                #root::tools::validation::__regex::Regex,
                             > = ::std::sync::OnceLock::new();
                         #[allow(non_snake_case)]
                         fn #accessor_ident()
-                            -> &'static ::cognis_core::tools::validation::__regex::Regex
+                            -> &'static #root::tools::validation::__regex::Regex
                         {
                             #static_ident.get_or_init(|| {
-                                ::cognis_core::tools::validation::__regex::Regex::new(#pat_lit)
+                                #root::tools::validation::__regex::Regex::new(#pat_lit)
                                     .expect("regex validated at macro time")
                             })
                         }
                     });
                     checks.push(quote! {
-                        ::cognis_core::tools::validation::check_pattern(
+                        #root::tools::validation::check_pattern(
                             #field_name,
                             __v.as_str(),
                             #accessor_ident(),
@@ -496,7 +522,7 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
                 Validator::EnumValues(values) => {
                     let values_tok = values.iter().map(|s| quote! { #s });
                     checks.push(quote! {
-                        ::cognis_core::tools::validation::check_enum(
+                        #root::tools::validation::check_enum(
                             #field_name,
                             __v.as_str(),
                             &[#(#values_tok),*],
@@ -513,10 +539,10 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
                         schema_attr::FormatName::Ipv6 => quote! { Ipv6 },
                     };
                     checks.push(quote! {
-                        ::cognis_core::tools::validation::check_format(
+                        #root::tools::validation::check_format(
                             #field_name,
                             __v.as_str(),
-                            ::cognis_core::tools::validation::Format::#fmt_variant,
+                            #root::tools::validation::Format::#fmt_variant,
                         )?;
                     });
                 }
@@ -550,8 +576,8 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
 
     Ok(quote! {
         #(#pattern_statics)*
-        impl ::cognis_core::tools::validation::ValidateArgs for #struct_ident {
-            fn validate(&self) -> ::cognis_core::error::Result<()> {
+        impl #root::tools::validation::ValidateArgs for #struct_ident {
+            fn validate(&self) -> #root::error::Result<()> {
                 #(#validator_stmts)*
                 Ok(())
             }
@@ -585,6 +611,7 @@ fn emit_base_tool_impl_standalone(
     description: &str,
     return_direct: bool,
     specs: &[ArgSpec],
+    root: &syn::Path,
 ) -> TokenStream2 {
     let field_idents: Vec<_> = specs.iter().map(|s| &s.ident).collect();
     let return_direct_method = if return_direct {
@@ -594,11 +621,11 @@ fn emit_base_tool_impl_standalone(
     } else {
         None
     };
-    let schema_body = emit_args_schema_body(args_struct_ident, specs);
+    let schema_body = emit_args_schema_body(args_struct_ident, specs, root);
 
     quote! {
         #[::async_trait::async_trait]
-        impl ::cognis_core::tools::BaseTool for #struct_ident {
+        impl #root::tools::BaseTool for #struct_ident {
             fn name(&self) -> &str { #tool_name }
             fn description(&self) -> &str { #description }
             fn args_schema(&self) -> ::core::option::Option<::serde_json::Value> {
@@ -607,14 +634,14 @@ fn emit_base_tool_impl_standalone(
             #return_direct_method
             async fn _run(
                 &self,
-                input: ::cognis_core::tools::ToolInput,
-            ) -> ::cognis_core::error::Result<::cognis_core::tools::ToolOutput> {
+                input: #root::tools::ToolInput,
+            ) -> #root::error::Result<#root::tools::ToolOutput> {
                 let __json = input.into_json();
                 let __args: #args_struct_ident = ::serde_json::from_value(__json)
-                    .map_err(|e| ::cognis_core::error::CognisError::ToolValidationError(
+                    .map_err(|e| #root::error::CognisError::ToolValidationError(
                         e.to_string(),
                     ))?;
-                <#args_struct_ident as ::cognis_core::tools::validation::ValidateArgs>::validate(&__args)?;
+                <#args_struct_ident as #root::tools::validation::ValidateArgs>::validate(&__args)?;
                 #body_fn_ident(#(__args.#field_idents),*).await
             }
         }
@@ -630,6 +657,7 @@ fn emit_base_tool_impl_method(
     description: &str,
     return_direct: bool,
     specs: &[ArgSpec],
+    root: &syn::Path,
 ) -> TokenStream2 {
     let field_idents: Vec<_> = specs.iter().map(|s| &s.ident).collect();
     let return_direct_method = if return_direct {
@@ -639,11 +667,11 @@ fn emit_base_tool_impl_method(
     } else {
         None
     };
-    let schema_body = emit_args_schema_body(args_struct_ident, specs);
+    let schema_body = emit_args_schema_body(args_struct_ident, specs, root);
 
     quote! {
         #[::async_trait::async_trait]
-        impl ::cognis_core::tools::BaseTool for #struct_path {
+        impl #root::tools::BaseTool for #struct_path {
             fn name(&self) -> &str { #tool_name }
             fn description(&self) -> &str { #description }
             fn args_schema(&self) -> ::core::option::Option<::serde_json::Value> {
@@ -652,14 +680,14 @@ fn emit_base_tool_impl_method(
             #return_direct_method
             async fn _run(
                 &self,
-                input: ::cognis_core::tools::ToolInput,
-            ) -> ::cognis_core::error::Result<::cognis_core::tools::ToolOutput> {
+                input: #root::tools::ToolInput,
+            ) -> #root::error::Result<#root::tools::ToolOutput> {
                 let __json = input.into_json();
                 let __args: #args_struct_ident = ::serde_json::from_value(__json)
-                    .map_err(|e| ::cognis_core::error::CognisError::ToolValidationError(
+                    .map_err(|e| #root::error::CognisError::ToolValidationError(
                         e.to_string(),
                     ))?;
-                <#args_struct_ident as ::cognis_core::tools::validation::ValidateArgs>::validate(&__args)?;
+                <#args_struct_ident as #root::tools::validation::ValidateArgs>::validate(&__args)?;
                 self.#method_ident(#(__args.#field_idents),*).await
             }
         }
@@ -674,7 +702,7 @@ fn emit_base_tool_impl_method(
 /// converts to `serde_json::Value`, then inserts validator-derived keywords
 /// (minimum/maximum/minLength/maxLength/pattern/enum/format) into the
 /// matching `properties.<field>` objects.
-fn emit_args_schema_body(args_struct_ident: &syn::Ident, specs: &[ArgSpec]) -> TokenStream2 {
+fn emit_args_schema_body(args_struct_ident: &syn::Ident, specs: &[ArgSpec], root: &syn::Path) -> TokenStream2 {
     let mut field_mutations = Vec::new();
     for spec in specs {
         let field_name = spec.ident.to_string();
@@ -759,13 +787,13 @@ fn emit_args_schema_body(args_struct_ident: &syn::Ident, specs: &[ArgSpec]) -> T
 
     if field_mutations.is_empty() {
         return quote! {
-            ::serde_json::to_value(::cognis_core::schemars::schema_for!(#args_struct_ident)).ok()
+            ::serde_json::to_value(#root::schemars::schema_for!(#args_struct_ident)).ok()
         };
     }
 
     quote! {
         let mut __schema = ::serde_json::to_value(
-            ::cognis_core::schemars::schema_for!(#args_struct_ident)
+            #root::schemars::schema_for!(#args_struct_ident)
         ).ok()?;
         if let Some(__properties) = __schema
             .get_mut("properties")
