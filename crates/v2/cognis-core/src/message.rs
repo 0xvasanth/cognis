@@ -120,6 +120,18 @@ pub struct ToolCall {
     pub arguments: serde_json::Value,
 }
 
+impl From<String> for Message {
+    fn from(s: String) -> Self {
+        Self::human(s)
+    }
+}
+
+impl From<&str> for Message {
+    fn from(s: &str) -> Self {
+        Self::human(s)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
