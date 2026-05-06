@@ -27,7 +27,9 @@ pub mod chat;
 pub use chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, ToolCallDelta, Usage};
 
 pub mod tools;
-pub use tools::{BaseTool, Tool, ToolDefinition, ToolRegistry};
+pub use tools::{
+    BaseTool, SchemaBasedTool, Tool, ToolDefinition, ToolInput, ToolOutput, ToolRegistry,
+};
 pub mod client;
 pub use client::{Client, ClientBuilder};
 
