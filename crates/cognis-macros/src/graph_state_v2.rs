@@ -76,44 +76,50 @@ pub fn derive_graph_state_v2(input: DeriveInput) -> TokenStream {
         fields.push(ReducedField { ident, ty, reducer });
     }
 
-    let update_fields = fields.iter().filter(|f| !matches!(f.reducer, Reducer::Skip)).map(|f| {
-        let id = &f.ident;
-        let ty = &f.ty;
-        // Update type: Append / Custom keep the same type; Last wraps in Option;
-        // Add takes the same numeric type; Merge takes serde_json::Value.
-        let upd_ty = match &f.reducer {
-            Reducer::Last => quote! { ::core::option::Option<#ty> },
-            Reducer::Merge => quote! { ::core::option::Option<::serde_json::Value> },
-            _ => quote! { #ty },
-        };
-        quote! { pub #id: #upd_ty, }
-    });
+    let update_fields = fields
+        .iter()
+        .filter(|f| !matches!(f.reducer, Reducer::Skip))
+        .map(|f| {
+            let id = &f.ident;
+            let ty = &f.ty;
+            // Update type: Append / Custom keep the same type; Last wraps in Option;
+            // Add takes the same numeric type; Merge takes serde_json::Value.
+            let upd_ty = match &f.reducer {
+                Reducer::Last => quote! { ::core::option::Option<#ty> },
+                Reducer::Merge => quote! { ::core::option::Option<::serde_json::Value> },
+                _ => quote! { #ty },
+            };
+            quote! { pub #id: #upd_ty, }
+        });
 
-    let apply_arms = fields.iter().filter(|f| !matches!(f.reducer, Reducer::Skip)).map(|f| {
-        let id = &f.ident;
-        match &f.reducer {
-            Reducer::Append => quote! {
-                self.#id.extend(update.#id);
-            },
-            Reducer::Add => quote! {
-                self.#id = self.#id + update.#id;
-            },
-            Reducer::Last => quote! {
-                if let ::core::option::Option::Some(v) = update.#id {
-                    self.#id = v;
-                }
-            },
-            Reducer::Merge => quote! {
-                if let ::core::option::Option::Some(v) = update.#id {
-                    #root::__merge_json(&mut self.#id, v);
-                }
-            },
-            Reducer::Custom(path) => quote! {
-                #path(&mut self.#id, update.#id);
-            },
-            Reducer::Skip => quote! {},
-        }
-    });
+    let apply_arms = fields
+        .iter()
+        .filter(|f| !matches!(f.reducer, Reducer::Skip))
+        .map(|f| {
+            let id = &f.ident;
+            match &f.reducer {
+                Reducer::Append => quote! {
+                    self.#id.extend(update.#id);
+                },
+                Reducer::Add => quote! {
+                    self.#id = self.#id + update.#id;
+                },
+                Reducer::Last => quote! {
+                    if let ::core::option::Option::Some(v) = update.#id {
+                        self.#id = v;
+                    }
+                },
+                Reducer::Merge => quote! {
+                    if let ::core::option::Option::Some(v) = update.#id {
+                        #root::__merge_json(&mut self.#id, v);
+                    }
+                },
+                Reducer::Custom(path) => quote! {
+                    #path(&mut self.#id, update.#id);
+                },
+                Reducer::Skip => quote! {},
+            }
+        });
 
     quote! {
         #[derive(::core::default::Default, ::core::clone::Clone, ::core::fmt::Debug)]

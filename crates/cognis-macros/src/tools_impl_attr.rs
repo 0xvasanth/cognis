@@ -68,7 +68,8 @@ fn parse_inner_tool_attr(attr: &Attribute) -> syn::Result<InnerToolArgs> {
             description = Some(lit.value());
             Ok(())
         } else {
-            Err(meta.error("inside #[tools_impl], inner #[tool] supports only name and description"))
+            Err(meta
+                .error("inside #[tools_impl], inner #[tool] supports only name and description"))
         }
     })?;
     Ok(InnerToolArgs { name, description })

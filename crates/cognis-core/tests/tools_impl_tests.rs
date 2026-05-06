@@ -40,12 +40,16 @@ impl Calculator {
     /// Add two numbers (doc-comment description).
     #[tool]
     async fn add(&self, p: AddParams) -> cognis_core::error::Result<ToolOutput> {
-        Ok(ToolOutput::Content(serde_json::json!(self.round(p.a + p.b))))
+        Ok(ToolOutput::Content(
+            serde_json::json!(self.round(p.a + p.b)),
+        ))
     }
 
     #[tool(description = "Multiply two numbers")]
     async fn mul(&self, p: MulParams) -> cognis_core::error::Result<ToolOutput> {
-        Ok(ToolOutput::Content(serde_json::json!(self.round(p.a * p.b))))
+        Ok(ToolOutput::Content(
+            serde_json::json!(self.round(p.a * p.b)),
+        ))
     }
 
     fn helper(&self) -> u32 {
@@ -65,7 +69,10 @@ async fn into_tools_yields_two_tools() {
     assert!(names.contains(&"mul"));
 
     let add_tool = tools.iter().find(|t| t.name() == "add").unwrap();
-    assert_eq!(add_tool.description(), "Add two numbers (doc-comment description).");
+    assert_eq!(
+        add_tool.description(),
+        "Add two numbers (doc-comment description)."
+    );
     let mul_tool = tools.iter().find(|t| t.name() == "mul").unwrap();
     assert_eq!(mul_tool.description(), "Multiply two numbers");
 }
@@ -80,9 +87,18 @@ async fn schema_unwraps_single_params_struct() {
 
     let schema = add.args_schema().expect("schema present");
     let props = schema["properties"].as_object().expect("properties");
-    assert!(props.contains_key("a"), "expected `a` at top level: {schema}");
-    assert!(props.contains_key("b"), "expected `b` at top level: {schema}");
-    assert!(!props.contains_key("p"), "did not expect `p` wrapper: {schema}");
+    assert!(
+        props.contains_key("a"),
+        "expected `a` at top level: {schema}"
+    );
+    assert!(
+        props.contains_key("b"),
+        "expected `b` at top level: {schema}"
+    );
+    assert!(
+        !props.contains_key("p"),
+        "did not expect `p` wrapper: {schema}"
+    );
 }
 
 #[tokio::test]
@@ -93,11 +109,11 @@ async fn add_tool_uses_shared_state() {
 
     let map: HashMap<String, serde_json::Value> =
         serde_json::from_value(serde_json::json!({"a": 1.234, "b": 2.345})).unwrap();
-    let out = add
-        ._run(ToolInput::Structured(map))
-        .await
-        .unwrap();
-    let val = match out { ToolOutput::Content(v) => v, _ => panic!("wrong variant") };
+    let out = add._run(ToolInput::Structured(map)).await.unwrap();
+    let val = match out {
+        ToolOutput::Content(v) => v,
+        _ => panic!("wrong variant"),
+    };
     // 1.234 + 2.345 = 3.579, rounded to precision 1 = 3.6.
     assert_eq!(val.as_f64().unwrap(), 3.6);
 }
@@ -110,11 +126,11 @@ async fn mul_tool_uses_shared_state() {
 
     let map: HashMap<String, serde_json::Value> =
         serde_json::from_value(serde_json::json!({"a": 2.4, "b": 3.0})).unwrap();
-    let out = mul
-        ._run(ToolInput::Structured(map))
-        .await
-        .unwrap();
-    let val = match out { ToolOutput::Content(v) => v, _ => panic!("wrong variant") };
+    let out = mul._run(ToolInput::Structured(map)).await.unwrap();
+    let val = match out {
+        ToolOutput::Content(v) => v,
+        _ => panic!("wrong variant"),
+    };
     // 2.4 * 3.0 = 7.2, rounded to precision 0 = 7.0.
     assert_eq!(val.as_f64().unwrap(), 7.0);
 }

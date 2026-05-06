@@ -419,7 +419,11 @@ fn unwrap_option(ty: &Type) -> (Type, bool) {
 // Code emission
 // ---------------------------------------------------------------------------
 
-fn emit_args_struct(struct_ident: &syn::Ident, specs: &[ArgSpec], root: &syn::Path) -> TokenStream2 {
+fn emit_args_struct(
+    struct_ident: &syn::Ident,
+    specs: &[ArgSpec],
+    root: &syn::Path,
+) -> TokenStream2 {
     let fields = specs.iter().map(|s| {
         let ident = &s.ident;
         let ty = &s.ty;
@@ -440,7 +444,11 @@ fn emit_args_struct(struct_ident: &syn::Ident, specs: &[ArgSpec], root: &syn::Pa
     }
 }
 
-fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec], root: &syn::Path) -> syn::Result<TokenStream2> {
+fn emit_validate_impl(
+    struct_ident: &syn::Ident,
+    specs: &[ArgSpec],
+    root: &syn::Path,
+) -> syn::Result<TokenStream2> {
     let mut pattern_statics = Vec::new();
     let mut validator_stmts = Vec::new();
 
@@ -702,7 +710,11 @@ fn emit_base_tool_impl_method(
 /// converts to `serde_json::Value`, then inserts validator-derived keywords
 /// (minimum/maximum/minLength/maxLength/pattern/enum/format) into the
 /// matching `properties.<field>` objects.
-fn emit_args_schema_body(args_struct_ident: &syn::Ident, specs: &[ArgSpec], root: &syn::Path) -> TokenStream2 {
+fn emit_args_schema_body(
+    args_struct_ident: &syn::Ident,
+    specs: &[ArgSpec],
+    root: &syn::Path,
+) -> TokenStream2 {
     let mut field_mutations = Vec::new();
     for spec in specs {
         let field_name = spec.ident.to_string();

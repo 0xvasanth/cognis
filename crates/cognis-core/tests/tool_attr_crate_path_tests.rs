@@ -10,7 +10,11 @@ use cognis_core::tools::ToolOutput;
 use serde_json::json;
 use std::collections::HashMap;
 
-#[tool(name = "add_explicit", description = "Add two numbers", crate_path = "cognis_core")]
+#[tool(
+    name = "add_explicit",
+    description = "Add two numbers",
+    crate_path = "cognis_core"
+)]
 async fn add_explicit(
     /// First number
     a: f64,
@@ -47,12 +51,6 @@ async fn schema_has_no_dollar_ref() {
     let t = AddExplicit;
     let schema = t.args_schema().expect("schema present");
     let s = schema.to_string();
-    assert!(
-        !s.contains("$ref"),
-        "schema must not contain $ref: {s}"
-    );
-    assert!(
-        !s.contains("$defs"),
-        "schema must not contain $defs: {s}"
-    );
+    assert!(!s.contains("$ref"), "schema must not contain $ref: {s}");
+    assert!(!s.contains("$defs"), "schema must not contain $defs: {s}");
 }

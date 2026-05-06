@@ -63,8 +63,14 @@ fn apply_append_concatenates() {
 #[test]
 fn apply_add_increments() {
     use cognis2_graph::GraphState;
-    let mut s = AgentState { iterations: 5, ..Default::default() };
-    s.apply(AgentStateUpdate { iterations: 3, ..Default::default() });
+    let mut s = AgentState {
+        iterations: 5,
+        ..Default::default()
+    };
+    s.apply(AgentStateUpdate {
+        iterations: 3,
+        ..Default::default()
+    });
     assert_eq!(s.iterations, 8);
 }
 
@@ -90,7 +96,10 @@ fn apply_last_keeps_existing_when_none() {
         last_intent: Some("keep".into()),
         ..Default::default()
     };
-    s.apply(AgentStateUpdate { last_intent: None, ..Default::default() });
+    s.apply(AgentStateUpdate {
+        last_intent: None,
+        ..Default::default()
+    });
     assert_eq!(s.last_intent.as_deref(), Some("keep"));
 }
 
