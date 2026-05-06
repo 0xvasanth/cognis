@@ -15,7 +15,7 @@ pub mod stream;
 pub use error::{CognisError, Result};
 pub use extensions::Extensions;
 pub use message::{AiMessage, HumanMessage, Message, SystemMessage, ToolCall, ToolMessage};
-pub use stream::{Event, EventStream, Observer};
+pub use stream::{Event, EventStream, Observer, RunnableStream};
 
 /// Re-export of the [`schemars`] crate. v2 user code uses
 /// `cognis2_core::schemars::JsonSchema` for derive-driven schema generation.

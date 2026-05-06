@@ -4,7 +4,7 @@
 use std::pin::Pin;
 use std::sync::Arc;
 
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -131,6 +131,54 @@ pub struct RunnableStream<O> {
     inner: Pin<Box<dyn Stream<Item = crate::Result<O>> + Send>>,
 }
 
+impl<O> RunnableStream<O>
+where
+    O: Send + 'static,
+{
+    /// Wrap any `Stream<Item = Result<O>>`.
+    pub fn new(s: impl Stream<Item = crate::Result<O>> + Send + 'static) -> Self {
+        Self { inner: Box::pin(s) }
+    }
+
+    /// Build from a single value (one-shot stream).
+    pub fn once(value: crate::Result<O>) -> Self {
+        Self::new(futures::stream::once(async move { value }))
+    }
+
+    /// Collect all items into a `Vec`. Stops at the first `Err`.
+    pub async fn collect_into_vec(mut self) -> crate::Result<Vec<O>> {
+        let mut out = Vec::new();
+        while let Some(item) = self.inner.next().await {
+            out.push(item?);
+        }
+        Ok(out)
+    }
+
+    /// Apply a side-effect callback to each item (errors pass through unchanged).
+    pub fn with_callback<F>(self, f: F) -> Self
+    where
+        F: Fn(&O) + Send + Sync + 'static,
+    {
+        let inner = self.inner.map(move |item| {
+            if let Ok(ref v) = item {
+                f(v);
+            }
+            item
+        });
+        Self::new(inner)
+    }
+}
+
+impl<O> Stream for RunnableStream<O> {
+    type Item = crate::Result<O>;
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.inner.as_mut().poll_next(cx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,5 +208,39 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         assert!(s.contains("\"type\":\"OnLlmToken\""));
         assert!(s.contains("\"token\":\"hi\""));
+    }
+
+    #[tokio::test]
+    async fn runnable_stream_collect() {
+        let s = RunnableStream::new(futures::stream::iter(vec![
+            Ok(1u32),
+            Ok(2),
+            Ok(3),
+        ]));
+        let v = s.collect_into_vec().await.unwrap();
+        assert_eq!(v, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn runnable_stream_callback() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter2 = counter.clone();
+        let s = RunnableStream::new(futures::stream::iter(vec![Ok(10u32), Ok(20)]))
+            .with_callback(move |v| {
+                counter2.fetch_add(*v as usize, Ordering::SeqCst);
+            });
+        let _ = s.collect_into_vec().await.unwrap();
+        assert_eq!(counter.load(Ordering::SeqCst), 30);
+    }
+
+    #[tokio::test]
+    async fn runnable_stream_short_circuits_on_error() {
+        let s: RunnableStream<u32> = RunnableStream::new(futures::stream::iter(vec![
+            Ok(1),
+            Err(crate::CognisError::Internal("stop".into())),
+            Ok(3),
+        ]));
+        let result = s.collect_into_vec().await;
+        assert!(result.is_err());
     }
 }
