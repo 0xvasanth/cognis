@@ -8,13 +8,14 @@
 pub mod error;
 pub mod extensions;
 pub mod message;
-// Filled in by Tasks 4-6:
+pub mod stream;
+// Filled in by Tasks 6-7:
 // pub mod runnable;
-// pub mod stream;
 
 pub use error::{CognisError, Result};
 pub use extensions::Extensions;
 pub use message::{AiMessage, HumanMessage, Message, SystemMessage, ToolCall, ToolMessage};
+pub use stream::{Event, EventStream, Observer};
 
 /// Re-export of the [`schemars`] crate. v2 user code uses
 /// `cognis2_core::schemars::JsonSchema` for derive-driven schema generation.
