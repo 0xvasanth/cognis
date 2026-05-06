@@ -18,7 +18,7 @@ struct AgentState {
     iterations: u32,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct AgentStateUpdate {
     messages: Vec<String>,
     iterations: u32,

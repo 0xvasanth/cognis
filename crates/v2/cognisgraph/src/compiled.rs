@@ -112,10 +112,11 @@ impl<S: GraphState + Clone> CompiledGraph<S> {
 #[async_trait]
 impl<S> Runnable<S, S> for CompiledGraph<S>
 where
-    S: GraphState + Clone,
+    S: GraphState + Clone + Send + 'static,
+    <S as GraphState>::Update: Clone,
 {
     async fn invoke(&self, input: S, config: RunnableConfig) -> Result<S> {
-        engine::run(&self.graph, input, config, self.checkpointer.as_ref()).await
+        engine::run(self, input, config).await
     }
 
     fn name(&self) -> &str {
@@ -134,7 +135,7 @@ mod tests {
         n: u32,
     }
 
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     struct CounterUpdate {
         n: u32,
     }
