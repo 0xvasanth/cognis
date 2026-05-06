@@ -176,18 +176,17 @@ impl fmt::Display for AgentEventType {
                 step,
                 status,
             } => write!(f, "PlanUpdated({}, step {}, {})", plan_id, step, status),
-            Self::PendingApproval { token, tool, .. } => {
-                write!(f, "PendingApproval(tool={}, token={})", tool, token)
+            // Note: `token` is intentionally omitted from Display output.
+            // Approval tokens are actionable credentials (anyone holding one
+            // can approve/reject the invocation), so they must not leak into
+            // logs. Consumers that need the token should read the struct field.
+            Self::PendingApproval { tool, .. } => {
+                write!(f, "PendingApproval(tool={}, token=<redacted>)", tool)
             }
-            Self::ApprovalResolved {
-                token,
-                tool,
-                approved,
-                ..
-            } => write!(
+            Self::ApprovalResolved { tool, approved, .. } => write!(
                 f,
-                "ApprovalResolved(tool={}, token={}, approved={})",
-                tool, token, approved
+                "ApprovalResolved(tool={}, token=<redacted>, approved={})",
+                tool, approved
             ),
             Self::Custom { name, .. } => write!(f, "Custom({})", name),
         }
