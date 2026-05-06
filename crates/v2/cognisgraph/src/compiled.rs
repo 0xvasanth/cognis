@@ -2,6 +2,7 @@
 //! composes anywhere a `Runnable` is expected (including as a node
 //! inside another graph).
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -19,6 +20,8 @@ use crate::state::GraphState;
 pub struct CompiledGraph<S: GraphState> {
     pub(crate) graph: Graph<S>,
     pub(crate) checkpointer: Option<Arc<dyn Checkpointer<S>>>,
+    pub(crate) interrupt_before: HashSet<String>,
+    pub(crate) interrupt_after: HashSet<String>,
 }
 
 impl<S: GraphState> std::fmt::Debug for CompiledGraph<S> {
@@ -26,6 +29,8 @@ impl<S: GraphState> std::fmt::Debug for CompiledGraph<S> {
         f.debug_struct("CompiledGraph")
             .field("node_count", &self.graph.nodes.len())
             .field("has_checkpointer", &self.checkpointer.is_some())
+            .field("interrupt_before", &self.interrupt_before)
+            .field("interrupt_after", &self.interrupt_after)
             .finish()
     }
 }
@@ -35,6 +40,8 @@ impl<S: GraphState> CompiledGraph<S> {
         Self {
             graph,
             checkpointer: None,
+            interrupt_before: HashSet::new(),
+            interrupt_after: HashSet::new(),
         }
     }
 
@@ -54,6 +61,51 @@ impl<S: GraphState + Clone> CompiledGraph<S> {
     pub fn with_checkpointer(mut self, cp: Arc<dyn Checkpointer<S>>) -> Self {
         self.checkpointer = Some(cp);
         self
+    }
+
+    /// Pause the graph BEFORE each named node executes. Requires a checkpointer
+    /// (errors at invoke time if not configured). Interrupt names are validated
+    /// at invoke time, not compile time, because `with_interrupt_before` runs
+    /// after `compile()`. Resume via `CompiledGraph::resume`.
+    pub fn with_interrupt_before<I, N>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = N>,
+        N: Into<String>,
+    {
+        self.interrupt_before.extend(names.into_iter().map(Into::into));
+        self
+    }
+
+    /// Pause the graph AFTER each named node completes (state already updated).
+    /// Requires a checkpointer. Resume via `CompiledGraph::resume`.
+    pub fn with_interrupt_after<I, N>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = N>,
+        N: Into<String>,
+    {
+        self.interrupt_after.extend(names.into_iter().map(Into::into));
+        self
+    }
+
+    /// Continue execution from a previously-interrupted run.
+    ///
+    /// `state` is the (possibly user-edited) state to seed the next superstep
+    /// with. `run_id` and `step` come from the original `GraphInterrupted` error.
+    /// The resume's `RunnableConfig::run_id` is set to `run_id` so observers
+    /// can correlate with the original run.
+    pub async fn resume(
+        &self,
+        run_id: uuid::Uuid,
+        step: u64,
+        state: S,
+        config: RunnableConfig,
+    ) -> Result<S>
+    where
+        S::Update: Clone,
+    {
+        let mut cfg = config;
+        cfg.run_id = run_id;
+        engine::resume(self, state, cfg, step).await
     }
 }
 

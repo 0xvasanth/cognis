@@ -143,10 +143,49 @@ where
                 active = next;
                 active_name = next_name;
             }
+            Goto::Send(targets) => {
+                // Slice 1: route to first target. Slice 2 handles true Send fan-out.
+                if let Some((next_name, _)) = targets.into_iter().next() {
+                    let next = graph
+                        .nodes
+                        .get(&next_name)
+                        .ok_or_else(|| {
+                            CognisError::Configuration(format!(
+                                "node `{active_name}` sent to unknown node `{next_name}`"
+                            ))
+                        })?
+                        .clone();
+                    active = next;
+                    active_name = next_name;
+                } else {
+                    return Err(CognisError::Configuration(format!(
+                        "node `{active_name}` returned Goto::Send([])"
+                    )));
+                }
+            }
         }
     }
 
     Err(CognisError::RecursionLimit {
         limit: recursion_limit,
     })
+}
+
+/// Stub — replaced in Task 4 by the real implementation.
+pub(crate) async fn resume<S>(
+    compiled: &crate::compiled::CompiledGraph<S>,
+    state: S,
+    config: RunnableConfig,
+    _start_step: u64,
+) -> Result<S>
+where
+    S: GraphState + Clone,
+{
+    run(
+        &compiled.graph,
+        state,
+        config,
+        compiled.checkpointer.as_ref(),
+    )
+    .await
 }

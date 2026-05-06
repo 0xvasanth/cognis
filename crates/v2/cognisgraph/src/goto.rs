@@ -3,16 +3,20 @@
 /// Routing instruction returned by a node, telling the engine which node(s)
 /// to schedule next. Branching/looping is data: a node decides at runtime
 /// where to send execution.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Goto {
     /// Jump to a single named node.
     Node(String),
 
-    /// Fan out to multiple named nodes in parallel.
-    /// In slice 1 the engine treats Multiple as sequential single-node
-    /// dispatch (first target); true parallelism lands in slice 2 with
-    /// the channel-write semantics worked out.
+    /// Fan out to multiple named nodes in parallel. All named nodes run in
+    /// the next superstep; their updates merge atomically.
     Multiple(Vec<String>),
+
+    /// Dispatch to named nodes with per-target payloads. Each `(name, payload)`
+    /// pair spawns one task; the receiving node reads the payload via
+    /// `NodeCtx::payload()`. Useful for map-reduce: fan one node into many
+    /// workers, each with different input.
+    Send(Vec<(String, serde_json::Value)>),
 
     /// Terminate the graph.
     End,
@@ -34,6 +38,7 @@ impl Goto {
         match self {
             Goto::Node(n) => vec![n.as_str()],
             Goto::Multiple(ns) => ns.iter().map(|s| s.as_str()).collect(),
+            Goto::Send(targets) => targets.iter().map(|(n, _)| n.as_str()).collect(),
             Goto::End => vec![],
         }
     }
