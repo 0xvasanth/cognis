@@ -136,10 +136,7 @@ async fn goto_send_dispatches_per_target_payloads() {
         .node(
             "process",
             node_fn::<Counter, _, _>("process", |_, ctx| {
-                let payload = ctx
-                    .payload()
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null);
+                let payload = ctx.payload().cloned().unwrap_or(serde_json::Value::Null);
                 async move {
                     let add = payload["add"].as_u64().unwrap_or(0) as u32;
                     Ok(NodeOut {
@@ -166,8 +163,7 @@ async fn goto_send_dispatches_per_target_payloads() {
 
 #[tokio::test]
 async fn interrupt_before_pauses_and_resumes() {
-    let cp: Arc<dyn Checkpointer<Counter>> =
-        Arc::new(InMemoryCheckpointer::<Counter>::new());
+    let cp: Arc<dyn Checkpointer<Counter>> = Arc::new(InMemoryCheckpointer::<Counter>::new());
 
     let g = Graph::<Counter>::new()
         .node(
@@ -285,8 +281,7 @@ async fn interrupt_without_checkpointer_errors() {
 
 #[tokio::test]
 async fn interrupt_referencing_unknown_node_errors() {
-    let cp: Arc<dyn Checkpointer<Counter>> =
-        Arc::new(InMemoryCheckpointer::<Counter>::new());
+    let cp: Arc<dyn Checkpointer<Counter>> = Arc::new(InMemoryCheckpointer::<Counter>::new());
     let g = Graph::<Counter>::new()
         .node(
             "a",

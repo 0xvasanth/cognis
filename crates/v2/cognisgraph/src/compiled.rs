@@ -72,7 +72,8 @@ impl<S: GraphState + Clone> CompiledGraph<S> {
         I: IntoIterator<Item = N>,
         N: Into<String>,
     {
-        self.interrupt_before.extend(names.into_iter().map(Into::into));
+        self.interrupt_before
+            .extend(names.into_iter().map(Into::into));
         self
     }
 
@@ -83,7 +84,8 @@ impl<S: GraphState + Clone> CompiledGraph<S> {
         I: IntoIterator<Item = N>,
         N: Into<String>,
     {
-        self.interrupt_after.extend(names.into_iter().map(Into::into));
+        self.interrupt_after
+            .extend(names.into_iter().map(Into::into));
         self
     }
 
@@ -152,7 +154,9 @@ where
             let _ = engine::run(&this, input, cfg).await;
         });
 
-        Ok(cognis2_core::EventStream::new(UnboundedReceiverStream::new(rx)))
+        Ok(cognis2_core::EventStream::new(
+            UnboundedReceiverStream::new(rx),
+        ))
     }
 }
 
@@ -356,16 +360,12 @@ mod tests {
         while let Some(e) = s.next().await {
             events.push(e);
         }
-        assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, Event::OnNodeStart { node, .. } if node == "a"))
-        );
-        assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, Event::OnNodeStart { node, .. } if node == "b"))
-        );
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, Event::OnNodeStart { node, .. } if node == "a")));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, Event::OnNodeStart { node, .. } if node == "b")));
         assert!(events.iter().any(|e| matches!(e, Event::OnEnd { .. })));
     }
 }

@@ -131,11 +131,7 @@ mod tests {
             extras: Default::default(),
         };
         let cfg = RunnableConfig::default();
-        let ctx = NodeCtx {
-            run_id: Uuid::nil(),
-            step: 0,
-            config: &cfg,
-        };
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
 
         let out = node.execute(&state, &ctx).await.unwrap();
         assert_eq!(out.update.messages.len(), 1);
@@ -164,11 +160,7 @@ mod tests {
             extras: Default::default(),
         };
         let cfg = RunnableConfig::default();
-        let ctx = NodeCtx {
-            run_id: Uuid::nil(),
-            step: 0,
-            config: &cfg,
-        };
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
         let out = node.execute(&state, &ctx).await.unwrap();
         if let Message::Tool(t) = &out.update.messages[0] {
             assert!(t.content.contains("not registered"));
@@ -184,11 +176,7 @@ mod tests {
             extras: Default::default(),
         };
         let cfg = RunnableConfig::default();
-        let ctx = NodeCtx {
-            run_id: Uuid::nil(),
-            step: 0,
-            config: &cfg,
-        };
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
         let result = node.execute(&state, &ctx).await;
         assert!(result.is_err());
         let err = result.err().unwrap();

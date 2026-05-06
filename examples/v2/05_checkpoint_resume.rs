@@ -10,7 +10,7 @@ struct State {
     count: u32,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct StateUpdate {
     count: u32,
 }

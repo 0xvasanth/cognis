@@ -52,8 +52,9 @@ pub struct NodeCtx<'a> {
 }
 
 impl<'a> NodeCtx<'a> {
-    /// Engine-internal constructor.
-    pub(crate) fn new(run_id: Uuid, step: u64, config: &'a RunnableConfig) -> Self {
+    /// Create a new `NodeCtx`. Primarily used by the engine; exposed publicly
+    /// so node implementations in external crates can construct test contexts.
+    pub fn new(run_id: Uuid, step: u64, config: &'a RunnableConfig) -> Self {
         Self {
             run_id,
             step,

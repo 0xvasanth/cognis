@@ -154,11 +154,7 @@ mod tests {
         let client = Client::new(provider);
         let node = ThinkNode::new(client, Vec::new(), 10);
         let cfg = RunnableConfig::default();
-        let ctx = NodeCtx {
-            run_id: Uuid::nil(),
-            step: 0,
-            config: &cfg,
-        };
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
         let out = node.execute(&AgentState::default(), &ctx).await.unwrap();
         assert!(matches!(out.goto, Goto::Node(ref s) if s == "act"));
         assert_eq!(out.update.iterations, 1);
@@ -170,11 +166,7 @@ mod tests {
         let client = Client::new(provider);
         let node = ThinkNode::new(client, Vec::new(), 10);
         let cfg = RunnableConfig::default();
-        let ctx = NodeCtx {
-            run_id: Uuid::nil(),
-            step: 0,
-            config: &cfg,
-        };
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
         let out = node.execute(&AgentState::default(), &ctx).await.unwrap();
         assert!(matches!(out.goto, Goto::End));
         assert_eq!(out.update.iterations, 1);
@@ -190,11 +182,7 @@ mod tests {
             ..Default::default()
         };
         let cfg = RunnableConfig::default();
-        let ctx = NodeCtx {
-            run_id: Uuid::nil(),
-            step: 0,
-            config: &cfg,
-        };
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
         let out = node.execute(&state, &ctx).await.unwrap();
         assert!(matches!(out.goto, Goto::End));
         assert!(out.update.messages[0]
@@ -212,11 +200,7 @@ mod tests {
             ..Default::default()
         };
         let cfg = RunnableConfig::default();
-        let ctx = NodeCtx {
-            run_id: Uuid::nil(),
-            step: 0,
-            config: &cfg,
-        };
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
         node.execute(&state, &ctx).await.unwrap();
         let calls = provider.received.lock().unwrap();
         assert_eq!(calls.len(), 1);

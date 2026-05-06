@@ -88,9 +88,7 @@ where
         .graph
         .nodes
         .get(&start_name)
-        .ok_or_else(|| {
-            CognisError::Configuration(format!("start node `{start_name}` missing"))
-        })?
+        .ok_or_else(|| CognisError::Configuration(format!("start node `{start_name}` missing")))?
         .clone();
 
     let active = vec![ActiveTask {
@@ -123,7 +121,9 @@ where
 
     while !active.is_empty() {
         if step >= max_step {
-            return Err(CognisError::RecursionLimit { limit: recursion_limit });
+            return Err(CognisError::RecursionLimit {
+                limit: recursion_limit,
+            });
         }
         if config.is_cancelled() {
             return Err(CognisError::Cancelled);
@@ -199,12 +199,20 @@ where
                 }
                 Goto::Node(name) => {
                     let node = lookup_node(&compiled.graph, &name)?;
-                    next_active.push(ActiveTask { name, node, payload: None });
+                    next_active.push(ActiveTask {
+                        name,
+                        node,
+                        payload: None,
+                    });
                 }
                 Goto::Multiple(names) => {
                     for name in names {
                         let node = lookup_node(&compiled.graph, &name)?;
-                        next_active.push(ActiveTask { name, node, payload: None });
+                        next_active.push(ActiveTask {
+                            name,
+                            node,
+                            payload: None,
+                        });
                     }
                 }
                 Goto::Send(targets) => {
