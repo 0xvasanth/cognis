@@ -185,9 +185,18 @@ fn parse_crate_path(attrs: &[Attribute]) -> Option<String> {
 }
 
 fn root_path(crate_path: &str) -> syn::Path {
-    let segments: Vec<syn::Ident> = crate_path
-        .split("::")
-        .map(|seg| syn::Ident::new(seg, Span::call_site()))
-        .collect();
-    syn::parse_quote!(:: #(#segments)::*)
+    // If the path starts with "crate::", emit it without a leading "::" so
+    // that `crate::foo::bar` generates the correct relative path. All other
+    // paths get a leading "::" to anchor them as absolute.
+    let path: syn::Path = syn::parse_str(crate_path).expect("crate_path must be a valid path");
+    if crate_path.starts_with("crate::") || crate_path == "crate" {
+        path
+    } else {
+        // Prepend leading colons for absolute resolution.
+        let segments: Vec<syn::Ident> = crate_path
+            .split("::")
+            .map(|seg| syn::Ident::new(seg, Span::call_site()))
+            .collect();
+        syn::parse_quote!(:: #(#segments)::*)
+    }
 }
