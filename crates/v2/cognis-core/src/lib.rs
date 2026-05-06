@@ -8,13 +8,15 @@
 pub mod error;
 pub mod extensions;
 pub mod message;
+pub mod runnable;
 pub mod stream;
-// Filled in by Tasks 6-7:
-// pub mod runnable;
+// Filled in by Task 7:
+// (Runnable trait itself appended to runnable.rs)
 
 pub use error::{CognisError, Result};
 pub use extensions::Extensions;
 pub use message::{AiMessage, HumanMessage, Message, SystemMessage, ToolCall, ToolMessage};
+pub use runnable::RunnableConfig;
 pub use stream::{Event, EventStream, Observer, RunnableStream};
 
 /// Re-export of the [`schemars`] crate. v2 user code uses
