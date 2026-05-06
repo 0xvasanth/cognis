@@ -6,6 +6,7 @@ pub mod types;
 pub mod validation;
 
 pub use schema_based::SchemaBasedTool;
+pub use simple::__simple_async_trait;
 pub use types::{ToolInput, ToolOutput};
 pub use validation::{Format, ValidateArgs};
 
