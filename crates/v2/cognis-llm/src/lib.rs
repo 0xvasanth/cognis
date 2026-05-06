@@ -21,6 +21,7 @@ pub use cognis2_core::message;
 pub use cognis2_core::{AiMessage, HumanMessage, Message, SystemMessage, ToolCall, ToolMessage};
 
 pub mod tools;
+pub use tools::{BaseTool, Tool, ToolDefinition, ToolRegistry};
 // Filled in by subsequent tasks:
 // pub mod chat;
 // pub mod client;
