@@ -9,6 +9,7 @@ members = [
     "crates/examples",
     "crates/v2/cognis-core",
     "crates/v2/cognisgraph",
+    "crates/v2/cognis-llm",
 ]
 
 [workspace.package]
