@@ -122,6 +122,42 @@ where
     fn name(&self) -> &str {
         "CompiledGraph"
     }
+
+    /// Override the default `stream_events` to emit real per-node events as
+    /// the engine runs (real-time, not synthetic OnEnd-only). The `S: Serialize`
+    /// bound matches the trait's default method bound (I=O=S here). Engine
+    /// events embed `serde_json::Value::Null` so we never actually serialize S.
+    async fn stream_events(
+        &self,
+        input: S,
+        config: RunnableConfig,
+    ) -> Result<cognis2_core::EventStream>
+    where
+        S: serde::Serialize,
+    {
+        use cognis2_core::Observer;
+        use tokio::sync::mpsc;
+        use tokio_stream::wrappers::UnboundedReceiverStream;
+
+        struct ChannelObserver(mpsc::UnboundedSender<cognis2_core::Event>);
+        impl Observer for ChannelObserver {
+            fn on_event(&self, event: &cognis2_core::Event) {
+                let _ = self.0.send(event.clone());
+            }
+        }
+
+        let (tx, rx) = mpsc::unbounded_channel::<cognis2_core::Event>();
+        let observer: Arc<dyn Observer> = Arc::new(ChannelObserver(tx));
+        let mut cfg = config;
+        cfg.observers.push(observer);
+
+        let this = self.clone();
+        tokio::spawn(async move {
+            let _ = engine::run(&this, input, cfg).await;
+        });
+
+        Ok(cognis2_core::EventStream::new(UnboundedReceiverStream::new(rx)))
+    }
 }
 
 #[cfg(test)]
@@ -286,5 +322,72 @@ mod tests {
             .await
             .unwrap_err();
         assert!(format!("{err}").contains("ghost"));
+    }
+
+    // For stream_events, Counter needs to be Serialize.
+    #[derive(Default, Clone, Debug, PartialEq, serde::Serialize)]
+    struct SerCounter {
+        n: u32,
+    }
+
+    #[derive(Default, Clone)]
+    struct SerCounterUpdate {
+        n: u32,
+    }
+
+    impl GraphState for SerCounter {
+        type Update = SerCounterUpdate;
+        fn apply(&mut self, u: Self::Update) {
+            self.n += u.n;
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_events_emits_per_node() {
+        use cognis2_core::Event;
+        use futures::StreamExt;
+
+        let g = Graph::<SerCounter>::new()
+            .node(
+                "a",
+                node_fn::<SerCounter, _, _>("a", |_, _| async move {
+                    Ok(NodeOut {
+                        update: SerCounterUpdate { n: 1 },
+                        goto: Goto::node("b"),
+                    })
+                }),
+            )
+            .node(
+                "b",
+                node_fn::<SerCounter, _, _>("b", |_, _| async move {
+                    Ok(NodeOut {
+                        update: SerCounterUpdate { n: 1 },
+                        goto: Goto::end(),
+                    })
+                }),
+            )
+            .start_at("a")
+            .compile()
+            .unwrap();
+
+        let mut s = g
+            .stream_events(SerCounter::default(), RunnableConfig::default())
+            .await
+            .unwrap();
+        let mut events = Vec::new();
+        while let Some(e) = s.next().await {
+            events.push(e);
+        }
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::OnNodeStart { node, .. } if node == "a"))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::OnNodeStart { node, .. } if node == "b"))
+        );
+        assert!(events.iter().any(|e| matches!(e, Event::OnEnd { .. })));
     }
 }
