@@ -2,7 +2,6 @@
 //! event streams.
 
 use std::pin::Pin;
-use std::sync::Arc;
 
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -182,6 +181,7 @@ impl<O> Stream for RunnableStream<O> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
