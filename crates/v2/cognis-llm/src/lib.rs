@@ -20,13 +20,15 @@ pub use cognis2_core::schema_for;
 pub use cognis2_core::message;
 pub use cognis2_core::{AiMessage, HumanMessage, Message, SystemMessage, ToolCall, ToolMessage};
 
+pub mod schema;
+pub use schema::schema_for_tool;
+
 pub mod tools;
 pub use tools::{BaseTool, Tool, ToolDefinition, ToolRegistry};
 // Filled in by subsequent tasks:
 // pub mod chat;
 // pub mod client;
 // pub mod provider;
-// pub mod schema;
 
 /// Common imports for v2 user code building agents and tools.
 pub mod prelude {
