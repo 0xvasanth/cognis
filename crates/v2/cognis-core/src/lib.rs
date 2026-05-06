@@ -11,7 +11,7 @@ pub mod message;
 pub mod runnable;
 pub mod stream;
 
-pub use error::{CognisError, Result};
+pub use error::{CognisError, InterruptKind, Result};
 pub use extensions::Extensions;
 pub use message::{AiMessage, HumanMessage, Message, SystemMessage, ToolCall, ToolMessage};
 pub use runnable::{Runnable, RunnableConfig};
@@ -26,9 +26,9 @@ pub use schemars::{schema_for, JsonSchema};
 pub mod prelude {
     pub use crate::schema_for;
     pub use crate::{
-        AiMessage, CognisError, Event, EventStream, Extensions, HumanMessage, JsonSchema, Message,
-        Observer, Result, Runnable, RunnableConfig, RunnableStream, SystemMessage, ToolCall,
-        ToolMessage,
+        AiMessage, CognisError, Event, EventStream, Extensions, HumanMessage, InterruptKind,
+        JsonSchema, Message, Observer, Result, Runnable, RunnableConfig, RunnableStream,
+        SystemMessage, ToolCall, ToolMessage,
     };
     pub use async_trait::async_trait;
 }

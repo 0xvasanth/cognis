@@ -103,3 +103,19 @@ async fn error_path_propagates() {
     let err = r.invoke((), RunnableConfig::default()).await.unwrap_err();
     assert_eq!(err.category(), "internal");
 }
+
+#[test]
+fn graph_interrupted_carries_metadata() {
+    let e = cognis2_core::CognisError::GraphInterrupted {
+        run_id: uuid::Uuid::nil(),
+        step: 3,
+        node: "review".into(),
+        kind: cognis2_core::InterruptKind::Before,
+    };
+    assert_eq!(e.category(), "graph_interrupted");
+    assert!(!e.is_retryable());
+    let s = format!("{e}");
+    assert!(s.contains("step 3"));
+    assert!(s.contains("review"));
+    assert!(s.contains("before"));
+}

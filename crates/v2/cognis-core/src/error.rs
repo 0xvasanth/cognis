@@ -7,6 +7,24 @@ use std::time::Duration;
 /// Result alias used throughout cognis2.
 pub type Result<T> = std::result::Result<T, CognisError>;
 
+/// When a graph interrupt fires relative to a node's execute call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterruptKind {
+    /// Before the node's execute is invoked.
+    Before,
+    /// After the node's execute completes (state already updated).
+    After,
+}
+
+impl std::fmt::Display for InterruptKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InterruptKind::Before => write!(f, "before"),
+            InterruptKind::After => write!(f, "after"),
+        }
+    }
+}
+
 /// All errors produced by cognis2-core and downstream v2 crates.
 #[derive(Debug, thiserror::Error)]
 pub enum CognisError {
@@ -76,6 +94,20 @@ pub enum CognisError {
         limit: u32,
     },
 
+    /// Graph paused at a configured interrupt boundary. State is in the
+    /// configured checkpointer; resume via `CompiledGraph::resume`.
+    #[error("graph interrupted {kind} node `{node}` at step {step} (run_id {run_id})")]
+    GraphInterrupted {
+        /// Run correlation ID. Pass to `Checkpointer::load` to recover state.
+        run_id: uuid::Uuid,
+        /// Superstep at which the interrupt fired.
+        step: u64,
+        /// Node name that triggered the interrupt.
+        node: String,
+        /// Whether the interrupt fired before or after the node's execute.
+        kind: InterruptKind,
+    },
+
     /// Serialization or deserialization failed.
     #[error("serialization error: {0}")]
     Serialization(String),
@@ -99,6 +131,7 @@ impl CognisError {
             Self::Timeout { .. } => "timeout",
             Self::Cancelled => "cancelled",
             Self::RecursionLimit { .. } => "recursion_limit",
+            Self::GraphInterrupted { .. } => "graph_interrupted",
             Self::Serialization(_) => "serialization",
             Self::Internal(_) => "internal",
         }
