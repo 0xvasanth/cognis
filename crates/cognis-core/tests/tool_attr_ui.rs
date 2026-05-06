@@ -1,12 +1,10 @@
-//! trybuild-driven compile-failure tests for `#[cognis::tool]`.
-//!
-//! Each fixture in `tests/ui/` must fail to compile with a specific
-//! error message. The `.stderr` files are captured on first run
-//! (`TRYBUILD=overwrite cargo test -p cognis-core --test tool_attr_ui`)
-//! and then committed alongside the `.rs` fixtures.
+//! trybuild-driven compile-failure tests for #[cognis::tool], #[tools_impl],
+//! and #[derive(GraphStateV2)].
 
 #[test]
-fn ui() {
+fn ui_tests() {
     let t = trybuild::TestCases::new();
     t.compile_fail("tests/ui/tool_attr/*.rs");
+    t.compile_fail("tests/ui/tools_impl_*.rs");
+    t.compile_fail("tests/ui/graph_state_v2_*.rs");
 }

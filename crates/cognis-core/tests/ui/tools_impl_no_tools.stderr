@@ -1,0 +1,7 @@
+error: #[tools_impl] requires at least one method annotated with #[tool]
+ --> tests/ui/tools_impl_no_tools.rs:6:1
+  |
+6 | / impl Empty {
+7 | |     fn helper(&self) -> u32 { 0 }
+8 | | }
+  | |_^
