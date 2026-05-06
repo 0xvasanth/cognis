@@ -6,13 +6,14 @@
 #![warn(rust_2018_idioms)]
 
 pub mod error;
-// Filled in by Tasks 2-6:
-// pub mod extensions;
+pub mod extensions;
+// Filled in by Tasks 3-6:
 // pub mod message;
 // pub mod runnable;
 // pub mod stream;
 
 pub use error::{CognisError, Result};
+pub use extensions::Extensions;
 
 /// Re-export of the [`schemars`] crate. v2 user code uses
 /// `cognis2_core::schemars::JsonSchema` for derive-driven schema generation.
