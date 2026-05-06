@@ -15,6 +15,17 @@ use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{Attribute, Data, DeriveInput, Fields, LitStr};
 
+/// True if this `syn::Type` is `Option<T>` (used by the Last reducer to
+/// avoid generating `Option<Option<T>>` for already-optional fields).
+fn is_option_type(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(tp) = ty {
+        if let Some(last) = tp.path.segments.last() {
+            return last.ident == "Option";
+        }
+    }
+    false
+}
+
 #[derive(Clone)]
 enum Reducer {
     Append,
@@ -82,10 +93,18 @@ pub fn derive_graph_state_v2(input: DeriveInput) -> TokenStream {
         .map(|f| {
             let id = &f.ident;
             let ty = &f.ty;
-            // Update type: Append / Custom keep the same type; Last wraps in Option;
+            // Update type: Append / Custom keep the same type; Last wraps in Option
+            // unless the field is already Option<T> (to avoid Option<Option<T>>);
             // Add takes the same numeric type; Merge takes serde_json::Value.
             let upd_ty = match &f.reducer {
-                Reducer::Last => quote! { ::core::option::Option<#ty> },
+                Reducer::Last => {
+                    if is_option_type(ty) {
+                        // Field is already Option<T>; don't double-wrap.
+                        quote! { #ty }
+                    } else {
+                        quote! { ::core::option::Option<#ty> }
+                    }
+                }
                 Reducer::Merge => quote! { ::core::option::Option<::serde_json::Value> },
                 _ => quote! { #ty },
             };
@@ -104,11 +123,24 @@ pub fn derive_graph_state_v2(input: DeriveInput) -> TokenStream {
                 Reducer::Add => quote! {
                     self.#id = self.#id + update.#id;
                 },
-                Reducer::Last => quote! {
-                    if let ::core::option::Option::Some(v) = update.#id {
-                        self.#id = v;
+                Reducer::Last => {
+                    if is_option_type(&f.ty) {
+                        // Already-Option field: assign directly when update is Some.
+                        // Limitation: cannot clear to None via Last — use Reducer::Custom
+                        // for that edge case.
+                        quote! {
+                            if update.#id.is_some() {
+                                self.#id = update.#id;
+                            }
+                        }
+                    } else {
+                        quote! {
+                            if let ::core::option::Option::Some(v) = update.#id {
+                                self.#id = v;
+                            }
+                        }
                     }
-                },
+                }
                 Reducer::Merge => quote! {
                     if let ::core::option::Option::Some(v) = update.#id {
                         #root::__merge_json(&mut self.#id, v);

@@ -81,9 +81,8 @@ fn apply_last_overwrites_when_some() {
         last_intent: Some("old".into()),
         ..Default::default()
     };
-    // Update type for last reducer on Option<String> is Option<Option<String>>.
     s.apply(AgentStateUpdate {
-        last_intent: Some(Some("new".into())),
+        last_intent: Some("new".into()),
         ..Default::default()
     });
     assert_eq!(s.last_intent.as_deref(), Some("new"));
@@ -96,6 +95,22 @@ fn apply_last_keeps_existing_when_none() {
         last_intent: Some("keep".into()),
         ..Default::default()
     };
+    s.apply(AgentStateUpdate {
+        last_intent: None,
+        ..Default::default()
+    });
+    assert_eq!(s.last_intent.as_deref(), Some("keep"));
+}
+
+#[test]
+fn apply_last_cannot_unset_option_field() {
+    use cognis2_graph::GraphState;
+    let mut s = AgentState {
+        last_intent: Some("keep".into()),
+        ..Default::default()
+    };
+    // Documented limitation: passing None as the update doesn't clear
+    // the field. Users who need clear-to-None semantics use Reducer::Custom.
     s.apply(AgentStateUpdate {
         last_intent: None,
         ..Default::default()
