@@ -258,6 +258,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cognis2"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cognis-macros",
+ "cognis2-core",
+ "cognis2-graph",
+ "cognis2-llm",
+ "futures",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "cognis2-core"
 version = "0.1.0"
 dependencies = [
@@ -274,6 +292,19 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "cognis2-examples"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "cognis2",
+ "futures",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
