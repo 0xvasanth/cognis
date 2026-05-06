@@ -8,7 +8,7 @@ use cognis2_graph::GraphState;
 
 /// The default agent state: append-accumulated messages, an iteration
 /// counter, and a typed `extras` map for plugin/middleware data.
-#[derive(GraphState, Clone, Default, Debug)]
+#[derive(GraphState, Clone, Default, Debug, serde::Serialize)]
 pub struct AgentState {
     /// Conversation messages, accumulated across supersteps.
     #[reducer(append)]

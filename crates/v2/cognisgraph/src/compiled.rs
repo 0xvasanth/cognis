@@ -124,17 +124,13 @@ where
     }
 
     /// Override the default `stream_events` to emit real per-node events as
-    /// the engine runs (real-time, not synthetic OnEnd-only). The `S: Serialize`
-    /// bound matches the trait's default method bound (I=O=S here). Engine
-    /// events embed `serde_json::Value::Null` so we never actually serialize S.
+    /// the engine runs (real-time, not synthetic OnEnd-only). Engine events
+    /// embed `serde_json::Value::Null` so `S: Serialize` is not required.
     async fn stream_events(
         &self,
         input: S,
         config: RunnableConfig,
-    ) -> Result<cognis2_core::EventStream>
-    where
-        S: serde::Serialize,
-    {
+    ) -> Result<cognis2_core::EventStream> {
         use cognis2_core::Observer;
         use tokio::sync::mpsc;
         use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -166,7 +162,7 @@ mod tests {
     use crate::goto::Goto;
     use crate::node::{node_fn, NodeOut};
 
-    #[derive(Default, Clone, Debug, PartialEq)]
+    #[derive(Default, Clone, Debug, PartialEq, serde::Serialize)]
     struct Counter {
         n: u32,
     }
@@ -324,44 +320,26 @@ mod tests {
         assert!(format!("{err}").contains("ghost"));
     }
 
-    // For stream_events, Counter needs to be Serialize.
-    #[derive(Default, Clone, Debug, PartialEq, serde::Serialize)]
-    struct SerCounter {
-        n: u32,
-    }
-
-    #[derive(Default, Clone)]
-    struct SerCounterUpdate {
-        n: u32,
-    }
-
-    impl GraphState for SerCounter {
-        type Update = SerCounterUpdate;
-        fn apply(&mut self, u: Self::Update) {
-            self.n += u.n;
-        }
-    }
-
     #[tokio::test]
     async fn stream_events_emits_per_node() {
         use cognis2_core::Event;
         use futures::StreamExt;
 
-        let g = Graph::<SerCounter>::new()
+        let g = Graph::<Counter>::new()
             .node(
                 "a",
-                node_fn::<SerCounter, _, _>("a", |_, _| async move {
+                node_fn::<Counter, _, _>("a", |_, _| async move {
                     Ok(NodeOut {
-                        update: SerCounterUpdate { n: 1 },
+                        update: CounterUpdate { n: 1 },
                         goto: Goto::node("b"),
                     })
                 }),
             )
             .node(
                 "b",
-                node_fn::<SerCounter, _, _>("b", |_, _| async move {
+                node_fn::<Counter, _, _>("b", |_, _| async move {
                     Ok(NodeOut {
-                        update: SerCounterUpdate { n: 1 },
+                        update: CounterUpdate { n: 1 },
                         goto: Goto::end(),
                     })
                 }),
@@ -371,7 +349,7 @@ mod tests {
             .unwrap();
 
         let mut s = g
-            .stream_events(SerCounter::default(), RunnableConfig::default())
+            .stream_events(Counter::default(), RunnableConfig::default())
             .await
             .unwrap();
         let mut events = Vec::new();

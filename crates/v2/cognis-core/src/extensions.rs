@@ -86,6 +86,17 @@ impl Clone for Extensions {
     }
 }
 
+impl serde::Serialize for Extensions {
+    /// Serializes as an empty JSON object. Extensions contains type-erased
+    /// runtime data that cannot be generically serialized; the empty-object
+    /// representation satisfies `S: Serialize` bounds without losing any
+    /// recoverable information.
+    fn serialize<Se: serde::Serializer>(&self, s: Se) -> std::result::Result<Se::Ok, Se::Error> {
+        use serde::ser::SerializeMap;
+        s.serialize_map(Some(0))?.end()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

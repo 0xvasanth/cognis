@@ -108,40 +108,14 @@ impl Agent {
     }
 
     /// Stream structured events as the graph runs. Each `Event` (OnNodeStart,
-    /// OnNodeEnd, OnError, OnEnd) is emitted in real time by an observer
-    /// installed on the graph's `RunnableConfig`. The graph runs in a
-    /// background tokio task; the returned stream finishes when the graph
-    /// finishes (successfully or with error).
+    /// OnNodeEnd, OnError, OnEnd) is emitted in real time as each node
+    /// completes. Delegates to `CompiledGraph::stream_events`.
     pub async fn stream(&mut self, input: impl Into<Message>) -> Result<EventStream> {
-        use cognis2_core::Observer;
-        use tokio::sync::mpsc;
-        use tokio_stream::wrappers::UnboundedReceiverStream;
-
-        let input_msg = input.into();
-        let initial = self.build_initial_state(input_msg);
-
-        let (tx, rx) = mpsc::unbounded_channel::<cognis2_core::Event>();
-
-        struct ChannelObserver(mpsc::UnboundedSender<cognis2_core::Event>);
-        impl Observer for ChannelObserver {
-            fn on_event(&self, event: &cognis2_core::Event) {
-                // Fire-and-forget; if receiver dropped, events are silently lost.
-                let _ = self.0.send(event.clone());
-            }
-        }
-
-        let observer: std::sync::Arc<dyn Observer> = std::sync::Arc::new(ChannelObserver(tx));
-        let cfg = cognis2_core::RunnableConfig::default().with_observer(observer);
-        let graph = self.graph.clone();
-
-        // Spawn the graph run. Errors propagate as OnError events emitted
-        // by the engine; the spawn's Result is dropped.
-        tokio::spawn(async move {
-            let _ = graph.invoke(initial, cfg).await;
-        });
-
-        let stream = UnboundedReceiverStream::new(rx);
-        Ok(EventStream::new(stream))
+        use cognis2_core::Runnable;
+        let initial = self.build_initial_state(input.into());
+        self.graph
+            .stream_events(initial, RunnableConfig::default())
+            .await
     }
 
     /// Escape hatch — give back the underlying compiled graph.
