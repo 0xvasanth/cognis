@@ -20,7 +20,7 @@ pub mod __regex {
 /// deserialization. Implemented by macro-generated args structs.
 pub trait ValidateArgs {
     /// Run all field validators. Returns the first violation as a
-    /// `CognisError::ToolValidation`.
+    /// `CognisError::ToolValidationError`.
     fn validate(&self) -> Result<()> {
         Ok(())
     }
@@ -29,20 +29,20 @@ pub trait ValidateArgs {
 /// Validate that `value` lies within `[min, max]` (inclusive).
 pub fn check_range(field: &str, value: f64, min: Option<f64>, max: Option<f64>) -> Result<()> {
     if value.is_nan() {
-        return Err(CognisError::ToolValidation(format!(
+        return Err(CognisError::ToolValidationError(format!(
             "field `{field}`: value is NaN"
         )));
     }
     if let Some(m) = min {
         if value < m {
-            return Err(CognisError::ToolValidation(format!(
+            return Err(CognisError::ToolValidationError(format!(
                 "field `{field}`: {value} is less than minimum {m}"
             )));
         }
     }
     if let Some(m) = max {
         if value > m {
-            return Err(CognisError::ToolValidation(format!(
+            return Err(CognisError::ToolValidationError(format!(
                 "field `{field}`: {value} is greater than maximum {m}"
             )));
         }
@@ -54,14 +54,14 @@ pub fn check_range(field: &str, value: f64, min: Option<f64>, max: Option<f64>) 
 pub fn check_length(field: &str, len: usize, min: Option<usize>, max: Option<usize>) -> Result<()> {
     if let Some(m) = min {
         if len < m {
-            return Err(CognisError::ToolValidation(format!(
+            return Err(CognisError::ToolValidationError(format!(
                 "field `{field}`: length {len} is less than minimum {m}"
             )));
         }
     }
     if let Some(m) = max {
         if len > m {
-            return Err(CognisError::ToolValidation(format!(
+            return Err(CognisError::ToolValidationError(format!(
                 "field `{field}`: length {len} is greater than maximum {m}"
             )));
         }
@@ -79,7 +79,7 @@ pub fn check_enum<S: AsRef<str>>(field: &str, value: &str, allowed: &[S]) -> Res
         .map(|a| format!("`{}`", a.as_ref()))
         .collect::<Vec<_>>()
         .join(", ");
-    Err(CognisError::ToolValidation(format!(
+    Err(CognisError::ToolValidationError(format!(
         "field `{field}`: \"{value}\" must be one of [{list}]"
     )))
 }
@@ -89,7 +89,7 @@ pub fn check_pattern(field: &str, value: &str, re: &regex::Regex) -> Result<()> 
     if re.is_match(value) {
         Ok(())
     } else {
-        Err(CognisError::ToolValidation(format!(
+        Err(CognisError::ToolValidationError(format!(
             "field `{field}`: \"{value}\" does not match pattern `{}`",
             re.as_str()
         )))
@@ -138,7 +138,7 @@ pub fn check_format(field: &str, value: &str, fmt: Format) -> Result<()> {
                 regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
             });
             if !re.is_match(value) {
-                return Err(CognisError::ToolValidation(format!(
+                return Err(CognisError::ToolValidationError(format!(
                     "field `{field}`: \"{value}\" is not a valid email"
                 )));
             }
@@ -152,21 +152,21 @@ pub fn check_format(field: &str, value: &str, fmt: Format) -> Result<()> {
                 .unwrap()
             });
             if !re.is_match(value) {
-                return Err(CognisError::ToolValidation(format!(
+                return Err(CognisError::ToolValidationError(format!(
                     "field `{field}`: \"{value}\" is not a valid UUID"
                 )));
             }
         }
         Format::Ipv4 => {
             value.parse::<std::net::Ipv4Addr>().map_err(|_| {
-                CognisError::ToolValidation(format!(
+                CognisError::ToolValidationError(format!(
                     "field `{field}`: \"{value}\" is not a valid IPv4 address"
                 ))
             })?;
         }
         Format::Ipv6 => {
             value.parse::<std::net::Ipv6Addr>().map_err(|_| {
-                CognisError::ToolValidation(format!(
+                CognisError::ToolValidationError(format!(
                     "field `{field}`: \"{value}\" is not a valid IPv6 address"
                 ))
             })?;

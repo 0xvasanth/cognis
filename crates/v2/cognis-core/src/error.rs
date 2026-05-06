@@ -41,10 +41,6 @@ pub enum CognisError {
 
     /// Tool argument failed validation.
     #[error("tool validation: {0}")]
-    ToolValidation(String),
-
-    /// Tool argument failed validation (v1 macro compat alias — same as `ToolValidation`).
-    #[error("tool validation: {0}")]
     ToolValidationError(String),
 
     /// Configuration is invalid or incomplete.
@@ -97,7 +93,7 @@ impl CognisError {
             Self::RateLimited { .. } => "rate_limit",
             Self::AuthenticationFailed(_) => "auth",
             Self::Tool { .. } => "tool",
-            Self::ToolValidation(_) | Self::ToolValidationError(_) => "tool_validation",
+            Self::ToolValidationError(_) => "tool_validation",
             Self::Configuration(_) => "config",
             Self::Network { .. } => "network",
             Self::Timeout { .. } => "timeout",

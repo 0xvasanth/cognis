@@ -63,7 +63,7 @@ where
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
         let json = input.into_json();
         let params: T::Params =
-            serde_json::from_value(json).map_err(|e| CognisError::ToolValidation(e.to_string()))?;
+            serde_json::from_value(json).map_err(|e| CognisError::ToolValidationError(e.to_string()))?;
         let out = self.execute_typed(params).await?;
         let v = serde_json::to_value(out)?;
         Ok(ToolOutput::Content(v))
