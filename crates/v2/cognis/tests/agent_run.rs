@@ -32,7 +32,12 @@ impl LLMProvider for Sequencer {
     fn provider_type(&self) -> Provider {
         Provider::Ollama
     }
-    async fn chat_completion(&self, _: Vec<Message>, _: ChatOptions) -> Result<ChatResponse> {
+    async fn chat_completion(
+        &self,
+        messages: Vec<Message>,
+        opts: ChatOptions,
+    ) -> Result<ChatResponse> {
+        let _ = (messages, opts);
         use std::sync::atomic::Ordering;
         let n = self.idx.fetch_add(1, Ordering::SeqCst);
         let message = self.responses.get(n).cloned().unwrap_or(Message::ai("end"));
@@ -45,9 +50,10 @@ impl LLMProvider for Sequencer {
     }
     async fn chat_completion_stream(
         &self,
-        _: Vec<Message>,
-        _: ChatOptions,
+        messages: Vec<Message>,
+        opts: ChatOptions,
     ) -> Result<cognis2_core::RunnableStream<StreamChunk>> {
+        let _ = (messages, opts);
         unimplemented!()
     }
     async fn health_check(&self) -> Result<HealthStatus> {

@@ -188,8 +188,10 @@ mod tests {
     fn fn_observer_works() {
         let count = Arc::new(AtomicUsize::new(0));
         let count2 = count.clone();
-        let observer: Arc<dyn Observer> = Arc::new(move |_e: &Event| {
-            count2.fetch_add(1, Ordering::SeqCst);
+        let observer: Arc<dyn Observer> = Arc::new(move |e: &Event| {
+            if matches!(e, Event::OnStart { .. } | Event::OnEnd { .. }) {
+                count2.fetch_add(1, Ordering::SeqCst);
+            }
         });
 
         let e = Event::OnStart {

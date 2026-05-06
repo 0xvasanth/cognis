@@ -61,20 +61,33 @@ async fn stream_emits_single_chunk() {
 async fn observer_receives_events() {
     let count = Arc::new(AtomicUsize::new(0));
     let count2 = count.clone();
-    let observer: Arc<dyn Observer> = Arc::new(move |_e: &Event| {
-        count2.fetch_add(1, Ordering::SeqCst);
+    let observer: Arc<dyn Observer> = Arc::new(move |e: &Event| {
+        if matches!(e, Event::OnStart { .. } | Event::OnEnd { .. }) {
+            count2.fetch_add(1, Ordering::SeqCst);
+        }
     });
 
     let cfg = RunnableConfig::default().with_observer(observer);
     let r = Upper;
+    let mut events: Vec<Event> = Vec::new();
     let mut s = r.stream_events("hi".into(), cfg).await.unwrap();
-    while let Some(_e) = s.next().await {}
+    while let Some(e) = s.next().await {
+        events.push(e);
+    }
 
-    // The default stream_events impl iterates over a static Vec, so the
-    // observer wired into config isn't auto-invoked here — observers are
-    // wired in by graph/llm crates that own emission. This test just
-    // ensures the API compiles and the stream produces events.
-    let _unused = count;
+    // The default stream_events impl emits OnStart + OnEnd around the invoke call.
+    assert!(
+        events.iter().any(|e| matches!(e, Event::OnStart { .. })),
+        "expected an OnStart event"
+    );
+    assert!(
+        events.iter().any(|e| matches!(e, Event::OnEnd { .. })),
+        "expected an OnEnd event"
+    );
+    // Observers are wired in by graph/llm crates that own emission — count
+    // may be zero here since the default impl doesn't call observers directly,
+    // but the API must compile and the stream must yield the expected event types.
+    let _ = count;
 }
 
 #[tokio::test]

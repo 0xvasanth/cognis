@@ -130,9 +130,16 @@ pub trait LLMProvider: Send + Sync {
     async fn chat_completion_with_tools(
         &self,
         messages: Vec<Message>,
-        _tools: Vec<ToolDefinition>,
+        tools: Vec<ToolDefinition>,
         opts: ChatOptions,
     ) -> Result<ChatResponse> {
+        if !tools.is_empty() {
+            tracing::warn!(
+                provider = self.name(),
+                tool_count = tools.len(),
+                "provider does not support tool calling; tools ignored, falling back to chat_completion"
+            );
+        }
         self.chat_completion(messages, opts).await
     }
 

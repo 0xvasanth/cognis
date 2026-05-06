@@ -31,13 +31,11 @@ mod tests {
     use serde::Deserialize;
 
     #[derive(JsonSchema, Deserialize)]
-    #[allow(dead_code)]
     struct Nested {
         inner: String,
     }
 
     #[derive(JsonSchema, Deserialize)]
-    #[allow(dead_code)]
     struct Outer {
         a: f64,
         nested: Nested,
@@ -58,5 +56,16 @@ mod tests {
         // The Nested struct should appear inlined inside `properties.nested`
         assert!(s["properties"]["nested"]["type"].is_string());
         assert!(s["properties"]["nested"]["properties"]["inner"].is_object());
+    }
+
+    #[test]
+    fn nested_value_deserializes_correctly() {
+        let v = serde_json::json!({
+            "a": 1.5,
+            "nested": { "inner": "hi" }
+        });
+        let outer: Outer = serde_json::from_value(v).unwrap();
+        assert_eq!(outer.a, 1.5);
+        assert_eq!(outer.nested.inner, "hi");
     }
 }

@@ -90,9 +90,10 @@ mod tests {
         }
         async fn chat_completion(
             &self,
-            _messages: Vec<Message>,
-            _opts: ChatOptions,
+            messages: Vec<Message>,
+            opts: ChatOptions,
         ) -> Result<ChatResponse> {
+            let _ = (messages, opts);
             use std::sync::atomic::Ordering;
             let n = self.idx.fetch_add(1, Ordering::SeqCst);
             let message = if n == 0 {
@@ -116,9 +117,10 @@ mod tests {
         }
         async fn chat_completion_stream(
             &self,
-            _: Vec<Message>,
-            _: ChatOptions,
+            messages: Vec<Message>,
+            opts: ChatOptions,
         ) -> Result<cognis2_core::RunnableStream<StreamChunk>> {
+            let _ = (messages, opts);
             unimplemented!()
         }
         async fn health_check(&self) -> Result<HealthStatus> {

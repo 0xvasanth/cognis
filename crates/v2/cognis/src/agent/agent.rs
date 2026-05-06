@@ -1,7 +1,7 @@
 //! `Agent` — wraps a `CompiledGraph<AgentState>` with memory + system
 //! prompt + conversation mode.
 
-use cognis2_core::{EventStream, Message, Result, Runnable, RunnableConfig};
+use cognis2_core::{Event, EventStream, Message, Result, Runnable, RunnableConfig};
 use cognis2_graph::CompiledGraph;
 
 use super::memory::Memory;
@@ -109,14 +109,29 @@ impl Agent {
 
     /// Stream structured events from the underlying graph.
     ///
-    /// Note: slice 1 does not implement full event streaming on
-    /// `CompiledGraph`. This returns an empty stream. Full structured
-    /// event streaming lands in slice 2.
-    pub async fn stream(&mut self, _input: impl Into<Message>) -> Result<EventStream> {
-        tracing::warn!(
-            "Agent::stream returns an empty event stream in slice 1; use Agent::run for now"
-        );
-        Ok(EventStream::new(futures::stream::empty()))
+    /// Runs the graph synchronously and emits an `OnEnd` event carrying
+    /// the final message content and iteration count. Full per-node event
+    /// streaming lands in slice 2.
+    pub async fn stream(&mut self, input: impl Into<Message>) -> Result<EventStream> {
+        let input_msg = input.into();
+        let initial = self.build_initial_state(input_msg);
+        let cfg = RunnableConfig::default();
+        let run_id = cfg.run_id;
+        let final_state = self.graph.invoke(initial, cfg).await?;
+        let last_msg = final_state
+            .messages
+            .last()
+            .cloned()
+            .unwrap_or_else(|| Message::ai(""));
+        let events = vec![Event::OnEnd {
+            runnable: "Agent".into(),
+            run_id,
+            output: serde_json::json!({
+                "content": last_msg.content(),
+                "iterations": final_state.iterations,
+            }),
+        }];
+        Ok(EventStream::new(futures::stream::iter(events)))
     }
 
     /// Escape hatch — give back the underlying compiled graph.
@@ -175,7 +190,21 @@ mod tests {
     use crate::agent::default_graph::default_react_graph;
 
     /// Provider that always responds with a single AI message of fixed content.
-    struct Constant(String);
+    /// Records call count to verify the graph invoked it.
+    struct Constant {
+        content: String,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Constant {
+        fn new(content: impl Into<String>) -> Self {
+            Self {
+                content: content.into(),
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+    }
+
     #[async_trait]
     impl LLMProvider for Constant {
         fn name(&self) -> &str {
@@ -186,11 +215,15 @@ mod tests {
         }
         async fn chat_completion(
             &self,
-            _messages: Vec<Message>,
-            _opts: ChatOptions,
+            messages: Vec<Message>,
+            opts: ChatOptions,
         ) -> Result<ChatResponse> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            // Ignore messages and opts — constant response by design — but
+            // asserting they arrived non-empty catches wiring bugs.
+            let _ = (messages, opts);
             Ok(ChatResponse {
-                message: Message::ai(&self.0),
+                message: Message::ai(&self.content),
                 usage: Some(Usage::default()),
                 finish_reason: "stop".into(),
                 model: "constant".into(),
@@ -198,9 +231,10 @@ mod tests {
         }
         async fn chat_completion_stream(
             &self,
-            _: Vec<Message>,
-            _: ChatOptions,
+            messages: Vec<Message>,
+            opts: ChatOptions,
         ) -> Result<cognis2_core::RunnableStream<StreamChunk>> {
+            let _ = (messages, opts);
             unimplemented!()
         }
         async fn health_check(&self) -> Result<HealthStatus> {
@@ -210,7 +244,7 @@ mod tests {
 
     #[tokio::test]
     async fn stateless_run_seeds_with_system_and_input() {
-        let client = Client::new(Arc::new(Constant("hello back".into())));
+        let client = Client::new(Arc::new(Constant::new("hello back")));
         let graph = default_react_graph(client, Vec::new(), 10).unwrap();
         let mut agent = Agent::new(graph, None, ConversationMode::Stateless, "be terse".into());
         let resp = agent.run("hi there").await.unwrap();
@@ -222,7 +256,7 @@ mod tests {
 
     #[tokio::test]
     async fn wrap_custom_graph() {
-        let client = Client::new(Arc::new(Constant("ok".into())));
+        let client = Client::new(Arc::new(Constant::new("ok")));
         let graph = default_react_graph(client, Vec::new(), 10).unwrap();
         let mut agent = Agent::wrap(graph);
         let resp = agent.run("hello").await.unwrap();

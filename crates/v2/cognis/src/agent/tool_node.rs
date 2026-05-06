@@ -42,7 +42,10 @@ impl ToolDispatchNode {
 
 #[async_trait]
 impl Node<AgentState> for ToolDispatchNode {
-    async fn execute(&self, state: &AgentState, _ctx: &NodeCtx<'_>) -> Result<NodeOut<AgentState>> {
+    async fn execute(&self, state: &AgentState, ctx: &NodeCtx<'_>) -> Result<NodeOut<AgentState>> {
+        if ctx.is_cancelled() {
+            return Err(cognis2_core::CognisError::Cancelled);
+        }
         let last = state.messages.last().ok_or_else(|| {
             CognisError::Internal("ToolDispatchNode invoked but state.messages is empty".into())
         })?;

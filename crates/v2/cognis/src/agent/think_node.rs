@@ -29,7 +29,10 @@ impl ThinkNode {
 
 #[async_trait]
 impl Node<AgentState> for ThinkNode {
-    async fn execute(&self, state: &AgentState, _ctx: &NodeCtx<'_>) -> Result<NodeOut<AgentState>> {
+    async fn execute(&self, state: &AgentState, ctx: &NodeCtx<'_>) -> Result<NodeOut<AgentState>> {
+        if ctx.is_cancelled() {
+            return Err(cognis2_core::CognisError::Cancelled);
+        }
         if state.iterations >= self.max_iterations {
             return Ok(NodeOut {
                 update: AgentStateUpdate {
@@ -81,14 +84,17 @@ mod tests {
     use uuid::Uuid;
 
     /// Provider that returns canned responses based on call index.
+    /// Records all received (messages, opts) pairs for assertion.
     struct ScriptedProvider {
         responses: std::sync::Mutex<std::collections::VecDeque<Message>>,
+        received: std::sync::Mutex<Vec<(Vec<Message>, ChatOptions)>>,
     }
 
     impl ScriptedProvider {
         fn new(responses: Vec<Message>) -> Self {
             Self {
                 responses: std::sync::Mutex::new(responses.into()),
+                received: std::sync::Mutex::new(Vec::new()),
             }
         }
     }
@@ -103,9 +109,10 @@ mod tests {
         }
         async fn chat_completion(
             &self,
-            _messages: Vec<Message>,
-            _opts: ChatOptions,
+            messages: Vec<Message>,
+            opts: ChatOptions,
         ) -> Result<ChatResponse> {
+            self.received.lock().unwrap().push((messages.clone(), opts));
             let mut q = self.responses.lock().unwrap();
             let msg = q
                 .pop_front()
@@ -119,9 +126,10 @@ mod tests {
         }
         async fn chat_completion_stream(
             &self,
-            _messages: Vec<Message>,
-            _opts: ChatOptions,
+            messages: Vec<Message>,
+            opts: ChatOptions,
         ) -> Result<RunnableStream<StreamChunk>> {
+            let _ = (messages, opts);
             unimplemented!()
         }
         async fn health_check(&self) -> Result<HealthStatus> {
@@ -192,5 +200,26 @@ mod tests {
         assert!(out.update.messages[0]
             .content()
             .contains("max_iterations=3"));
+    }
+
+    #[tokio::test]
+    async fn provider_receives_state_messages() {
+        let provider = Arc::new(ScriptedProvider::new(vec![Message::ai("ok")]));
+        let client = Client::new(Arc::clone(&provider) as Arc<dyn LLMProvider>);
+        let node = ThinkNode::new(client, Vec::new(), 10);
+        let state = AgentState {
+            messages: vec![Message::human("hello from state")],
+            ..Default::default()
+        };
+        let cfg = RunnableConfig::default();
+        let ctx = NodeCtx {
+            run_id: Uuid::nil(),
+            step: 0,
+            config: &cfg,
+        };
+        node.execute(&state, &ctx).await.unwrap();
+        let calls = provider.received.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0[0].content(), "hello from state");
     }
 }
