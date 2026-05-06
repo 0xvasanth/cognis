@@ -62,8 +62,8 @@ where
 
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
         let json = input.into_json();
-        let params: T::Params = serde_json::from_value(json)
-            .map_err(|e| CognisError::ToolValidation(e.to_string()))?;
+        let params: T::Params =
+            serde_json::from_value(json).map_err(|e| CognisError::ToolValidation(e.to_string()))?;
         let out = self.execute_typed(params).await?;
         let v = serde_json::to_value(out)?;
         Ok(ToolOutput::Content(v))
@@ -117,7 +117,9 @@ mod tests {
         let mut m = std::collections::HashMap::new();
         m.insert("a".into(), serde_json::json!(2.5));
         m.insert("b".into(), serde_json::json!(3.5));
-        let out = <Adder as Tool>::_run(&a, ToolInput::Structured(m)).await.unwrap();
+        let out = <Adder as Tool>::_run(&a, ToolInput::Structured(m))
+            .await
+            .unwrap();
         match out {
             ToolOutput::Content(v) => assert_eq!(v["sum"], 6.0),
             _ => panic!("wrong variant"),

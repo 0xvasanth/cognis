@@ -216,9 +216,7 @@ mod tests {
 
     #[test]
     fn format_uuid() {
-        assert!(
-            check_format("u", "550e8400-e29b-41d4-a716-446655440000", Format::Uuid).is_ok()
-        );
+        assert!(check_format("u", "550e8400-e29b-41d4-a716-446655440000", Format::Uuid).is_ok());
         assert!(check_format("u", "not-a-uuid", Format::Uuid).is_err());
     }
 

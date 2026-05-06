@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use cognis2_llm::error::Result;
-use cognis2_llm::tools::{BaseTool, ToolInput, ToolOutput};
+use cognis2_llm::tools::{ToolInput, ToolOutput};
 use cognis_macros::tools_impl;
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +38,10 @@ async fn tools_impl_v2_path_resolves_and_runs() {
 
     let add = &tools[0];
     assert_eq!(add.name(), "add");
-    assert_eq!(add.description(), "Add two numbers (doc-comment description).");
+    assert_eq!(
+        add.description(),
+        "Add two numbers (doc-comment description)."
+    );
 
     // Single-arg unwrap: schema has a/b at top level (NOT under "p").
     let schema = add.args_schema().unwrap();

@@ -121,7 +121,11 @@ mod tests {
     fn chat_response_roundtrip() {
         let r = ChatResponse {
             message: Message::ai("hello"),
-            usage: Some(Usage { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }),
+            usage: Some(Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+            }),
             finish_reason: "stop".into(),
             model: "gpt-4o".into(),
         };

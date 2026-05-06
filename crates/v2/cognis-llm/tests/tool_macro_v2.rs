@@ -13,7 +13,11 @@ struct AddArgs {
     b: f64,
 }
 
-#[tool(name = "add", description = "Add two numbers", crate_path = "cognis2_llm")]
+#[tool(
+    name = "add",
+    description = "Add two numbers",
+    crate_path = "cognis2_llm"
+)]
 async fn add(args: AddArgs) -> Result<ToolOutput> {
     Ok(ToolOutput::Content(serde_json::json!(args.a + args.b)))
 }

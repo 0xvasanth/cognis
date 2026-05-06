@@ -12,15 +12,15 @@ use crate::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk};
 use crate::tools::ToolDefinition;
 use crate::Message;
 
-#[cfg(feature = "openai")]
-pub mod openai;
 #[cfg(feature = "ollama")]
 pub mod ollama;
-
 #[cfg(feature = "openai")]
-pub use openai::OpenAIProvider;
+pub mod openai;
+
 #[cfg(feature = "ollama")]
 pub use ollama::OllamaProvider;
+#[cfg(feature = "openai")]
+pub use openai::OpenAIProvider;
 
 /// Closed set of supported providers. Anthropic and Azure are declared but
 /// stubbed — full impls land in slice 2.
@@ -157,6 +157,9 @@ mod tests {
     fn provider_metadata() {
         assert!(Provider::OpenAI.requires_auth());
         assert!(!Provider::Ollama.requires_auth());
-        assert_eq!(Provider::Ollama.default_base_url(), "http://localhost:11434/api/");
+        assert_eq!(
+            Provider::Ollama.default_base_url(),
+            "http://localhost:11434/api/"
+        );
     }
 }

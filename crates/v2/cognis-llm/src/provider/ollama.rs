@@ -27,7 +27,10 @@ pub struct OllamaProvider {
 impl OllamaProvider {
     /// Build with explicit config.
     pub fn new(model: impl Into<String>) -> Self {
-        Self::builder().model(model).build().expect("default Ollama build")
+        Self::builder()
+            .model(model)
+            .build()
+            .expect("default Ollama build")
     }
 
     /// Fluent builder.
@@ -96,7 +99,8 @@ impl LLMProvider for OllamaProvider {
         messages: Vec<Message>,
         opts: ChatOptions,
     ) -> Result<ChatResponse> {
-        self.chat_completion_with_tools(messages, Vec::new(), opts).await
+        self.chat_completion_with_tools(messages, Vec::new(), opts)
+            .await
     }
 
     async fn chat_completion_with_tools(
@@ -138,8 +142,7 @@ impl LLMProvider for OllamaProvider {
             Some(Usage {
                 prompt_tokens: raw.prompt_eval_count.unwrap_or(0),
                 completion_tokens: raw.eval_count.unwrap_or(0),
-                total_tokens: raw.prompt_eval_count.unwrap_or(0)
-                    + raw.eval_count.unwrap_or(0),
+                total_tokens: raw.prompt_eval_count.unwrap_or(0) + raw.eval_count.unwrap_or(0),
             })
         } else {
             None
@@ -147,7 +150,11 @@ impl LLMProvider for OllamaProvider {
         Ok(ChatResponse {
             message,
             usage,
-            finish_reason: if raw.done { "stop".into() } else { "length".into() },
+            finish_reason: if raw.done {
+                "stop".into()
+            } else {
+                "length".into()
+            },
             model: model_name,
         })
     }
@@ -205,7 +212,9 @@ impl LLMProvider for OllamaProvider {
             Ok(r) => Ok(HealthStatus::Degraded {
                 reason: format!("tags endpoint returned {}", r.status()),
             }),
-            Err(e) => Ok(HealthStatus::Unhealthy { reason: e.to_string() }),
+            Err(e) => Ok(HealthStatus::Unhealthy {
+                reason: e.to_string(),
+            }),
         }
     }
 }
@@ -316,7 +325,10 @@ fn ollama_message_to_cognis(m: OllamaMessage) -> Message {
             arguments: coerce_numeric_strings(tc.function.arguments),
         })
         .collect();
-    Message::Ai(AiMessage { content: m.content, tool_calls })
+    Message::Ai(AiMessage {
+        content: m.content,
+        tool_calls,
+    })
 }
 
 /// Walk a JSON value; for any string that looks numeric, replace it with a Number.

@@ -25,7 +25,10 @@ impl LLMProvider for EchoProvider {
         messages: Vec<Message>,
         _opts: ChatOptions,
     ) -> Result<ChatResponse> {
-        let last = messages.last().map(|m| m.content().to_string()).unwrap_or_default();
+        let last = messages
+            .last()
+            .map(|m| m.content().to_string())
+            .unwrap_or_default();
         Ok(ChatResponse {
             message: Message::ai(format!("echo: {last}")),
             usage: Some(Usage::default()),
@@ -56,8 +59,9 @@ async fn client_invoke_via_runnable_trait() {
     let client = Client::new(Arc::new(EchoProvider));
     // Use UFCS to call Runnable::invoke (avoids ambiguity with Client's own invoke method).
     let cfg = RunnableConfig::default();
-    let out: Message =
-        Runnable::invoke(&client, vec![Message::human("hello")], cfg).await.unwrap();
+    let out: Message = Runnable::invoke(&client, vec![Message::human("hello")], cfg)
+        .await
+        .unwrap();
     assert_eq!(out.content(), "echo: hello");
 }
 
@@ -73,8 +77,9 @@ async fn client_stream_via_runnable() {
     let client = Client::new(Arc::new(EchoProvider));
     let cfg = RunnableConfig::default();
     // Use UFCS to call Runnable::stream (avoids ambiguity with Client's own stream method).
-    let s: RunnableStream<Message> =
-        Runnable::stream(&client, vec![Message::human("hi")], cfg).await.unwrap();
+    let s: RunnableStream<Message> = Runnable::stream(&client, vec![Message::human("hi")], cfg)
+        .await
+        .unwrap();
     let v = s.collect_into_vec().await.unwrap();
     // Default Runnable::stream wraps invoke as a single-item stream.
     assert_eq!(v.len(), 1);

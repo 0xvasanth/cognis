@@ -12,9 +12,9 @@
 pub mod error;
 
 // Re-export schemars for the same reason.
+pub use cognis2_core::schema_for;
 pub use cognis2_core::schemars;
 pub use cognis2_core::schemars::JsonSchema;
-pub use cognis2_core::schema_for;
 
 // Re-export Message + variants since they're the LLM-conversation primitive.
 pub use cognis2_core::message;
@@ -36,9 +36,9 @@ pub use provider::{LLMProvider, Provider};
 
 /// Common imports for v2 user code building agents and tools.
 pub mod prelude {
+    pub use crate::schema_for;
     pub use crate::{
         AiMessage, HumanMessage, JsonSchema, Message, SystemMessage, ToolCall, ToolMessage,
     };
-    pub use crate::schema_for;
     pub use cognis2_core::prelude::*;
 }

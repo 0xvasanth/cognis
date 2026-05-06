@@ -104,17 +104,18 @@ impl ToolRegistry {
 
     /// Build `ToolDefinition`s for every registered tool.
     pub fn definitions(&self) -> Vec<ToolDefinition> {
-        self.tools.values().map(|t| ToolDefinition::from_tool(t.as_ref())).collect()
+        self.tools
+            .values()
+            .map(|t| ToolDefinition::from_tool(t.as_ref()))
+            .collect()
     }
 
     /// Execute a tool by name with the given input.
     pub async fn execute(&self, name: &str, input: ToolInput) -> Result<ToolOutput> {
-        let t = self
-            .get(name)
-            .ok_or_else(|| CognisError::Tool {
-                name: name.to_string(),
-                reason: "not registered".into(),
-            })?;
+        let t = self.get(name).ok_or_else(|| CognisError::Tool {
+            name: name.to_string(),
+            reason: "not registered".into(),
+        })?;
         t._run(input).await
     }
 
@@ -171,7 +172,10 @@ mod tests {
     #[tokio::test]
     async fn unknown_tool_errors() {
         let reg = ToolRegistry::new();
-        let err = reg.execute("missing", ToolInput::Text("x".into())).await.unwrap_err();
+        let err = reg
+            .execute("missing", ToolInput::Text("x".into()))
+            .await
+            .unwrap_err();
         assert_eq!(err.category(), "tool");
     }
 

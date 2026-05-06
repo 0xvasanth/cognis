@@ -32,7 +32,10 @@ pub struct OpenAIProvider {
 impl OpenAIProvider {
     /// Build with explicit config.
     pub fn new(api_key: impl Into<String>) -> Self {
-        Self::builder().api_key(api_key).build().expect("default OpenAI build")
+        Self::builder()
+            .api_key(api_key)
+            .build()
+            .expect("default OpenAI build")
     }
 
     /// Fluent builder.
@@ -131,7 +134,8 @@ impl LLMProvider for OpenAIProvider {
         messages: Vec<Message>,
         opts: ChatOptions,
     ) -> Result<ChatResponse> {
-        self.chat_completion_with_tools(messages, Vec::new(), opts).await
+        self.chat_completion_with_tools(messages, Vec::new(), opts)
+            .await
     }
 
     async fn chat_completion_with_tools(
@@ -167,10 +171,14 @@ impl LLMProvider for OpenAIProvider {
             message: format!("response decode: {e}"),
         })?;
 
-        let choice = raw.choices.into_iter().next().ok_or_else(|| CognisError::Provider {
-            provider: "openai".into(),
-            message: "no choices in response".into(),
-        })?;
+        let choice = raw
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(|| CognisError::Provider {
+                provider: "openai".into(),
+                message: "no choices in response".into(),
+            })?;
 
         let message = openai_message_to_cognis(choice.message);
         Ok(ChatResponse {
@@ -247,7 +255,9 @@ impl LLMProvider for OpenAIProvider {
             Ok(r) => Ok(HealthStatus::Degraded {
                 reason: format!("models endpoint returned {}", r.status()),
             }),
-            Err(e) => Ok(HealthStatus::Unhealthy { reason: e.to_string() }),
+            Err(e) => Ok(HealthStatus::Unhealthy {
+                reason: e.to_string(),
+            }),
         }
     }
 }
@@ -422,7 +432,10 @@ fn openai_message_to_cognis(m: OpenAIMessage) -> Message {
                 .unwrap_or(serde_json::Value::Null),
         })
         .collect();
-    Message::Ai(AiMessage { content, tool_calls })
+    Message::Ai(AiMessage {
+        content,
+        tool_calls,
+    })
 }
 
 fn tools_to_openai_format(tools: &[ToolDefinition]) -> serde_json::Value {
@@ -469,14 +482,13 @@ fn parse_sse_chunk(bytes: &[u8]) -> Result<Option<StreamChunk>> {
                         index: t["index"].as_u64().unwrap_or(i as u64) as u32,
                         id: t["id"].as_str().map(|s| s.to_string()),
                         name: t["function"]["name"].as_str().map(|s| s.to_string()),
-                        arguments_delta: t["function"]["arguments"]
-                            .as_str()
-                            .map(|s| s.to_string()),
+                        arguments_delta: t["function"]["arguments"].as_str().map(|s| s.to_string()),
                     });
                 }
             }
-            let finish_reason =
-                v["choices"][0]["finish_reason"].as_str().map(|s| s.to_string());
+            let finish_reason = v["choices"][0]["finish_reason"]
+                .as_str()
+                .map(|s| s.to_string());
             let is_done = finish_reason.is_some();
             return Ok(Some(StreamChunk {
                 content,
@@ -568,7 +580,11 @@ mod tests {
 
     #[test]
     fn builder_with_defaults() {
-        let p = OpenAIBuilder::default().api_key("sk-test").model("gpt-4o").build().unwrap();
+        let p = OpenAIBuilder::default()
+            .api_key("sk-test")
+            .model("gpt-4o")
+            .build()
+            .unwrap();
         assert_eq!(p.name(), "openai");
         assert_eq!(p.provider_type(), Provider::OpenAI);
     }

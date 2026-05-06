@@ -31,11 +31,13 @@ mod tests {
     use serde::Deserialize;
 
     #[derive(JsonSchema, Deserialize)]
+    #[allow(dead_code)]
     struct Nested {
         inner: String,
     }
 
     #[derive(JsonSchema, Deserialize)]
+    #[allow(dead_code)]
     struct Outer {
         a: f64,
         nested: Nested,

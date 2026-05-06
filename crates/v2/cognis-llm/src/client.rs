@@ -22,7 +22,9 @@ pub struct Client {
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client").field("provider", &self.provider.name()).finish()
+        f.debug_struct("Client")
+            .field("provider", &self.provider.name())
+            .finish()
     }
 }
 
@@ -80,12 +82,18 @@ impl Client {
 
     /// One-shot chat completion (no tools).
     pub async fn invoke(&self, messages: Vec<Message>) -> Result<Message> {
-        Ok(self.provider.chat_completion(messages, ChatOptions::default()).await?.message)
+        Ok(self
+            .provider
+            .chat_completion(messages, ChatOptions::default())
+            .await?
+            .message)
     }
 
     /// Streaming chat completion.
     pub async fn stream(&self, messages: Vec<Message>) -> Result<RunnableStream<StreamChunk>> {
-        self.provider.chat_completion_stream(messages, ChatOptions::default()).await
+        self.provider
+            .chat_completion_stream(messages, ChatOptions::default())
+            .await
     }
 
     /// Chat completion with tool definitions.
@@ -94,8 +102,10 @@ impl Client {
         messages: Vec<Message>,
         tools: &[Arc<dyn crate::tools::Tool>],
     ) -> Result<Message> {
-        let defs: Vec<ToolDefinition> =
-            tools.iter().map(|t| ToolDefinition::from_tool(t.as_ref())).collect();
+        let defs: Vec<ToolDefinition> = tools
+            .iter()
+            .map(|t| ToolDefinition::from_tool(t.as_ref()))
+            .collect();
         Ok(self
             .provider
             .chat_completion_with_tools(messages, defs, ChatOptions::default())
@@ -104,11 +114,7 @@ impl Client {
     }
 
     /// Provider-level full chat completion (with all options).
-    pub async fn chat(
-        &self,
-        messages: Vec<Message>,
-        opts: ChatOptions,
-    ) -> Result<ChatResponse> {
+    pub async fn chat(&self, messages: Vec<Message>, opts: ChatOptions) -> Result<ChatResponse> {
         self.provider.chat_completion(messages, opts).await
     }
 
@@ -218,7 +224,9 @@ impl ClientBuilder {
                 )))
             }
         };
-        Ok(Client { provider: arc_provider })
+        Ok(Client {
+            provider: arc_provider,
+        })
     }
 }
 
