@@ -13,8 +13,8 @@ pub mod node;
 pub mod builder;
 pub(crate) mod validate;
 pub mod compiled;
-// pub mod engine;
-// pub mod checkpoint;
+pub(crate) mod engine;
+pub mod checkpoint;
 
 pub use state::GraphState;
 pub use reducer::{Reducer, Append, Add, LastValue, Merge, Custom};
@@ -22,6 +22,7 @@ pub use goto::Goto;
 pub use node::{Node, NodeCtx, NodeOut, NodeFn, node_fn};
 pub use builder::{Graph, LinearBuilder};
 pub use compiled::CompiledGraph;
+pub use checkpoint::{Checkpointer, InMemoryCheckpointer};
 
 /// Derive macro — generates `impl GraphState for <T>` with per-field reducers.
 /// The derive name shadows the trait name; both are imported via
