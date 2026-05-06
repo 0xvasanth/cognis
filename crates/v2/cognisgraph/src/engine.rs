@@ -7,7 +7,6 @@ use std::sync::Arc;
 use cognis2_core::{CognisError, Event, InterruptKind, Result, RunnableConfig};
 use uuid::Uuid;
 
-use crate::checkpoint::Checkpointer;
 use crate::compiled::CompiledGraph;
 use crate::goto::Goto;
 use crate::node::{Node, NodeCtx, NodeOut};
