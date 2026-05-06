@@ -23,7 +23,11 @@ async fn rag_round_trip_with_fake_embeddings() {
     // Query: an exact match should rank itself top.
     let r = store.similarity_search(&docs[2], 4).await.unwrap();
     assert_eq!(r[0].text, docs[2]);
-    assert!(r[0].score > 0.99, "exact match score should be ~1.0, got {}", r[0].score);
+    assert!(
+        r[0].score > 0.99,
+        "exact match score should be ~1.0, got {}",
+        r[0].score
+    );
 
     // k bounds.
     let r2 = store.similarity_search(&docs[0], 2).await.unwrap();
@@ -42,7 +46,11 @@ async fn distance_variants_all_work() {
         let r = store.similarity_search("x", 3).await.unwrap();
         assert_eq!(r.len(), 3);
         // Top result is "x" (exact match) regardless of distance variant.
-        assert_eq!(r[0].text, "x", "top match for exact query failed under {:?}", distance);
+        assert_eq!(
+            r[0].text, "x",
+            "top match for exact query failed under {:?}",
+            distance
+        );
     }
 }
 
@@ -58,7 +66,10 @@ async fn add_vectors_skips_embedder() {
     assert_eq!(ids.len(), 2);
 
     // Search by precomputed query vector.
-    let r = store.similarity_search_by_vector(vec![1.0; 8], 1).await.unwrap();
+    let r = store
+        .similarity_search_by_vector(vec![1.0; 8], 1)
+        .await
+        .unwrap();
     assert_eq!(r.len(), 1);
     // The stored vector [1.0; 8] is closer to the query than [0.5; 8].
     assert_eq!(r[0].text, "one");

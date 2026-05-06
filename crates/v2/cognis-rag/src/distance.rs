@@ -37,9 +37,12 @@ impl Distance {
                 }
                 1.0 - (dot / (na * nb))
             }
-            Distance::Euclidean => {
-                a.iter().zip(b).map(|(x, y)| (x - y).powi(2)).sum::<f32>().sqrt()
-            }
+            Distance::Euclidean => a
+                .iter()
+                .zip(b)
+                .map(|(x, y)| (x - y).powi(2))
+                .sum::<f32>()
+                .sqrt(),
             Distance::Dot => -a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>(),
         }
     }

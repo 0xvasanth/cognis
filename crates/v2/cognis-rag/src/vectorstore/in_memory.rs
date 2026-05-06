@@ -38,7 +38,11 @@ impl InMemoryVectorStore {
 
     /// New empty store with explicit distance.
     pub fn with_distance(embedder: Arc<dyn Embeddings>, distance: Distance) -> Self {
-        Self { embedder, distance, docs: Vec::new() }
+        Self {
+            embedder,
+            distance,
+            docs: Vec::new(),
+        }
     }
 
     /// Currently configured distance metric.
@@ -87,12 +91,14 @@ impl VectorStore for InMemoryVectorStore {
         let mut ids = Vec::with_capacity(texts.len());
         for (i, (text, vector)) in texts.into_iter().zip(vectors).enumerate() {
             let id = Uuid::new_v4().to_string();
-            let md = metadata
-                .as_ref()
-                .map(|m| m[i].clone())
-                .unwrap_or_default();
+            let md = metadata.as_ref().map(|m| m[i].clone()).unwrap_or_default();
             ids.push(id.clone());
-            self.docs.push(StoredDoc { id, text, vector, metadata: md });
+            self.docs.push(StoredDoc {
+                id,
+                text,
+                vector,
+                metadata: md,
+            });
         }
         Ok(ids)
     }
@@ -214,11 +220,7 @@ mod tests {
     async fn add_vectors_dimension_mismatch_errors() {
         let mut store = InMemoryVectorStore::new(fake_embedder(8));
         let err = store
-            .add_vectors(
-                vec![vec![0.1; 8], vec![0.2; 8]],
-                vec!["one".into()],
-                None,
-            )
+            .add_vectors(vec![vec![0.1; 8], vec![0.2; 8]], vec!["one".into()], None)
             .await
             .unwrap_err();
         assert!(format!("{err}").contains("must equal"));

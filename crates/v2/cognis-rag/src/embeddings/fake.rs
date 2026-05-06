@@ -113,7 +113,10 @@ mod tests {
         let e = FakeEmbeddings::new(16);
         let v = e.embed_query("test".into()).await.unwrap();
         for x in v {
-            assert!(x >= -1.0 && x <= 1.0, "vector value out of [-1, 1]: {x}");
+            assert!(
+                (-1.0..=1.0).contains(&x),
+                "vector value out of [-1, 1]: {x}"
+            );
         }
     }
 

@@ -13,11 +13,11 @@ pub mod embeddings;
 pub mod vectorstore;
 
 pub use distance::Distance;
-pub use embeddings::{Embeddings, FakeEmbeddings};
-#[cfg(feature = "openai")]
-pub use embeddings::OpenAIEmbeddings;
 #[cfg(feature = "ollama")]
 pub use embeddings::OllamaEmbeddings;
+#[cfg(feature = "openai")]
+pub use embeddings::OpenAIEmbeddings;
+pub use embeddings::{Embeddings, FakeEmbeddings};
 pub use vectorstore::{InMemoryVectorStore, SearchResult, VectorStore};
 
 /// Common imports for v2 RAG user code.

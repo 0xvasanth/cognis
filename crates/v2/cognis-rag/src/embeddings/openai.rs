@@ -27,7 +27,10 @@ pub struct OpenAIEmbeddings {
 impl OpenAIEmbeddings {
     /// New with API key + default model "text-embedding-3-small".
     pub fn new(api_key: impl Into<String>) -> Self {
-        Self::builder().api_key(api_key).build().expect("default OpenAIEmbeddings build")
+        Self::builder()
+            .api_key(api_key)
+            .build()
+            .expect("default OpenAIEmbeddings build")
     }
 
     /// Fluent builder.
@@ -153,9 +156,9 @@ impl OpenAIEmbeddingsBuilder {
     }
     /// Construct.
     pub fn build(self) -> Result<OpenAIEmbeddings> {
-        let api_key = self
-            .api_key
-            .ok_or_else(|| CognisError::Configuration("OpenAIEmbeddings: API key required".into()))?;
+        let api_key = self.api_key.ok_or_else(|| {
+            CognisError::Configuration("OpenAIEmbeddings: API key required".into())
+        })?;
         let mut http = reqwest::ClientBuilder::new();
         if let Some(t) = self.timeout_secs {
             http = http.timeout(Duration::from_secs(t));

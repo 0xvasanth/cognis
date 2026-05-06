@@ -24,7 +24,10 @@ pub struct OllamaEmbeddings {
 impl OllamaEmbeddings {
     /// New with default base URL + given model.
     pub fn new(model: impl Into<String>) -> Self {
-        Self::builder().model(model).build().expect("default OllamaEmbeddings build")
+        Self::builder()
+            .model(model)
+            .build()
+            .expect("default OllamaEmbeddings build")
     }
 
     /// Fluent builder.
