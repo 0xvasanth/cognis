@@ -36,6 +36,7 @@
 mod graph_state;
 mod schema_attr;
 mod tool_attr;
+mod tools_impl_attr;
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -92,6 +93,27 @@ pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as tool_attr::ToolArgs);
     let item_ts: TokenStream2 = item.into();
     match tool_attr::expand(args, item_ts) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+/// `#[tools_impl]` — outer attribute that scans an `impl` block for inner
+/// `#[tool]`-marked async methods and generates one [`cognis_core::tools::BaseTool`]
+/// wrapper per method, plus an `into_tools()` collector method on the user's
+/// struct.
+///
+/// # Arguments
+///
+/// - `crate_path = "..."` — override the framework crate (default: `"cognis_core"`).
+///
+/// Inner `#[tool]` markers on methods follow the same syntax as the standalone
+/// `#[tool]` attribute (name, description, return_direct, crate_path).
+#[proc_macro_attribute]
+pub fn tools_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as tools_impl_attr::ToolsImplArgs);
+    let item_ts: TokenStream2 = item.into();
+    match tools_impl_attr::expand(args, item_ts) {
         Ok(ts) => ts.into(),
         Err(e) => e.to_compile_error().into(),
     }
