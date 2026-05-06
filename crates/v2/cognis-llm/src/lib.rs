@@ -28,10 +28,11 @@ pub use chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, ToolCallDel
 
 pub mod tools;
 pub use tools::{BaseTool, Tool, ToolDefinition, ToolRegistry};
+pub mod client;
+pub use client::{Client, ClientBuilder};
+
 pub mod provider;
 pub use provider::{LLMProvider, Provider};
-// Filled in by subsequent tasks:
-// pub mod client;
 
 /// Common imports for v2 user code building agents and tools.
 pub mod prelude {
