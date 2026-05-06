@@ -15,6 +15,7 @@ use crate::state::GraphState;
 
 /// A validated, ready-to-run graph. Cheap to clone (the underlying nodes
 /// are `Arc<dyn Node<S>>`).
+#[derive(Clone)]
 pub struct CompiledGraph<S: GraphState> {
     pub(crate) graph: Graph<S>,
     pub(crate) checkpointer: Option<Arc<dyn Checkpointer<S>>>,
@@ -182,6 +183,28 @@ mod tests {
             err,
             cognis2_core::CognisError::RecursionLimit { limit: 3 }
         ));
+    }
+
+    #[tokio::test]
+    async fn compiled_graph_clones_and_runs() {
+        let g = Graph::<Counter>::new()
+            .node(
+                "a",
+                node_fn::<Counter, _, _>("a", |_s, _c| async move {
+                    Ok(NodeOut {
+                        update: CounterUpdate { n: 1 },
+                        goto: Goto::end(),
+                    })
+                }),
+            )
+            .start_at("a")
+            .compile()
+            .unwrap();
+        let g2 = g.clone();
+        let r1 = g.invoke(Counter::default(), RunnableConfig::default()).await.unwrap();
+        let r2 = g2.invoke(Counter::default(), RunnableConfig::default()).await.unwrap();
+        assert_eq!(r1.n, 1);
+        assert_eq!(r2.n, 1);
     }
 
     #[tokio::test]

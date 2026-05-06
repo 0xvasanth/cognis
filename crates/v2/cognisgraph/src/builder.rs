@@ -10,6 +10,7 @@ use crate::state::GraphState;
 
 /// A graph under construction. Generic over the state type `S`. Convert to
 /// an executable [`CompiledGraph`] via `.compile()`.
+#[derive(Clone)]
 pub struct Graph<S: GraphState> {
     pub(crate) nodes: HashMap<String, Arc<dyn Node<S>>>,
     pub(crate) edges: HashMap<String, String>,
