@@ -71,7 +71,9 @@ impl Extensions {
 
 impl fmt::Debug for Extensions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Extensions").field("len", &self.map.len()).finish()
+        f.debug_struct("Extensions")
+            .field("len", &self.map.len())
+            .finish()
     }
 }
 

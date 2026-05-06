@@ -159,7 +159,10 @@ where
         stream::iter(inputs)
             .map(|input| {
                 let cfg = cfg.clone();
-                async move { self.invoke(input, RunnableConfig::clone_for_subcall(&cfg)).await }
+                async move {
+                    self.invoke(input, RunnableConfig::clone_for_subcall(&cfg))
+                        .await
+                }
             })
             .buffer_unordered(concurrency)
             .collect::<Vec<_>>()
@@ -180,11 +183,7 @@ where
 
     /// Stream structured events. Default emits OnStart + OnEnd around an
     /// `invoke` call. Graph engines override to surface per-node events.
-    async fn stream_events(
-        &self,
-        input: I,
-        config: RunnableConfig,
-    ) -> crate::Result<EventStream>
+    async fn stream_events(&self, input: I, config: RunnableConfig) -> crate::Result<EventStream>
     where
         I: serde::Serialize,
         O: serde::Serialize,
@@ -212,7 +211,10 @@ where
             },
         };
 
-        Ok(EventStream::new(stream::iter(vec![on_start, on_end_or_err])))
+        Ok(EventStream::new(stream::iter(vec![
+            on_start,
+            on_end_or_err,
+        ])))
     }
 
     /// Friendly name for telemetry / introspection.
@@ -276,7 +278,10 @@ mod runnable_tests {
     #[tokio::test]
     async fn default_batch_runs_each() {
         let d = Doubler;
-        let out = d.batch(vec![1, 2, 3, 4], RunnableConfig::default()).await.unwrap();
+        let out = d
+            .batch(vec![1, 2, 3, 4], RunnableConfig::default())
+            .await
+            .unwrap();
         let mut sorted = out;
         sorted.sort();
         assert_eq!(sorted, vec![2, 4, 6, 8]);
@@ -294,10 +299,7 @@ mod runnable_tests {
     async fn default_stream_events_emits_start_end() {
         use futures::StreamExt;
         let d = Doubler;
-        let mut s = d
-            .stream_events(3, RunnableConfig::default())
-            .await
-            .unwrap();
+        let mut s = d.stream_events(3, RunnableConfig::default()).await.unwrap();
         let mut events = Vec::new();
         while let Some(e) = s.next().await {
             events.push(e);

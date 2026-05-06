@@ -258,6 +258,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "cognis2-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "num_cpus",
+ "pin-project-lite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "cognisagent"
 version = "0.2.1"
 dependencies = [
@@ -2560,6 +2579,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use cognis2_core::prelude::*;
 use cognis2_core::CognisError;
 use futures::StreamExt;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 /// A tiny runnable that uppercases its input string.
 struct Upper;
@@ -24,17 +24,23 @@ impl Runnable<String, String> for Upper {
 #[tokio::test]
 async fn invoke_lifecycle() {
     let r = Upper;
-    let out = r.invoke("hello".into(), RunnableConfig::default()).await.unwrap();
+    let out = r
+        .invoke("hello".into(), RunnableConfig::default())
+        .await
+        .unwrap();
     assert_eq!(out, "HELLO");
 }
 
 #[tokio::test]
 async fn batch_runs_all() {
     let r = Upper;
-    let out = r.batch(
-        vec!["a".into(), "b".into(), "c".into()],
-        RunnableConfig::default(),
-    ).await.unwrap();
+    let out = r
+        .batch(
+            vec!["a".into(), "b".into(), "c".into()],
+            RunnableConfig::default(),
+        )
+        .await
+        .unwrap();
     let mut sorted = out;
     sorted.sort();
     assert_eq!(sorted, vec!["A", "B", "C"]);
@@ -43,7 +49,10 @@ async fn batch_runs_all() {
 #[tokio::test]
 async fn stream_emits_single_chunk() {
     let r = Upper;
-    let s = r.stream("rust".into(), RunnableConfig::default()).await.unwrap();
+    let s = r
+        .stream("rust".into(), RunnableConfig::default())
+        .await
+        .unwrap();
     let v = s.collect_into_vec().await.unwrap();
     assert_eq!(v, vec!["RUST"]);
 }

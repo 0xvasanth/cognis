@@ -23,7 +23,9 @@ pub enum Message {
 impl Message {
     /// Build a `Human` message from arbitrary content.
     pub fn human(content: impl Into<String>) -> Self {
-        Self::Human(HumanMessage { content: content.into() })
+        Self::Human(HumanMessage {
+            content: content.into(),
+        })
     }
 
     /// Build an `Ai` message with text only (no tool calls).
@@ -36,7 +38,9 @@ impl Message {
 
     /// Build a `System` message.
     pub fn system(content: impl Into<String>) -> Self {
-        Self::System(SystemMessage { content: content.into() })
+        Self::System(SystemMessage {
+            content: content.into(),
+        })
     }
 
     /// Build a `Tool` message.
@@ -127,7 +131,9 @@ mod tests {
         assert_eq!(Message::system("be terse").content(), "be terse");
         let t = Message::tool("call_1", "result");
         assert_eq!(t.content(), "result");
-        if let Message::Tool(tm) = t { assert_eq!(tm.tool_call_id, "call_1"); }
+        if let Message::Tool(tm) = t {
+            assert_eq!(tm.tool_call_id, "call_1");
+        }
     }
 
     #[test]

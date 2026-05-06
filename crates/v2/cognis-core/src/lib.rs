@@ -24,11 +24,11 @@ pub use schemars::{schema_for, JsonSchema};
 
 /// Common imports for v2 user code.
 pub mod prelude {
+    pub use crate::schema_for;
     pub use crate::{
         AiMessage, CognisError, Event, EventStream, Extensions, HumanMessage, JsonSchema, Message,
         Observer, Result, Runnable, RunnableConfig, RunnableStream, SystemMessage, ToolCall,
         ToolMessage,
     };
-    pub use crate::schema_for;
     pub use async_trait::async_trait;
 }

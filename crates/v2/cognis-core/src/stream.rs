@@ -181,8 +181,8 @@ impl<O> Stream for RunnableStream<O> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     #[test]
     fn fn_observer_works() {
@@ -204,7 +204,10 @@ mod tests {
 
     #[test]
     fn event_serialization_tagged() {
-        let e = Event::OnLlmToken { token: "hi".into(), run_id: Uuid::nil() };
+        let e = Event::OnLlmToken {
+            token: "hi".into(),
+            run_id: Uuid::nil(),
+        };
         let s = serde_json::to_string(&e).unwrap();
         assert!(s.contains("\"type\":\"OnLlmToken\""));
         assert!(s.contains("\"token\":\"hi\""));
@@ -212,11 +215,7 @@ mod tests {
 
     #[tokio::test]
     async fn runnable_stream_collect() {
-        let s = RunnableStream::new(futures::stream::iter(vec![
-            Ok(1u32),
-            Ok(2),
-            Ok(3),
-        ]));
+        let s = RunnableStream::new(futures::stream::iter(vec![Ok(1u32), Ok(2), Ok(3)]));
         let v = s.collect_into_vec().await.unwrap();
         assert_eq!(v, vec![1, 2, 3]);
     }
@@ -225,10 +224,11 @@ mod tests {
     async fn runnable_stream_callback() {
         let counter = Arc::new(AtomicUsize::new(0));
         let counter2 = counter.clone();
-        let s = RunnableStream::new(futures::stream::iter(vec![Ok(10u32), Ok(20)]))
-            .with_callback(move |v| {
+        let s = RunnableStream::new(futures::stream::iter(vec![Ok(10u32), Ok(20)])).with_callback(
+            move |v| {
                 counter2.fetch_add(*v as usize, Ordering::SeqCst);
-            });
+            },
+        );
         let _ = s.collect_into_vec().await.unwrap();
         assert_eq!(counter.load(Ordering::SeqCst), 30);
     }
