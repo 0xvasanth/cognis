@@ -145,6 +145,35 @@ async fn missing_llm_errors() {
 }
 
 #[tokio::test]
+async fn stream_emits_real_events_during_run() {
+    use futures::StreamExt;
+
+    let provider = Arc::new(Sequencer::new(vec![Message::ai("done")]));
+    let client = Client::new(provider);
+    let mut agent = AgentBuilder::new().with_llm(client).build().unwrap();
+
+    let mut s = agent.stream("hi").await.unwrap();
+    let mut events = Vec::new();
+    while let Some(e) = s.next().await {
+        events.push(e);
+    }
+
+    // Engine emits OnStart → OnNodeStart("think") → OnNodeEnd("think") → OnEnd
+    // for a single-node run with no tool calls.
+    assert!(!events.is_empty(), "expected at least one event");
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, Event::OnNodeStart { node, .. } if node == "think")),
+        "expected OnNodeStart(think)"
+    );
+    assert!(
+        events.iter().any(|e| matches!(e, Event::OnEnd { .. })),
+        "expected OnEnd"
+    );
+}
+
+#[tokio::test]
 async fn max_iterations_capped() {
     // Provider always returns a tool call → infinite loop without max_iterations.
     let provider = Arc::new(Sequencer::new(vec![
