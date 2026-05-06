@@ -51,6 +51,11 @@ struct InnerToolArgs {
 fn parse_inner_tool_attr(attr: &Attribute) -> syn::Result<InnerToolArgs> {
     let mut name = None;
     let mut description = None;
+    // #[tool] with no args is valid (path-only style) — parse_nested_meta would
+    // error on it, so skip calling it when there are no parens.
+    if matches!(attr.meta, Meta::Path(_)) {
+        return Ok(InnerToolArgs { name, description });
+    }
     attr.parse_nested_meta(|meta| {
         if meta.path.is_ident("name") {
             let v = meta.value()?;
