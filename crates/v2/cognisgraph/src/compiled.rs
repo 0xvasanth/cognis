@@ -201,8 +201,14 @@ mod tests {
             .compile()
             .unwrap();
         let g2 = g.clone();
-        let r1 = g.invoke(Counter::default(), RunnableConfig::default()).await.unwrap();
-        let r2 = g2.invoke(Counter::default(), RunnableConfig::default()).await.unwrap();
+        let r1 = g
+            .invoke(Counter::default(), RunnableConfig::default())
+            .await
+            .unwrap();
+        let r2 = g2
+            .invoke(Counter::default(), RunnableConfig::default())
+            .await
+            .unwrap();
         assert_eq!(r1.n, 1);
         assert_eq!(r2.n, 1);
     }
