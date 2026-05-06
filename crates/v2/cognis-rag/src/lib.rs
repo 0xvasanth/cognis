@@ -5,7 +5,8 @@
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
+pub mod distance;
+
 // Filled in by subsequent tasks.
-// pub mod distance;
 // pub mod embeddings;
 // pub mod vectorstore;
