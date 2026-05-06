@@ -47,11 +47,18 @@ pub(crate) struct ToolArgs {
     pub description: Option<String>,
     #[allow(dead_code)]
     pub return_direct: Option<bool>,
+    /// Crate path used in generated code, e.g. `"cognis_core"` (default,
+    /// for v1) or `"cognis2_core"` (for v2). The macro emits all framework
+    /// type references as `::<crate_path>::tools::*` etc.
+    pub crate_path: String,
 }
 
 impl Parse for ToolArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut args = ToolArgs::default();
+        let mut args = ToolArgs {
+            crate_path: "cognis_core".to_string(),
+            ..ToolArgs::default()
+        };
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
             let _: Token![=] = input.parse()?;
@@ -62,11 +69,12 @@ impl Parse for ToolArgs {
                     let b: syn::LitBool = input.parse()?;
                     args.return_direct = Some(b.value);
                 }
+                "crate_path" => args.crate_path = input.parse::<LitStr>()?.value(),
                 other => {
                     return Err(syn::Error::new(
                         key.span(),
                         format!(
-                            "unknown #[tool] argument `{other}`; expected name, description, or return_direct"
+                            "unknown #[tool] argument `{other}`; expected name, description, return_direct, or crate_path"
                         ),
                     ))
                 }
