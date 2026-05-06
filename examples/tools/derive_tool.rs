@@ -1,8 +1,8 @@
 //! Derive Tool Example
 //!
-//! Demonstrates `#[derive(ToolSchema)]` and `#[derive(JsonSchema)]` for
-//! auto-generating OpenAPI-compatible JSON schemas from Rust structs,
-//! and how to combine them with `BaseTool` to build tools with rich schemas.
+//! Auto-generates JSON schemas from Rust structs/enums via
+//! `#[derive(JsonSchema)]` (re-exported from `schemars`) and combines them
+//! with hand-written `BaseTool` impls.
 //!
 //! Run with: `cargo run -p cognis-examples --example derive_tool`
 
@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use cognis_core::error::Result;
 use cognis_core::tools::types::{ToolInput, ToolOutput};
 use cognis_core::tools::BaseTool;
-use cognis_macros::{JsonSchema, ToolSchema};
+use cognis_core::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -28,7 +28,7 @@ struct SearchFilter {
 }
 
 /// Output format for summarization.
-#[derive(Debug, Clone, Serialize, Deserialize, ToolSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 enum OutputFormat {
     #[serde(rename = "json")]
     Json,
@@ -64,7 +64,7 @@ impl BaseTool for CalculatorTool {
     }
 
     fn args_schema(&self) -> Option<Value> {
-        Some(CalculatorArgs::json_schema())
+        serde_json::to_value(schema_for!(CalculatorArgs)).ok()
     }
 
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
@@ -128,7 +128,7 @@ impl BaseTool for SearchTool {
     }
 
     fn args_schema(&self) -> Option<Value> {
-        Some(SearchArgs::json_schema())
+        serde_json::to_value(schema_for!(SearchArgs)).ok()
     }
 
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
@@ -166,25 +166,23 @@ impl BaseTool for SearchTool {
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!("=== Derive Tool Schema Examples ===\n");
 
-    // 1. Show generated JSON schemas
     println!("--- Generated JSON Schemas ---\n");
 
     println!(
         "CalculatorArgs:\n{}\n",
-        serde_json::to_string_pretty(&CalculatorArgs::json_schema())?
+        serde_json::to_string_pretty(&schema_for!(CalculatorArgs))?
     );
 
     println!(
         "SearchFilter:\n{}\n",
-        serde_json::to_string_pretty(&SearchFilter::json_schema())?
+        serde_json::to_string_pretty(&schema_for!(SearchFilter))?
     );
 
     println!(
         "OutputFormat:\n{}\n",
-        serde_json::to_string_pretty(&OutputFormat::json_schema())?
+        serde_json::to_string_pretty(&schema_for!(OutputFormat))?
     );
 
-    // 2. Use tools with their schemas
     println!("--- Tool Execution ---\n");
 
     let calc = CalculatorTool;
@@ -213,7 +211,6 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .await?;
     println!("Result: {:?}\n", result);
 
-    // 3. Show tool_call_schema (used by LLM providers)
     println!("--- OpenAI-compatible tool_call_schema ---\n");
     println!(
         "{}",

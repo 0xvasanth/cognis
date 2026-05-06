@@ -36,7 +36,10 @@ pub enum Validator {
     Pattern(String),
     EnumValues(Vec<String>),
     Format(FormatName),
-    Items(Box<SchemaAttr>),
+    /// Reserved for nested array-item validators. Parsed today; the inner
+    /// payload isn't consumed yet because Vec-item iteration in generated
+    /// runtime checks is still a TODO.
+    Items(#[allow(dead_code)] Box<SchemaAttr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

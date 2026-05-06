@@ -27,6 +27,7 @@ base64 = "0.22"
 reqwest = { version = "0.12", features = ["json", "stream"] }
 secrecy = { version = "0.10", features = ["serde"] }
 tracing = "0.1"
+schemars = "0.8"
 
 
 cognis = { path = "crates/cognis", version = "0.2.1" }

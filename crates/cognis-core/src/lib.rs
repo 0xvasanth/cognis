@@ -30,7 +30,14 @@
 //! assert_eq!(msg.message_type(), cognis_core::messages::MessageType::Human);
 //! ```
 
-pub use cognis_macros::{tool, JsonSchema, ToolSchema};
+pub use cognis_macros::tool;
+
+/// Re-export of [`schemars`] — the schema generation crate cognis uses for
+/// derive-driven JSON Schema. Pull in `cognis_core::JsonSchema` (or use
+/// `#[derive(::cognis_core::schemars::JsonSchema)]`) to schema-derive your
+/// own structs.
+pub use schemars;
+pub use schemars::{schema_for, JsonSchema};
 
 pub mod agents;
 pub mod caches;
