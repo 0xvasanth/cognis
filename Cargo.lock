@@ -266,6 +266,7 @@ dependencies = [
  "cognis2-core",
  "cognis2-graph",
  "cognis2-llm",
+ "cognis2-rag",
  "futures",
  "schemars",
  "serde",
@@ -342,6 +343,23 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "cognis2-rag"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cognis2-core",
+ "futures",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
  "tracing",
  "uuid",
 ]

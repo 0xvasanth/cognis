@@ -10,6 +10,7 @@ repository = "https://github.com/0xvasanth/cognis"
 cognis2-core = { path = "../cognis-core", version = "0.1.0" }
 cognis2-graph = { path = "../cognisgraph", version = "0.1.0" }
 cognis2-llm = { path = "../cognis-llm", version = "0.1.0" }
+cognis2-rag = { path = "../cognis-rag", version = "0.1.0" }
 cognis-macros.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -20,6 +21,11 @@ futures.workspace = true
 tracing.workspace = true
 schemars.workspace = true
 uuid.workspace = true
+
+[features]
+default = ["openai", "ollama"]
+openai = ["cognis2-rag/openai", "cognis2-llm/openai"]
+ollama = ["cognis2-rag/ollama", "cognis2-llm/ollama"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

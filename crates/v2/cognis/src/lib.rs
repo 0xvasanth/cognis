@@ -10,6 +10,7 @@
 pub use cognis2_core;
 pub use cognis2_graph;
 pub use cognis2_llm;
+pub use cognis2_rag;
 
 pub use cognis2_core::{
     CognisError, Event, EventStream, Extensions, JsonSchema, Message, Observer, Result, Runnable,
@@ -23,6 +24,13 @@ pub use cognis2_llm::{
     BaseTool, ChatOptions, ChatResponse, Client, ClientBuilder, LLMProvider, Provider,
     SchemaBasedTool, StreamChunk, Tool, ToolDefinition, ToolInput, ToolOutput, ToolRegistry, Usage,
 };
+#[cfg(feature = "ollama")]
+pub use cognis2_rag::OllamaEmbeddings;
+#[cfg(feature = "openai")]
+pub use cognis2_rag::OpenAIEmbeddings;
+pub use cognis2_rag::{
+    Distance, Embeddings, FakeEmbeddings, InMemoryVectorStore, SearchResult, VectorStore,
+};
 
 // Filled in by subsequent tasks:
 pub mod agent;
@@ -34,5 +42,6 @@ pub use agent::{
 /// Common imports for v2 user code building agents.
 pub mod prelude {
     pub use crate::*;
+    pub use crate::{Distance, Embeddings, InMemoryVectorStore, SearchResult, VectorStore};
     pub use async_trait::async_trait;
 }
