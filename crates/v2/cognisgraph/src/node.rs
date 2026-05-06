@@ -46,9 +46,34 @@ pub struct NodeCtx<'a> {
     pub step: u64,
     /// The active runnable config (recursion_limit, observers, cancel_token, …).
     pub config: &'a RunnableConfig,
+    /// Per-target payload when this node is invoked as a `Goto::Send` target.
+    /// `None` for all other dispatch types.
+    payload: Option<&'a serde_json::Value>,
 }
 
 impl<'a> NodeCtx<'a> {
+    /// Engine-internal constructor.
+    pub(crate) fn new(run_id: Uuid, step: u64, config: &'a RunnableConfig) -> Self {
+        Self {
+            run_id,
+            step,
+            config,
+            payload: None,
+        }
+    }
+
+    /// Engine-internal: attach a Send payload.
+    pub(crate) fn with_payload(mut self, payload: &'a serde_json::Value) -> Self {
+        self.payload = Some(payload);
+        self
+    }
+
+    /// The Send payload accompanying this dispatch, if any. Returns `None`
+    /// when the node is invoked via `Goto::Node` or `Goto::Multiple`.
+    pub fn payload(&self) -> Option<&serde_json::Value> {
+        self.payload
+    }
+
     /// Notify every observer in `config.observers` of an event.
     pub fn emit(&self, event: &Event) {
         self.config.emit(event);
@@ -151,16 +176,27 @@ mod tests {
             }
         });
         let cfg = RunnableConfig::default();
-        let ctx = NodeCtx {
-            run_id: Uuid::nil(),
-            step: 0,
-            config: &cfg,
-        };
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
         let s = S { n: 5 };
         let out = n.execute(&s, &ctx).await.unwrap();
         assert_eq!(out.update.n, 6);
         assert!(out.goto.is_end());
         assert_eq!(n.name(), "incr");
+    }
+
+    #[test]
+    fn node_ctx_payload_default_none() {
+        let cfg = RunnableConfig::default();
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
+        assert!(ctx.payload().is_none());
+    }
+
+    #[test]
+    fn node_ctx_with_payload() {
+        let cfg = RunnableConfig::default();
+        let payload = serde_json::json!({"x": 42});
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg).with_payload(&payload);
+        assert_eq!(ctx.payload().unwrap()["x"], 42);
     }
 
     #[test]

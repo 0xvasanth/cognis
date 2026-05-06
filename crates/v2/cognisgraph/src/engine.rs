@@ -57,11 +57,7 @@ where
             }
         }
 
-        let ctx = NodeCtx {
-            run_id,
-            step,
-            config: &config,
-        };
+        let ctx = NodeCtx::new(run_id, step, &config);
 
         ctx.emit(&Event::OnNodeStart {
             node: active_name.clone(),
