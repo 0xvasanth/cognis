@@ -23,10 +23,12 @@ pub use cognis2_core::{AiMessage, HumanMessage, Message, SystemMessage, ToolCall
 pub mod schema;
 pub use schema::schema_for_tool;
 
+pub mod chat;
+pub use chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, ToolCallDelta, Usage};
+
 pub mod tools;
 pub use tools::{BaseTool, Tool, ToolDefinition, ToolRegistry};
 // Filled in by subsequent tasks:
-// pub mod chat;
 // pub mod client;
 // pub mod provider;
 
