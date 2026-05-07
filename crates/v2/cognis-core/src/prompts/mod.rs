@@ -20,9 +20,13 @@
 //! ```
 
 pub mod chat;
+pub mod example_selector;
 pub mod few_shot;
 pub mod template;
 
 pub use chat::{ChatPromptTemplate, Role};
+pub use example_selector::{
+    ExampleRenderFn, ExampleSelector, LengthBasedExampleSelector, StaticExampleSelector,
+};
 pub use few_shot::FewShotTemplate;
 pub use template::PromptTemplate;

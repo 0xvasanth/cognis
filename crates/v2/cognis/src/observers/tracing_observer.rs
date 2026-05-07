@@ -123,6 +123,27 @@ impl Observer for TracingObserver {
                     "runnable.error"
                 );
             }
+            Event::OnCheckpoint { step, run_id } => {
+                tracing::debug!(
+                    target: "cognis2",
+                    %run_id,
+                    step,
+                    "graph.checkpoint"
+                );
+            }
+            Event::Custom {
+                kind,
+                payload,
+                run_id,
+            } => {
+                tracing::debug!(
+                    target: "cognis2",
+                    %run_id,
+                    kind = kind.as_str(),
+                    payload = %payload,
+                    "graph.custom"
+                );
+            }
         }
     }
 }

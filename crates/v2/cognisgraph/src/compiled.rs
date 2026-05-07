@@ -11,6 +11,7 @@ use cognis2_core::{Result, Runnable, RunnableConfig};
 
 use crate::builder::Graph;
 use crate::checkpoint::Checkpointer;
+use crate::durability::Durability;
 use crate::engine;
 use crate::state::GraphState;
 use crate::stream_mode::StreamModes;
@@ -23,6 +24,7 @@ pub struct CompiledGraph<S: GraphState> {
     pub(crate) checkpointer: Option<Arc<dyn Checkpointer<S>>>,
     pub(crate) interrupt_before: HashSet<String>,
     pub(crate) interrupt_after: HashSet<String>,
+    pub(crate) durability: Durability,
 }
 
 impl<S: GraphState> std::fmt::Debug for CompiledGraph<S> {
@@ -43,7 +45,20 @@ impl<S: GraphState> CompiledGraph<S> {
             checkpointer: None,
             interrupt_before: HashSet::new(),
             interrupt_after: HashSet::new(),
+            durability: Durability::default(),
         }
+    }
+
+    /// Override checkpoint timing relative to step execution. Default is
+    /// [`Durability::Sync`].
+    pub fn with_durability(mut self, d: Durability) -> Self {
+        self.durability = d;
+        self
+    }
+
+    /// Current durability mode.
+    pub fn durability(&self) -> &Durability {
+        &self.durability
     }
 
     /// Number of registered nodes — useful for testing / introspection.
@@ -57,7 +72,7 @@ impl<S: GraphState> CompiledGraph<S> {
     }
 }
 
-impl<S: GraphState + Clone> CompiledGraph<S> {
+impl<S: GraphState + Clone + Send + 'static> CompiledGraph<S> {
     /// Attach a checkpointer; the engine will save state after each superstep.
     pub fn with_checkpointer(mut self, cp: Arc<dyn Checkpointer<S>>) -> Self {
         self.checkpointer = Some(cp);

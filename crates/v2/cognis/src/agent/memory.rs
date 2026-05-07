@@ -3,14 +3,17 @@
 //! Memory implementations:
 //! - [`Window`] — bounded FIFO with optional pinned system prompt.
 //! - [`Buffer`] — unbounded; keeps every message.
+//! - [`TokenBufferMemory`] — token-budgeted trim; drops oldest until under budget.
 //! - [`SummaryMemory`] — summarizes older history with an LLM, drops the originals.
+//! - [`SummaryBufferMemory`] — token budget + summary; the best of both.
 //! - [`VectorMemory`] — semantic recall via a [`VectorStore`]; the most
 //!   relevant past messages are surfaced into the seed.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use cognis2_core::Message;
+use cognis2_core::tokenizer::{CharTokenizer, Tokenizer};
+use cognis2_core::{trim_messages, Message, TrimStrategy};
 
 use cognis2_llm::chat::ChatOptions;
 use cognis2_llm::Client;
@@ -137,6 +140,87 @@ impl Memory for Buffer {
 }
 
 // ---------------------------------------------------------------------------
+// TokenBufferMemory — drop oldest until under a token budget.
+// ---------------------------------------------------------------------------
+
+/// Token-budgeted memory: every `seed()` call trims the conversation
+/// down to `max_tokens` using the configured [`Tokenizer`]. The pinned
+/// system prompt (if any) is always kept.
+pub struct TokenBufferMemory {
+    system_pinned: Option<Message>,
+    msgs: Vec<Message>,
+    max_tokens: usize,
+    tokenizer: Arc<dyn Tokenizer>,
+    strategy: TrimStrategy,
+}
+
+impl TokenBufferMemory {
+    /// Build with the default `CharTokenizer` (chars-as-tokens; conservative).
+    pub fn new(max_tokens: usize) -> Self {
+        Self {
+            system_pinned: None,
+            msgs: Vec::new(),
+            max_tokens,
+            tokenizer: Arc::new(CharTokenizer),
+            strategy: TrimStrategy::First,
+        }
+    }
+
+    /// Override the tokenizer (e.g. plug in tiktoken).
+    pub fn with_tokenizer(mut self, t: Arc<dyn Tokenizer>) -> Self {
+        self.tokenizer = t;
+        self
+    }
+
+    /// Override the trim strategy. Default: drop oldest first.
+    pub fn with_strategy(mut self, s: TrimStrategy) -> Self {
+        self.strategy = s;
+        self
+    }
+
+    /// Pin a system message at the head of the seed.
+    pub fn with_system(mut self, prompt: impl Into<String>) -> Self {
+        self.system_pinned = Some(Message::system(prompt));
+        self
+    }
+}
+
+impl std::fmt::Debug for TokenBufferMemory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenBufferMemory")
+            .field("max_tokens", &self.max_tokens)
+            .field("strategy", &self.strategy)
+            .field("msgs", &self.msgs.len())
+            .finish()
+    }
+}
+
+impl Memory for TokenBufferMemory {
+    fn read(&self) -> &[Message] {
+        &self.msgs
+    }
+    fn write(&mut self, msg: Message) {
+        self.msgs.push(msg);
+    }
+    fn clear(&mut self) {
+        self.msgs.clear();
+    }
+    fn seed(&self) -> Vec<Message> {
+        let mut all = Vec::with_capacity(self.msgs.len() + 1);
+        if let Some(s) = &self.system_pinned {
+            all.push(s.clone());
+        }
+        all.extend(self.msgs.iter().cloned());
+        trim_messages(
+            &all,
+            self.max_tokens,
+            self.tokenizer.as_ref(),
+            self.strategy,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SummaryMemory — LLM-backed compression.
 // ---------------------------------------------------------------------------
 
@@ -257,6 +341,161 @@ impl SummaryMemory {
     /// `compact()` call would do work.
     pub fn needs_compact(&self) -> bool {
         self.msgs.len() >= self.threshold
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SummaryBufferMemory — token-budgeted buffer with summarized overflow.
+// ---------------------------------------------------------------------------
+
+/// Hybrid memory: keeps the most recent messages whole, but compresses
+/// older ones into a running LLM-generated summary so the total seed
+/// stays under a token budget.
+///
+/// On every `compact()` call (or every `seed()` after a `compact()`),
+/// the oldest messages whose cumulative token cost would push the
+/// transcript over `max_tokens` are summarized into the running summary
+/// and dropped from the message list.
+pub struct SummaryBufferMemory {
+    system_pinned: Option<Message>,
+    msgs: Vec<Message>,
+    summary: Option<String>,
+    max_tokens: usize,
+    tokenizer: Arc<dyn Tokenizer>,
+    client: Client,
+    prompt: String,
+}
+
+impl SummaryBufferMemory {
+    /// Build with a token budget and the LLM client used to summarize
+    /// overflow.
+    pub fn new(client: Client, max_tokens: usize) -> Self {
+        Self {
+            system_pinned: None,
+            msgs: Vec::new(),
+            summary: None,
+            max_tokens,
+            tokenizer: Arc::new(CharTokenizer),
+            client,
+            prompt: DEFAULT_SUMMARY_PROMPT.to_string(),
+        }
+    }
+
+    /// Override the tokenizer.
+    pub fn with_tokenizer(mut self, t: Arc<dyn Tokenizer>) -> Self {
+        self.tokenizer = t;
+        self
+    }
+
+    /// Override the summarization prompt.
+    pub fn with_prompt(mut self, p: impl Into<String>) -> Self {
+        self.prompt = p.into();
+        self
+    }
+
+    /// Pin a system message at the head.
+    pub fn with_system(mut self, prompt: impl Into<String>) -> Self {
+        self.system_pinned = Some(Message::system(prompt));
+        self
+    }
+
+    /// Total token cost of the current seed (system + summary + msgs).
+    fn current_cost(&self) -> usize {
+        let mut total = 0;
+        if let Some(s) = &self.system_pinned {
+            total += self.tokenizer.count(s.content());
+        }
+        if let Some(s) = &self.summary {
+            total += self.tokenizer.count(s);
+        }
+        for m in &self.msgs {
+            total += self.tokenizer.count(m.content());
+        }
+        total
+    }
+
+    /// Force compression now: summarize the oldest messages until
+    /// `current_cost <= max_tokens`. Returns the number of messages
+    /// folded into the summary.
+    pub async fn compact(&mut self) -> cognis2_core::Result<usize> {
+        if self.current_cost() <= self.max_tokens {
+            return Ok(0);
+        }
+        // Identify the oldest messages to summarize: take from the front
+        // until the remaining cost is within budget.
+        let mut to_summarize: Vec<Message> = Vec::new();
+        while self.current_cost_with(&self.msgs[to_summarize.len()..]) > self.max_tokens
+            && to_summarize.len() < self.msgs.len()
+        {
+            to_summarize.push(self.msgs[to_summarize.len()].clone());
+        }
+        if to_summarize.is_empty() {
+            return Ok(0);
+        }
+        let n = to_summarize.len();
+        let transcript = to_summarize
+            .iter()
+            .map(|m| format!("[{}] {}", role_label(m), m.content()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let request = format!("{}\n\nConversation:\n{transcript}", self.prompt);
+        let resp = self
+            .client
+            .chat(vec![Message::human(request)], ChatOptions::default())
+            .await?;
+        let new_summary = resp.message.content().to_string();
+        self.summary = Some(match self.summary.take() {
+            Some(prev) => format!("{prev}\n\n{new_summary}"),
+            None => new_summary,
+        });
+        // Drain compacted messages.
+        self.msgs.drain(..n);
+        Ok(n)
+    }
+
+    fn current_cost_with(&self, tail: &[Message]) -> usize {
+        let mut total = 0;
+        if let Some(s) = &self.system_pinned {
+            total += self.tokenizer.count(s.content());
+        }
+        if let Some(s) = &self.summary {
+            total += self.tokenizer.count(s);
+        }
+        for m in tail {
+            total += self.tokenizer.count(m.content());
+        }
+        total
+    }
+
+    /// True if a `compact()` would do work.
+    pub fn needs_compact(&self) -> bool {
+        self.current_cost() > self.max_tokens
+    }
+}
+
+impl Memory for SummaryBufferMemory {
+    fn read(&self) -> &[Message] {
+        &self.msgs
+    }
+    fn write(&mut self, msg: Message) {
+        self.msgs.push(msg);
+    }
+    fn clear(&mut self) {
+        self.msgs.clear();
+        self.summary = None;
+    }
+    fn seed(&self) -> Vec<Message> {
+        let mut out = Vec::with_capacity(self.msgs.len() + 2);
+        if let Some(s) = &self.system_pinned {
+            out.push(s.clone());
+        }
+        if let Some(summary) = &self.summary {
+            out.push(Message::system(format!(
+                "Earlier conversation summary:\n{summary}"
+            )));
+        }
+        out.extend(self.msgs.iter().cloned());
+        out
     }
 }
 
@@ -402,5 +641,52 @@ mod tests {
         assert_eq!(seed[0].content(), "system!");
         assert_eq!(seed[1].content(), "u1");
         assert_eq!(seed[2].content(), "u2");
+    }
+
+    #[test]
+    fn token_buffer_drops_oldest_until_under_budget() {
+        // CharTokenizer counts chars. Budget 6 with 3-char messages.
+        let mut m = TokenBufferMemory::new(6);
+        m.write(Message::human("aaa"));
+        m.write(Message::human("bbb"));
+        m.write(Message::human("ccc"));
+        let seed = m.seed();
+        // Two messages fit (3 + 3 = 6); the third would push to 9 → dropped.
+        assert_eq!(seed.len(), 2);
+        // Oldest dropped → tail kept.
+        assert_eq!(seed[0].content(), "bbb");
+        assert_eq!(seed[1].content(), "ccc");
+    }
+
+    #[test]
+    fn token_buffer_keeps_pinned_system() {
+        let mut m = TokenBufferMemory::new(10).with_system("sys");
+        m.write(Message::human("aaaa"));
+        m.write(Message::human("bbbb"));
+        let seed = m.seed();
+        // System ("sys", 3 chars) is pinned; budget is 10; remaining 7 fits 4-char + can fit one more.
+        assert!(!seed.is_empty());
+        assert_eq!(seed[0].content(), "sys");
+    }
+
+    #[test]
+    fn token_buffer_with_strategy_last_drops_newest() {
+        let mut m = TokenBufferMemory::new(6).with_strategy(TrimStrategy::Last);
+        m.write(Message::human("aaa"));
+        m.write(Message::human("bbb"));
+        m.write(Message::human("ccc"));
+        let seed = m.seed();
+        assert_eq!(seed.len(), 2);
+        // Newest dropped → head kept.
+        assert_eq!(seed[0].content(), "aaa");
+        assert_eq!(seed[1].content(), "bbb");
+    }
+
+    #[test]
+    fn token_buffer_clear_removes_all() {
+        let mut m = TokenBufferMemory::new(100);
+        m.write(Message::human("a"));
+        m.clear();
+        assert!(m.seed().is_empty());
     }
 }

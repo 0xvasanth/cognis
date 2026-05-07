@@ -11,12 +11,16 @@ pub mod boolean;
 pub mod json;
 pub mod list;
 pub mod string;
+pub mod structured;
 pub mod xml;
 
 pub use boolean::BooleanParser;
 pub use json::JsonParser;
 pub use list::{CommaListParser, NumberedListParser};
 pub use string::StringParser;
+pub use structured::{
+    JsonExtraction, JsonExtractor, StructuredOutputConfig, StructuredOutputParser,
+};
 pub use xml::XmlParser;
 
 use crate::Result;

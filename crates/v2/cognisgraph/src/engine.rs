@@ -26,7 +26,7 @@ pub(crate) async fn run<S>(
     config: RunnableConfig,
 ) -> Result<S>
 where
-    S: GraphState + Clone,
+    S: GraphState + Clone + Send + 'static,
     S::Update: Clone,
 {
     validate_interrupt_names(compiled)?;
@@ -74,7 +74,7 @@ pub(crate) async fn resume<S>(
     start_step: u64,
 ) -> Result<S>
 where
-    S: GraphState + Clone,
+    S: GraphState + Clone + Send + 'static,
     S::Update: Clone,
 {
     validate_interrupt_names(compiled)?;
@@ -136,13 +136,14 @@ async fn superstep_loop<S>(
     start_step: u64,
 ) -> Result<S>
 where
-    S: GraphState + Clone,
+    S: GraphState + Clone + Send + 'static,
     S::Update: Clone,
 {
     let mut state = initial_state;
     let mut active = initial_active;
     let recursion_limit = config.recursion_limit;
     let run_id = config.run_id;
+    let durability = compiled.durability.clone();
 
     let mut step = start_step;
     let max_step = start_step.saturating_add(recursion_limit as u64);
@@ -191,8 +192,14 @@ where
             });
         }
 
+        // Compute remaining-step budget and pass to node ctx.
+        let remaining_steps = max_step.saturating_sub(step);
+        let remaining_steps_u32 =
+            u32::try_from(remaining_steps.min(u64::from(u32::MAX))).unwrap_or(u32::MAX);
+
         // Run all tasks in parallel.
-        let task_outputs = run_tasks_parallel(&active, &state, config, step).await?;
+        let task_outputs =
+            run_tasks_parallel(&active, &state, config, step, remaining_steps_u32).await?;
 
         // Atomic merge + OnNodeEnd.
         for (i, output) in task_outputs.iter().enumerate() {
@@ -218,8 +225,25 @@ where
             }
         }
 
-        // Snapshot post-merge state.
-        save_checkpoint(compiled, run_id, step, &state).await?;
+        // Snapshot post-merge state, honoring durability mode.
+        match durability.decide(step, false) {
+            crate::durability::DurabilityDecision::Sync => {
+                save_checkpoint(compiled, run_id, step, &state).await?;
+                config.emit(&Event::OnCheckpoint { step, run_id });
+            }
+            crate::durability::DurabilityDecision::Async => {
+                if let Some(cp) = &compiled.checkpointer {
+                    let cp = cp.clone();
+                    let state_snap = state.clone();
+                    let cfg_snap = config.clone();
+                    tokio::spawn(async move {
+                        let _ = cp.save(run_id, step, &state_snap).await;
+                        cfg_snap.emit(&Event::OnCheckpoint { step, run_id });
+                    });
+                }
+            }
+            crate::durability::DurabilityDecision::Skip => {}
+        }
 
         // Compute next_active. End anywhere terminates the whole graph.
         let mut next_active: Vec<ActiveTask<S>> = Vec::new();
@@ -264,6 +288,15 @@ where
         }
 
         if should_end {
+            // Terminal save honors the configured durability decision.
+            if matches!(
+                durability.decide(step, true),
+                crate::durability::DurabilityDecision::Sync
+                    | crate::durability::DurabilityDecision::Async
+            ) {
+                save_checkpoint(compiled, run_id, step, &state).await?;
+                config.emit(&Event::OnCheckpoint { step, run_id });
+            }
             config.emit(&Event::OnEnd {
                 runnable: "graph".into(),
                 run_id,
@@ -280,6 +313,13 @@ where
     }
 
     // No more active tasks but no End emitted — terminate gracefully.
+    if matches!(
+        durability.decide(step, true),
+        crate::durability::DurabilityDecision::Sync | crate::durability::DurabilityDecision::Async
+    ) {
+        save_checkpoint(compiled, run_id, step, &state).await?;
+        config.emit(&Event::OnCheckpoint { step, run_id });
+    }
     config.emit(&Event::OnEnd {
         runnable: "graph".into(),
         run_id,
@@ -309,6 +349,7 @@ async fn run_tasks_parallel<S>(
     state: &S,
     config: &RunnableConfig,
     step: u64,
+    remaining_steps: u32,
 ) -> Result<Vec<TaskOutput<S>>>
 where
     S: GraphState + Clone,
@@ -334,7 +375,8 @@ where
             async move {
                 // NodeCtx borrows from the owned `payload_owned` which lives
                 // for the duration of this async block.
-                let ctx = NodeCtx::new(run_id, step, &config_snap);
+                let ctx =
+                    NodeCtx::new(run_id, step, &config_snap).with_remaining_steps(remaining_steps);
                 let ctx = if let Some(ref p) = payload_owned {
                     ctx.with_payload(p)
                 } else {

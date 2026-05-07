@@ -21,7 +21,9 @@ pub use builder::AgentBuilder;
 pub use default_graph::{default_react_graph, default_react_graph_with_limits};
 pub use health::AgentHealth;
 pub use lifecycle::{AgentLifecycle, OnStart};
-pub use memory::{Buffer, Memory, SummaryMemory, VectorMemory, Window};
+pub use memory::{
+    Buffer, Memory, SummaryBufferMemory, SummaryMemory, TokenBufferMemory, VectorMemory, Window,
+};
 pub use plugin::{AgentPlugin, FnPlugin};
 pub use state::{AgentState, AgentStateUpdate};
 pub use think_node::ThinkNode;

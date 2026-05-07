@@ -40,7 +40,11 @@ pub use content::{
 pub use error::{CognisError, InterruptKind, Result};
 pub use extensions::Extensions;
 pub use json_merge::deep_merge_json;
-pub use message::{AiMessage, HumanMessage, Message, SystemMessage, ToolCall, ToolMessage};
+pub use message::{
+    merge_message_runs, message_from_chunks, trim_messages, trim_messages_custom, AiChunk,
+    AiMessage, HumanChunk, HumanMessage, Message, MessageChunk, RemoveMessage, SystemChunk,
+    SystemMessage, ToolCall, ToolCallChunk, ToolChunk, ToolMessage, TrimStrategy,
+};
 pub use runnable::{Runnable, RunnableConfig};
 pub use runnable_ext::RunnableExt;
 pub use security::is_public_unicast;
@@ -57,8 +61,9 @@ pub use schemars::{schema_for, JsonSchema};
 pub mod prelude {
     pub use crate::compose::{lambda, pipe, Branch, Each, Lambda, Parallel, Passthrough, Pipe};
     pub use crate::output_parsers::{
-        BooleanParser, CommaListParser, JsonParser, NumberedListParser, OutputParser, StringParser,
-        XmlParser,
+        BooleanParser, CommaListParser, JsonExtraction, JsonExtractor, JsonParser,
+        NumberedListParser, OutputParser, StringParser, StructuredOutputConfig,
+        StructuredOutputParser, XmlParser,
     };
     pub use crate::prompts::{ChatPromptTemplate, FewShotTemplate, PromptTemplate, Role};
     pub use crate::schema_for;

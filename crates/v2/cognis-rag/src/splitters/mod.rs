@@ -1,14 +1,18 @@
 //! Text splitters — chunk a [`Document`] into smaller `Document`s suitable for
 //! embedding.
 
+pub mod character;
 pub mod code;
+pub mod html;
 pub mod json_splitter;
 pub mod markdown;
 pub mod recursive;
 pub mod sentence;
 pub mod token_aware;
 
+pub use character::{CharacterSplitter, LengthFn};
 pub use code::{CodeLanguage, CodeSplitter};
+pub use html::HtmlSplitter;
 pub use json_splitter::JsonSplitter;
 pub use markdown::MarkdownSplitter;
 pub use recursive::RecursiveCharSplitter;

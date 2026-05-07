@@ -62,8 +62,9 @@ pub mod tools;
 pub use agent::{
     default_react_graph, default_react_graph_with_limits, Agent, AgentBuilder, AgentHealth,
     AgentLifecycle, AgentPlugin, AgentResponse, AgentState, AgentStateUpdate, Buffer,
-    ConversationMode, FnPlugin, Memory, OnStart, SummaryMemory, ThinkNode, ToolDispatchNode,
-    VectorMemory, Window, Workflow, WorkflowState, WorkflowStateUpdate,
+    ConversationMode, FnPlugin, Memory, OnStart, SummaryBufferMemory, SummaryMemory, ThinkNode,
+    TokenBufferMemory, ToolDispatchNode, VectorMemory, Window, Workflow, WorkflowState,
+    WorkflowStateUpdate,
 };
 pub use backend::{
     Backend, Blob, GrepHit, InMemoryStateBackend, InMemoryStorageBackend, LocalFsStorageBackend,

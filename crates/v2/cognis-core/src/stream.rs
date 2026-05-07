@@ -82,6 +82,25 @@ pub enum Event {
         /// Serialized output value.
         output: serde_json::Value,
     },
+    /// A graph engine persisted a checkpoint at a superstep boundary.
+    OnCheckpoint {
+        /// Step number that was just persisted.
+        step: u64,
+        /// Correlation ID for this run.
+        run_id: Uuid,
+    },
+    /// User-emitted event from a graph node via `NodeCtx::write_custom`.
+    /// Carries an arbitrary `kind` label and a JSON payload — the consumer
+    /// decides how to interpret it. Used by `StreamMode::Custom` to surface
+    /// node-authored progress signals without cluttering the typed enum.
+    Custom {
+        /// Caller-defined label (e.g. `"progress"`, `"chunk"`).
+        kind: String,
+        /// Arbitrary JSON payload.
+        payload: serde_json::Value,
+        /// Correlation ID for this run.
+        run_id: Uuid,
+    },
 }
 
 /// Pluggable event sink. Multiple observers can subscribe to a single run.

@@ -9,9 +9,11 @@
 pub mod audit;
 pub mod barrier;
 pub mod builder;
+pub mod channels;
 pub mod checkpoint;
 pub mod command;
 pub mod compiled;
+pub mod durability;
 pub(crate) mod engine;
 pub mod goto;
 pub mod metrics;
@@ -27,6 +29,9 @@ pub mod viz;
 pub use audit::{AuditEntry, AuditKind, AuditLog, AuditLogObserver, InMemoryAuditLog};
 pub use barrier::BarrierNode;
 pub use builder::{Graph, LinearBuilder};
+pub use channels::{
+    AnyValue, BinaryOp, Broadcast, Channel, ChannelRef, CustomChannel, Topic, Untracked,
+};
 #[cfg(feature = "postgres")]
 pub use checkpoint::PostgresCheckpointer;
 #[cfg(feature = "sqlite")]
@@ -34,6 +39,7 @@ pub use checkpoint::SqliteCheckpointer;
 pub use checkpoint::{ActiveSnapshot, Checkpointer, InMemoryCheckpointer};
 pub use command::Command;
 pub use compiled::CompiledGraph;
+pub use durability::{Durability, DurabilityDecision, DurabilityHook};
 pub use goto::Goto;
 pub use metrics::{GraphMetrics, MetricsObserver, NodeTiming, ProfilingObserver};
 pub use node::{node_fn, Node, NodeCtx, NodeFn, NodeOut, NodeRetryPolicy};

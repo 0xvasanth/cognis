@@ -20,6 +20,7 @@ pub mod distance;
 pub mod docstore;
 pub mod document;
 pub mod embeddings;
+pub mod example_selectors;
 pub mod indexing;
 pub mod loaders;
 pub mod multi_vector;
@@ -38,6 +39,9 @@ pub use embeddings::OllamaEmbeddings;
 #[cfg(feature = "openai")]
 pub use embeddings::OpenAIEmbeddings;
 pub use embeddings::{Embeddings, FakeEmbeddings};
+pub use example_selectors::{
+    AsyncExampleSelector, EmbedMode, MmrExampleSelector, SemanticSimilarityExampleSelector,
+};
 pub use indexing::{IncrementalReport, IndexingPipeline};
 #[cfg(feature = "csv-loader")]
 pub use loaders::CsvLoader;
@@ -61,8 +65,9 @@ pub use retrievers::{
     ParentDocumentRetriever, QueryTranslatorRetriever, VectorRetriever,
 };
 pub use splitters::{
-    CharTokenizer, CodeLanguage, CodeSplitter, FnTokenizer, JsonSplitter, MarkdownSplitter,
-    RecursiveCharSplitter, SentenceSplitter, TextSplitter, TokenAwareSplitter, Tokenizer,
+    CharTokenizer, CharacterSplitter, CodeLanguage, CodeSplitter, FnTokenizer, HtmlSplitter,
+    JsonSplitter, MarkdownSplitter, RecursiveCharSplitter, SentenceSplitter, TextSplitter,
+    TokenAwareSplitter, Tokenizer,
 };
 pub use transformers::LongContextReorder;
 pub use vectorstore::{Filter, InMemoryVectorStore, SearchResult, VectorStore};

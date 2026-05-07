@@ -49,6 +49,10 @@ pub struct NodeCtx<'a> {
     /// Per-target payload when this node is invoked as a `Goto::Send` target.
     /// `None` for all other dispatch types.
     payload: Option<&'a serde_json::Value>,
+    /// Engine-supplied: how many supersteps remain before the recursion
+    /// limit fires. `None` when running outside the engine (e.g. unit
+    /// tests). `is_last_step()` derives from this.
+    remaining_steps: Option<u32>,
 }
 
 impl<'a> NodeCtx<'a> {
@@ -60,6 +64,7 @@ impl<'a> NodeCtx<'a> {
             step,
             config,
             payload: None,
+            remaining_steps: None,
         }
     }
 
@@ -69,15 +74,44 @@ impl<'a> NodeCtx<'a> {
         self
     }
 
+    /// Engine-internal: set the remaining-step budget.
+    pub(crate) fn with_remaining_steps(mut self, remaining: u32) -> Self {
+        self.remaining_steps = Some(remaining);
+        self
+    }
+
     /// The Send payload accompanying this dispatch, if any. Returns `None`
     /// when the node is invoked via `Goto::Node` or `Goto::Multiple`.
     pub fn payload(&self) -> Option<&serde_json::Value> {
         self.payload
     }
 
+    /// Number of supersteps remaining before the recursion limit fires.
+    /// `None` when running outside the engine (unit tests).
+    pub fn remaining_steps(&self) -> Option<u32> {
+        self.remaining_steps
+    }
+
+    /// True if this is the final superstep — i.e. the engine will not run
+    /// another step after this one returns. Mirrors V1 `IsLastStep`.
+    pub fn is_last_step(&self) -> bool {
+        matches!(self.remaining_steps, Some(0) | Some(1))
+    }
+
     /// Notify every observer in `config.observers` of an event.
     pub fn emit(&self, event: &Event) {
         self.config.emit(event);
+    }
+
+    /// Emit a `Custom` event on the run's observer stream. Used by
+    /// `StreamMode::Custom` consumers to surface node-authored progress
+    /// signals (mirrors V1 `StreamWriter`).
+    pub fn write_custom(&self, kind: impl Into<String>, payload: serde_json::Value) {
+        self.config.emit(&Event::Custom {
+            kind: kind.into(),
+            payload,
+            run_id: self.run_id,
+        });
     }
 
     /// True if the run was cancelled.

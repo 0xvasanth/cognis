@@ -50,13 +50,8 @@ impl StreamMode {
                 event,
                 Event::OnLlmToken { .. } | Event::OnToolStart { .. } | Event::OnToolEnd { .. }
             ),
-            StreamMode::Checkpoints => {
-                // Checkpoint events are encoded as Custom { kind: "checkpoint", ... }.
-                // Until a dedicated variant exists, treat OnNodeEnd as the post-merge
-                // boundary that triggers a checkpoint save.
-                matches!(event, Event::OnNodeEnd { .. })
-            }
-            StreamMode::Custom => false, // custom events not yet a distinct variant
+            StreamMode::Checkpoints => matches!(event, Event::OnCheckpoint { .. }),
+            StreamMode::Custom => matches!(event, Event::Custom { .. }),
         }
     }
 }
