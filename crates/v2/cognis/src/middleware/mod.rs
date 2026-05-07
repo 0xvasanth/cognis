@@ -18,7 +18,12 @@
 //!     .build(client);
 //! ```
 
+pub mod approval_gate;
+pub mod context_editing;
 pub mod context_injection;
+pub mod filesystem;
+pub mod human_in_the_loop;
+pub mod model_call_limit;
 pub mod model_fallback;
 pub mod model_retry;
 pub mod patch_tool_calls;
@@ -28,9 +33,14 @@ pub mod prompt_caching;
 pub mod rate_limit;
 pub mod recovery;
 pub mod redaction;
+pub mod subagent;
 pub mod summarization;
 pub mod todo;
 pub mod token_counter;
+pub mod tool_call_limit;
+pub mod tool_emulator;
+pub mod tool_retry;
+pub mod tool_selection;
 
 #[cfg(test)]
 pub(crate) mod tests_util;
@@ -44,7 +54,12 @@ use cognis2_llm::chat::{ChatOptions, ChatResponse};
 use cognis2_llm::tools::ToolDefinition;
 use cognis2_llm::Client;
 
+pub use approval_gate::{ApprovalGate, AutoApproveAll, AutoRejectAll, ChatApproval, ChatApprover};
+pub use context_editing::{CapMessageLength, ContextEditing, DropMatching, EditPolicy};
 pub use context_injection::{ContextInjection, ContextProvider, FnContextProvider};
+pub use filesystem::{FilesystemMiddleware, WorkspaceLister};
+pub use human_in_the_loop::{AlwaysSkip, HumanDecision, HumanInTheLoop, HumanResponder};
+pub use model_call_limit::ModelCallLimit;
 pub use model_fallback::ModelFallback;
 pub use model_retry::ModelRetry;
 pub use patch_tool_calls::{FnToolCallPatcher, PatchToolCalls, ToolCallPatcher};
@@ -54,9 +69,14 @@ pub use prompt_caching::PromptCaching;
 pub use rate_limit::{RateLimit, RateLimiter, TokenBucket};
 pub use recovery::{FixedRecovery, FnRecovery, Recovery, RecoveryStrategy};
 pub use redaction::RegexRedactor;
+pub use subagent::{SubagentMiddleware, SubagentRouter};
 pub use summarization::Summarization;
 pub use todo::TodoMiddleware;
 pub use token_counter::TokenCounter;
+pub use tool_call_limit::ToolCallLimit;
+pub use tool_emulator::{EmulatorSource, MapEmulator, ToolEmulator};
+pub use tool_retry::{ToolRetry, ToolRetryClassifier};
+pub use tool_selection::{LimitTools, ToolAllowList, ToolDenyList, ToolFilter, ToolSelection};
 
 /// What flows through the middleware chain.
 #[derive(Debug, Clone)]

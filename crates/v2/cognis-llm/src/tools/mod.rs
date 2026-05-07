@@ -87,6 +87,36 @@ impl ToolRegistry {
         self.tools.insert(tool.name().to_string(), tool);
     }
 
+    /// Register `alias` to point at the same tool as `name`. No-op when
+    /// `name` is not registered.
+    pub fn register_alias(&mut self, alias: impl Into<String>, name: &str) {
+        if let Some(t) = self.tools.get(name).cloned() {
+            self.tools.insert(alias.into(), t);
+        }
+    }
+
+    /// Remove a tool by name. Returns `true` if it was present.
+    pub fn unregister(&mut self, name: &str) -> bool {
+        self.tools.remove(name).is_some()
+    }
+
+    /// Filter the registry: keep only tools whose name passes `predicate`.
+    /// Returns the names of removed tools.
+    pub fn retain<F>(&mut self, mut predicate: F) -> Vec<String>
+    where
+        F: FnMut(&str) -> bool,
+    {
+        let mut removed = Vec::new();
+        self.tools.retain(|k, _| {
+            let keep = predicate(k);
+            if !keep {
+                removed.push(k.clone());
+            }
+            keep
+        });
+        removed
+    }
+
     /// Get a tool by name.
     pub fn get(&self, name: &str) -> Option<&Arc<dyn Tool>> {
         self.tools.get(name)

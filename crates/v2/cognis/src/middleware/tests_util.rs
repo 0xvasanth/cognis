@@ -9,6 +9,51 @@ use cognis2_core::{Message, Result, RunnableStream};
 use cognis2_llm::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, Usage};
 use cognis2_llm::provider::{LLMProvider, Provider};
 
+use super::{MiddlewareCtx, Next};
+
+/// Build a canned `ChatResponse` with `text` as the assistant content.
+pub(crate) fn ok_resp(text: impl Into<String>) -> ChatResponse {
+    ChatResponse {
+        message: Message::ai(text),
+        usage: None,
+        finish_reason: "stop".into(),
+        model: "test".into(),
+    }
+}
+
+/// `Next` that always returns the same canned response.
+pub(crate) struct FixedNext(pub ChatResponse);
+
+#[async_trait]
+impl Next for FixedNext {
+    async fn invoke(&self, _ctx: MiddlewareCtx) -> Result<ChatResponse> {
+        Ok(self.0.clone())
+    }
+}
+
+/// `Next` that records every received ctx then returns a canned response.
+pub(crate) struct RecordingNext {
+    pub seen: Mutex<Vec<MiddlewareCtx>>,
+    pub response: ChatResponse,
+}
+
+impl RecordingNext {
+    pub(crate) fn new(response: ChatResponse) -> Self {
+        Self {
+            seen: Mutex::new(Vec::new()),
+            response,
+        }
+    }
+}
+
+#[async_trait]
+impl Next for RecordingNext {
+    async fn invoke(&self, ctx: MiddlewareCtx) -> Result<ChatResponse> {
+        self.seen.lock().unwrap().push(ctx);
+        Ok(self.response.clone())
+    }
+}
+
 /// Provider whose response per call is determined by the user-supplied closure.
 /// `closure(call_index)` returns either the assistant's text or an error.
 pub(crate) struct FlakyProvider {

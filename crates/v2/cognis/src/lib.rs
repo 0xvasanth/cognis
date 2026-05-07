@@ -54,9 +54,13 @@ pub mod cache_sqlite;
 pub mod eval;
 pub mod history;
 pub mod middleware;
+pub mod multi_agent;
 pub mod observers;
 pub mod presets;
 pub mod retrievers;
+pub mod session;
+pub mod skills;
+pub mod telemetry;
 pub mod tools;
 
 pub use agent::{
@@ -78,16 +82,32 @@ pub use history::{
     SessionResolver,
 };
 pub use middleware::{
-    ContextInjection, ContextProvider, FixedRecovery, FnContextProvider, FnRecovery,
-    FnToolCallPatcher, Middleware, MiddlewareCtx, MiddlewarePipeline, ModelFallback, ModelRetry,
-    Next, PatchToolCalls, PiiRedactor, PipelinedClient, Planning, PromptCaching, RateLimit,
-    RateLimiter, Recovery, RecoveryStrategy, RegexRedactor, Summarization, TodoMiddleware,
-    TokenBucket, TokenCounter, ToolCallPatcher,
+    AlwaysSkip, ApprovalGate, AutoApproveAll, AutoRejectAll, CapMessageLength, ChatApproval,
+    ChatApprover, ContextEditing, ContextInjection, ContextProvider, DropMatching, EditPolicy,
+    EmulatorSource, FilesystemMiddleware, FixedRecovery, FnContextProvider, FnRecovery,
+    FnToolCallPatcher, HumanDecision, HumanInTheLoop, HumanResponder, LimitTools, MapEmulator,
+    Middleware, MiddlewareCtx, MiddlewarePipeline, ModelCallLimit, ModelFallback, ModelRetry, Next,
+    PatchToolCalls, PiiRedactor, PipelinedClient, Planning, PromptCaching, RateLimit, RateLimiter,
+    Recovery, RecoveryStrategy, RegexRedactor, SubagentMiddleware, SubagentRouter, Summarization,
+    TodoMiddleware, TokenBucket, TokenCounter, ToolAllowList, ToolCallLimit, ToolCallPatcher,
+    ToolDenyList, ToolEmulator, ToolFilter, ToolRetry, ToolRetryClassifier, ToolSelection,
+    WorkspaceLister,
+};
+pub use multi_agent::{
+    AgentMessage, HandoffStrategy, InMemoryMessageBus, MessageBus, MultiAgentOrchestrator,
+    ParallelVote, Sequential, Supervisor,
 };
 pub use observers::TracingObserver;
 pub use retrievers::{
     ContextualCompressionRetriever, MultiQueryRetriever, RerankingRetriever, SearchSpec,
     SelfQueryRetriever, TimeWeightedRetriever,
+};
+pub use session::{InMemorySessionStore, Session, SessionStore, SessionStoreHandle};
+pub use skills::{
+    AllSkills, BuiltSkill, KeywordSelector, Skill, SkillBuilder, SkillRegistry, SkillSelector,
+};
+pub use telemetry::{
+    InMemoryTelemetry, TelemetryEvent, TelemetryHandle, TelemetrySink, TelemetrySnapshot,
 };
 pub use tools::{
     register_filesystem_tools, AllowList, ApprovalGatedTool, Approver, AutoApprove, CachedTool,
