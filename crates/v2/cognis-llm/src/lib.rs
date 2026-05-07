@@ -33,7 +33,19 @@ pub use tools::{
 pub mod client;
 pub use client::{Client, ClientBuilder};
 
+pub mod factory;
+pub use factory::{ProviderConstructor, ProviderRegistry, ProviderSpec};
+
 pub mod provider;
+#[cfg(feature = "openai")]
+pub use provider::openrouter::{OpenRouterBuilder, OpenRouterProvider};
+pub use provider::wrappers::{
+    Capability, ChatInterceptor, CircuitBreakerProvider, CircuitState, CircuitStats,
+    FailureClassifier, FnChatInterceptor, GracefulDegradationProvider, InterceptorProvider,
+    LoadBalancerProvider, LoadBalancingStrategy, ProviderRoute, RandomStrategy,
+    RetryableClassifier, RoundRobinStrategy, RoutingProvider, RoutingStrategy,
+    WeightedRoundRobinStrategy,
+};
 pub use provider::{LLMProvider, Provider};
 
 pub mod streaming;

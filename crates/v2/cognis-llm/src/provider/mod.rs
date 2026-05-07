@@ -22,6 +22,9 @@ pub mod google;
 pub mod ollama;
 #[cfg(feature = "openai")]
 pub mod openai;
+#[cfg(feature = "openai")]
+pub mod openrouter;
+pub mod wrappers;
 
 #[cfg(feature = "anthropic")]
 pub use anthropic::AnthropicProvider;
@@ -33,6 +36,8 @@ pub use google::GoogleProvider;
 pub use ollama::OllamaProvider;
 #[cfg(feature = "openai")]
 pub use openai::OpenAIProvider;
+#[cfg(feature = "openai")]
+pub use openrouter::{OpenRouterBuilder, OpenRouterProvider};
 
 /// Closed set of supported providers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
