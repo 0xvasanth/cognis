@@ -18,6 +18,12 @@ pub enum Goto {
     /// workers, each with different input.
     Send(Vec<(String, serde_json::Value)>),
 
+    /// Stop **this branch** without terminating the whole graph. Useful
+    /// when a node has nothing more to dispatch but other concurrent
+    /// branches are still running. Distinct from [`Goto::End`], which
+    /// terminates the entire graph.
+    Halt,
+
     /// Terminate the graph.
     End,
 }
@@ -33,13 +39,18 @@ impl Goto {
         Goto::End
     }
 
-    /// All node-name targets contained in this Goto. Empty for `End`.
+    /// Convenience: `Goto::halt()` over `Goto::Halt`.
+    pub fn halt() -> Self {
+        Goto::Halt
+    }
+
+    /// All node-name targets contained in this Goto. Empty for `End` / `Halt`.
     pub fn targets(&self) -> Vec<&str> {
         match self {
             Goto::Node(n) => vec![n.as_str()],
             Goto::Multiple(ns) => ns.iter().map(|s| s.as_str()).collect(),
             Goto::Send(targets) => targets.iter().map(|(n, _)| n.as_str()).collect(),
-            Goto::End => vec![],
+            Goto::End | Goto::Halt => vec![],
         }
     }
 

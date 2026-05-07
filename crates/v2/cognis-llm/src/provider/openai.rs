@@ -392,9 +392,36 @@ struct OpenAIUsage {
 
 fn message_to_openai(m: &Message) -> serde_json::Value {
     match m {
-        Message::Human(h) => serde_json::json!({"role": "user", "content": h.content}),
+        Message::Human(h) => {
+            // Multimodal: emit a content array of parts when present.
+            // Plain text: emit `content: "..."` directly (cheaper for the
+            // common case).
+            if h.parts.is_empty() {
+                serde_json::json!({"role": "user", "content": h.content})
+            } else {
+                let mut content = Vec::with_capacity(h.parts.len() + 1);
+                if !h.content.is_empty() {
+                    content.push(serde_json::json!({"type": "text", "text": h.content}));
+                }
+                for p in &h.parts {
+                    content.push(p.to_openai());
+                }
+                serde_json::json!({"role": "user", "content": content})
+            }
+        }
         Message::Ai(a) => {
-            let mut v = serde_json::json!({"role": "assistant", "content": a.content});
+            let mut v = if a.parts.is_empty() {
+                serde_json::json!({"role": "assistant", "content": a.content})
+            } else {
+                let mut content = Vec::with_capacity(a.parts.len() + 1);
+                if !a.content.is_empty() {
+                    content.push(serde_json::json!({"type": "text", "text": a.content}));
+                }
+                for p in &a.parts {
+                    content.push(p.to_openai());
+                }
+                serde_json::json!({"role": "assistant", "content": content})
+            };
             if !a.tool_calls.is_empty() {
                 v["tool_calls"] = serde_json::json!(a
                     .tool_calls
@@ -435,6 +462,7 @@ fn openai_message_to_cognis(m: OpenAIMessage) -> Message {
     Message::Ai(AiMessage {
         content,
         tool_calls,
+        parts: Vec::new(),
     })
 }
 
@@ -525,6 +553,7 @@ mod tests {
                 name: "search".into(),
                 arguments: serde_json::json!({"q": "rust"}),
             }],
+            parts: Vec::new(),
         });
         let v = message_to_openai(&m);
         assert_eq!(v["role"], "assistant");

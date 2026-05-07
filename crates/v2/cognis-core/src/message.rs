@@ -21,18 +21,45 @@ pub enum Message {
 
 /// Convenience constructors.
 impl Message {
-    /// Build a `Human` message from arbitrary content.
+    /// Build a `Human` message with text only.
     pub fn human(content: impl Into<String>) -> Self {
         Self::Human(HumanMessage {
             content: content.into(),
+            parts: Vec::new(),
         })
     }
 
-    /// Build an `Ai` message with text only (no tool calls).
+    /// Build a `Human` message that carries multimodal parts alongside text.
+    /// Providers that support multimodal will serialize the parts; others
+    /// silently ignore them and use the text content alone.
+    pub fn human_with_parts(
+        content: impl Into<String>,
+        parts: Vec<crate::content::ContentPart>,
+    ) -> Self {
+        Self::Human(HumanMessage {
+            content: content.into(),
+            parts,
+        })
+    }
+
+    /// Build an `Ai` message with text only (no tool calls, no parts).
     pub fn ai(content: impl Into<String>) -> Self {
         Self::Ai(AiMessage {
             content: content.into(),
             tool_calls: Vec::new(),
+            parts: Vec::new(),
+        })
+    }
+
+    /// Build an `Ai` message with multimodal parts alongside text.
+    pub fn ai_with_parts(
+        content: impl Into<String>,
+        parts: Vec<crate::content::ContentPart>,
+    ) -> Self {
+        Self::Ai(AiMessage {
+            content: content.into(),
+            tool_calls: Vec::new(),
+            parts,
         })
     }
 
@@ -74,13 +101,27 @@ impl Message {
     pub fn has_tool_calls(&self) -> bool {
         matches!(self, Self::Ai(m) if !m.tool_calls.is_empty())
     }
+
+    /// Multimodal parts on a `Human` or `Ai` message. Empty for `System`
+    /// / `Tool` (they don't carry multimodal content).
+    pub fn parts(&self) -> &[crate::content::ContentPart] {
+        match self {
+            Self::Human(m) => &m.parts,
+            Self::Ai(m) => &m.parts,
+            _ => &[],
+        }
+    }
 }
 
 /// A human/user message.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct HumanMessage {
     /// The message text.
     pub content: String,
+    /// Multimodal parts (images, audio). Empty for plain text. Providers
+    /// that don't support multimodal silently ignore this field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<crate::content::ContentPart>,
 }
 
 /// An AI/assistant message, optionally carrying tool call requests.
@@ -91,6 +132,9 @@ pub struct AiMessage {
     /// Tool calls requested by the model (omitted from JSON when empty).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
+    /// Multimodal parts. Empty for plain text.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<crate::content::ContentPart>,
 }
 
 /// A system prompt or instruction message.
@@ -161,6 +205,7 @@ mod tests {
                 name: "search".into(),
                 arguments: serde_json::json!({"q": "rust"}),
             }],
+            parts: Vec::new(),
         });
         assert_eq!(m.tool_calls().len(), 1);
         assert!(m.has_tool_calls());

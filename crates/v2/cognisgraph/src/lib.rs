@@ -6,23 +6,42 @@
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
+pub mod audit;
+pub mod barrier;
 pub mod builder;
 pub mod checkpoint;
+pub mod command;
 pub mod compiled;
 pub(crate) mod engine;
 pub mod goto;
+pub mod metrics;
 pub mod node;
 pub mod reducer;
+pub mod snapshot;
 pub mod state;
+pub mod stream_mode;
+pub mod subgraph;
 pub(crate) mod validate;
+pub mod viz;
 
+pub use audit::{AuditEntry, AuditKind, AuditLog, AuditLogObserver, InMemoryAuditLog};
+pub use barrier::BarrierNode;
 pub use builder::{Graph, LinearBuilder};
-pub use checkpoint::{Checkpointer, InMemoryCheckpointer};
+#[cfg(feature = "postgres")]
+pub use checkpoint::PostgresCheckpointer;
+#[cfg(feature = "sqlite")]
+pub use checkpoint::SqliteCheckpointer;
+pub use checkpoint::{ActiveSnapshot, Checkpointer, InMemoryCheckpointer};
+pub use command::Command;
 pub use compiled::CompiledGraph;
 pub use goto::Goto;
-pub use node::{node_fn, Node, NodeCtx, NodeFn, NodeOut};
+pub use metrics::{GraphMetrics, MetricsObserver, NodeTiming, ProfilingObserver};
+pub use node::{node_fn, Node, NodeCtx, NodeFn, NodeOut, NodeRetryPolicy};
 pub use reducer::{Add, Append, Custom, LastValue, Merge, Reducer};
+pub use snapshot::GraphSnapshot;
 pub use state::GraphState;
+pub use stream_mode::{StreamMode, StreamModes};
+pub use subgraph::Subgraph;
 
 /// Derive macro — generates `impl GraphState for <T>` with per-field reducers.
 /// The derive name shadows the trait name; both are imported via

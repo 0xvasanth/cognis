@@ -254,8 +254,12 @@ async fn interrupt_before_pauses_and_resumes() {
         .resume(run_id, saved_step, recovered, RunnableConfig::default())
         .await
         .unwrap();
-    // recovered base n=1, a-resumed adds 1, b adds 100 → total 102.
-    assert_eq!(final_state.n, 1 + 1 + 100);
+    // Point-of-interrupt resume: the engine reloads the active set
+    // saved at `step` (containing only `b` — the node we were about
+    // to run when the interrupt fired) and dispatches it directly.
+    // Recovered base n=1, b adds 100 → total 101. (Old re-dispatch-start
+    // behavior would have re-run `a` and produced 102.)
+    assert_eq!(final_state.n, 1 + 100);
 }
 
 #[tokio::test]

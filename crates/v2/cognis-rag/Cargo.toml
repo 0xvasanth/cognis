@@ -18,11 +18,23 @@ tracing.workspace = true
 uuid.workspace = true
 reqwest = { workspace = true, optional = true }
 secrecy = { workspace = true, optional = true }
+csv = { version = "1", optional = true }
+serde_yaml = { version = "0.9", optional = true }
+toml = { version = "0.8", optional = true }
+pdf-extract = { version = "0.7", optional = true }
 
 [features]
 default = ["openai", "ollama"]
 openai = ["dep:reqwest", "dep:secrecy"]
 ollama = ["dep:reqwest"]
+csv-loader = ["dep:csv"]
+html-loader = []
+yaml-loader = ["dep:serde_yaml"]
+toml-loader = ["dep:toml"]
+web-loader = ["dep:reqwest"]
+pdf-loader = ["dep:pdf-extract"]
+all-loaders = ["csv-loader", "html-loader", "yaml-loader", "toml-loader", "web-loader", "pdf-loader"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"

@@ -64,9 +64,9 @@ where
 /// run had reached when the interrupt fired; resume continues numbering from
 /// there so checkpoint timeline stays linear.
 ///
-/// Slice 2c: resume re-dispatches the start node with the caller-supplied state.
-/// A future slice will persist the active set in the checkpoint for true
-/// point-of-interrupt resume.
+/// Resumes from an interrupt: if the checkpointer persisted the active
+/// set at `start_step`, hydrates it from there for true point-of-interrupt
+/// resume. Otherwise falls back to re-dispatching the start node.
 pub(crate) async fn resume<S>(
     compiled: &CompiledGraph<S>,
     state: S,
@@ -79,6 +79,34 @@ where
 {
     validate_interrupt_names(compiled)?;
 
+    // Try point-of-interrupt resume first.
+    if let Some(cp) = &compiled.checkpointer {
+        let snaps = cp.load_active(config.run_id, start_step).await?;
+        if !snaps.is_empty() {
+            let mut active: Vec<ActiveTask<S>> = Vec::with_capacity(snaps.len());
+            for s in snaps {
+                let node = compiled
+                    .graph
+                    .nodes
+                    .get(&s.node_name)
+                    .cloned()
+                    .ok_or_else(|| {
+                        CognisError::Configuration(format!(
+                            "resume: node `{}` referenced by snapshot is unknown",
+                            s.node_name
+                        ))
+                    })?;
+                active.push(ActiveTask {
+                    name: s.node_name,
+                    node,
+                    payload: s.payload,
+                });
+            }
+            return superstep_loop(compiled, state, &config, active, start_step).await;
+        }
+    }
+
+    // Fallback: dispatch the start node.
     let start_name = compiled
         .graph
         .start
@@ -128,6 +156,10 @@ where
         if config.is_cancelled() {
             return Err(CognisError::Cancelled);
         }
+
+        // Reset ephemeral fields before running this superstep's tasks.
+        // Tasks see only the writes from the current step on these fields.
+        state.reset_ephemeral();
         if let Some(deadline) = config.deadline {
             if std::time::Instant::now() > deadline {
                 return Err(CognisError::Timeout {
@@ -225,6 +257,9 @@ where
                         });
                     }
                 }
+                // Halt contributes no new active task but doesn't end the graph.
+                // Other branches in this superstep still get to continue.
+                Goto::Halt => {}
             }
         }
 
@@ -239,6 +274,9 @@ where
 
         active = next_active;
         step += 1;
+        // Persist the new active set so a future interrupt at this step
+        // can resume from exactly the right place.
+        save_active(compiled, run_id, step, &active).await?;
     }
 
     // No more active tasks but no End emitted — terminate gracefully.
@@ -302,7 +340,7 @@ where
                 } else {
                     ctx
                 };
-                let out: NodeOut<S> = node.execute(&state_snap, &ctx).await?;
+                let out: NodeOut<S> = run_with_node_retry(node.as_ref(), &state_snap, &ctx).await?;
                 Ok::<TaskOutput<S>, CognisError>(TaskOutput {
                     update: out.update,
                     goto: out.goto,
@@ -318,6 +356,43 @@ where
     // in a superstep is always unbounded within the superstep.
     let results = try_join_all(task_futs).await?;
     Ok(results)
+}
+
+/// Invoke a node, applying its `retry_policy()` if any.
+async fn run_with_node_retry<S>(
+    node: &dyn Node<S>,
+    state: &S,
+    ctx: &NodeCtx<'_>,
+) -> Result<NodeOut<S>>
+where
+    S: GraphState,
+{
+    let policy = match node.retry_policy() {
+        Some(p) => p,
+        None => return node.execute(state, ctx).await,
+    };
+    let mut delay_ms = policy.initial_delay_ms;
+    let mut last_err: Option<CognisError> = None;
+    for attempt in 0..policy.max_attempts.max(1) {
+        match node.execute(state, ctx).await {
+            Ok(v) => return Ok(v),
+            Err(e) if !e.is_retryable() => return Err(e),
+            Err(e) => {
+                let suggested = e.retry_delay().map(|d| d.as_millis() as u64);
+                last_err = Some(e);
+                if attempt + 1 >= policy.max_attempts {
+                    break;
+                }
+                let sleep_ms = suggested.unwrap_or(delay_ms).min(policy.max_delay_ms);
+                tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
+                let next = (delay_ms as f64 * policy.backoff_multiplier) as u64;
+                delay_ms = next.min(policy.max_delay_ms);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        CognisError::Internal("node retry exhausted with no error captured".into())
+    }))
 }
 
 fn lookup_node<S: GraphState>(
@@ -371,5 +446,29 @@ where
     if let Some(cp) = &compiled.checkpointer {
         cp.save(run_id, step, state).await?;
     }
+    Ok(())
+}
+
+async fn save_active<S>(
+    compiled: &CompiledGraph<S>,
+    run_id: Uuid,
+    step: u64,
+    active: &[ActiveTask<S>],
+) -> Result<()>
+where
+    S: GraphState + Clone,
+{
+    let cp = match &compiled.checkpointer {
+        Some(cp) => cp,
+        None => return Ok(()),
+    };
+    let snaps: Vec<crate::checkpoint::ActiveSnapshot> = active
+        .iter()
+        .map(|t| crate::checkpoint::ActiveSnapshot {
+            node_name: t.name.clone(),
+            payload: t.payload.clone(),
+        })
+        .collect();
+    cp.save_active(run_id, step, &snaps).await?;
     Ok(())
 }

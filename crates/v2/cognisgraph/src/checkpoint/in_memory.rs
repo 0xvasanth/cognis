@@ -13,10 +13,12 @@ use crate::state::GraphState;
 
 use super::Checkpointer;
 
-/// Stores `(run_id, step) -> S` in a Mutex-protected HashMap.
+/// Stores `(run_id, namespace, step) -> S` in a Mutex-protected HashMap.
 /// State must be `Clone` because saving stores a clone and loading returns one.
 pub struct InMemoryCheckpointer<S: GraphState + Clone> {
-    runs: Mutex<HashMap<Uuid, HashMap<u64, S>>>,
+    runs: Mutex<HashMap<(Uuid, String), HashMap<u64, S>>>,
+    active: Mutex<HashMap<(Uuid, String, u64), Vec<super::ActiveSnapshot>>>,
+    namespace: String,
 }
 
 impl<S: GraphState + Clone> Default for InMemoryCheckpointer<S> {
@@ -30,7 +32,16 @@ impl<S: GraphState + Clone> InMemoryCheckpointer<S> {
     pub fn new() -> Self {
         Self {
             runs: Mutex::new(HashMap::new()),
+            active: Mutex::new(HashMap::new()),
+            namespace: String::new(),
         }
+    }
+
+    /// Set the namespace for subgraph isolation. Operations on this instance
+    /// scope to `(run_id, namespace, step)`.
+    pub fn with_namespace(mut self, ns: impl Into<String>) -> Self {
+        self.namespace = ns.into();
+        self
     }
 }
 
@@ -41,7 +52,9 @@ impl<S: GraphState + Clone> Checkpointer<S> for InMemoryCheckpointer<S> {
             .runs
             .lock()
             .map_err(|e| CognisError::Internal(format!("checkpointer mutex poisoned: {e}")))?;
-        runs.entry(run_id).or_default().insert(step, state.clone());
+        runs.entry((run_id, self.namespace.clone()))
+            .or_default()
+            .insert(step, state.clone());
         Ok(())
     }
 
@@ -50,7 +63,7 @@ impl<S: GraphState + Clone> Checkpointer<S> for InMemoryCheckpointer<S> {
             .runs
             .lock()
             .map_err(|e| CognisError::Internal(format!("checkpointer mutex poisoned: {e}")))?;
-        let Some(steps) = runs.get(&run_id) else {
+        let Some(steps) = runs.get(&(run_id, self.namespace.clone())) else {
             return Ok(None);
         };
         match step {
@@ -68,11 +81,35 @@ impl<S: GraphState + Clone> Checkpointer<S> for InMemoryCheckpointer<S> {
             .lock()
             .map_err(|e| CognisError::Internal(format!("checkpointer mutex poisoned: {e}")))?;
         let mut steps: Vec<u64> = runs
-            .get(&run_id)
+            .get(&(run_id, self.namespace.clone()))
             .map(|s| s.keys().copied().collect())
             .unwrap_or_default();
         steps.sort();
         Ok(steps)
+    }
+
+    async fn save_active(
+        &self,
+        run_id: Uuid,
+        step: u64,
+        active: &[super::ActiveSnapshot],
+    ) -> Result<()> {
+        let mut a = self
+            .active
+            .lock()
+            .map_err(|e| CognisError::Internal(format!("active mutex poisoned: {e}")))?;
+        a.insert((run_id, self.namespace.clone(), step), active.to_vec());
+        Ok(())
+    }
+
+    async fn load_active(&self, run_id: Uuid, step: u64) -> Result<Vec<super::ActiveSnapshot>> {
+        let a = self
+            .active
+            .lock()
+            .map_err(|e| CognisError::Internal(format!("active mutex poisoned: {e}")))?;
+        Ok(a.get(&(run_id, self.namespace.clone(), step))
+            .cloned()
+            .unwrap_or_default())
     }
 }
 

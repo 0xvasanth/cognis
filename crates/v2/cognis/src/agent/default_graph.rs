@@ -27,12 +27,25 @@ pub fn default_react_graph(
     tools: Vec<Arc<dyn Tool>>,
     max_iterations: u32,
 ) -> Result<CompiledGraph<AgentState>> {
+    default_react_graph_with_limits(client, tools, max_iterations, None)
+}
+
+/// Same as [`default_react_graph`] but with an explicit tool-call cap.
+pub fn default_react_graph_with_limits(
+    client: Client,
+    tools: Vec<Arc<dyn Tool>>,
+    max_iterations: u32,
+    max_tool_calls: Option<u32>,
+) -> Result<CompiledGraph<AgentState>> {
     let tool_defs: Vec<ToolDefinition> = tools
         .iter()
         .map(|t| ToolDefinition::from_tool(t.as_ref()))
         .collect();
 
-    let think = ThinkNode::new(client, tool_defs, max_iterations);
+    let mut think = ThinkNode::new(client, tool_defs, max_iterations);
+    if let Some(n) = max_tool_calls {
+        think = think.with_max_tool_calls(n);
+    }
     let act = ToolDispatchNode::new(tools);
 
     Graph::<AgentState>::new()
@@ -104,6 +117,7 @@ mod tests {
                         name: "echo".into(),
                         arguments: serde_json::json!({"x": 1}),
                     }],
+                    parts: Vec::new(),
                 })
             } else {
                 Message::ai("done")

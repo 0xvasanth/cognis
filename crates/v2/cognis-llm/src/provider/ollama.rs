@@ -328,6 +328,7 @@ fn ollama_message_to_cognis(m: OllamaMessage) -> Message {
     Message::Ai(AiMessage {
         content: m.content,
         tool_calls,
+        parts: Vec::new(),
     })
 }
 

@@ -86,6 +86,7 @@ fn ai_with_tool_call(name: &str, args: serde_json::Value) -> Message {
             name: name.to_string(),
             arguments: args,
         }],
+        parts: Vec::new(),
     })
 }
 

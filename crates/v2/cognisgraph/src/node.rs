@@ -91,6 +91,32 @@ impl<'a> NodeCtx<'a> {
     }
 }
 
+/// Per-task retry policy. The engine wraps `Node::execute` calls in a
+/// retry loop when the node returns a `Some` policy and the call fails
+/// with a [`cognis2_core::CognisError`] whose `is_retryable()` is true.
+#[derive(Debug, Clone, Copy)]
+pub struct NodeRetryPolicy {
+    /// Maximum total attempts (including the first).
+    pub max_attempts: u32,
+    /// Initial backoff before the first retry (milliseconds).
+    pub initial_delay_ms: u64,
+    /// Multiplier applied to the delay after each failed attempt.
+    pub backoff_multiplier: f64,
+    /// Cap on per-attempt delay (milliseconds).
+    pub max_delay_ms: u64,
+}
+
+impl Default for NodeRetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            initial_delay_ms: 100,
+            backoff_multiplier: 2.0,
+            max_delay_ms: 30_000,
+        }
+    }
+}
+
 /// The unit of computation in a graph. Async, takes a `&S` snapshot of state
 /// + per-step context, returns a delta + a routing decision.
 #[async_trait]
@@ -101,6 +127,13 @@ pub trait Node<S: GraphState>: Send + Sync {
     /// Friendly name for telemetry / logging. Default uses the type name.
     fn name(&self) -> &str {
         std::any::type_name::<Self>()
+    }
+
+    /// Per-task retry policy. Default `None` means "no retry — propagate
+    /// the error". When `Some`, the engine retries `execute` on retryable
+    /// errors with exponential backoff.
+    fn retry_policy(&self) -> Option<NodeRetryPolicy> {
+        None
     }
 }
 

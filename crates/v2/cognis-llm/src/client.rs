@@ -143,6 +143,9 @@ pub struct ClientBuilder {
     model: Option<String>,
     timeout_secs: Option<u64>,
     organization: Option<String>,
+    azure_endpoint: Option<String>,
+    azure_deployment: Option<String>,
+    azure_api_version: Option<String>,
 }
 
 impl ClientBuilder {
@@ -176,6 +179,21 @@ impl ClientBuilder {
         self.organization = Some(o.into());
         self
     }
+    /// Azure resource endpoint (e.g. `https://my-resource.openai.azure.com/`).
+    pub fn azure_endpoint(mut self, e: impl Into<String>) -> Self {
+        self.azure_endpoint = Some(e.into());
+        self
+    }
+    /// Azure deployment name.
+    pub fn azure_deployment(mut self, d: impl Into<String>) -> Self {
+        self.azure_deployment = Some(d.into());
+        self
+    }
+    /// Azure API version.
+    pub fn azure_api_version(mut self, v: impl Into<String>) -> Self {
+        self.azure_api_version = Some(v.into());
+        self
+    }
     /// Construct the Client.
     pub fn build(self) -> Result<Client> {
         let provider = self
@@ -203,6 +221,26 @@ impl ClientBuilder {
                 }
                 Arc::new(b.build()?)
             }
+            #[cfg(feature = "openai")]
+            Provider::OpenRouter => {
+                use crate::provider::openai::OpenAIBuilder;
+                let mut b = OpenAIBuilder::default()
+                    .base_url(Provider::OpenRouter.default_base_url())
+                    .model(Provider::OpenRouter.default_model());
+                if let Some(k) = self.api_key {
+                    b = b.api_key(k);
+                }
+                if let Some(u) = self.base_url {
+                    b = b.base_url(u);
+                }
+                if let Some(m) = self.model {
+                    b = b.model(m);
+                }
+                if let Some(t) = self.timeout_secs {
+                    b = b.timeout_secs(t);
+                }
+                Arc::new(b.build()?)
+            }
             #[cfg(feature = "ollama")]
             Provider::Ollama => {
                 use crate::provider::ollama::OllamaBuilder;
@@ -218,9 +256,67 @@ impl ClientBuilder {
                 }
                 Arc::new(b.build()?)
             }
+            #[cfg(feature = "anthropic")]
+            Provider::Anthropic => {
+                use crate::provider::anthropic::AnthropicBuilder;
+                let mut b = AnthropicBuilder::default();
+                if let Some(k) = self.api_key {
+                    b = b.api_key(k);
+                }
+                if let Some(u) = self.base_url {
+                    b = b.base_url(u);
+                }
+                if let Some(m) = self.model {
+                    b = b.model(m);
+                }
+                if let Some(t) = self.timeout_secs {
+                    b = b.timeout_secs(t);
+                }
+                Arc::new(b.build()?)
+            }
+            #[cfg(feature = "google")]
+            Provider::Google => {
+                use crate::provider::google::GoogleBuilder;
+                let mut b = GoogleBuilder::default();
+                if let Some(k) = self.api_key {
+                    b = b.api_key(k);
+                }
+                if let Some(u) = self.base_url {
+                    b = b.base_url(u);
+                }
+                if let Some(m) = self.model {
+                    b = b.model(m);
+                }
+                if let Some(t) = self.timeout_secs {
+                    b = b.timeout_secs(t);
+                }
+                Arc::new(b.build()?)
+            }
+            #[cfg(feature = "azure")]
+            Provider::Azure => {
+                use crate::provider::azure::AzureBuilder;
+                let mut b = AzureBuilder::default();
+                if let Some(e) = self.azure_endpoint {
+                    b = b.endpoint(e);
+                }
+                if let Some(d) = self.azure_deployment {
+                    b = b.deployment(d);
+                }
+                if let Some(v) = self.azure_api_version {
+                    b = b.api_version(v);
+                }
+                if let Some(k) = self.api_key {
+                    b = b.api_key(k);
+                }
+                if let Some(t) = self.timeout_secs {
+                    b = b.timeout_secs(t);
+                }
+                Arc::new(b.build()?)
+            }
+            #[allow(unreachable_patterns)]
             other => {
                 return Err(CognisError::Configuration(format!(
-                    "provider `{other}` not implemented in slice 1 (anthropic + azure are slice 2)"
+                    "provider `{other}` not compiled in (enable the matching feature flag)"
                 )))
             }
         };
@@ -263,13 +359,38 @@ mod tests {
         assert!(format!("{err}").contains("provider required"));
     }
 
+    #[cfg(feature = "anthropic")]
     #[test]
-    fn unimplemented_provider_errors() {
-        let err = ClientBuilder::default()
+    fn anthropic_builder_round_trip() {
+        let c = ClientBuilder::default()
             .provider(Provider::Anthropic)
-            .api_key("x")
+            .api_key("sk-ant-test")
             .build()
-            .unwrap_err();
-        assert!(format!("{err}").contains("slice 1"));
+            .unwrap();
+        assert_eq!(c.provider().name(), "anthropic");
+    }
+
+    #[cfg(feature = "google")]
+    #[test]
+    fn google_builder_round_trip() {
+        let c = ClientBuilder::default()
+            .provider(Provider::Google)
+            .api_key("AIza-test")
+            .build()
+            .unwrap();
+        assert_eq!(c.provider().name(), "google");
+    }
+
+    #[cfg(feature = "azure")]
+    #[test]
+    fn azure_builder_round_trip() {
+        let c = ClientBuilder::default()
+            .provider(Provider::Azure)
+            .azure_endpoint("https://r.openai.azure.com/")
+            .azure_deployment("gpt-4o")
+            .api_key("k")
+            .build()
+            .unwrap();
+        assert_eq!(c.provider().name(), "azure");
     }
 }

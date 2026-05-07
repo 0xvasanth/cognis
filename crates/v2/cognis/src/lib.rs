@@ -1,43 +1,97 @@
 //! # cognis2
 //!
-//! v2-beta umbrella crate. Re-exports core/graph/llm and adds a thin
-//! agent layer.
+//! v2-beta umbrella crate. Re-exports `cognis2-core`, `cognis2-graph`,
+//! `cognis2-llm`, `cognis2-rag` and adds:
+//! - [`agent`] — the standard ReAct agent loop.
+//! - [`backend`] — agent workspace (in-memory or sandboxed real FS).
+//! - [`middleware`] — composable LLM-call hooks (retry, fallback, caching,
+//!   redaction, summarization, …).
+//! - [`retrievers`] — LLM-driven retrievers (multi-query, contextual
+//!   compression).
 
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
-// Re-exports — what `use cognis2::*` gives users.
+// Sub-crate re-exports.
 pub use cognis2_core;
 pub use cognis2_graph;
 pub use cognis2_llm;
 pub use cognis2_rag;
 
 pub use cognis2_core::{
-    CognisError, Event, EventStream, Extensions, JsonSchema, Message, Observer, Result, Runnable,
-    RunnableConfig, RunnableStream, ToolCall,
+    CharTokenizer, CognisError, Event, EventStream, Extensions, FnTokenizer, JsonSchema, Loader,
+    Message, Observer, Result, Runnable, RunnableConfig, RunnableDefinition, RunnableStream,
+    Serializable, Tokenizer, ToolCall,
 };
 pub use cognis2_graph::{
-    node_fn, Checkpointer, CompiledGraph, Goto, Graph, GraphState, InMemoryCheckpointer, Node,
-    NodeCtx, NodeOut,
+    node_fn, ActiveSnapshot, AuditEntry, AuditKind, AuditLog, AuditLogObserver, Checkpointer,
+    CompiledGraph, Goto, Graph, GraphMetrics, GraphSnapshot, GraphState, InMemoryAuditLog,
+    InMemoryCheckpointer, MetricsObserver, Node, NodeCtx, NodeOut, NodeRetryPolicy, NodeTiming,
+    ProfilingObserver, Subgraph,
 };
 pub use cognis2_llm::{
-    BaseTool, ChatOptions, ChatResponse, Client, ClientBuilder, LLMProvider, Provider,
-    SchemaBasedTool, StreamChunk, Tool, ToolDefinition, ToolInput, ToolOutput, ToolRegistry, Usage,
+    Aggregated, BaseTool, ChatOptions, ChatResponse, Client, ClientBuilder, LLMProvider, Provider,
+    SchemaBasedTool, StreamAggregator, StreamChunk, Tool, ToolDefinition, ToolInput, ToolOutput,
+    ToolRegistry, Usage, UsageTracker,
 };
 #[cfg(feature = "ollama")]
 pub use cognis2_rag::OllamaEmbeddings;
 #[cfg(feature = "openai")]
 pub use cognis2_rag::OpenAIEmbeddings;
 pub use cognis2_rag::{
-    Distance, Embeddings, FakeEmbeddings, InMemoryVectorStore, SearchResult, VectorStore,
+    CachingRetriever, CompressorPipeline, CrossEncoder, CrossEncoderReranker, Distance, Docstore,
+    Document, Embeddings, FakeEmbeddings, Filter, FnCrossEncoder, InMemoryDocstore,
+    InMemoryRecordManager, InMemoryVectorStore, IncrementalReport, LongContextReorder,
+    MultiVectorIndexer, MultiVectorRetriever, ParentDocumentRetriever, QueryTranslatorRetriever,
+    RecordManager, SearchResult, VectorStore,
 };
 
-// Filled in by subsequent tasks:
+// New stage-5 modules.
 pub mod agent;
+pub mod backend;
+#[cfg(feature = "cache-sqlite")]
+pub mod cache_sqlite;
+pub mod eval;
+pub mod history;
+pub mod middleware;
+pub mod observers;
+pub mod presets;
+pub mod retrievers;
+pub mod tools;
+
 pub use agent::{
-    default_react_graph, Agent, AgentBuilder, AgentResponse, AgentState, AgentStateUpdate,
-    ConversationMode, Memory, ThinkNode, ToolDispatchNode, Window,
+    default_react_graph, default_react_graph_with_limits, Agent, AgentBuilder, AgentHealth,
+    AgentLifecycle, AgentPlugin, AgentResponse, AgentState, AgentStateUpdate, Buffer,
+    ConversationMode, FnPlugin, Memory, OnStart, SummaryMemory, ThinkNode, ToolDispatchNode,
+    VectorMemory, Window, Workflow, WorkflowState, WorkflowStateUpdate,
 };
+pub use backend::{
+    Backend, Blob, GrepHit, InMemoryStateBackend, InMemoryStorageBackend, LocalFsStorageBackend,
+    MemoryBackend, SandboxedFsBackend, StateBackend, StorageBackend,
+};
+pub use eval::{
+    Contains, EvalCase, EvalReport, EvalRow, EvalRunner, Evaluator, ExactMatch, LlmJudge,
+};
+pub use history::{HistoryStore, InMemoryHistory, RunnableWithMessageHistory, SessionKey};
+pub use middleware::{
+    ContextInjection, ContextProvider, FixedRecovery, FnContextProvider, FnRecovery,
+    FnToolCallPatcher, Middleware, MiddlewareCtx, MiddlewarePipeline, ModelFallback, ModelRetry,
+    Next, PatchToolCalls, PiiRedactor, PipelinedClient, Planning, PromptCaching, RateLimit,
+    RateLimiter, Recovery, RecoveryStrategy, RegexRedactor, Summarization, TodoMiddleware,
+    TokenBucket, TokenCounter, ToolCallPatcher,
+};
+pub use observers::TracingObserver;
+pub use retrievers::{
+    ContextualCompressionRetriever, MultiQueryRetriever, RerankingRetriever, SearchSpec,
+    SelfQueryRetriever, TimeWeightedRetriever,
+};
+pub use tools::{
+    register_filesystem_tools, AllowList, ApprovalGatedTool, Approver, AutoApprove, CachedTool,
+    Calculator, Decision, FileEditTool, FileExistsTool, FileGlobTool, FileGrepTool, FileListTool,
+    FileReadTool, FileWriteTool, RejectAll, RetrieverTool, ShellTool, SubAgentTool,
+};
+#[cfg(feature = "tools-http")]
+pub use tools::{HttpMethod, HttpRequest};
 
 /// Common imports for v2 user code building agents.
 pub mod prelude {

@@ -10,10 +10,17 @@ use super::state::{AgentState, AgentStateUpdate};
 
 /// LLM call node. If the LLM emits tool calls, routes to "act"; otherwise
 /// terminates the graph.
+///
+/// Two limits apply:
+/// - `max_iterations` — how many LLM calls the loop is allowed to make.
+/// - `max_tool_calls` — how many tool messages may accumulate in state.
+///   Counted directly from `state.messages` so no extra bookkeeping is
+///   needed. `None` means unlimited.
 pub struct ThinkNode {
     client: Client,
     tool_defs: Vec<ToolDefinition>,
     max_iterations: u32,
+    max_tool_calls: Option<u32>,
 }
 
 impl ThinkNode {
@@ -23,7 +30,14 @@ impl ThinkNode {
             client,
             tool_defs,
             max_iterations,
+            max_tool_calls: None,
         }
+    }
+
+    /// Cap the number of tool messages this loop may accumulate.
+    pub fn with_max_tool_calls(mut self, n: u32) -> Self {
+        self.max_tool_calls = Some(n);
+        self
     }
 }
 
@@ -44,6 +58,23 @@ impl Node<AgentState> for ThinkNode {
                 },
                 goto: Goto::end(),
             });
+        }
+
+        if let Some(limit) = self.max_tool_calls {
+            let used = state
+                .messages
+                .iter()
+                .filter(|m| matches!(m, Message::Tool(_)))
+                .count() as u32;
+            if used >= limit {
+                return Ok(NodeOut {
+                    update: AgentStateUpdate {
+                        messages: vec![Message::ai(format!("[max_tool_calls={limit} reached]"))],
+                        iterations: 0,
+                    },
+                    goto: Goto::end(),
+                });
+            }
         }
 
         let messages = state.messages.clone();
@@ -145,6 +176,7 @@ mod tests {
                 name: name.to_string(),
                 arguments: serde_json::json!({}),
             }],
+            parts: Vec::new(),
         })
     }
 

@@ -36,6 +36,15 @@ pub use client::{Client, ClientBuilder};
 pub mod provider;
 pub use provider::{LLMProvider, Provider};
 
+pub mod streaming;
+pub use streaming::{Aggregated, StreamAggregator};
+
+pub mod usage;
+pub use usage::UsageTracker;
+
+pub mod structured;
+pub use structured::StructuredClient;
+
 /// Common imports for v2 user code building agents and tools.
 pub mod prelude {
     pub use crate::schema_for;

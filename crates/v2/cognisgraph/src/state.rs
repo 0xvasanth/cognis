@@ -9,6 +9,13 @@ pub trait GraphState: Sized + Send + Sync + 'static {
 
     /// Apply a delta to self.
     fn apply(&mut self, update: Self::Update);
+
+    /// Reset any `#[reducer(ephemeral)]` fields to `Default::default()`.
+    /// The engine calls this at the start of every superstep, before
+    /// running tasks — so ephemeral fields hold only writes from the
+    /// current step. Default impl is a no-op for state types with no
+    /// ephemeral fields.
+    fn reset_ephemeral(&mut self) {}
 }
 
 /// Deep-merge `source` into `target` for `serde_json::Value`. Used by

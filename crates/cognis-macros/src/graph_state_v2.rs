@@ -34,6 +34,11 @@ enum Reducer {
     Merge,
     Skip,
     Custom(syn::Path),
+    /// Like `Last` for the per-step write semantics, but the field is
+    /// reset to `Default::default()` at the start of every superstep
+    /// (via `GraphState::reset_ephemeral`), so it only ever holds writes
+    /// from the *current* step.
+    Ephemeral,
 }
 
 struct ReducedField {
@@ -93,13 +98,13 @@ pub fn derive_graph_state_v2(input: DeriveInput) -> TokenStream {
         .map(|f| {
             let id = &f.ident;
             let ty = &f.ty;
-            // Update type: Append / Custom keep the same type; Last wraps in Option
-            // unless the field is already Option<T> (to avoid Option<Option<T>>);
-            // Add takes the same numeric type; Merge takes serde_json::Value.
+            // Update type: Append / Custom keep the same type; Last and
+            // Ephemeral wrap in Option unless the field is already
+            // Option<T>; Add takes the same numeric type; Merge takes
+            // serde_json::Value.
             let upd_ty = match &f.reducer {
-                Reducer::Last => {
+                Reducer::Last | Reducer::Ephemeral => {
                     if is_option_type(ty) {
-                        // Field is already Option<T>; don't double-wrap.
                         quote! { #ty }
                     } else {
                         quote! { ::core::option::Option<#ty> }
@@ -123,11 +128,13 @@ pub fn derive_graph_state_v2(input: DeriveInput) -> TokenStream {
                 Reducer::Add => quote! {
                     self.#id = self.#id + update.#id;
                 },
-                Reducer::Last => {
+                // Last and Ephemeral share the same per-step write semantics —
+                // the only difference is that Ephemeral fields are reset to
+                // default at the *start* of each superstep (handled in
+                // `reset_ephemeral`), so the value reflects only the current
+                // step's writes.
+                Reducer::Last | Reducer::Ephemeral => {
                     if is_option_type(&f.ty) {
-                        // Already-Option field: assign directly when update is Some.
-                        // Limitation: cannot clear to None via Last — use Reducer::Custom
-                        // for that edge case.
                         quote! {
                             if update.#id.is_some() {
                                 self.#id = update.#id;
@@ -153,6 +160,16 @@ pub fn derive_graph_state_v2(input: DeriveInput) -> TokenStream {
             }
         });
 
+    let reset_arms = fields
+        .iter()
+        .filter(|f| matches!(f.reducer, Reducer::Ephemeral))
+        .map(|f| {
+            let id = &f.ident;
+            quote! {
+                self.#id = ::core::default::Default::default();
+            }
+        });
+
     quote! {
         #[derive(::core::default::Default, ::core::clone::Clone, ::core::fmt::Debug)]
         #[allow(non_camel_case_types, dead_code)]
@@ -164,6 +181,9 @@ pub fn derive_graph_state_v2(input: DeriveInput) -> TokenStream {
             type Update = #update_name;
             fn apply(&mut self, update: Self::Update) {
                 #(#apply_arms)*
+            }
+            fn reset_ephemeral(&mut self) {
+                #(#reset_arms)*
             }
         }
     }
@@ -191,9 +211,11 @@ fn parse_reducer_attr(attrs: &[Attribute]) -> syn::Result<Option<Reducer>> {
                 let lit: LitStr = v.parse()?;
                 let path: syn::Path = syn::parse_str(&lit.value())?;
                 found = Some(Reducer::Custom(path));
+            } else if meta.path.is_ident("ephemeral") {
+                found = Some(Reducer::Ephemeral);
             } else {
                 return Err(meta.error(
-                    "unknown reducer; expected append, add, last, merge, skip, or custom = \"path::fn\"",
+                    "unknown reducer; expected append, add, last, merge, skip, ephemeral, or custom = \"path::fn\"",
                 ));
             }
             Ok(())

@@ -13,6 +13,7 @@ use crate::builder::Graph;
 use crate::checkpoint::Checkpointer;
 use crate::engine;
 use crate::state::GraphState;
+use crate::stream_mode::StreamModes;
 
 /// A validated, ready-to-run graph. Cheap to clone (the underlying nodes
 /// are `Arc<dyn Node<S>>`).
@@ -108,6 +109,101 @@ impl<S: GraphState + Clone> CompiledGraph<S> {
         let mut cfg = config;
         cfg.run_id = run_id;
         engine::resume(self, state, cfg, step).await
+    }
+
+    // ---------------------------------------------------------------
+    // State inspection (HITL / time-travel / debugging)
+    // ---------------------------------------------------------------
+
+    /// Latest checkpointed state for `run_id`. Returns `None` if there is
+    /// no checkpointer attached or no state recorded for that run.
+    pub async fn get_state(&self, run_id: uuid::Uuid) -> Result<Option<S>> {
+        match &self.checkpointer {
+            Some(cp) => cp.load(run_id, None).await,
+            None => Ok(None),
+        }
+    }
+
+    /// State at a specific superstep — for time-travel.
+    pub async fn get_state_at(&self, run_id: uuid::Uuid, step: u64) -> Result<Option<S>> {
+        match &self.checkpointer {
+            Some(cp) => cp.load(run_id, Some(step)).await,
+            None => Ok(None),
+        }
+    }
+
+    /// Full step history for `run_id`. Each `(step, state)` pair is one
+    /// superstep boundary — earliest first.
+    pub async fn get_state_history(&self, run_id: uuid::Uuid) -> Result<Vec<(u64, S)>> {
+        let cp = match &self.checkpointer {
+            Some(cp) => cp,
+            None => return Ok(Vec::new()),
+        };
+        let steps = cp.list(run_id).await?;
+        let mut out = Vec::with_capacity(steps.len());
+        for s in steps {
+            if let Some(state) = cp.load(run_id, Some(s)).await? {
+                out.push((s, state));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Save a (possibly user-edited) state at `step` for `run_id`. Used to
+    /// patch state before resuming an interrupted run.
+    ///
+    /// Errors if no checkpointer is attached.
+    pub async fn update_state(&self, run_id: uuid::Uuid, step: u64, state: &S) -> Result<()> {
+        match &self.checkpointer {
+            Some(cp) => cp.save(run_id, step, state).await,
+            None => Err(cognis2_core::CognisError::Configuration(
+                "update_state requires a checkpointer; attach via .with_checkpointer(...)".into(),
+            )),
+        }
+    }
+}
+
+impl<S> CompiledGraph<S>
+where
+    S: GraphState + Clone + Send + 'static,
+    <S as GraphState>::Update: Clone,
+{
+    /// Stream events filtered by [`StreamModes`] — see the `stream_mode`
+    /// module for what each mode captures.
+    pub async fn stream_mode(
+        &self,
+        input: S,
+        modes: StreamModes,
+        config: RunnableConfig,
+    ) -> Result<cognis2_core::EventStream> {
+        use cognis2_core::Observer;
+        use futures::StreamExt;
+        use tokio::sync::mpsc;
+        use tokio_stream::wrappers::UnboundedReceiverStream;
+
+        struct ChannelObserver(mpsc::UnboundedSender<cognis2_core::Event>);
+        impl Observer for ChannelObserver {
+            fn on_event(&self, event: &cognis2_core::Event) {
+                let _ = self.0.send(event.clone());
+            }
+        }
+
+        let (tx, rx) = mpsc::unbounded_channel::<cognis2_core::Event>();
+        let observer: Arc<dyn Observer> = Arc::new(ChannelObserver(tx));
+        let mut cfg = config;
+        cfg.observers.push(observer);
+
+        let this = self.clone();
+        tokio::spawn(async move {
+            let _ = engine::run(&this, input, cfg).await;
+        });
+
+        let filtered = UnboundedReceiverStream::new(rx).filter(move |e| {
+            let keep = modes.matches(e);
+            async move { keep }
+        });
+
+        Ok(cognis2_core::EventStream::new(filtered))
     }
 }
 

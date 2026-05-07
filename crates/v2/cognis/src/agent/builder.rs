@@ -7,9 +7,14 @@ use cognis2_graph::CompiledGraph;
 use cognis2_llm::{Client, Tool};
 
 use super::agent::{Agent, ConversationMode};
-use super::default_graph::default_react_graph;
+use super::default_graph::default_react_graph_with_limits;
 use super::memory::{Memory, Window};
 use super::state::AgentState;
+use crate::backend::Backend;
+use crate::tools::{
+    ApprovalGatedTool, Approver, FileEditTool, FileExistsTool, FileGlobTool, FileGrepTool,
+    FileListTool, FileReadTool, FileWriteTool,
+};
 
 const DEFAULT_SYSTEM_PROMPT: &str =
     "You are a helpful assistant. Use tools when needed. Be concise.";
@@ -21,8 +26,10 @@ pub struct AgentBuilder {
     system_prompt: Option<String>,
     memory: Option<Box<dyn Memory>>,
     max_iterations: u32,
+    max_tool_calls: Option<u32>,
     mode: ConversationMode,
     custom_graph: Option<CompiledGraph<AgentState>>,
+    approver: Option<Arc<dyn Approver>>,
 }
 
 impl Default for AgentBuilder {
@@ -40,8 +47,10 @@ impl AgentBuilder {
             system_prompt: None,
             memory: None,
             max_iterations: 10,
+            max_tool_calls: None,
             mode: ConversationMode::Stateless,
             custom_graph: None,
+            approver: None,
         }
     }
 
@@ -63,6 +72,25 @@ impl AgentBuilder {
         self
     }
 
+    /// Wire all seven filesystem tools (`fs_read` / `fs_write` / `fs_edit`
+    /// / `fs_ls` / `fs_glob` / `fs_grep` / `fs_exists`) against `backend`.
+    pub fn with_filesystem(mut self, backend: Arc<dyn Backend>) -> Self {
+        self.tools
+            .push(Arc::new(FileReadTool::new(backend.clone())));
+        self.tools
+            .push(Arc::new(FileWriteTool::new(backend.clone())));
+        self.tools
+            .push(Arc::new(FileEditTool::new(backend.clone())));
+        self.tools
+            .push(Arc::new(FileListTool::new(backend.clone())));
+        self.tools
+            .push(Arc::new(FileGlobTool::new(backend.clone())));
+        self.tools
+            .push(Arc::new(FileGrepTool::new(backend.clone())));
+        self.tools.push(Arc::new(FileExistsTool::new(backend)));
+        self
+    }
+
     /// Override the system prompt.
     pub fn with_system_prompt(mut self, prompt: impl Into<String>) -> Self {
         self.system_prompt = Some(prompt.into());
@@ -75,9 +103,24 @@ impl AgentBuilder {
         self
     }
 
-    /// Override max iterations (default 10).
+    /// Override max LLM iterations (default 10).
     pub fn with_max_iterations(mut self, n: u32) -> Self {
         self.max_iterations = n;
+        self
+    }
+
+    /// Cap the number of tool messages this agent's loop may accumulate
+    /// across a single run.
+    pub fn with_max_tool_calls(mut self, n: u32) -> Self {
+        self.max_tool_calls = Some(n);
+        self
+    }
+
+    /// Wrap every registered tool in an [`ApprovalGatedTool`] backed by
+    /// `approver`. Tools registered AFTER this call are NOT auto-wrapped —
+    /// call `.with_approver(...)` last.
+    pub fn with_approver(mut self, approver: Arc<dyn Approver>) -> Self {
+        self.approver = Some(approver);
         self
     }
 
@@ -114,7 +157,20 @@ impl AgentBuilder {
                         .into(),
                 )
             })?;
-            default_react_graph(client, self.tools, self.max_iterations)?
+            let tools: Vec<Arc<dyn Tool>> = if let Some(approver) = self.approver {
+                self.tools
+                    .into_iter()
+                    .map(|t| Arc::new(ApprovalGatedTool::new(t, approver.clone())) as Arc<dyn Tool>)
+                    .collect()
+            } else {
+                self.tools
+            };
+            default_react_graph_with_limits(
+                client,
+                tools,
+                self.max_iterations,
+                self.max_tool_calls,
+            )?
         };
 
         let memory: Option<Box<dyn Memory>> = match (self.mode, self.memory) {

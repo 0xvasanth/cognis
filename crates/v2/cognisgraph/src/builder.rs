@@ -15,6 +15,8 @@ pub struct Graph<S: GraphState> {
     pub(crate) nodes: HashMap<String, Arc<dyn Node<S>>>,
     pub(crate) edges: HashMap<String, String>,
     pub(crate) start: Option<String>,
+    /// Optional version tag, stamped on snapshots and checkpoints.
+    pub(crate) version: Option<String>,
 }
 
 impl<S: GraphState> Default for Graph<S> {
@@ -30,7 +32,16 @@ impl<S: GraphState> Graph<S> {
             nodes: HashMap::new(),
             edges: HashMap::new(),
             start: None,
+            version: None,
         }
+    }
+
+    /// Stamp a version tag. Echoed in snapshots and (when `version_check`
+    /// is enabled on the runtime) compared against checkpoint version on
+    /// resume.
+    pub fn with_version(mut self, v: impl Into<String>) -> Self {
+        self.version = Some(v.into());
+        self
     }
 
     /// Add a node. The `name` is the routing key — `Goto::node("...")`

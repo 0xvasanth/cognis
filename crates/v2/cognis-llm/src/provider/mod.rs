@@ -12,29 +12,45 @@ use crate::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk};
 use crate::tools::ToolDefinition;
 use crate::Message;
 
+#[cfg(feature = "anthropic")]
+pub mod anthropic;
+#[cfg(feature = "azure")]
+pub mod azure;
+#[cfg(feature = "google")]
+pub mod google;
 #[cfg(feature = "ollama")]
 pub mod ollama;
 #[cfg(feature = "openai")]
 pub mod openai;
 
+#[cfg(feature = "anthropic")]
+pub use anthropic::AnthropicProvider;
+#[cfg(feature = "azure")]
+pub use azure::AzureProvider;
+#[cfg(feature = "google")]
+pub use google::GoogleProvider;
 #[cfg(feature = "ollama")]
 pub use ollama::OllamaProvider;
 #[cfg(feature = "openai")]
 pub use openai::OpenAIProvider;
 
-/// Closed set of supported providers. Anthropic and Azure are declared but
-/// stubbed — full impls land in slice 2.
+/// Closed set of supported providers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Provider {
     /// OpenAI (chat completions API).
     OpenAI,
-    /// Anthropic Claude. Slice-2 stub.
+    /// Anthropic Claude (Messages API).
     Anthropic,
+    /// Google Gemini (generateContent API).
+    Google,
     /// Ollama (local models).
     Ollama,
-    /// Azure OpenAI. Slice-2 stub.
+    /// Azure OpenAI (deployment-scoped endpoints).
     Azure,
+    /// OpenRouter — OpenAI-compatible wire format, model namespace via
+    /// `vendor/model` (e.g. `anthropic/claude-3.5-sonnet`).
+    OpenRouter,
 }
 
 impl Provider {
@@ -43,8 +59,11 @@ impl Provider {
         match self {
             Provider::OpenAI => "https://api.openai.com/v1/",
             Provider::Anthropic => "https://api.anthropic.com/v1/",
+            Provider::Google => "https://generativelanguage.googleapis.com/v1beta/",
             Provider::Ollama => "http://localhost:11434/api/",
-            Provider::Azure => "", // user must provide
+            // Azure is deployment-scoped; users supply the full base URL.
+            Provider::Azure => "",
+            Provider::OpenRouter => "https://openrouter.ai/api/v1/",
         }
     }
 
@@ -53,8 +72,10 @@ impl Provider {
         match self {
             Provider::OpenAI => "gpt-4o-mini",
             Provider::Anthropic => "claude-3-5-sonnet-20241022",
+            Provider::Google => "gemini-1.5-flash",
             Provider::Ollama => "llama3.2",
             Provider::Azure => "",
+            Provider::OpenRouter => "openai/gpt-4o-mini",
         }
     }
 
@@ -63,12 +84,17 @@ impl Provider {
         !matches!(self, Provider::Ollama)
     }
 
-    /// Whether this provider is implemented in slice 1.
+    /// Whether this provider's implementation is compiled in.
     pub fn is_implemented(&self) -> bool {
         match self {
             Provider::OpenAI => cfg!(feature = "openai"),
+            Provider::Anthropic => cfg!(feature = "anthropic"),
+            Provider::Google => cfg!(feature = "google"),
             Provider::Ollama => cfg!(feature = "ollama"),
-            Provider::Anthropic | Provider::Azure => false,
+            Provider::Azure => cfg!(feature = "azure"),
+            // OpenRouter rides on the OpenAI provider, so it's available
+            // whenever the openai feature is on.
+            Provider::OpenRouter => cfg!(feature = "openai"),
         }
     }
 }
@@ -78,8 +104,10 @@ impl std::fmt::Display for Provider {
         let s = match self {
             Provider::OpenAI => "openai",
             Provider::Anthropic => "anthropic",
+            Provider::Google => "google",
             Provider::Ollama => "ollama",
             Provider::Azure => "azure",
+            Provider::OpenRouter => "openrouter",
         };
         write!(f, "{s}")
     }
@@ -91,8 +119,10 @@ impl FromStr for Provider {
         match s.to_ascii_lowercase().as_str() {
             "openai" | "gpt" => Ok(Provider::OpenAI),
             "anthropic" | "claude" => Ok(Provider::Anthropic),
+            "google" | "gemini" => Ok(Provider::Google),
             "ollama" => Ok(Provider::Ollama),
             "azure" => Ok(Provider::Azure),
+            "openrouter" | "open-router" => Ok(Provider::OpenRouter),
             other => Err(CognisError::Configuration(format!(
                 "unknown provider `{other}`"
             ))),
@@ -156,7 +186,9 @@ mod tests {
         assert_eq!("openai".parse::<Provider>().unwrap(), Provider::OpenAI);
         assert_eq!("gpt".parse::<Provider>().unwrap(), Provider::OpenAI);
         assert_eq!("claude".parse::<Provider>().unwrap(), Provider::Anthropic);
+        assert_eq!("gemini".parse::<Provider>().unwrap(), Provider::Google);
         assert_eq!("OLLAMA".parse::<Provider>().unwrap(), Provider::Ollama);
+        assert_eq!("azure".parse::<Provider>().unwrap(), Provider::Azure);
         assert!("nope".parse::<Provider>().is_err());
     }
 
