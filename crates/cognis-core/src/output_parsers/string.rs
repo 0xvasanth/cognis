@@ -1,36 +1,50 @@
+//! Identity parser — passes the LLM output through unchanged.
+
 use async_trait::async_trait;
-use serde_json::Value;
 
-use crate::error::Result;
-use crate::runnables::base::Runnable;
-use crate::runnables::config::RunnableConfig;
+use crate::output_parsers::OutputParser;
+use crate::runnable::{Runnable, RunnableConfig};
+use crate::Result;
 
-use super::base::OutputParser;
+/// Identity parser: returns the input string unchanged.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct StringParser;
 
-/// Trivial parser that returns the text output unchanged.
-pub struct StrOutputParser;
-
-impl OutputParser for StrOutputParser {
-    fn parse(&self, text: &str) -> Result<Value> {
-        Ok(Value::String(text.to_string()))
+impl StringParser {
+    /// Construct a `StringParser`.
+    pub fn new() -> Self {
+        Self
     }
+}
 
-    fn parser_type(&self) -> &str {
-        "str_output_parser"
+impl OutputParser<String> for StringParser {
+    fn parse(&self, text: &str) -> Result<String> {
+        Ok(text.to_string())
     }
 }
 
 #[async_trait]
-impl Runnable for StrOutputParser {
-    fn name(&self) -> &str {
-        "StrOutputParser"
+impl Runnable<String, String> for StringParser {
+    async fn invoke(&self, input: String, _: RunnableConfig) -> Result<String> {
+        Ok(input)
     }
+    fn name(&self) -> &str {
+        "StringParser"
+    }
+}
 
-    async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let text = match &input {
-            Value::String(s) => s.clone(),
-            other => other.to_string(),
-        };
-        self.parse(&text)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn passes_through() {
+        let p = StringParser::new();
+        let out = p
+            .invoke("hello".into(), RunnableConfig::default())
+            .await
+            .unwrap();
+        assert_eq!(out, "hello");
+        assert_eq!(p.parse("x").unwrap(), "x");
     }
 }

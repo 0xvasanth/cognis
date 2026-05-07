@@ -1,7 +1,7 @@
 //! Custom Runnable<I, O>: invoke + the default streaming behavior.
 
 use async_trait::async_trait;
-use cognis2::prelude::*;
+use cognis::prelude::*;
 use futures::StreamExt;
 
 struct Doubler;

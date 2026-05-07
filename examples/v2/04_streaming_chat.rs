@@ -2,7 +2,7 @@
 //! COGNIS_OPENAI_API_KEY) for OpenAI; or COGNIS_PROVIDER=ollama with a
 //! running Ollama server.
 
-use cognis2::prelude::*;
+use cognis::prelude::*;
 use futures::StreamExt;
 
 #[tokio::main]

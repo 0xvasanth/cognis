@@ -1,61 +1,37 @@
 [package]
 name = "cognis"
-version = "0.2.1"
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "LLM application framework built on cognis-core"
+description = "v2-beta umbrella + thin agent layer"
 repository = "https://github.com/0xvasanth/cognis"
-readme = "README.md"
 
 [dependencies]
-cognis-core.workspace = true
+cognis-core = { path = "../cognis-core", version = "0.1.0" }
+cognis-graph = { path = "../cognisgraph", version = "0.1.0" }
+cognis-llm = { path = "../cognis-llm", version = "0.1.0" }
+cognis-rag = { path = "../cognis-rag", version = "0.1.0" }
+cognis-macros.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
-async-trait.workspace = true
-thiserror.workspace = true
-uuid.workspace = true
-futures.workspace = true
+tokio = { workspace = true, features = ["process"] }
 tokio-stream.workspace = true
+async-trait.workspace = true
+futures.workspace = true
 tracing.workspace = true
-regex = "1"
-csv = "1"
-glob = "0.3"
-pdf-extract = { version = "0.7", optional = true }
-serde_yaml = { version = "0.9", optional = true }
-toml = { version = "0.8", optional = true }
-
-[dependencies.sqlx]
-workspace = true
-optional = true
-
-[dependencies.reqwest]
-workspace = true
-optional = true
-
-[dependencies.secrecy]
-workspace = true
-optional = true
+schemars.workspace = true
+uuid.workspace = true
+regex-lite = "0.1"
+reqwest = { workspace = true, optional = true }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"], optional = true }
 
 [features]
-default = []
-pdf = ["dep:pdf-extract"]
-yaml = ["dep:serde_yaml"]
-toml-loader = ["dep:toml"]
-sqlite = ["dep:sqlx"]
-openai = ["dep:reqwest", "dep:secrecy"]
-anthropic = ["dep:reqwest", "dep:secrecy"]
-google = ["dep:reqwest", "dep:secrecy"]
-ollama = ["dep:reqwest", "dep:secrecy"]
-azure = ["dep:reqwest", "dep:secrecy"]
-qdrant = []
-pinecone = []
-weaviate = []
-chroma = []
-faiss = []
-all-providers = ["openai", "anthropic", "google", "ollama", "azure", "yaml", "toml-loader"]
+default = ["openai", "ollama"]
+openai = ["cognis-rag/openai", "cognis-llm/openai"]
+ollama = ["cognis-rag/ollama", "cognis-llm/ollama"]
+tools-http = ["dep:reqwest"]
+cache-sqlite = ["dep:sqlx"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
-wiremock = "0.6"

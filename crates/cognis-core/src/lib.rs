@@ -1,80 +1,84 @@
 //! # cognis-core
 //!
-//! Foundation layer for the Cognis LLM framework. This crate defines the base
-//! traits, types, and abstractions that all other crates in the workspace depend on.
-//! It has **zero** dependencies on other workspace crates.
+//! v2-beta foundation: typed `Runnable<I, O>` trait + supporting primitives.
 //!
-//! ## Key Modules
-//!
-//! - [`messages`] -- `Message` enum (Human, AI, System, Tool) and utilities for
-//!   conversion, filtering, trimming, and merging message sequences.
-//! - [`language_models`] -- `BaseChatModel` and `BaseLLM` traits that chat model
-//!   providers implement, plus fake models for testing.
-//! - [`runnables`] -- The composable `Runnable` trait and combinators: sequence,
-//!   parallel, branch, lambda, retry, fallbacks, passthrough.
-//! - [`tools`] -- `BaseTool` trait for agent tool calling with JSON schema support.
-//! - [`prompts`] -- Chat prompt templates, few-shot example selectors, and
-//!   structured prompt builders.
-//! - [`output_parsers`] -- Parsers for JSON, string, list, XML, and tool-call outputs.
-//! - [`callbacks`] -- Extensible callback system with handler traits and run managers.
-//! - [`vectorstores`] -- `VectorStore` trait and in-memory implementation.
-//! - [`embeddings`] -- `Embeddings` trait for vector embedding providers.
-//! - [`documents`] -- `Document` type used across loaders, splitters, and retrievers.
-//!
-//! ## Quick Example
-//!
-//! ```rust
-//! use cognis_core::messages::Message;
-//!
-//! let msg = Message::human("What is the capital of France?");
-//! assert_eq!(msg.message_type(), cognis_core::messages::MessageType::Human);
-//! ```
+//! Top-level modules:
+//! - [`runnable`] — the `Runnable<I, O>` trait and `RunnableConfig`.
+//! - [`runnable_ext`] — fluent `.pipe()`, `.with_retry()`, etc. on any runnable.
+//! - [`message`] — typed chat messages.
+//! - [`stream`] — `Event` taxonomy, `Observer`, `RunnableStream`, `EventStream`.
+//! - [`error`] — `CognisError`, `Result`, `InterruptKind`.
+//! - [`extensions`] — typed key-value bag (`tower::Extensions`-style).
+//! - [`prompts`] — typed prompt templates.
+//! - [`output_parsers`] — typed parsers from `String` to a target type.
+//! - [`compose`] — `Pipe`, `Parallel`, `Branch`, `Lambda`, `Each`, `Passthrough`.
+//! - [`wrappers`] — `Retry`, `Fallback`, `Timeout`, `Cache`.
 
-pub use cognis_macros::tool;
+#![warn(missing_docs)]
+#![warn(rust_2018_idioms)]
 
-/// Re-export of [`schemars`] — the schema generation crate cognis uses for
-/// derive-driven JSON Schema. Pull in `cognis_core::JsonSchema` (or use
-/// `#[derive(::cognis_core::schemars::JsonSchema)]`) to schema-derive your
-/// own structs.
+pub mod callbacks;
+pub mod compose;
+pub mod content;
+pub mod error;
+pub mod extensions;
+pub mod json_merge;
+pub mod message;
+pub mod output_parsers;
+pub mod prompts;
+pub mod runnable;
+pub mod runnable_ext;
+pub mod security;
+pub mod serialization;
+pub mod stream;
+pub mod tokenizer;
+pub mod wrappers;
+
+pub use callbacks::{
+    BuiltHandler, CallbackHandler, CallbackManager, HandlerBuilder, HandlerObserver,
+};
+pub use content::{
+    base64_decode, base64_encode, image_source_from_path, mime_from_path, AudioSource, ContentPart,
+    ImageSource,
+};
+pub use error::{CognisError, InterruptKind, Result};
+pub use extensions::Extensions;
+pub use json_merge::deep_merge_json;
+pub use message::{
+    merge_message_runs, message_from_chunks, trim_messages, trim_messages_custom, AiChunk,
+    AiMessage, HumanChunk, HumanMessage, Message, MessageChunk, RemoveMessage, SystemChunk,
+    SystemMessage, ToolCall, ToolCallChunk, ToolChunk, ToolMessage, TrimStrategy,
+};
+pub use runnable::{Runnable, RunnableConfig};
+pub use runnable_ext::RunnableExt;
+pub use security::is_public_unicast;
+pub use serialization::{Loader, RunnableDefinition, Serializable};
+pub use stream::{Event, EventStream, Observer, RunnableStream};
+pub use tokenizer::{CharTokenizer, FnTokenizer, Tokenizer};
+
+/// Re-export of the [`schemars`] crate. v2 user code uses
+/// `cognis_core::schemars::JsonSchema` for derive-driven schema generation.
 pub use schemars;
 pub use schemars::{schema_for, JsonSchema};
 
-pub mod agents;
-pub mod caches;
-pub mod callbacks;
-pub mod cancellation;
-pub mod chat_history;
-pub mod chat_loaders;
-pub mod chat_sessions;
-pub mod config;
-pub mod cross_encoders;
-pub mod document_loaders;
-pub mod documents;
-pub mod embeddings;
-pub mod embeddings_fake;
-pub mod error;
-pub mod events;
-pub mod globals;
-pub mod indexing;
-pub mod language_models;
-pub mod load;
-pub mod messages;
-pub mod output_parsers;
-pub mod outputs;
-pub mod prompt_values;
-pub mod prompts;
-pub mod rate_limiters;
-pub mod retrievers;
-pub mod retry;
-pub mod runnables;
-pub mod security;
-pub mod stores;
-pub mod structured_query;
-pub mod tools;
-pub mod tracers;
-pub mod tracing;
-pub mod types;
-pub mod utils;
-pub mod vectorstores;
-
-pub use cancellation::CancellationToken;
+/// Common imports for v2 user code.
+pub mod prelude {
+    pub use crate::compose::{lambda, pipe, Branch, Each, Lambda, Parallel, Passthrough, Pipe};
+    pub use crate::output_parsers::{
+        BooleanParser, CommaListParser, JsonExtraction, JsonExtractor, JsonParser,
+        NumberedListParser, OutputParser, StringParser, StructuredOutputConfig,
+        StructuredOutputParser, XmlParser,
+    };
+    pub use crate::prompts::{ChatPromptTemplate, FewShotTemplate, PromptTemplate, Role};
+    pub use crate::schema_for;
+    pub use crate::wrappers::{
+        Assign, AssignOutput, Bind, Cache, CacheBackend, ConfigKey, Configurable, Fallback,
+        MemoryCache, Retry, RetryPolicy, Timeout,
+    };
+    pub use crate::{
+        AiMessage, CognisError, Event, EventStream, Extensions, HumanMessage, InterruptKind,
+        JsonSchema, Message, Observer, Result, Runnable, RunnableConfig, RunnableExt,
+        RunnableStream, SystemMessage, ToolCall, ToolMessage,
+    };
+    pub use async_trait::async_trait;
+}

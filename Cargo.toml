@@ -4,15 +4,9 @@ members = [
     "crates/cognis-core",
     "crates/cognis",
     "crates/cognisgraph",
-    "crates/cognisagent",
     "crates/cognis-macros",
-    "crates/v1/examples",
-    "crates/v2/cognis-core",
-    "crates/v2/cognisgraph",
-    "crates/v2/cognis-llm",
-    "crates/v2/cognis-rag",
-    "crates/v2/cognis",
-    "crates/v2/examples",
+    "crates/cognis-llm",
+    "crates/cognis-rag",
 ]
 
 [workspace.package]

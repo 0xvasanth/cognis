@@ -1,150 +1,183 @@
+//! List parsers — comma-separated and numbered/bulleted.
+
 use async_trait::async_trait;
-use serde_json::Value;
 
-use crate::error::Result;
-use crate::runnables::base::Runnable;
-use crate::runnables::config::RunnableConfig;
+use crate::output_parsers::OutputParser;
+use crate::runnable::{Runnable, RunnableConfig};
+use crate::Result;
 
-use super::base::OutputParser;
+/// Parses a separator-delimited string into `Vec<String>`.
+///
+/// Default separator is `,`. Whitespace around items is trimmed; empty
+/// items are dropped.
+#[derive(Debug, Clone)]
+pub struct CommaListParser {
+    separator: String,
+}
 
-/// Parses comma-separated values from LLM output.
-pub struct CommaSeparatedListOutputParser;
+impl Default for CommaListParser {
+    fn default() -> Self {
+        Self {
+            separator: ",".into(),
+        }
+    }
+}
 
-impl OutputParser for CommaSeparatedListOutputParser {
-    fn parse(&self, text: &str) -> Result<Value> {
-        let items: Vec<Value> = text
-            .split(',')
-            .map(|s| Value::String(s.trim().to_string()))
-            .filter(|v| v.as_str() != Some(""))
-            .collect();
-        Ok(Value::Array(items))
+impl CommaListParser {
+    /// Construct a `CommaListParser` with the default `,` separator.
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    fn get_format_instructions(&self) -> Option<String> {
-        Some(
-            "Your response should be a list of comma separated values, \
-             eg: `foo, bar, baz`"
-                .into(),
-        )
+    /// Override the separator.
+    pub fn with_separator(mut self, sep: impl Into<String>) -> Self {
+        self.separator = sep.into();
+        self
+    }
+}
+
+impl OutputParser<Vec<String>> for CommaListParser {
+    fn parse(&self, text: &str) -> Result<Vec<String>> {
+        Ok(text
+            .split(&self.separator)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect())
     }
 
-    fn parser_type(&self) -> &str {
-        "comma_separated_list"
+    fn format_instructions(&self) -> Option<String> {
+        Some(format!(
+            "Reply with a `{}`-separated list. No commentary, no numbering.",
+            self.separator
+        ))
     }
 }
 
 #[async_trait]
-impl Runnable for CommaSeparatedListOutputParser {
-    fn name(&self) -> &str {
-        "CommaSeparatedListOutputParser"
+impl Runnable<String, Vec<String>> for CommaListParser {
+    async fn invoke(&self, input: String, _: RunnableConfig) -> Result<Vec<String>> {
+        OutputParser::parse(self, &input)
     }
-
-    async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let text = match &input {
-            Value::String(s) => s.clone(),
-            other => other.to_string(),
-        };
-        self.parse(&text)
+    fn name(&self) -> &str {
+        "CommaListParser"
     }
 }
 
-/// Parses numbered list items from LLM output (e.g., "1. foo\n2. bar").
-pub struct NumberedListOutputParser;
+/// Parses numbered/bulleted lists into `Vec<String>`.
+///
+/// Recognised line markers (after optional leading whitespace):
+/// - `1. `, `12. `, `1) ` (numbered)
+/// - `- `, `* ` (bulleted)
+///
+/// Lines without a marker are still kept after trimming, so plain
+/// newline-delimited lists also parse.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NumberedListParser;
 
-impl OutputParser for NumberedListOutputParser {
-    fn parse(&self, text: &str) -> Result<Value> {
-        let items: Vec<Value> = text
+impl NumberedListParser {
+    /// Construct a `NumberedListParser`.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl OutputParser<Vec<String>> for NumberedListParser {
+    fn parse(&self, text: &str) -> Result<Vec<String>> {
+        Ok(text
             .lines()
-            .filter_map(|line| {
-                let trimmed = line.trim();
-                // Match patterns like "1. item" or "1) item"
-                let rest = trimmed
-                    .strip_prefix(|c: char| c.is_ascii_digit())
-                    .and_then(|s| {
-                        // Skip remaining digits
-                        let s = s.trim_start_matches(|c: char| c.is_ascii_digit());
-                        s.strip_prefix(". ").or_else(|| s.strip_prefix(") "))
-                    });
-                rest.map(|s| Value::String(s.trim().to_string()))
-            })
-            .collect();
-        Ok(Value::Array(items))
+            .map(|l| strip_list_marker(l.trim_start()).trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect())
     }
 
-    fn get_format_instructions(&self) -> Option<String> {
-        Some(
-            "Your response should be a numbered list, eg:\n\
-             1. foo\n\
-             2. bar\n\
-             3. baz"
-                .into(),
-        )
-    }
-
-    fn parser_type(&self) -> &str {
-        "numbered_list"
+    fn format_instructions(&self) -> Option<String> {
+        Some("Reply as a numbered list (`1.`, `2.`, ...). One item per line.".into())
     }
 }
 
 #[async_trait]
-impl Runnable for NumberedListOutputParser {
-    fn name(&self) -> &str {
-        "NumberedListOutputParser"
+impl Runnable<String, Vec<String>> for NumberedListParser {
+    async fn invoke(&self, input: String, _: RunnableConfig) -> Result<Vec<String>> {
+        OutputParser::parse(self, &input)
     }
-
-    async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let text = match &input {
-            Value::String(s) => s.clone(),
-            other => other.to_string(),
-        };
-        self.parse(&text)
+    fn name(&self) -> &str {
+        "NumberedListParser"
     }
 }
 
-/// Parses markdown list items (lines starting with `- ` or `* `).
-pub struct MarkdownListOutputParser;
-
-impl OutputParser for MarkdownListOutputParser {
-    fn parse(&self, text: &str) -> Result<Value> {
-        let items: Vec<Value> = text
-            .lines()
-            .filter_map(|line| {
-                let trimmed = line.trim();
-                trimmed
-                    .strip_prefix("- ")
-                    .or_else(|| trimmed.strip_prefix("* "))
-                    .map(|s| Value::String(s.trim().to_string()))
-            })
-            .collect();
-        Ok(Value::Array(items))
+fn strip_list_marker(s: &str) -> &str {
+    if let Some(rest) = strip_numbered(s) {
+        return rest;
     }
-
-    fn get_format_instructions(&self) -> Option<String> {
-        Some(
-            "Your response should be a markdown list, eg:\n\
-             - foo\n\
-             - bar\n\
-             - baz"
-                .into(),
-        )
+    if let Some(rest) = s.strip_prefix("- ") {
+        return rest;
     }
-
-    fn parser_type(&self) -> &str {
-        "markdown_list"
+    if let Some(rest) = s.strip_prefix("* ") {
+        return rest;
     }
+    s
 }
 
-#[async_trait]
-impl Runnable for MarkdownListOutputParser {
-    fn name(&self) -> &str {
-        "MarkdownListOutputParser"
+fn strip_numbered(s: &str) -> Option<&str> {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == 0 || i >= bytes.len() {
+        return None;
+    }
+    if bytes[i] != b'.' && bytes[i] != b')' {
+        return None;
+    }
+    i += 1;
+    if i >= bytes.len() || bytes[i] != b' ' {
+        return None;
+    }
+    i += 1;
+    Some(&s[i..])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn comma_list_basic() {
+        let p = CommaListParser::new();
+        assert_eq!(p.parse("a, b, c").unwrap(), vec!["a", "b", "c"]);
     }
 
-    async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let text = match &input {
-            Value::String(s) => s.clone(),
-            other => other.to_string(),
-        };
-        self.parse(&text)
+    #[test]
+    fn comma_list_drops_empty_items() {
+        let p = CommaListParser::new();
+        assert_eq!(p.parse("a, , c, ").unwrap(), vec!["a", "c"]);
+    }
+
+    #[test]
+    fn comma_list_custom_separator() {
+        let p = CommaListParser::new().with_separator(";");
+        assert_eq!(p.parse("a;b;c").unwrap(), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn numbered_list_with_dots() {
+        let p = NumberedListParser::new();
+        assert_eq!(
+            p.parse("1. first\n2. second\n3. third").unwrap(),
+            vec!["first", "second", "third"]
+        );
+    }
+
+    #[test]
+    fn numbered_list_with_parens() {
+        let p = NumberedListParser::new();
+        assert_eq!(p.parse("1) one\n2) two").unwrap(), vec!["one", "two"]);
+    }
+
+    #[test]
+    fn numbered_list_with_dashes() {
+        let p = NumberedListParser::new();
+        assert_eq!(p.parse("- a\n- b").unwrap(), vec!["a", "b"]);
     }
 }

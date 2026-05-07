@@ -1,377 +1,368 @@
-//! Wikipedia summary lookup tool.
+//! Wikipedia search + page-summary tool.
 //!
-//! Uses the Wikipedia REST API to fetch article summaries by title. Supports
-//! configurable language editions.
+//! Hits the public Wikipedia REST API (no key). The tool exposes one
+//! action: `search` (returns top-N matching titles) or `summary`
+//! (returns one page's extract by exact title).
+//!
+//! Customization:
+//! - [`WikipediaToolBuilder`] — language code (`"en"`, `"de"`, …),
+//!   custom base URL (e.g. for a private Wikipedia mirror), top-k cap,
+//!   user-agent override, custom HTTP client.
+//! - The tool is feature-gated under `tools-http` because it needs
+//!   `reqwest`. Falls back to a clear error when the feature is off.
+
+#![cfg(feature = "tools-http")]
+
+use std::time::Duration;
 
 use async_trait::async_trait;
-use cognis_core::error::{CognisError, Result};
-use cognis_core::tools::base::BaseTool;
-use cognis_core::tools::types::{ToolInput, ToolOutput};
-use serde::Deserialize;
-use serde_json::{json, Value};
+use cognis_core::schemars::{self, JsonSchema};
+use serde::{Deserialize, Serialize};
 
-/// A tool that fetches Wikipedia article summaries.
-///
-/// # Builder
-///
-/// ```rust,ignore
-/// let tool = WikipediaTool::builder()
-///     .lang("de")
-///     .num_sentences(5)
-///     .build();
-/// ```
+use cognis_core::{CognisError, Result};
+use cognis_llm::tools::{Tool, ToolInput, ToolOutput};
+
+const DEFAULT_USER_AGENT: &str = "cognis/0.1 (+https://github.com/0xvasanth/cognis)";
+const DEFAULT_TOP_K: usize = 5;
+const DEFAULT_TIMEOUT_SECS: u64 = 10;
+
+/// Action variants the tool understands.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WikipediaAction {
+    /// Search for matching pages.
+    Search,
+    /// Fetch a page summary by exact title.
+    Summary,
+}
+
+/// Tool input schema.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WikipediaInput {
+    /// `search` returns the top-K matching titles; `summary` returns
+    /// one page's extract.
+    pub action: WikipediaAction,
+    /// Search query (for `search`) or exact page title (for `summary`).
+    pub query: String,
+    /// Override the default top-k cap (`search` only).
+    #[serde(default)]
+    pub top_k: Option<usize>,
+}
+
+/// Wikipedia tool.
 pub struct WikipediaTool {
-    /// Wikipedia language edition (default: `"en"`).
-    lang: String,
-    /// Number of sentences to include from the extract (default: 3).
-    ///
-    /// Note: The Wikipedia summary API returns a fixed extract; this field
-    /// is used to truncate the result to approximately this many sentences.
-    num_sentences: usize,
-    /// Shared HTTP client.
-    client: reqwest::Client,
+    base_url: String,
+    language: String,
+    user_agent: String,
+    top_k_default: usize,
+    http: reqwest::Client,
 }
 
-/// Builder for [`WikipediaTool`].
-pub struct WikipediaToolBuilder {
-    lang: String,
-    num_sentences: usize,
-    client: Option<reqwest::Client>,
-}
-
-impl WikipediaToolBuilder {
-    /// Set the Wikipedia language edition (default: `"en"`).
-    pub fn lang(mut self, lang: impl Into<String>) -> Self {
-        self.lang = lang.into();
-        self
-    }
-
-    /// Set the maximum number of sentences to return (default: 3).
-    pub fn num_sentences(mut self, n: usize) -> Self {
-        self.num_sentences = n;
-        self
-    }
-
-    /// Provide a custom [`reqwest::Client`].
-    pub fn client(mut self, client: reqwest::Client) -> Self {
-        self.client = Some(client);
-        self
-    }
-
-    /// Build the [`WikipediaTool`].
-    pub fn build(self) -> WikipediaTool {
-        WikipediaTool {
-            lang: self.lang,
-            num_sentences: self.num_sentences,
-            client: self.client.unwrap_or_default(),
-        }
+impl std::fmt::Debug for WikipediaTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WikipediaTool")
+            .field("language", &self.language)
+            .field("base_url", &self.base_url)
+            .finish_non_exhaustive()
     }
 }
 
 impl WikipediaTool {
-    /// Create a new `WikipediaTool` with default settings.
-    pub fn new() -> Self {
-        Self::builder().build()
+    /// Build with default English language and a fresh HTTP client.
+    pub fn new() -> Result<Self> {
+        WikipediaToolBuilder::default().build()
     }
 
-    /// Create a new builder.
+    /// Fluent builder.
     pub fn builder() -> WikipediaToolBuilder {
-        WikipediaToolBuilder {
-            lang: "en".to_string(),
-            num_sentences: 3,
-            client: None,
-        }
+        WikipediaToolBuilder::default()
     }
 
-    /// Build the summary API URL for the given title.
-    pub(crate) fn build_url(&self, title: &str) -> String {
-        let encoded_title = urlencoded(title);
+    fn search_url(&self, q: &str, k: usize) -> String {
         format!(
-            "https://{}.wikipedia.org/api/rest_v1/page/summary/{}",
-            self.lang, encoded_title
+            "{base}/w/api.php?action=query&list=search&srsearch={q}&srlimit={k}&format=json&utf8=1",
+            base = self.base_url,
+            q = urlencoding_simple(q),
+            k = k,
         )
     }
-}
 
-impl Default for WikipediaTool {
-    fn default() -> Self {
-        Self::new()
+    fn summary_url(&self, title: &str) -> String {
+        format!(
+            "{base}/api/rest_v1/page/summary/{title}",
+            base = self.base_url,
+            title = urlencoding_simple(title),
+        )
     }
-}
 
-/// Minimal percent-encoding for URL path segments.
-fn urlencoded(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            ' ' => "%20".to_string(),
-            '#' => "%23".to_string(),
-            '?' => "%3F".to_string(),
-            '&' => "%26".to_string(),
-            '%' => "%25".to_string(),
-            '+' => "%2B".to_string(),
-            _ if c.is_ascii_alphanumeric() || "-._~/:@!$'()*,;=".contains(c) => c.to_string(),
-            _ => {
-                let mut buf = [0u8; 4];
-                let encoded = c.encode_utf8(&mut buf);
-                encoded.bytes().map(|b| format!("%{:02X}", b)).collect()
-            }
-        })
-        .collect()
-}
-
-/// Truncate a text to approximately `n` sentences.
-pub(crate) fn truncate_sentences(text: &str, n: usize) -> String {
-    if n == 0 {
-        return String::new();
-    }
-    let mut count = 0;
-    let mut end = 0;
-    for (i, c) in text.char_indices() {
-        if c == '.' || c == '!' || c == '?' {
-            count += 1;
-            end = i + c.len_utf8();
-            if count >= n {
-                break;
-            }
+    async fn search(&self, q: &str, k: usize) -> Result<serde_json::Value> {
+        #[derive(Deserialize)]
+        struct ApiResp {
+            query: SearchPayload,
         }
+        #[derive(Deserialize)]
+        struct SearchPayload {
+            search: Vec<SearchHit>,
+        }
+        #[derive(Deserialize)]
+        struct SearchHit {
+            title: String,
+            #[serde(default)]
+            snippet: String,
+            #[serde(default)]
+            pageid: u64,
+        }
+        let url = self.search_url(q, k);
+        let resp = self
+            .http
+            .get(&url)
+            .header(reqwest::header::USER_AGENT, &self.user_agent)
+            .send()
+            .await
+            .map_err(|e| CognisError::Internal(format!("wikipedia search: {e}")))?;
+        if !resp.status().is_success() {
+            let s = resp.status();
+            let t = resp.text().await.unwrap_or_default();
+            return Err(CognisError::Internal(format!(
+                "wikipedia search: HTTP {s}: {t}"
+            )));
+        }
+        let parsed: ApiResp = resp
+            .json()
+            .await
+            .map_err(|e| CognisError::Serialization(format!("wikipedia json: {e}")))?;
+        let hits: Vec<serde_json::Value> = parsed
+            .query
+            .search
+            .into_iter()
+            .map(|h| {
+                serde_json::json!({
+                    "title": h.title,
+                    "snippet": strip_html(&h.snippet),
+                    "pageid": h.pageid,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({ "results": hits }))
     }
-    if end == 0 || count < n {
-        // Fewer sentences than requested; return the whole text.
-        text.to_string()
-    } else {
-        text[..end].to_string()
+
+    async fn summary(&self, title: &str) -> Result<serde_json::Value> {
+        let url = self.summary_url(title);
+        let resp = self
+            .http
+            .get(&url)
+            .header(reqwest::header::USER_AGENT, &self.user_agent)
+            .send()
+            .await
+            .map_err(|e| CognisError::Internal(format!("wikipedia summary: {e}")))?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(serde_json::json!({"found": false, "title": title}));
+        }
+        if !resp.status().is_success() {
+            let s = resp.status();
+            let t = resp.text().await.unwrap_or_default();
+            return Err(CognisError::Internal(format!(
+                "wikipedia summary: HTTP {s}: {t}"
+            )));
+        }
+        let payload: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| CognisError::Serialization(format!("wikipedia summary json: {e}")))?;
+        // Pull a stable subset of fields out so the LLM doesn't see the
+        // full WMF response shape.
+        Ok(serde_json::json!({
+            "found": true,
+            "title": payload.get("title").cloned().unwrap_or_default(),
+            "description": payload.get("description").cloned().unwrap_or_default(),
+            "extract": payload.get("extract").cloned().unwrap_or_default(),
+            "url": payload.pointer("/content_urls/desktop/page").cloned().unwrap_or_default(),
+        }))
     }
-}
-
-/// Relevant fields from the Wikipedia summary API response.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub(crate) struct WikiSummary {
-    #[serde(default)]
-    pub title: String,
-    #[serde(default)]
-    pub extract: String,
-    #[serde(default)]
-    pub description: String,
-    #[serde(default, rename = "type")]
-    pub page_type: String,
-}
-
-/// Format a Wikipedia summary response into readable text.
-pub(crate) fn format_wiki_response(summary: &WikiSummary, num_sentences: usize) -> String {
-    if summary.extract.is_empty() {
-        return format!(
-            "No Wikipedia article found for \"{}\". Try a different search term.",
-            summary.title
-        );
-    }
-
-    let extract = truncate_sentences(&summary.extract, num_sentences);
-    let mut parts = Vec::new();
-
-    if !summary.title.is_empty() {
-        parts.push(format!("# {}", summary.title));
-    }
-    if !summary.description.is_empty() {
-        parts.push(summary.description.clone());
-    }
-    parts.push(String::new()); // blank line
-    parts.push(extract);
-
-    parts.join("\n")
 }
 
 #[async_trait]
-impl BaseTool for WikipediaTool {
+impl Tool for WikipediaTool {
     fn name(&self) -> &str {
         "wikipedia"
     }
-
     fn description(&self) -> &str {
-        "Look up information on Wikipedia. Input should be a topic or article title."
+        "Search Wikipedia or fetch a page summary by exact title. \
+         Use action='search' to find pages, action='summary' to read."
     }
-
-    fn args_schema(&self) -> Option<Value> {
-        Some(json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The topic or article title to look up"
-                }
-            },
-            "required": ["query"]
-        }))
+    fn args_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::to_value(schemars::schema_for!(WikipediaInput)).unwrap_or_default())
     }
-
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
-        let query = extract_query(&input)?;
-        let url = self.build_url(&query);
-
-        let resp = self
-            .client
-            .get(&url)
-            .header("Accept", "application/json")
-            .send()
-            .await
-            .map_err(|e| CognisError::ToolException(format!("Wikipedia request failed: {e}")))?;
-
-        if resp.status().as_u16() == 404 {
-            return Ok(ToolOutput::Content(Value::String(format!(
-                "No Wikipedia article found for \"{query}\". Try a different search term."
-            ))));
-        }
-
-        if !resp.status().is_success() {
-            return Err(CognisError::ToolException(format!(
-                "Wikipedia returned status {}",
-                resp.status()
-            )));
-        }
-
-        let summary: WikiSummary = resp.json().await.map_err(|e| {
-            CognisError::ToolException(format!("Failed to parse Wikipedia response: {e}"))
+        let parsed: WikipediaInput = serde_json::from_value(input.into_json()).map_err(|e| {
+            CognisError::ToolValidationError(format!("wikipedia: invalid args: {e}"))
         })?;
-
-        let formatted = format_wiki_response(&summary, self.num_sentences);
-        Ok(ToolOutput::Content(Value::String(formatted)))
+        let payload = match parsed.action {
+            WikipediaAction::Search => {
+                let k = parsed.top_k.unwrap_or(self.top_k_default).max(1);
+                self.search(&parsed.query, k).await?
+            }
+            WikipediaAction::Summary => self.summary(&parsed.query).await?,
+        };
+        Ok(ToolOutput::Content(payload))
     }
 }
 
-/// Extract a query string from various input formats.
-fn extract_query(input: &ToolInput) -> Result<String> {
-    match input {
-        ToolInput::Text(s) => Ok(s.clone()),
-        ToolInput::Structured(map) => {
-            if let Some(Value::String(q)) = map.get("query") {
-                Ok(q.clone())
-            } else {
-                Err(CognisError::ToolValidationError(
-                    "Missing required field 'query'".into(),
-                ))
-            }
-        }
-        ToolInput::ToolCall(tc) => {
-            if let Some(Value::String(q)) = tc.args.get("query") {
-                Ok(q.clone())
-            } else {
-                Err(CognisError::ToolValidationError(
-                    "Missing required field 'query'".into(),
-                ))
-            }
+/// Strip basic HTML tags (Wikipedia search snippets contain
+/// `<span class="...">` decorations). Lightweight; not a full HTML parser.
+fn strip_html(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut depth = 0i32;
+    for ch in s.chars() {
+        match ch {
+            '<' => depth += 1,
+            '>' if depth > 0 => depth -= 1,
+            _ if depth == 0 => out.push(ch),
+            _ => {}
         }
     }
+    out
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+/// Minimal URL-encoder for query parameters. Handles the characters
+/// Wikipedia titles can produce; not a full RFC-3986 implementation.
+fn urlencoding_simple(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// Fluent builder.
+#[derive(Default)]
+pub struct WikipediaToolBuilder {
+    base_url: Option<String>,
+    language: Option<String>,
+    user_agent: Option<String>,
+    top_k_default: Option<usize>,
+    http: Option<reqwest::Client>,
+    timeout_secs: Option<u64>,
+}
+
+impl WikipediaToolBuilder {
+    /// Override base URL (default depends on language).
+    pub fn base_url(mut self, u: impl Into<String>) -> Self {
+        self.base_url = Some(u.into());
+        self
+    }
+    /// Set the language code (default `"en"`). Determines the default
+    /// base URL when `base_url` is not set.
+    pub fn language(mut self, code: impl Into<String>) -> Self {
+        self.language = Some(code.into());
+        self
+    }
+    /// Override the User-Agent header (Wikipedia requires a non-default UA).
+    pub fn user_agent(mut self, ua: impl Into<String>) -> Self {
+        self.user_agent = Some(ua.into());
+        self
+    }
+    /// Default top-k for search (overridable per-call).
+    pub fn top_k_default(mut self, k: usize) -> Self {
+        self.top_k_default = Some(k);
+        self
+    }
+    /// Override the HTTP client.
+    pub fn http_client(mut self, c: reqwest::Client) -> Self {
+        self.http = Some(c);
+        self
+    }
+    /// Override the timeout.
+    pub fn timeout_secs(mut self, s: u64) -> Self {
+        self.timeout_secs = Some(s);
+        self
+    }
+    /// Build.
+    pub fn build(self) -> Result<WikipediaTool> {
+        let language = self.language.unwrap_or_else(|| "en".to_string());
+        let base_url = self
+            .base_url
+            .unwrap_or_else(|| format!("https://{language}.wikipedia.org"));
+        let http = match self.http {
+            Some(c) => c,
+            None => reqwest::ClientBuilder::new()
+                .timeout(Duration::from_secs(
+                    self.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS),
+                ))
+                .build()
+                .map_err(|e| CognisError::Configuration(format!("HTTP client: {e}")))?,
+        };
+        Ok(WikipediaTool {
+            base_url,
+            language,
+            user_agent: self
+                .user_agent
+                .unwrap_or_else(|| DEFAULT_USER_AGENT.to_string()),
+            top_k_default: self.top_k_default.unwrap_or(DEFAULT_TOP_K),
+            http,
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_wikipedia_builder_defaults() {
-        let tool = WikipediaTool::new();
-        assert_eq!(tool.name(), "wikipedia");
-        assert_eq!(tool.lang, "en");
-        assert_eq!(tool.num_sentences, 3);
+    fn search_url_encodes_query() {
+        let t = WikipediaTool::new().unwrap();
+        let url = t.search_url("rust language", 3);
+        assert!(url.contains("srsearch=rust+language"));
+        assert!(url.contains("srlimit=3"));
     }
 
     #[test]
-    fn test_wikipedia_builder_custom() {
-        let tool = WikipediaTool::builder().lang("de").num_sentences(5).build();
-        assert_eq!(tool.lang, "de");
-        assert_eq!(tool.num_sentences, 5);
+    fn summary_url_encodes_title() {
+        let t = WikipediaTool::new().unwrap();
+        let url = t.summary_url("Rust (programming language)");
+        // Spaces become +, non-ASCII / parens become %-encoded.
+        assert!(url.contains("Rust"));
+        assert!(url.contains("%28"));
+        assert!(url.contains("%29"));
     }
 
     #[test]
-    fn test_wikipedia_url_construction() {
-        let tool = WikipediaTool::new();
-        let url = tool.build_url("Rust (programming language)");
+    fn language_code_changes_base_url() {
+        let de = WikipediaToolBuilder::default()
+            .language("de")
+            .build()
+            .unwrap();
+        assert!(de.base_url.contains("de.wikipedia.org"));
+    }
+
+    #[test]
+    fn strip_html_removes_tags_only() {
         assert_eq!(
-            url,
-            "https://en.wikipedia.org/api/rest_v1/page/summary/Rust%20(programming%20language)"
+            strip_html(r#"<span class="x">hello</span> world"#),
+            "hello world"
         );
+        assert_eq!(strip_html("plain"), "plain");
     }
 
     #[test]
-    fn test_wikipedia_url_encoding_special_chars() {
-        let tool = WikipediaTool::builder().lang("fr").build();
-        let url = tool.build_url("C++ language");
-        assert_eq!(
-            url,
-            "https://fr.wikipedia.org/api/rest_v1/page/summary/C%2B%2B%20language"
-        );
+    fn urlencoder_handles_punctuation() {
+        assert_eq!(urlencoding_simple("a b"), "a+b");
+        assert_eq!(urlencoding_simple("a&b"), "a%26b");
+        assert_eq!(urlencoding_simple("a/b"), "a%2Fb");
+        assert_eq!(urlencoding_simple("hello"), "hello");
     }
 
     #[test]
-    fn test_wikipedia_response_parsing() {
-        let json_str = r#"{
-            "title": "Rust (programming language)",
-            "extract": "Rust is a general-purpose programming language. It was designed by Graydon Hoare. It emphasizes performance and safety.",
-            "description": "Programming language",
-            "type": "standard"
-        }"#;
-
-        let summary: WikiSummary = serde_json::from_str(json_str).unwrap();
-        assert_eq!(summary.title, "Rust (programming language)");
-        assert!(!summary.extract.is_empty());
-
-        let formatted = format_wiki_response(&summary, 2);
-        assert!(formatted.contains("# Rust (programming language)"));
-        assert!(formatted.contains("Programming language"));
-        // Should have only 2 sentences
-        assert!(formatted.contains("It was designed by Graydon Hoare."));
-        assert!(!formatted.contains("It emphasizes performance and safety."));
-    }
-
-    #[test]
-    fn test_wikipedia_empty_extract() {
-        let summary = WikiSummary {
-            title: "Nonexistent Page".to_string(),
-            extract: String::new(),
-            description: String::new(),
-            page_type: String::new(),
-        };
-        let formatted = format_wiki_response(&summary, 3);
-        assert!(formatted.contains("No Wikipedia article found"));
-    }
-
-    #[test]
-    fn test_wikipedia_args_schema() {
-        let tool = WikipediaTool::new();
-        let schema = tool.args_schema().unwrap();
-        assert_eq!(schema["type"], "object");
-        assert_eq!(schema["properties"]["query"]["type"], "string");
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&Value::String("query".to_string())));
-    }
-
-    #[test]
-    fn test_truncate_sentences() {
-        let text = "First sentence. Second sentence. Third sentence. Fourth sentence.";
-        assert_eq!(
-            truncate_sentences(text, 2),
-            "First sentence. Second sentence."
-        );
-        assert_eq!(truncate_sentences(text, 4), text);
-        assert_eq!(truncate_sentences(text, 10), text);
-        assert_eq!(truncate_sentences(text, 0), "");
-    }
-
-    #[test]
-    fn test_extract_query_from_text() {
-        let input = ToolInput::Text("Rust language".to_string());
-        assert_eq!(extract_query(&input).unwrap(), "Rust language");
-    }
-
-    #[test]
-    fn test_extract_query_from_structured() {
-        let mut map = std::collections::HashMap::new();
-        map.insert("query".to_string(), Value::String("test topic".to_string()));
-        let input = ToolInput::Structured(map);
-        assert_eq!(extract_query(&input).unwrap(), "test topic");
+    fn schema_serializes() {
+        let t = WikipediaTool::new().unwrap();
+        let s = t.args_schema().unwrap();
+        assert!(s.to_string().contains("action"));
+        assert!(s.to_string().contains("query"));
     }
 }

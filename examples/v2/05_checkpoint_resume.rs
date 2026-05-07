@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use cognis2::prelude::*;
+use cognis::prelude::*;
 
 #[derive(Default, Clone, Debug)]
 struct State {

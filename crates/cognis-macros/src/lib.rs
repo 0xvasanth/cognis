@@ -101,8 +101,8 @@ pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// `#[derive(GraphStateV2)]` — v2-shape state derive that emits a typed
 /// sibling `<Name>Update` struct and an `impl GraphState for <Name>`. Use
-/// in v2 code via the re-export `cognis2_core::GraphState` (the rename
-/// happens in cognis2-core's lib.rs in Plan #2).
+/// in v2 code via the re-export `cognis_core::GraphState` (the rename
+/// happens in cognis-core's lib.rs in Plan #2).
 #[proc_macro_derive(GraphStateV2, attributes(reducer, graph_state))]
 pub fn derive_graph_state_v2(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

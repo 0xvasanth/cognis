@@ -1,204 +1,293 @@
-use std::collections::HashMap;
+//! `ChatPromptTemplate` — typed templating that produces `Vec<Message>`.
+
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
+use serde::Serialize;
 use serde_json::Value;
 
-use crate::error::{CognisError, Result};
-use crate::messages::Message;
-use crate::prompt_values::{ChatPromptValue, PromptValue};
-use crate::runnables::base::Runnable;
-use crate::runnables::config::RunnableConfig;
+use crate::content::ContentPart;
+use crate::message::Message;
+use crate::prompts::template::{render, scan_variables};
+use crate::runnable::{Runnable, RunnableConfig};
+use crate::{CognisError, Result};
 
-use super::base::PartialValue;
-use super::message::{MessagePromptTemplate, MessagesPlaceholder};
-
-/// An element in a ChatPromptTemplate's message list.
-pub enum MessageLike {
-    /// A concrete message (no template variables).
-    Concrete(Box<Message>),
-    /// A message-level template that produces one message.
-    Template(MessagePromptTemplate),
-    /// A placeholder for injecting a list of messages.
-    Placeholder(MessagesPlaceholder),
+/// One element in a `ChatPromptTemplate`.
+#[derive(Debug, Clone)]
+enum Part {
+    /// A templated message at a fixed role.
+    Templated { role: Role, template: String },
+    /// A templated message that also carries multimodal parts. The text
+    /// template is rendered against the input; the parts are passed
+    /// through as-is.
+    Multimodal {
+        role: Role,
+        template: String,
+        parts: Vec<ContentPart>,
+    },
+    /// Drop in a `Vec<Message>` from a named field of the input.
+    Placeholder { key: String, optional: bool },
 }
 
-/// A multi-message prompt template for chat models.
+/// The role assigned to a templated message part.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    /// Renders as `Message::System`.
+    System,
+    /// Renders as `Message::Human`.
+    Human,
+    /// Renders as `Message::Ai`.
+    Ai,
+}
+
+/// A typed chat prompt — renders to `Vec<Message>` when invoked.
 ///
-/// Composes message templates, placeholders, and concrete messages into
-/// a sequence of messages. Implements `Runnable` for LCEL chains.
-pub struct ChatPromptTemplate {
-    pub messages: Vec<MessageLike>,
-    pub input_variables: Vec<String>,
-    pub partial_variables: HashMap<String, PartialValue>,
+/// Build via the fluent API:
+///
+/// ```no_run
+/// use cognis_core::prompts::ChatPromptTemplate;
+/// use serde::Serialize;
+///
+/// #[derive(Serialize)]
+/// struct In { name: String }
+///
+/// let prompt: ChatPromptTemplate<In> = ChatPromptTemplate::new()
+///     .system("You are a helpful assistant.")
+///     .placeholder("history")
+///     .human("Hello, my name is {name}.");
+/// ```
+///
+/// Placeholders pull a `Vec<Message>` from a named field of the input
+/// (the field must serialize to a JSON array of `Message` objects).
+#[derive(Debug, Clone)]
+pub struct ChatPromptTemplate<I = Value> {
+    parts: Vec<Part>,
+    _input: PhantomData<fn() -> I>,
 }
 
-impl ChatPromptTemplate {
-    /// Build a `ChatPromptTemplate` from a list of `(role, template)` tuples
-    /// and other `MessageLike` variants.
-    ///
-    /// Accepts tuples of `(&str, &str)` where role is one of:
-    /// `"human"`, `"ai"`, `"system"`, or `"placeholder"`.
-    pub fn from_messages(specs: Vec<(&str, &str)>) -> Result<Self> {
-        let mut messages = Vec::new();
-        let mut input_variables = Vec::new();
-
-        for (role, content) in specs {
-            if role == "placeholder" {
-                // Content is the variable name, e.g. "{history}" -> "history"
-                let var_name = content
-                    .trim_start_matches('{')
-                    .trim_end_matches('}')
-                    .to_string();
-                let placeholder = MessagesPlaceholder::new(&var_name).optional(true);
-                messages.push(MessageLike::Placeholder(placeholder));
-                // Optional placeholders don't contribute required input variables
-            } else {
-                let template = MessagePromptTemplate::from_role(role, content)?;
-                for v in template.input_variables() {
-                    if !input_variables.contains(v) {
-                        input_variables.push(v.clone());
-                    }
-                }
-                messages.push(MessageLike::Template(template));
-            }
-        }
-
-        Ok(Self {
-            messages,
-            input_variables,
-            partial_variables: HashMap::new(),
-        })
-    }
-
-    /// Create from a list of `MessageLike` entries with explicit input variables.
-    pub fn new(messages: Vec<MessageLike>, input_variables: Vec<String>) -> Self {
+impl<I> Default for ChatPromptTemplate<I> {
+    fn default() -> Self {
         Self {
-            messages,
-            input_variables,
-            partial_variables: HashMap::new(),
+            parts: Vec::new(),
+            _input: PhantomData,
         }
     }
+}
 
-    /// Create a `ChatPromptTemplate` from a single string template.
-    ///
-    /// Creates a human message template from the provided string.
-    /// Equivalent to Python's `ChatPromptTemplate.from_template(template)`.
-    pub fn from_template(template: &str) -> Result<Self> {
-        Self::from_messages(vec![("human", template)])
+impl<I> ChatPromptTemplate<I>
+where
+    I: Serialize + Send + Sync + 'static,
+{
+    /// Empty builder.
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// Extend this template by appending multiple `(role, content)` specs.
-    ///
-    /// Equivalent to Python's `ChatPromptTemplate.extend(messages)`.
-    pub fn extend(&mut self, specs: Vec<(&str, &str)>) -> Result<()> {
-        for (role, content) in specs {
-            self.append(role, content)?;
-        }
-        Ok(())
-    }
-
-    /// Pre-fill some template variables.
-    pub fn partial(mut self, kwargs: HashMap<String, PartialValue>) -> Self {
-        for k in kwargs.keys() {
-            self.input_variables.retain(|v| v != k);
-        }
-        self.partial_variables.extend(kwargs);
+    /// Append a system-role templated message.
+    pub fn system(mut self, template: impl Into<String>) -> Self {
+        self.parts.push(Part::Templated {
+            role: Role::System,
+            template: template.into(),
+        });
         self
     }
 
-    fn merge_variables(&self, kwargs: &HashMap<String, Value>) -> HashMap<String, Value> {
-        let mut merged: HashMap<String, Value> = self
-            .partial_variables
-            .iter()
-            .map(|(k, v)| (k.clone(), v.resolve()))
+    /// Append a human-role templated message.
+    pub fn human(mut self, template: impl Into<String>) -> Self {
+        self.parts.push(Part::Templated {
+            role: Role::Human,
+            template: template.into(),
+        });
+        self
+    }
+
+    /// Append an AI-role templated message.
+    pub fn ai(mut self, template: impl Into<String>) -> Self {
+        self.parts.push(Part::Templated {
+            role: Role::Ai,
+            template: template.into(),
+        });
+        self
+    }
+
+    /// Append a human-role multimodal message: a text template plus a
+    /// pre-built list of [`ContentPart`]s (images, audio). The text
+    /// template still receives template-variable substitution against
+    /// the call's input.
+    pub fn human_with_parts(
+        mut self,
+        template: impl Into<String>,
+        parts: Vec<ContentPart>,
+    ) -> Self {
+        self.parts.push(Part::Multimodal {
+            role: Role::Human,
+            template: template.into(),
+            parts,
+        });
+        self
+    }
+
+    /// Append an AI-role multimodal message.
+    pub fn ai_with_parts(mut self, template: impl Into<String>, parts: Vec<ContentPart>) -> Self {
+        self.parts.push(Part::Multimodal {
+            role: Role::Ai,
+            template: template.into(),
+            parts,
+        });
+        self
+    }
+
+    /// Convenience: append a human-role message with one image URL part.
+    pub fn human_with_image_url(
+        self,
+        template: impl Into<String>,
+        url: impl Into<String>,
+        mime: impl Into<String>,
+    ) -> Self {
+        self.human_with_parts(
+            template,
+            vec![ContentPart::Image {
+                source: crate::content::ImageSource::url(url),
+                mime: mime.into(),
+            }],
+        )
+    }
+
+    /// Append a `Vec<Message>` field from the input.
+    ///
+    /// Errors at render time if the field is missing.
+    pub fn placeholder(mut self, key: impl Into<String>) -> Self {
+        self.parts.push(Part::Placeholder {
+            key: key.into(),
+            optional: false,
+        });
+        self
+    }
+
+    /// Like [`placeholder`](Self::placeholder), but a missing key resolves
+    /// to an empty list instead of an error.
+    pub fn optional_placeholder(mut self, key: impl Into<String>) -> Self {
+        self.parts.push(Part::Placeholder {
+            key: key.into(),
+            optional: true,
+        });
+        self
+    }
+
+    /// Build from a list of `(role, template)` tuples.
+    pub fn from_messages(messages: Vec<(Role, String)>) -> Self {
+        let parts = messages
+            .into_iter()
+            .map(|(role, template)| Part::Templated { role, template })
             .collect();
-        merged.extend(kwargs.iter().map(|(k, v)| (k.clone(), v.clone())));
-        merged
+        Self {
+            parts,
+            _input: PhantomData,
+        }
     }
 
-    /// Format all messages with the given variables.
-    pub fn format_messages(&self, kwargs: &HashMap<String, Value>) -> Result<Vec<Message>> {
-        let merged = self.merge_variables(kwargs);
-        let mut result = Vec::new();
-
-        for msg_like in &self.messages {
-            match msg_like {
-                MessageLike::Concrete(msg) => {
-                    result.push(*msg.clone());
-                }
-                MessageLike::Template(template) => {
-                    result.extend(template.format_messages(&merged)?);
-                }
-                MessageLike::Placeholder(placeholder) => {
-                    result.extend(placeholder.format_messages(&merged)?);
+    /// All `{name}` placeholders across templated parts (excludes
+    /// placeholder keys, which are field names not template variables).
+    pub fn input_variables(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for p in &self.parts {
+            let template = match p {
+                Part::Templated { template, .. } | Part::Multimodal { template, .. } => template,
+                Part::Placeholder { .. } => continue,
+            };
+            for v in scan_variables(template) {
+                if !out.contains(&v) {
+                    out.push(v);
                 }
             }
         }
-
-        Ok(result)
+        out
     }
 
-    /// Format all messages and wrap as a `ChatPromptValue`.
-    pub fn format_prompt(&self, kwargs: &HashMap<String, Value>) -> Result<Box<dyn PromptValue>> {
-        let messages = self.format_messages(kwargs)?;
-        Ok(Box::new(ChatPromptValue::new(messages)))
-    }
-
-    /// Append a new message spec to this template.
-    pub fn append(&mut self, role: &str, content: &str) -> Result<()> {
-        if role == "placeholder" {
-            let var_name = content
-                .trim_start_matches('{')
-                .trim_end_matches('}')
-                .to_string();
-            self.messages.push(MessageLike::Placeholder(
-                MessagesPlaceholder::new(var_name).optional(true),
-            ));
-        } else {
-            let template = MessagePromptTemplate::from_role(role, content)?;
-            for v in template.input_variables() {
-                if !self.input_variables.contains(v) {
-                    self.input_variables.push(v.clone());
+    /// Render to `Vec<Message>`.
+    pub fn render(&self, input: &I) -> Result<Vec<Message>> {
+        let ctx =
+            serde_json::to_value(input).map_err(|e| CognisError::Serialization(e.to_string()))?;
+        let mut out = Vec::with_capacity(self.parts.len());
+        for part in &self.parts {
+            match part {
+                Part::Templated { role, template } => {
+                    let text = render(template, &ctx)?;
+                    out.push(make_message(*role, text));
+                }
+                Part::Multimodal {
+                    role,
+                    template,
+                    parts,
+                } => {
+                    let text = render(template, &ctx)?;
+                    out.push(make_multimodal_message(*role, text, parts.clone()));
+                }
+                Part::Placeholder { key, optional } => {
+                    out.extend(pull_messages(&ctx, key, *optional)?);
                 }
             }
-            self.messages.push(MessageLike::Template(template));
         }
-        Ok(())
+        Ok(out)
     }
 }
 
 #[async_trait]
-impl Runnable for ChatPromptTemplate {
+impl<I> Runnable<I, Vec<Message>> for ChatPromptTemplate<I>
+where
+    I: Serialize + Send + Sync + 'static,
+{
+    async fn invoke(&self, input: I, _: RunnableConfig) -> Result<Vec<Message>> {
+        self.render(&input)
+    }
     fn name(&self) -> &str {
         "ChatPromptTemplate"
     }
+}
 
-    /// Input: JSON object with template variables.
-    /// Output: JSON array of serialized messages.
-    async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let kwargs: HashMap<String, Value> = match input {
-            Value::Object(map) => map.into_iter().collect(),
-            _ => {
-                return Err(CognisError::TypeMismatch {
-                    expected: "Object".into(),
-                    got: "non-Object".into(),
-                });
-            }
-        };
-        let messages = self.format_messages(&kwargs)?;
-        serde_json::to_value(&messages).map_err(Into::into)
+fn make_message(role: Role, text: String) -> Message {
+    match role {
+        Role::System => Message::system(text),
+        Role::Human => Message::human(text),
+        Role::Ai => Message::ai(text),
     }
 }
 
-impl std::fmt::Display for ChatPromptTemplate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ChatPromptTemplate(input_variables={:?}, messages={})",
-            self.input_variables,
-            self.messages.len()
-        )
+fn make_multimodal_message(role: Role, text: String, parts: Vec<ContentPart>) -> Message {
+    match role {
+        // System messages are text-only; if the caller asks for a
+        // multimodal system message we drop the parts and warn via tracing.
+        Role::System => {
+            if !parts.is_empty() {
+                tracing::warn!(
+                    "ChatPromptTemplate: system role doesn't support multimodal parts; dropping"
+                );
+            }
+            Message::system(text)
+        }
+        Role::Human => Message::human_with_parts(text, parts),
+        Role::Ai => Message::ai_with_parts(text, parts),
     }
+}
+
+fn pull_messages(ctx: &Value, key: &str, optional: bool) -> Result<Vec<Message>> {
+    let v = match ctx.get(key) {
+        Some(v) => v,
+        None => {
+            return if optional {
+                Ok(Vec::new())
+            } else {
+                Err(CognisError::Configuration(format!(
+                    "missing required placeholder field `{key}`"
+                )))
+            };
+        }
+    };
+    serde_json::from_value::<Vec<Message>>(v.clone()).map_err(|e| {
+        CognisError::Serialization(format!(
+            "placeholder `{key}` did not deserialize as Vec<Message>: {e}"
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -206,96 +295,99 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn test_from_messages_basic() {
-        let template = ChatPromptTemplate::from_messages(vec![
-            ("system", "You are a helpful assistant"),
-            ("human", "{question}"),
-        ])
-        .unwrap();
-        assert_eq!(template.input_variables, vec!["question".to_string()]);
-        assert_eq!(template.messages.len(), 2);
-    }
-
-    #[test]
-    fn test_from_template() {
-        let template = ChatPromptTemplate::from_template("Hello {name}!").unwrap();
-        assert_eq!(template.input_variables, vec!["name".to_string()]);
-        assert_eq!(template.messages.len(), 1);
-    }
-
-    #[test]
-    fn test_format_messages() {
-        let template = ChatPromptTemplate::from_messages(vec![
-            ("system", "You are helpful"),
-            ("human", "My name is {name}"),
-        ])
-        .unwrap();
-        let mut kwargs = HashMap::new();
-        kwargs.insert("name".to_string(), json!("Alice"));
-        let messages = template.format_messages(&kwargs).unwrap();
-        assert_eq!(messages.len(), 2);
-        assert_eq!(messages[1].content().text(), "My name is Alice");
-    }
-
-    #[test]
-    fn test_append() {
-        let mut template =
-            ChatPromptTemplate::from_messages(vec![("system", "You are helpful")]).unwrap();
-        template.append("human", "{question}").unwrap();
-        assert_eq!(template.messages.len(), 2);
-        assert!(template.input_variables.contains(&"question".to_string()));
-    }
-
-    #[test]
-    fn test_extend() {
-        let mut template =
-            ChatPromptTemplate::from_messages(vec![("system", "You are helpful")]).unwrap();
-        template
-            .extend(vec![
-                ("human", "{question}"),
-                ("ai", "Let me help with {question}"),
-            ])
-            .unwrap();
-        assert_eq!(template.messages.len(), 3);
-    }
-
-    #[test]
-    fn test_partial() {
-        let template = ChatPromptTemplate::from_messages(vec![
-            ("system", "You are {role}"),
-            ("human", "{question}"),
-        ])
-        .unwrap();
-        let partial = template.partial(HashMap::from([(
-            "role".to_string(),
-            PartialValue::Static(json!("helpful")),
-        )]));
-        assert!(!partial.input_variables.contains(&"role".to_string()));
-        assert!(partial.input_variables.contains(&"question".to_string()));
-    }
-
-    #[test]
-    fn test_placeholder() {
-        let template = ChatPromptTemplate::from_messages(vec![
-            ("system", "You are helpful"),
-            ("placeholder", "{history}"),
-            ("human", "{question}"),
-        ])
-        .unwrap();
-        // Placeholder variables are optional, not added to input_variables
-        assert_eq!(template.input_variables, vec!["question".to_string()]);
-    }
-
     #[tokio::test]
-    async fn test_runnable_invoke() {
-        let template = ChatPromptTemplate::from_messages(vec![("human", "Hello {name}")]).unwrap();
-        let result = template
-            .invoke(json!({"name": "World"}), None)
+    async fn renders_simple_chat() {
+        let p: ChatPromptTemplate<Value> = ChatPromptTemplate::new()
+            .system("you are {role}")
+            .human("hi {name}");
+        let out = p
+            .invoke(
+                json!({"role": "helpful", "name": "ada"}),
+                RunnableConfig::default(),
+            )
             .await
             .unwrap();
-        assert!(result.is_array());
-        let arr = result.as_array().unwrap();
-        assert_eq!(arr.len(), 1);
+        assert_eq!(out.len(), 2);
+        assert!(matches!(out[0], Message::System(_)));
+        assert_eq!(out[0].content(), "you are helpful");
+        assert!(matches!(out[1], Message::Human(_)));
+        assert_eq!(out[1].content(), "hi ada");
+    }
+
+    #[test]
+    fn placeholder_drops_in_messages() {
+        let p: ChatPromptTemplate<Value> = ChatPromptTemplate::new()
+            .system("sys")
+            .placeholder("history")
+            .human("now");
+        let history = json!([
+            {"role": "human", "content": "before-1"},
+            {"role": "ai",    "content": "before-2"}
+        ]);
+        let out = p.render(&json!({"history": history})).unwrap();
+        assert_eq!(out.len(), 4);
+        assert_eq!(out[1].content(), "before-1");
+        assert_eq!(out[2].content(), "before-2");
+        assert_eq!(out[3].content(), "now");
+    }
+
+    #[test]
+    fn missing_required_placeholder_errors() {
+        let p: ChatPromptTemplate<Value> = ChatPromptTemplate::new().placeholder("history");
+        let err = p.render(&json!({})).unwrap_err();
+        assert!(matches!(err, CognisError::Configuration(_)));
+    }
+
+    #[test]
+    fn optional_placeholder_accepts_missing() {
+        let p: ChatPromptTemplate<Value> = ChatPromptTemplate::new()
+            .system("hi")
+            .optional_placeholder("history");
+        let out = p.render(&json!({})).unwrap();
+        assert_eq!(out.len(), 1);
+    }
+
+    #[test]
+    fn input_variables_collects_unique() {
+        let p: ChatPromptTemplate<Value> =
+            ChatPromptTemplate::new().system("{a} {b}").human("{a} {c}");
+        assert_eq!(p.input_variables(), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn from_messages_constructs_fluently() {
+        let p: ChatPromptTemplate<Value> = ChatPromptTemplate::from_messages(vec![
+            (Role::System, "sys".into()),
+            (Role::Human, "hi {name}".into()),
+        ]);
+        let out = p.render(&json!({"name": "ada"})).unwrap();
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1].content(), "hi ada");
+    }
+
+    #[test]
+    fn human_with_image_url_renders_with_part() {
+        let p: ChatPromptTemplate<Value> = ChatPromptTemplate::new()
+            .system("describe images")
+            .human_with_image_url("describe {topic}", "https://x/cat.jpg", "image/jpeg");
+        let out = p.render(&json!({"topic": "this cat"})).unwrap();
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1].content(), "describe this cat");
+        let parts = out[1].parts();
+        assert_eq!(parts.len(), 1);
+        assert!(matches!(
+            parts[0],
+            crate::content::ContentPart::Image { .. }
+        ));
+    }
+
+    #[test]
+    fn input_variables_includes_multimodal_template_vars() {
+        let p: ChatPromptTemplate<Value> = ChatPromptTemplate::new()
+            .human("text {a}")
+            .human_with_image_url("multimodal {b}", "https://x", "image/png");
+        let mut vars = p.input_variables();
+        vars.sort();
+        assert_eq!(vars, vec!["a", "b"]);
     }
 }

@@ -1,82 +1,165 @@
-use thiserror::Error;
+//! Errors for the cognis framework. Operational metadata (`is_retryable`,
+//! `retry_delay`, `category`) lets retry/fallback middleware consume errors
+//! without sniffing strings.
 
-/// Error codes matching langchain ErrorCode enum.
+use std::time::Duration;
+
+/// Result alias used throughout cognis.
+pub type Result<T> = std::result::Result<T, CognisError>;
+
+/// When a graph interrupt fires relative to a node's execute call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ErrorCode {
-    InvalidPromptInput,
-    InvalidToolResults,
-    MessageCoercionFailure,
-    ModelAuthentication,
-    ModelNotFound,
-    ModelRateLimit,
-    OutputParsingFailure,
+pub enum InterruptKind {
+    /// Before the node's execute is invoked.
+    Before,
+    /// After the node's execute completes (state already updated).
+    After,
 }
 
-impl ErrorCode {
-    pub fn as_str(&self) -> &'static str {
+impl std::fmt::Display for InterruptKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidPromptInput => "INVALID_PROMPT_INPUT",
-            Self::InvalidToolResults => "INVALID_TOOL_RESULTS",
-            Self::MessageCoercionFailure => "MESSAGE_COERCION_FAILURE",
-            Self::ModelAuthentication => "MODEL_AUTHENTICATION",
-            Self::ModelNotFound => "MODEL_NOT_FOUND",
-            Self::ModelRateLimit => "MODEL_RATE_LIMIT",
-            Self::OutputParsingFailure => "OUTPUT_PARSING_FAILURE",
+            InterruptKind::Before => write!(f, "before"),
+            InterruptKind::After => write!(f, "after"),
         }
     }
 }
 
-/// Core error type for Cognis.
-#[derive(Debug, Error)]
+/// All errors produced by cognis-core and downstream v2 crates.
+#[derive(Debug, thiserror::Error)]
 pub enum CognisError {
-    #[error("Output parser error: {message}")]
-    OutputParserError {
+    /// Provider call failed (network, HTTP, parse, etc.).
+    #[error("provider `{provider}` error: {message}")]
+    Provider {
+        /// Provider identifier (e.g. "openai", "ollama").
+        provider: String,
+        /// Human-readable error message.
         message: String,
-        observation: Option<String>,
-        llm_output: Option<String>,
     },
 
-    #[error("Context overflow: {0}")]
-    ContextOverflow(String),
+    /// LLM provider rate-limited the request.
+    #[error("rate limited; retry after {retry_after_ms}ms")]
+    RateLimited {
+        /// Suggested retry delay in milliseconds.
+        retry_after_ms: u64,
+    },
 
-    #[error("Tracer error: {0}")]
-    TracerError(String),
+    /// Authentication failed (bad API key, expired token, etc.).
+    #[error("authentication failed: {0}")]
+    AuthenticationFailed(String),
 
-    #[error("Invalid key: {0}")]
-    InvalidKey(String),
+    /// Tool dispatch or execution failed.
+    #[error("tool `{name}` failed: {reason}")]
+    Tool {
+        /// Tool name.
+        name: String,
+        /// Failure reason.
+        reason: String,
+    },
 
-    #[error("Serialization error: {0}")]
-    SerializationError(#[from] serde_json::Error),
-
-    #[error("Not implemented: {0}")]
-    NotImplemented(String),
-
-    #[error("Tool exception: {0}")]
-    ToolException(String),
-
-    #[error("Tool validation error: {0}")]
+    /// Tool argument failed validation.
+    #[error("tool validation: {0}")]
     ToolValidationError(String),
 
-    #[error("Schema annotation error: {0}")]
-    SchemaAnnotationError(String),
+    /// Configuration is invalid or incomplete.
+    #[error("configuration: {0}")]
+    Configuration(String),
 
-    #[error("Recursion limit exceeded: {0}")]
-    RecursionLimitExceeded(String),
+    /// Network / transport error.
+    #[error("network error{}: {message}", status_code.map(|c| format!(" (status {c})")).unwrap_or_default())]
+    Network {
+        /// Optional HTTP status code.
+        status_code: Option<u16>,
+        /// Human-readable error message.
+        message: String,
+    },
 
-    #[error("Type mismatch: expected {expected}, got {got}")]
-    TypeMismatch { expected: String, got: String },
+    /// Operation timed out.
+    #[error("`{operation}` timed out after {timeout_ms}ms")]
+    Timeout {
+        /// Operation name.
+        operation: String,
+        /// Timeout duration in milliseconds.
+        timeout_ms: u64,
+    },
 
-    #[error("HTTP error {status}: {body}")]
-    HttpError { status: u16, body: String },
+    /// Operation was cancelled via `RunnableConfig::cancel_token`.
+    #[error("operation cancelled")]
+    Cancelled,
 
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
+    /// Graph engine ran past its `recursion_limit`.
+    #[error("graph recursion limit ({limit}) exceeded")]
+    RecursionLimit {
+        /// The configured limit that was hit.
+        limit: u32,
+    },
 
-    #[error("Cancelled: {0}")]
-    Cancelled(String),
+    /// Graph paused at a configured interrupt boundary. State is in the
+    /// configured checkpointer; resume via `CompiledGraph::resume`.
+    #[error("graph interrupted {kind} node `{node}` at step {step} (run_id {run_id})")]
+    GraphInterrupted {
+        /// Run correlation ID. Pass to `Checkpointer::load` to recover state.
+        run_id: uuid::Uuid,
+        /// Superstep at which the interrupt fired.
+        step: u64,
+        /// Node name that triggered the interrupt.
+        node: String,
+        /// Whether the interrupt fired before or after the node's execute.
+        kind: InterruptKind,
+    },
 
-    #[error("{0}")]
-    Other(String),
+    /// Serialization or deserialization failed.
+    #[error("serialization error: {0}")]
+    Serialization(String),
+
+    /// Catch-all for unexpected errors.
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
-pub type Result<T> = std::result::Result<T, CognisError>;
+impl CognisError {
+    /// Stable category string for telemetry / metrics filtering.
+    pub fn category(&self) -> &'static str {
+        match self {
+            Self::Provider { .. } => "provider",
+            Self::RateLimited { .. } => "rate_limit",
+            Self::AuthenticationFailed(_) => "auth",
+            Self::Tool { .. } => "tool",
+            Self::ToolValidationError(_) => "tool_validation",
+            Self::Configuration(_) => "config",
+            Self::Network { .. } => "network",
+            Self::Timeout { .. } => "timeout",
+            Self::Cancelled => "cancelled",
+            Self::RecursionLimit { .. } => "recursion_limit",
+            Self::GraphInterrupted { .. } => "graph_interrupted",
+            Self::Serialization(_) => "serialization",
+            Self::Internal(_) => "internal",
+        }
+    }
+
+    /// Whether retrying this error MAY succeed.
+    pub fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::RateLimited { .. }
+                | Self::Network { .. }
+                | Self::Timeout { .. }
+                | Self::Provider { .. }
+        )
+    }
+
+    /// Suggested retry delay, if the error type carries one.
+    pub fn retry_delay(&self) -> Option<Duration> {
+        match self {
+            Self::RateLimited { retry_after_ms } => Some(Duration::from_millis(*retry_after_ms)),
+            Self::Timeout { timeout_ms, .. } => Some(Duration::from_millis(*timeout_ms / 2)),
+            _ => None,
+        }
+    }
+}
+
+impl From<serde_json::Error> for CognisError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Serialization(e.to_string())
+    }
+}

@@ -8,7 +8,7 @@
 //! not the per-step graph reducer.
 //!
 //! The `crate_path` to the framework is configurable via
-//! `#[graph_state(crate_path = "...")]`, defaulting to `cognis2_graph`
+//! `#[graph_state(crate_path = "...")]`, defaulting to `cognis_graph`
 //! since this is a v2-only derive.
 
 use proc_macro2::{Span, TokenStream};
@@ -48,7 +48,7 @@ struct ReducedField {
 }
 
 pub fn derive_graph_state_v2(input: DeriveInput) -> TokenStream {
-    let crate_path = parse_crate_path(&input.attrs).unwrap_or_else(|| "cognis2_graph".to_string());
+    let crate_path = parse_crate_path(&input.attrs).unwrap_or_else(|| "cognis_graph".to_string());
     let root = root_path(&crate_path);
     let name = &input.ident;
     let update_name = format_ident!("{}Update", name);

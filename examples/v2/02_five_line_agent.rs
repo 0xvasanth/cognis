@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use cognis2::prelude::*;
-use cognis2_llm::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, Usage};
-use cognis2_llm::provider::{LLMProvider, Provider};
+use cognis::prelude::*;
+use cognis_llm::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, Usage};
+use cognis_llm::provider::{LLMProvider, Provider};
 
 struct FakeProvider;
 

@@ -1,100 +1,48 @@
-//! Concrete tool implementations for use with the agent executor.
+//! Built-in tools shipped with `cognis`.
 //!
-//! This module provides ready-to-use tools that can be plugged into agents:
+//! All built-ins implement [`cognis_llm::Tool`]. They're meant to be
+//! drop-in for common agent needs:
 //!
-//! - [`calculator`] -- Arithmetic expression evaluation.
-//! - [`shell`] -- Shell command execution.
-//! - [`web_search`] -- Web search via DuckDuckGo (requires provider feature).
-//! - [`wikipedia`] -- Wikipedia article lookup (requires provider feature).
-//! - [`json_query`] -- JSON path querying.
-//! - [`openapi`] -- OpenAPI spec-driven HTTP tool generation.
-//! - [`cached`] -- Cache wrapper for any tool with TTL and stats.
-//! - [`validation`] -- Tool call validation and auto-correction.
-//! - [`python_repl`] -- Mock Python REPL with code sanitization.
-//! - [`retriever`] -- Retriever-backed document lookup tool.
-//! - [`human`] -- Human input tool for interactive prompts, approval wrapper, and toolkit system.
-//! - [`requests`] -- HTTP request tools (GET/POST) with domain allowlisting and mock client.
-//! - [`file_management`] -- File management tools (read, write, copy, move, list, delete) with path safety and toolkit grouping.
+//! - [`Calculator`] — pure-Rust math expression evaluator.
+//! - [`HttpRequest`] — HTTP GET/POST with SSRF guards (feature `tools-http`).
+//! - filesystem tools (read/write/edit/ls/glob/grep) wired to a [`Backend`].
+//! - [`ShellTool`] — sandboxed shell with command allowlist.
+//! - [`SubAgentTool`] — wraps an [`Agent`](crate::Agent) as a callable tool.
+//! - [`ApprovalGatedTool`] — wraps any tool with a human-approval check.
+
+pub mod approval;
 pub mod cached;
 pub mod calculator;
-pub mod file_management;
+pub mod filesystem;
+#[cfg(feature = "tools-http")]
+pub mod http;
 pub mod human;
 pub mod json_query;
+#[cfg(feature = "tools-http")]
 pub mod openapi;
-pub mod python_repl;
-pub mod requests;
 pub mod retriever;
 pub mod shell;
-pub mod validation;
-
-#[cfg(any(
-    feature = "openai",
-    feature = "anthropic",
-    feature = "google",
-    feature = "ollama",
-    feature = "azure"
-))]
-pub mod web_search;
-
-#[cfg(any(
-    feature = "openai",
-    feature = "anthropic",
-    feature = "google",
-    feature = "ollama",
-    feature = "azure"
-))]
+pub mod subagent;
+#[cfg(feature = "tools-http")]
 pub mod wikipedia;
 
-pub use cached::{CacheEntry, CacheStats, CachedTool};
-pub use calculator::CalculatorTool;
-pub use json_query::JsonQueryTool;
-pub use openapi::{
-    generate_tools, DryRunExecutor, HttpExecutor, OpenAPISpec, OpenAPITool, OpenAPIToolkit,
-    OperationInfo, ParameterInfo,
+pub use approval::{AllowList, ApprovalGatedTool, Approver, AutoApprove, Decision, RejectAll};
+pub use cached::CachedTool;
+pub use calculator::Calculator;
+pub use filesystem::{
+    register_filesystem_tools, FileEditTool, FileExistsTool, FileGlobTool, FileGrepTool,
+    FileListTool, FileReadTool, FileWriteTool,
 };
-
-#[cfg(any(
-    feature = "openai",
-    feature = "anthropic",
-    feature = "google",
-    feature = "ollama",
-    feature = "azure"
-))]
-pub use openapi::ReqwestExecutor;
-pub use python_repl::{
-    CodeSanitizer, MockPythonREPL, PythonREPLConfig, PythonREPLConfigBuilder, PythonREPLResult,
-    PythonREPLTool, SanitizationError,
-};
-pub use requests::{
-    requests_get_tool, requests_post_tool, HttpClient, HttpMethod, HttpResponse, MockHttpClient,
-    RequestConfig, RequestConfigBuilder, RequestsTool, TextExtractor,
-};
-pub use retriever::{
-    create_retriever_tool, DocumentFormatter, MultiRetrieverTool, RetrieverTool,
-    RetrieverToolBuilder, RoutingStrategy,
-};
+// Re-export `HumanResponder` from the tool module under a distinct
+// alias so it doesn't collide with the homonymous middleware trait.
+#[cfg(feature = "tools-http")]
+pub use http::{HttpMethod, HttpRequest};
+pub use human::{HumanResponder as ToolHumanResponder, HumanTool, StaticResponder};
+pub use json_query::{DotPathEngine, JsonQueryTool, QueryEngine};
+#[cfg(feature = "tools-http")]
+pub use openapi::{AuthScheme, BearerAuth, HeaderAuth, OpenApiToolset};
+pub use retriever::RetrieverTool;
 pub use shell::ShellTool;
-pub use validation::{
-    FieldValidator, InputValidationError, InputValidationResult, JsonType, OutputValidator,
-    StrictnessMode, ToolCallCorrector, ToolCallValidator, ToolValidator, ValidatedTool,
-    ValidatedToolExecutor, ValidationError, ValidationResult, ValidationRule,
-    ValidationSchemaBuilder,
-};
-
-#[cfg(any(
-    feature = "openai",
-    feature = "anthropic",
-    feature = "google",
-    feature = "ollama",
-    feature = "azure"
-))]
-pub use web_search::{DuckDuckGoSearchTool, WebSearchTool};
-
-#[cfg(any(
-    feature = "openai",
-    feature = "anthropic",
-    feature = "google",
-    feature = "ollama",
-    feature = "azure"
-))]
-pub use wikipedia::WikipediaTool;
+pub use subagent::SubAgentTool;
+#[cfg(feature = "tools-http")]
+pub use wikipedia::{WikipediaAction, WikipediaTool, WikipediaToolBuilder};

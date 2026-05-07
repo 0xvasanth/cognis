@@ -40,8 +40,8 @@ use syn::{
 
 use crate::schema_attr::{self, Validator};
 
-/// Convert a `crate_path` string like `"cognis_core"` or `"cognis2_core"`
-/// into an absolute path token (`::cognis_core` / `::cognis2_core`) that
+/// Convert a `crate_path` string like `"cognis_core"` or `"cognis_core"`
+/// into an absolute path token (`::cognis_core` / `::cognis_core`) that
 /// can be interpolated into generated code with `quote!`.
 fn root_path(crate_path: &str) -> syn::Path {
     let segments: Vec<syn::Ident> = crate_path
@@ -69,7 +69,7 @@ pub(crate) struct ToolArgs {
     #[allow(dead_code)]
     pub return_direct: Option<bool>,
     /// Crate path used in generated code, e.g. `"cognis_core"` (default,
-    /// for v1) or `"cognis2_core"` (for v2). The macro emits all framework
+    /// for v1) or `"cognis_core"` (for v2). The macro emits all framework
     /// type references as `::<crate_path>::tools::*` etc.
     pub crate_path: String,
 }
