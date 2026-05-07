@@ -111,11 +111,15 @@ pub use telemetry::{
 };
 pub use tools::{
     register_filesystem_tools, AllowList, ApprovalGatedTool, Approver, AutoApprove, CachedTool,
-    Calculator, Decision, FileEditTool, FileExistsTool, FileGlobTool, FileGrepTool, FileListTool,
-    FileReadTool, FileWriteTool, RejectAll, RetrieverTool, ShellTool, SubAgentTool,
+    Calculator, Decision, DotPathEngine, FileEditTool, FileExistsTool, FileGlobTool, FileGrepTool,
+    FileListTool, FileReadTool, FileWriteTool, HumanTool, JsonQueryTool, QueryEngine, RejectAll,
+    RetrieverTool, ShellTool, StaticResponder, SubAgentTool, ToolHumanResponder,
 };
 #[cfg(feature = "tools-http")]
-pub use tools::{HttpMethod, HttpRequest};
+pub use tools::{
+    AuthScheme, BearerAuth, HeaderAuth, HttpMethod, HttpRequest, OpenApiToolset, WikipediaAction,
+    WikipediaTool, WikipediaToolBuilder,
+};
 
 /// Common imports for v2 user code building agents.
 pub mod prelude {
