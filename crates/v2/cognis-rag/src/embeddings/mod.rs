@@ -7,6 +7,13 @@ use cognis2_core::{CognisError, Result};
 mod fake;
 pub use fake::FakeEmbeddings;
 
+mod batched;
+mod cached;
+mod router;
+pub use batched::BatchedEmbeddings;
+pub use cached::CachedEmbeddings;
+pub use router::{EmbeddingRouter, EmbeddingsRouter, FnRouter, LengthRouter};
+
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "openai")]

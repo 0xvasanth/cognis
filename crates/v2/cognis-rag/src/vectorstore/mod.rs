@@ -11,6 +11,26 @@ use cognis2_core::Result;
 mod in_memory;
 pub use in_memory::InMemoryVectorStore;
 
+#[cfg(feature = "vectorstore-chroma")]
+pub mod chroma;
+#[cfg(feature = "vectorstore-chroma")]
+pub use chroma::{ChromaBuilder, ChromaProvider};
+
+#[cfg(feature = "vectorstore-qdrant")]
+pub mod qdrant;
+#[cfg(feature = "vectorstore-qdrant")]
+pub use qdrant::{QdrantBuilder, QdrantProvider};
+
+#[cfg(feature = "vectorstore-pinecone")]
+pub mod pinecone;
+#[cfg(feature = "vectorstore-pinecone")]
+pub use pinecone::{PineconeBuilder, PineconeProvider};
+
+#[cfg(feature = "vectorstore-weaviate")]
+pub mod weaviate;
+#[cfg(feature = "vectorstore-weaviate")]
+pub use weaviate::{WeaviateBuilder, WeaviateProvider};
+
 /// Metadata filter applied to similarity search.
 ///
 /// All conditions on a filter combine with AND semantics. An empty filter

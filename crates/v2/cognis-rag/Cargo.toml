@@ -26,6 +26,7 @@ pdf-extract = { version = "0.7", optional = true }
 [features]
 default = ["openai", "ollama"]
 openai = ["dep:reqwest", "dep:secrecy"]
+google = ["dep:reqwest", "dep:secrecy"]
 ollama = ["dep:reqwest"]
 csv-loader = ["dep:csv"]
 html-loader = []
@@ -34,6 +35,17 @@ toml-loader = ["dep:toml"]
 web-loader = ["dep:reqwest"]
 pdf-loader = ["dep:pdf-extract"]
 all-loaders = ["csv-loader", "html-loader", "yaml-loader", "toml-loader", "web-loader", "pdf-loader"]
+# Vector store backends (HTTP). Each pulls in reqwest + secrecy.
+vectorstore-chroma = ["dep:reqwest", "dep:secrecy"]
+vectorstore-qdrant = ["dep:reqwest", "dep:secrecy"]
+vectorstore-pinecone = ["dep:reqwest", "dep:secrecy"]
+vectorstore-weaviate = ["dep:reqwest", "dep:secrecy"]
+all-vectorstores = [
+    "vectorstore-chroma",
+    "vectorstore-qdrant",
+    "vectorstore-pinecone",
+    "vectorstore-weaviate",
+]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

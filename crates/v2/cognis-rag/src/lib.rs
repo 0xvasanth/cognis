@@ -38,7 +38,10 @@ pub use document::Document;
 pub use embeddings::OllamaEmbeddings;
 #[cfg(feature = "openai")]
 pub use embeddings::OpenAIEmbeddings;
-pub use embeddings::{Embeddings, FakeEmbeddings};
+pub use embeddings::{
+    BatchedEmbeddings, CachedEmbeddings, EmbeddingRouter, Embeddings, EmbeddingsRouter,
+    FakeEmbeddings, FnRouter, LengthRouter,
+};
 pub use example_selectors::{
     AsyncExampleSelector, EmbedMode, MmrExampleSelector, SemanticSimilarityExampleSelector,
 };
@@ -70,7 +73,15 @@ pub use splitters::{
     TokenAwareSplitter, Tokenizer,
 };
 pub use transformers::LongContextReorder;
+#[cfg(feature = "vectorstore-chroma")]
+pub use vectorstore::{ChromaBuilder, ChromaProvider};
 pub use vectorstore::{Filter, InMemoryVectorStore, SearchResult, VectorStore};
+#[cfg(feature = "vectorstore-pinecone")]
+pub use vectorstore::{PineconeBuilder, PineconeProvider};
+#[cfg(feature = "vectorstore-qdrant")]
+pub use vectorstore::{QdrantBuilder, QdrantProvider};
+#[cfg(feature = "vectorstore-weaviate")]
+pub use vectorstore::{WeaviateBuilder, WeaviateProvider};
 
 /// Common imports for v2 RAG user code.
 pub mod prelude {
