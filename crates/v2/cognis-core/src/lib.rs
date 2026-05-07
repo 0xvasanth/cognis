@@ -17,6 +17,7 @@
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
+pub mod callbacks;
 pub mod compose;
 pub mod content;
 pub mod error;
@@ -33,6 +34,9 @@ pub mod stream;
 pub mod tokenizer;
 pub mod wrappers;
 
+pub use callbacks::{
+    BuiltHandler, CallbackHandler, CallbackManager, HandlerBuilder, HandlerObserver,
+};
 pub use content::{
     base64_decode, base64_encode, image_source_from_path, mime_from_path, AudioSource, ContentPart,
     ImageSource,

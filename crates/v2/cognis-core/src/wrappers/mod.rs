@@ -16,17 +16,29 @@
 //! ```
 
 pub mod assign;
+pub mod batch_processor;
 pub mod bind;
 pub mod cache;
 pub mod configurable;
 pub mod fallback;
+pub mod listeners;
+pub mod middleware;
 pub mod retry;
+pub mod schema;
 pub mod timeout;
 
 pub use assign::{Assign, AssignOutput};
+pub use batch_processor::{BatchOptions, BatchProcessor};
 pub use bind::Bind;
 pub use cache::{Cache, CacheBackend, MemoryCache};
 pub use configurable::{ConfigKey, Configurable};
 pub use fallback::Fallback;
+pub use listeners::{
+    fn_listener, BuiltListener, FnListener, Listener, ListenerBuilder, WithListeners,
+};
+pub use middleware::{
+    fn_middleware, FnMiddleware, InspectMiddleware, Middleware, MiddlewareStack, WithMiddleware,
+};
 pub use retry::{Retry, RetryPolicy};
+pub use schema::WithSchema;
 pub use timeout::Timeout;

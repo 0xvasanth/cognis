@@ -6,7 +6,7 @@ members = [
     "crates/cognisgraph",
     "crates/cognisagent",
     "crates/cognis-macros",
-    "crates/examples",
+    "crates/v1/examples",
     "crates/v2/cognis-core",
     "crates/v2/cognisgraph",
     "crates/v2/cognis-llm",

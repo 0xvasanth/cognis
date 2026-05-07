@@ -77,24 +77,75 @@ impl SessionKey {
     }
 }
 
+/// Closure used by [`RunnableWithMessageHistory`] to derive the
+/// session-id for a call from `(input, config)`. Default: read
+/// `SessionKey` from `config.extras` and fall back to `"default"`.
+pub type SessionResolver = Arc<dyn Fn(&[Message], &RunnableConfig) -> String + Send + Sync>;
+
+/// Closure used by [`RunnableWithMessageHistory`] to (optionally) trim
+/// the merged `[history + input]` Vec before it's passed to the inner
+/// runnable. Returning a shorter Vec is fine; the wrapper re-uses the
+/// returned value as the inner input.
+pub type HistoryTrimmer = Arc<dyn Fn(Vec<Message>) -> Vec<Message> + Send + Sync>;
+
 /// Wraps a `Runnable<Vec<Message>, Message>` with per-session history.
 ///
 /// On each invoke:
-/// 1. Read history for the session.
-/// 2. Concatenate `[history, input]` and call the inner.
-/// 3. Append `[input.last(), output]` to history.
+/// 1. Resolve session-id (default: from `SessionKey` in `config.extras`,
+///    overridable via [`Self::with_session_resolver`]).
+/// 2. Read history for the session, concat `[history, input]`, optionally
+///    trim via [`Self::with_trimmer`], and call the inner runnable.
+/// 3. Append `[…input, output]` to the store.
+///
+/// All side-effects can be swapped out:
+/// - **store** — implement [`HistoryStore`] for Redis / SQL / S3.
+/// - **session resolver** — derive ids from anywhere (URL path, JWT, …).
+/// - **trimmer** — plug in `trim_messages` or any custom strategy to
+///   keep the inner call within token budget.
 pub struct RunnableWithMessageHistory<R> {
     inner: R,
     store: Arc<dyn HistoryStore>,
+    session_resolver: Option<SessionResolver>,
+    trimmer: Option<HistoryTrimmer>,
 }
 
 impl<R> RunnableWithMessageHistory<R>
 where
     R: Runnable<Vec<Message>, Message>,
 {
-    /// Build a wrapper.
+    /// Build a wrapper with default session-resolution and no trimming.
     pub fn new(inner: R, store: Arc<dyn HistoryStore>) -> Self {
-        Self { inner, store }
+        Self {
+            inner,
+            store,
+            session_resolver: None,
+            trimmer: None,
+        }
+    }
+
+    /// Override session-id resolution. The closure receives the input
+    /// messages and the active config; it must return the session id.
+    pub fn with_session_resolver<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&[Message], &RunnableConfig) -> String + Send + Sync + 'static,
+    {
+        self.session_resolver = Some(Arc::new(f));
+        self
+    }
+
+    /// Install a trimmer that runs after merging `[history, input]` and
+    /// before the inner invoke. Use to enforce a token budget.
+    pub fn with_trimmer<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Vec<Message>) -> Vec<Message> + Send + Sync + 'static,
+    {
+        self.trimmer = Some(Arc::new(f));
+        self
+    }
+
+    /// Borrow the active history store.
+    pub fn store(&self) -> &Arc<dyn HistoryStore> {
+        &self.store
     }
 }
 
@@ -104,15 +155,21 @@ where
     R: Runnable<Vec<Message>, Message>,
 {
     async fn invoke(&self, input: Vec<Message>, config: RunnableConfig) -> Result<Message> {
-        let session_id = config
-            .extras
-            .get::<SessionKey>()
-            .map(|k| k.id.clone())
-            .unwrap_or_else(|| "default".to_string());
+        let session_id = match &self.session_resolver {
+            Some(f) => f(&input, &config),
+            None => config
+                .extras
+                .get::<SessionKey>()
+                .map(|k| k.id.clone())
+                .unwrap_or_else(|| "default".to_string()),
+        };
         let history = self.store.read(&session_id).await?;
         let mut combined = Vec::with_capacity(history.len() + input.len());
         combined.extend(history);
         combined.extend(input.iter().cloned());
+        if let Some(trimmer) = &self.trimmer {
+            combined = trimmer(combined);
+        }
 
         let out = self.inner.invoke(combined, config).await?;
 
@@ -193,5 +250,61 @@ mod tests {
             .unwrap();
         // a saw a1 + ai(a1) + a2 = 3
         assert!(out_a.content().contains("saw 3 msgs"));
+    }
+
+    #[tokio::test]
+    async fn custom_session_resolver_overrides_extras() {
+        let store: Arc<dyn HistoryStore> = Arc::new(InMemoryHistory::new());
+        let r = RunnableWithMessageHistory::new(EchoLast, store.clone()).with_session_resolver(
+            |input, _| {
+                // Resolve session from the first message's content.
+                input
+                    .first()
+                    .map(|m| format!("derived-{}", m.content()))
+                    .unwrap_or_else(|| "fallback".to_string())
+            },
+        );
+
+        // With the resolver, no SessionKey in extras is needed —
+        // session is derived from input.
+        r.invoke(vec![Message::human("alpha")], RunnableConfig::default())
+            .await
+            .unwrap();
+        r.invoke(vec![Message::human("alpha")], RunnableConfig::default())
+            .await
+            .unwrap();
+        // Both calls hit the same session ("derived-alpha"); store now
+        // has 4 messages there.
+        let history = store.read("derived-alpha").await.unwrap();
+        assert_eq!(history.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn trimmer_applies_before_inner_invoke() {
+        let store: Arc<dyn HistoryStore> = Arc::new(InMemoryHistory::new());
+        let r = RunnableWithMessageHistory::new(EchoLast, store.clone()).with_trimmer(|msgs| {
+            // Keep at most 2 messages.
+            let keep = msgs.len().min(2);
+            msgs.into_iter().rev().take(keep).rev().collect()
+        });
+
+        // Pre-seed history with several messages.
+        store
+            .append(
+                "trim-session",
+                vec![
+                    Message::human("h1"),
+                    Message::ai("a1"),
+                    Message::human("h2"),
+                ],
+            )
+            .await
+            .unwrap();
+
+        let mut cfg = RunnableConfig::default();
+        cfg.extras.insert(SessionKey::new("trim-session"));
+        let out = r.invoke(vec![Message::human("query")], cfg).await.unwrap();
+        // Inner saw exactly 2 messages (the trimmer kept only the last 2).
+        assert!(out.content().contains("saw 2 msgs"));
     }
 }

@@ -73,7 +73,10 @@ pub use backend::{
 pub use eval::{
     Contains, EvalCase, EvalReport, EvalRow, EvalRunner, Evaluator, ExactMatch, LlmJudge,
 };
-pub use history::{HistoryStore, InMemoryHistory, RunnableWithMessageHistory, SessionKey};
+pub use history::{
+    HistoryStore, HistoryTrimmer, InMemoryHistory, RunnableWithMessageHistory, SessionKey,
+    SessionResolver,
+};
 pub use middleware::{
     ContextInjection, ContextProvider, FixedRecovery, FnContextProvider, FnRecovery,
     FnToolCallPatcher, Middleware, MiddlewareCtx, MiddlewarePipeline, ModelFallback, ModelRetry,
