@@ -42,6 +42,8 @@ pub use embeddings::{
     BatchedEmbeddings, CachedEmbeddings, EmbeddingRouter, Embeddings, EmbeddingsRouter,
     FakeEmbeddings, FnRouter, LengthRouter,
 };
+#[cfg(feature = "google")]
+pub use embeddings::{GoogleEmbeddings, GoogleEmbeddingsBuilder};
 pub use example_selectors::{
     AsyncExampleSelector, EmbedMode, MmrExampleSelector, SemanticSimilarityExampleSelector,
 };

@@ -117,8 +117,9 @@ pub use tools::{
 };
 #[cfg(feature = "tools-http")]
 pub use tools::{
-    AuthScheme, BearerAuth, HeaderAuth, HttpMethod, HttpRequest, OpenApiToolset, WikipediaAction,
-    WikipediaTool, WikipediaToolBuilder,
+    AuthScheme, BearerAuth, HeaderAuth, HttpMethod, HttpRequest, OpenApiToolset, TavilyProvider,
+    TavilyProviderBuilder, WebSearchInput, WebSearchProvider, WebSearchResult, WebSearchTool,
+    WikipediaAction, WikipediaTool, WikipediaToolBuilder,
 };
 
 /// Common imports for v2 user code building agents.

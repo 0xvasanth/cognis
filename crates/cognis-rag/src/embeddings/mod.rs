@@ -24,6 +24,11 @@ pub mod ollama;
 #[cfg(feature = "ollama")]
 pub use ollama::OllamaEmbeddings;
 
+#[cfg(feature = "google")]
+pub mod google;
+#[cfg(feature = "google")]
+pub use google::{GoogleEmbeddings, GoogleEmbeddingsBuilder};
+
 /// A model that converts text into vector embeddings. Implementations
 /// MUST return vectors of consistent dimensionality across calls — the
 /// `dimensions()` accessor (when known) reports it.

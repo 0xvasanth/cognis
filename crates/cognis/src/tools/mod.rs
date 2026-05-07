@@ -24,6 +24,8 @@ pub mod retriever;
 pub mod shell;
 pub mod subagent;
 #[cfg(feature = "tools-http")]
+pub mod web_search;
+#[cfg(feature = "tools-http")]
 pub mod wikipedia;
 
 pub use approval::{AllowList, ApprovalGatedTool, Approver, AutoApprove, Decision, RejectAll};
@@ -44,5 +46,10 @@ pub use openapi::{AuthScheme, BearerAuth, HeaderAuth, OpenApiToolset};
 pub use retriever::RetrieverTool;
 pub use shell::ShellTool;
 pub use subagent::SubAgentTool;
+#[cfg(feature = "tools-http")]
+pub use web_search::{
+    TavilyProvider, TavilyProviderBuilder, WebSearchInput, WebSearchProvider, WebSearchResult,
+    WebSearchTool,
+};
 #[cfg(feature = "tools-http")]
 pub use wikipedia::{WikipediaAction, WikipediaTool, WikipediaToolBuilder};
