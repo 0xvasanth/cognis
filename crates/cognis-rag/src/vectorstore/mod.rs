@@ -31,6 +31,14 @@ pub mod weaviate;
 #[cfg(feature = "vectorstore-weaviate")]
 pub use weaviate::{WeaviateBuilder, WeaviateProvider};
 
+#[cfg(feature = "vectorstore-faiss")]
+pub mod faiss;
+#[cfg(feature = "vectorstore-faiss")]
+pub use faiss::{
+    FaissConfig, FaissIndex, FaissIndexType, FaissMetric, FaissVectorStore, FlatIndex, HNSWIndex,
+    IVFFlatIndex,
+};
+
 /// Metadata filter applied to similarity search.
 ///
 /// All conditions on a filter combine with AND semantics. An empty filter

@@ -111,9 +111,10 @@ pub use telemetry::{
 };
 pub use tools::{
     register_filesystem_tools, AllowList, ApprovalGatedTool, Approver, AutoApprove, CachedTool,
-    Calculator, Decision, DotPathEngine, FileEditTool, FileExistsTool, FileGlobTool, FileGrepTool,
-    FileListTool, FileReadTool, FileWriteTool, HumanTool, JsonQueryTool, QueryEngine, RejectAll,
-    RetrieverTool, ShellTool, StaticResponder, SubAgentTool, ToolHumanResponder,
+    Calculator, CodeSanitizer, Decision, DotPathEngine, FileEditTool, FileExistsTool, FileGlobTool,
+    FileGrepTool, FileListTool, FileReadTool, FileWriteTool, HumanTool, JsonQueryTool,
+    PythonReplConfig, PythonReplTool, QueryEngine, RejectAll, RetrieverTool, SanitizationError,
+    ShellTool, StaticResponder, SubAgentTool, ToolHumanResponder,
 };
 #[cfg(feature = "tools-http")]
 pub use tools::{

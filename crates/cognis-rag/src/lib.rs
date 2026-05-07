@@ -44,6 +44,8 @@ pub use embeddings::{
 };
 #[cfg(feature = "google")]
 pub use embeddings::{GoogleEmbeddings, GoogleEmbeddingsBuilder};
+#[cfg(feature = "voyage")]
+pub use embeddings::{VoyageEmbeddings, VoyageEmbeddingsBuilder};
 pub use example_selectors::{
     AsyncExampleSelector, EmbedMode, MmrExampleSelector, SemanticSimilarityExampleSelector,
 };
@@ -77,6 +79,11 @@ pub use splitters::{
 pub use transformers::LongContextReorder;
 #[cfg(feature = "vectorstore-chroma")]
 pub use vectorstore::{ChromaBuilder, ChromaProvider};
+#[cfg(feature = "vectorstore-faiss")]
+pub use vectorstore::{
+    FaissConfig, FaissIndex, FaissIndexType, FaissMetric, FaissVectorStore, FlatIndex, HNSWIndex,
+    IVFFlatIndex,
+};
 pub use vectorstore::{Filter, InMemoryVectorStore, SearchResult, VectorStore};
 #[cfg(feature = "vectorstore-pinecone")]
 pub use vectorstore::{PineconeBuilder, PineconeProvider};

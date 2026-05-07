@@ -20,6 +20,7 @@ pub mod human;
 pub mod json_query;
 #[cfg(feature = "tools-http")]
 pub mod openapi;
+pub mod python_repl;
 pub mod retriever;
 pub mod shell;
 pub mod subagent;
@@ -43,6 +44,7 @@ pub use human::{HumanResponder as ToolHumanResponder, HumanTool, StaticResponder
 pub use json_query::{DotPathEngine, JsonQueryTool, QueryEngine};
 #[cfg(feature = "tools-http")]
 pub use openapi::{AuthScheme, BearerAuth, HeaderAuth, OpenApiToolset};
+pub use python_repl::{CodeSanitizer, PythonReplConfig, PythonReplTool, SanitizationError};
 pub use retriever::RetrieverTool;
 pub use shell::ShellTool;
 pub use subagent::SubAgentTool;

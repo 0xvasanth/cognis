@@ -29,6 +29,11 @@ pub mod google;
 #[cfg(feature = "google")]
 pub use google::{GoogleEmbeddings, GoogleEmbeddingsBuilder};
 
+#[cfg(feature = "voyage")]
+pub mod voyage;
+#[cfg(feature = "voyage")]
+pub use voyage::{VoyageEmbeddings, VoyageEmbeddingsBuilder};
+
 /// A model that converts text into vector embeddings. Implementations
 /// MUST return vectors of consistent dimensionality across calls — the
 /// `dimensions()` accessor (when known) reports it.
