@@ -1,18 +1,26 @@
 ---
 title: "Cognis"
-description: "The Rust-native way to build LLM agents, RAG pipelines, and stateful graph workflows."
+description: "Build LLM agents in Rust without the duct tape. Typed Runnables, an agent loop, a stateful graph engine, and production-grade RAG — all in one workspace."
 sidebarTitle: "Overview"
 ---
 
-Cognis is the easiest way to build LLM-powered apps in Rust. The shapes are familiar — typed `Runnable`s you compose with `pipe`, an agent loop with tools and memory, a stateful graph engine with checkpoints and interrupts, a RAG pipeline with pluggable splitters and stores — all translated into idiomatic Rust with type safety, ownership, and zero-cost composition.
+<div className="flex flex-wrap gap-2 my-6">
+  <a href="https://github.com/0xvasanth/cognis"><img src="https://img.shields.io/github/stars/0xvasanth/cognis?style=social" alt="GitHub stars" /></a>
+  <a href="https://crates.io/crates/cognis"><img src="https://img.shields.io/crates/v/cognis?label=cognis&color=D97706" alt="crates.io" /></a>
+  <a href="https://docs.rs/cognis"><img src="https://img.shields.io/docsrs/cognis" alt="docs.rs" /></a>
+  <img src="https://img.shields.io/badge/rust-1.75%2B-orange" alt="Rust 1.75+" />
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license" />
+  <a href="https://github.com/0xvasanth/cognis/actions"><img src="https://img.shields.io/github/actions/workflow/status/0xvasanth/cognis/ci.yml?branch=main" alt="CI" /></a>
+</div>
 
-It's a rebuild, not a port. The intent is to take the patterns the Python LLM ecosystem proved out and recast them around Rust's strengths.
+# Build LLM agents in Rust without the duct tape.
+
+Typed `Runnable<I, O>` flows from your prompt to your parsed struct. Tool schemas are checked at compile time. Memory, retries, fallbacks, rate limits, prompt caching, evals — all in the box. **Six providers behind one client. Six vector stores behind one trait. One umbrella crate.**
 
 ```rust
 use std::sync::Arc;
 use cognis::prelude::*;
-use cognis::{AgentBuilder, Calculator};
-use cognis_llm::Client;
+use cognis::{AgentBuilder, Calculator, Client};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,7 +36,23 @@ async fn main() -> Result<()> {
 }
 ```
 
-That's a real, working tool-calling agent. Swap `COGNIS_PROVIDER` between `openai`, `anthropic`, `google`, `ollama`, `azure`, or `openrouter` — same code.
+A real, working tool-calling agent in 11 lines. Swap `COGNIS_PROVIDER` between `openai`, `anthropic`, `google`, `ollama`, `azure`, or `openrouter` — same code.
+
+## Real apps you can ship today
+
+<CardGroup cols={3}>
+  <Card title="Research assistant" icon="magnifying-glass" href="/patterns/research-assistant">
+    Planner → researcher (with web search) → writer. Sequential multi-agent in 80 lines.
+  </Card>
+  <Card title="Code Q&A over a repo" icon="code" href="/patterns/code-qa">
+    Walk a Rust repo, embed code chunks, answer questions with file:line citations.
+  </Card>
+  <Card title="Streaming UI backend" icon="signal" href="/patterns/streaming-ui">
+    `axum` SSE endpoint streaming agent tokens, tool starts, and tool results to the browser.
+  </Card>
+</CardGroup>
+
+Five more in the [Patterns gallery](/patterns/research-assistant) — multi-agent debate, long-context summarization, HITL approval, stateful chat with memory, and a fully local Ollama setup.
 
 ## What you can build
 
@@ -37,16 +61,16 @@ That's a real, working tool-calling agent. Swap `COGNIS_PROVIDER` between `opena
     A model with tools, memory, and a loop that knows when to stop. Add middleware for retry, fallback, rate limits, PII redaction, and human approval.
   </Card>
   <Card title="Multi-agent systems" icon="people-arrows">
-    Sequential pipelines, supervisor routers, parallel-vote ensembles, round-robin debates. Or wire your own handoff strategy.
+    Sequential pipelines, supervisor routers, parallel-vote ensembles, round-robin load balancing, hierarchical trees. Or wire your own `HandoffStrategy`.
   </Card>
   <Card title="RAG pipelines" icon="database">
-    Documents → splitters → embeddings → vector store → retriever → prompt. Six vector store backends, eight splitters, and an indexing pipeline that only re-embeds what changed.
+    Documents → splitters → embeddings → vector store → retriever → prompt. Six vector store backends. An indexing pipeline that only re-embeds what changed.
   </Card>
   <Card title="Stateful graphs" icon="diagram-project">
-    `Graph<S>` with typed state, reducers, conditional edges, checkpoints, time-travel, interrupts, and seven stream modes. Pregel-style execution; built around Rust's type system.
+    `Graph<S>` with typed state and per-field reducers. Time-travel through checkpoints, pause for human approval, fan out in parallel — all type-checked at compile time.
   </Card>
   <Card title="Production observability" icon="chart-line">
-    LLM-aware tracing into Langfuse out of the box. Token counts, USD cost, prompt versioning, and evaluation scores — opt in with one feature flag.
+    LLM-aware tracing into Langfuse out of the box. Token counts, USD cost per run, prompt versioning, evaluation scores — one feature flag.
   </Card>
   <Card title="Local-first apps" icon="laptop">
     Run entirely against Ollama with no API keys. Swap to a hosted provider later — the agent code doesn't change.
@@ -58,29 +82,23 @@ That's a real, working tool-calling agent. Swap `COGNIS_PROVIDER` between `opena
 - **Compile-time guarantees.** Tool schemas, message types, and graph state transitions are checked before your code runs. No "unknown variant at runtime" surprises.
 - **Pay only for what you use.** Every external integration is feature-gated. Your binary doesn't include OpenAI code if you only use Anthropic.
 - **Async-native.** Built on `tokio` and `futures::Stream`. Streaming tokens, events, and graph state updates uses one consistent API.
-- **One umbrella, full stack.** `cognis` re-exports the foundation, LLM, RAG, and graph layers. Most apps need a single `use cognis::prelude::*;` and a few specific imports.
+- **One umbrella, full stack.** `cognis` re-exports the foundation, LLM, RAG, and graph layers. Most apps need a single `use cognis::prelude::*;`.
 
-## How Cognis is organized
+## What's not here yet
 
-The workspace is six libraries — one foundation, four sibling capabilities, one umbrella — plus a proc-macro crate.
+Honest about the gaps so you can decide whether to wait or contribute:
 
-| Crate | What's in it |
-|---|---|
-| `cognis-core` | The `Runnable` trait, messages, prompts, output parsers, callbacks, composition primitives. Zero internal dependencies. |
-| `cognis-llm` | LLM clients and providers (OpenAI, Anthropic, Google, Ollama, Azure, OpenRouter), tools, streaming. |
-| `cognis-rag` | Embeddings, vector stores, retrievers, splitters, document loaders, indexing pipeline. |
-| `cognis-graph` | Stateful `Graph<S>`, Pregel engine, channels, checkpointers, visualization. |
-| `cognis-trace` | LLM-aware observability — Langfuse first, OTel-compatible. |
-| `cognis-macros` | `#[tool]`, `#[derive(GraphState)]`. |
-| `cognis` | Umbrella + agent layer. The crate most apps depend on. |
+- **LangSmith and OpenTelemetry exporters** — Langfuse is the supported production backend; OTel + others are on the roadmap. The `TraceExporter` trait is one async method, so building your own is fast.
+- **A hosted gateway / managed deployment** — bring your own infra. Production patterns are documented; managed runtime isn't shipping today.
+- **A wider provider matrix** — six are battle-tested; others (Groq, Together, Bedrock direct, Cohere) are open issues looking for owners.
 
-You don't need to think about crate boundaries while building — `cognis` re-exports the things you reach for daily.
+[See the full roadmap →](https://github.com/0xvasanth/cognis/issues)
 
 ## Where to next
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="bolt" href="/get-started/quickstart">
-    A 5-minute tool-calling agent. The fastest path to "it works on my machine."
+    From zero to a running agent in five minutes.
   </Card>
   <Card title="Installation" icon="download" href="/get-started/installation">
     Workspace setup, feature flags, secrets handling.
@@ -99,3 +117,6 @@ You don't need to think about crate boundaries while building — `cognis` re-ex
   </Card>
 </CardGroup>
 
+<Card title="Like what you see? Star the repo." icon="star" href="https://github.com/0xvasanth/cognis">
+  Cognis is open source under MIT. Stars help other Rust devs find it.
+</Card>
