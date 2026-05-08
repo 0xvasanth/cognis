@@ -52,12 +52,26 @@ async fn nested_chain_with_llm_produces_correct_tree() {
     let spans = collected.lock().unwrap();
     assert_eq!(spans.len(), 2, "{spans:#?}");
     let outer = spans.iter().find(|s| s.kind == SpanKind::Chain).unwrap();
-    let llm = spans.iter().find(|s| s.kind == SpanKind::Generation).unwrap();
+    let llm = spans
+        .iter()
+        .find(|s| s.kind == SpanKind::Generation)
+        .unwrap();
     assert_eq!(llm.parent_run_id, Some(outer.run_id));
     assert_eq!(llm.trace_id, outer.run_id);
     let g = llm.generation.as_ref().unwrap();
-    assert_eq!(g.usage, TokenUsage { input: 10, output: 5, cache_read: 0, cache_write: 0 });
-    assert!(g.cost.is_some(), "cost should compute via prefix-match on 'gpt-4o'");
+    assert_eq!(
+        g.usage,
+        TokenUsage {
+            input: 10,
+            output: 5,
+            cache_read: 0,
+            cache_write: 0
+        }
+    );
+    assert!(
+        g.cost.is_some(),
+        "cost should compute via prefix-match on 'gpt-4o'"
+    );
 }
 
 #[test]

@@ -81,19 +81,91 @@ pub fn default_pricing_2026_05() -> PriceTable {
     let mut t = PriceTable::new();
 
     // OpenAI (USD per 1M tokens, 2026-05 snapshot).
-    t.insert("gpt-4o", ModelPrice { input: 2.50, output: 10.00, cache_read: 1.25, cache_write: 0.0 });
-    t.insert("gpt-4o-mini", ModelPrice { input: 0.15, output: 0.60, cache_read: 0.075, cache_write: 0.0 });
-    t.insert("o1", ModelPrice { input: 15.00, output: 60.00, cache_read: 7.50, cache_write: 0.0 });
-    t.insert("o1-mini", ModelPrice { input: 3.00, output: 12.00, cache_read: 1.50, cache_write: 0.0 });
+    t.insert(
+        "gpt-4o",
+        ModelPrice {
+            input: 2.50,
+            output: 10.00,
+            cache_read: 1.25,
+            cache_write: 0.0,
+        },
+    );
+    t.insert(
+        "gpt-4o-mini",
+        ModelPrice {
+            input: 0.15,
+            output: 0.60,
+            cache_read: 0.075,
+            cache_write: 0.0,
+        },
+    );
+    t.insert(
+        "o1",
+        ModelPrice {
+            input: 15.00,
+            output: 60.00,
+            cache_read: 7.50,
+            cache_write: 0.0,
+        },
+    );
+    t.insert(
+        "o1-mini",
+        ModelPrice {
+            input: 3.00,
+            output: 12.00,
+            cache_read: 1.50,
+            cache_write: 0.0,
+        },
+    );
 
     // Anthropic.
-    t.insert("claude-opus-4", ModelPrice { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 });
-    t.insert("claude-sonnet-4", ModelPrice { input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 3.75 });
-    t.insert("claude-haiku-4", ModelPrice { input: 0.80, output: 4.00, cache_read: 0.08, cache_write: 1.00 });
+    t.insert(
+        "claude-opus-4",
+        ModelPrice {
+            input: 15.00,
+            output: 75.00,
+            cache_read: 1.50,
+            cache_write: 18.75,
+        },
+    );
+    t.insert(
+        "claude-sonnet-4",
+        ModelPrice {
+            input: 3.00,
+            output: 15.00,
+            cache_read: 0.30,
+            cache_write: 3.75,
+        },
+    );
+    t.insert(
+        "claude-haiku-4",
+        ModelPrice {
+            input: 0.80,
+            output: 4.00,
+            cache_read: 0.08,
+            cache_write: 1.00,
+        },
+    );
 
     // Google.
-    t.insert("gemini-2.0-flash", ModelPrice { input: 0.10, output: 0.40, cache_read: 0.025, cache_write: 0.0 });
-    t.insert("gemini-1.5-pro", ModelPrice { input: 1.25, output: 5.00, cache_read: 0.3125, cache_write: 0.0 });
+    t.insert(
+        "gemini-2.0-flash",
+        ModelPrice {
+            input: 0.10,
+            output: 0.40,
+            cache_read: 0.025,
+            cache_write: 0.0,
+        },
+    );
+    t.insert(
+        "gemini-1.5-pro",
+        ModelPrice {
+            input: 1.25,
+            output: 5.00,
+            cache_read: 0.3125,
+            cache_write: 0.0,
+        },
+    );
 
     t
 }
@@ -111,8 +183,24 @@ mod tests {
     #[test]
     fn exact_match_used_first() {
         let mut t = PriceTable::new();
-        t.insert("gpt-4o-2024-08-06", ModelPrice { input: 1.0, output: 2.0, cache_read: 0.0, cache_write: 0.0 });
-        t.insert("gpt-4o", ModelPrice { input: 99.0, output: 99.0, cache_read: 0.0, cache_write: 0.0 });
+        t.insert(
+            "gpt-4o-2024-08-06",
+            ModelPrice {
+                input: 1.0,
+                output: 2.0,
+                cache_read: 0.0,
+                cache_write: 0.0,
+            },
+        );
+        t.insert(
+            "gpt-4o",
+            ModelPrice {
+                input: 99.0,
+                output: 99.0,
+                cache_read: 0.0,
+                cache_write: 0.0,
+            },
+        );
         let p = t.get("gpt-4o-2024-08-06").unwrap();
         assert_eq!(p.input, 1.0);
     }
@@ -120,7 +208,15 @@ mod tests {
     #[test]
     fn prefix_match_falls_back() {
         let mut t = PriceTable::new();
-        t.insert("gpt-4o", ModelPrice { input: 2.50, output: 10.00, cache_read: 1.25, cache_write: 0.0 });
+        t.insert(
+            "gpt-4o",
+            ModelPrice {
+                input: 2.50,
+                output: 10.00,
+                cache_read: 1.25,
+                cache_write: 0.0,
+            },
+        );
         let p = t.get("gpt-4o-2024-08-06").unwrap();
         assert_eq!(p.input, 2.50);
     }
@@ -128,8 +224,24 @@ mod tests {
     #[test]
     fn longest_prefix_wins() {
         let mut t = PriceTable::new();
-        t.insert("gpt", ModelPrice { input: 1.0, output: 1.0, cache_read: 0.0, cache_write: 0.0 });
-        t.insert("gpt-4o", ModelPrice { input: 2.50, output: 10.00, cache_read: 0.0, cache_write: 0.0 });
+        t.insert(
+            "gpt",
+            ModelPrice {
+                input: 1.0,
+                output: 1.0,
+                cache_read: 0.0,
+                cache_write: 0.0,
+            },
+        );
+        t.insert(
+            "gpt-4o",
+            ModelPrice {
+                input: 2.50,
+                output: 10.00,
+                cache_read: 0.0,
+                cache_write: 0.0,
+            },
+        );
         let p = t.get("gpt-4o-2024-08-06").unwrap();
         assert_eq!(p.input, 2.50);
     }
@@ -137,8 +249,21 @@ mod tests {
     #[test]
     fn compute_scales_per_million_tokens() {
         let mut t = PriceTable::new();
-        t.insert("gpt-4o", ModelPrice { input: 2.50, output: 10.00, cache_read: 1.25, cache_write: 0.0 });
-        let usage = TokenUsage { input: 1_000_000, output: 500_000, cache_read: 0, cache_write: 0 };
+        t.insert(
+            "gpt-4o",
+            ModelPrice {
+                input: 2.50,
+                output: 10.00,
+                cache_read: 1.25,
+                cache_write: 0.0,
+            },
+        );
+        let usage = TokenUsage {
+            input: 1_000_000,
+            output: 500_000,
+            cache_read: 0,
+            cache_write: 0,
+        };
         let c = t.compute("gpt-4o", usage).unwrap();
         assert!((c.input - 2.50).abs() < 1e-9);
         assert!((c.output - 5.00).abs() < 1e-9);

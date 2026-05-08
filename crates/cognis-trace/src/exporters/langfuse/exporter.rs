@@ -58,7 +58,11 @@ impl LangfuseExporter {
             metadata: if span.metadata.is_empty() {
                 None
             } else {
-                Some(serde_json::to_value(&span.metadata).ok().unwrap_or_default())
+                Some(
+                    serde_json::to_value(&span.metadata)
+                        .ok()
+                        .unwrap_or_default(),
+                )
             },
             input: span.input.clone(),
             output: span.output.clone(),
@@ -93,9 +97,11 @@ impl LangfuseExporter {
                 IngestionEvent::GenerationCreate {
                     id: envelope_id(),
                     timestamp: now,
-                    body: GenerationBody {
+                    body: Box::new(GenerationBody {
                         span: span_body,
-                        completion_start_time: g.and_then(|g| g.completion_start_time).map(format_iso8601),
+                        completion_start_time: g
+                            .and_then(|g| g.completion_start_time)
+                            .map(format_iso8601),
                         model: g.map(|g| g.model.clone()),
                         model_parameters: g
                             .map(|g| g.model_parameters.clone())
@@ -104,7 +110,7 @@ impl LangfuseExporter {
                         cost_details,
                         prompt_name: g.and_then(|g| g.prompt_name.clone()),
                         prompt_version: g.and_then(|g| g.prompt_version),
-                    },
+                    }),
                 }
             }
             _ => IngestionEvent::SpanCreate {
@@ -122,7 +128,11 @@ impl LangfuseExporter {
         // Pull trace-level fields from `metadata` (well-known keys) and tags.
         let session_id = span.session_id.clone();
         let user_id = span.user_id.clone();
-        let tags = if span.tags.is_empty() { None } else { Some(span.tags.clone()) };
+        let tags = if span.tags.is_empty() {
+            None
+        } else {
+            Some(span.tags.clone())
+        };
         Some(IngestionEvent::TraceCreate {
             id: envelope_id(),
             timestamp: format_iso8601(std::time::SystemTime::now()),
@@ -147,7 +157,11 @@ impl LangfuseExporter {
                 metadata: if span.metadata.is_empty() {
                     None
                 } else {
-                    Some(serde_json::to_value(&span.metadata).ok().unwrap_or_default())
+                    Some(
+                        serde_json::to_value(&span.metadata)
+                            .ok()
+                            .unwrap_or_default(),
+                    )
                 },
                 tags,
                 environment: self.cfg.environment.clone(),
@@ -185,14 +199,17 @@ impl LangfuseExporter {
             .json(&req)
             .send()
             .await
-            .map_err(|e| TraceError::Network { backend: "langfuse", source: e })?;
+            .map_err(|e| TraceError::Network {
+                backend: "langfuse",
+                source: e,
+            })?;
         let status = resp.status();
         if status == 207 {
             // Successful batch envelope; per-event errors logged.
-            let body: IngestionResponse = resp
-                .json()
-                .await
-                .map_err(|e| TraceError::Network { backend: "langfuse", source: e })?;
+            let body: IngestionResponse = resp.json().await.map_err(|e| TraceError::Network {
+                backend: "langfuse",
+                source: e,
+            })?;
             if !body.errors.is_empty() {
                 for err in &body.errors {
                     tracing::warn!(

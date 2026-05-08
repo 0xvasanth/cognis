@@ -186,7 +186,11 @@ impl TracingHandler {
 
     /// Parse a provider's `on_llm_end` payload into a `Generation` per the
     /// schema documented in spec §4.3. Missing fields default cleanly.
-    fn parse_generation(&self, model_hint: &str, payload: &serde_json::Value) -> crate::span::Generation {
+    fn parse_generation(
+        &self,
+        model_hint: &str,
+        payload: &serde_json::Value,
+    ) -> crate::span::Generation {
         use crate::span::{Generation, TokenUsage};
 
         let obj = payload.as_object();
@@ -215,8 +219,14 @@ impl TracingHandler {
             .map(|u| TokenUsage {
                 input: u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
                 output: u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-                cache_read: u.get("cache_read_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-                cache_write: u.get("cache_creation_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                cache_read: u
+                    .get("cache_read_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32,
+                cache_write: u
+                    .get("cache_creation_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32,
             })
             .unwrap_or_default();
         let prompt_name = obj
@@ -297,7 +307,9 @@ impl CallbackHandler for TracingHandler {
             Some(payload.clone()),
             now,
         );
-        b.span.metadata.insert("kind".into(), serde_json::Value::String(kind.into()));
+        b.span
+            .metadata
+            .insert("kind".into(), serde_json::Value::String(kind.into()));
         let span = b.finish_ok(None, now);
         self.dispatch(span);
     }

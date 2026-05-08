@@ -25,7 +25,10 @@ impl LangfuseHttp {
             .timeout(cfg.timeout)
             .pool_idle_timeout(Duration::from_secs(60))
             .build()
-            .map_err(|e| TraceError::Network { backend: "langfuse", source: e })?;
+            .map_err(|e| TraceError::Network {
+                backend: "langfuse",
+                source: e,
+            })?;
         let creds = format!("{}:{}", cfg.public_key, cfg.secret_key.expose_secret());
         let token = base64::engine::general_purpose::STANDARD.encode(creds.as_bytes());
         let auth_header = format!("Basic {token}");

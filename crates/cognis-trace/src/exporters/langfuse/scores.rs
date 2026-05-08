@@ -51,7 +51,10 @@ impl ScoreSink for LangfuseScorer {
             .json(&body)
             .send()
             .await
-            .map_err(|e| TraceError::Network { backend: "langfuse", source: e })?;
+            .map_err(|e| TraceError::Network {
+                backend: "langfuse",
+                source: e,
+            })?;
         if resp.status().is_success() {
             return Ok(());
         }

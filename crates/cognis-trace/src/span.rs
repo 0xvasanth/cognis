@@ -34,10 +34,11 @@ pub enum SpanKind {
 }
 
 /// Observation severity, matching Langfuse's `ObservationLevel`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum ObservationLevel {
     /// Normal completion.
+    #[default]
     Default,
     /// Diagnostic.
     Debug,
@@ -45,12 +46,6 @@ pub enum ObservationLevel {
     Warning,
     /// Failure.
     Error,
-}
-
-impl Default for ObservationLevel {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 /// One node in the trace tree.

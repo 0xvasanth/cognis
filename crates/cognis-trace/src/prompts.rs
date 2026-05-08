@@ -79,7 +79,9 @@ mod tests {
 
     #[test]
     fn prompt_body_text_round_trips() {
-        let p = PromptBody::Text { prompt: "hi {name}".into() };
+        let p = PromptBody::Text {
+            prompt: "hi {name}".into(),
+        };
         let s = serde_json::to_string(&p).unwrap();
         let p2: PromptBody = serde_json::from_str(&s).unwrap();
         match p2 {

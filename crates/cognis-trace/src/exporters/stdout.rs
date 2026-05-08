@@ -1,8 +1,8 @@
 //! Pretty-prints spans to stdout for local development. Always-on under
 //! the default feature set.
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use async_trait::async_trait;
 
@@ -74,7 +74,7 @@ impl TraceExporter for StdoutExporter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::span::{SpanKind, SpanBuilder};
+    use crate::span::{SpanBuilder, SpanKind};
     use std::time::SystemTime;
     use uuid::Uuid;
 
@@ -83,6 +83,9 @@ mod tests {
         let id = Uuid::new_v4();
         let span = SpanBuilder::open(id, None, id, SpanKind::Chain, "x", None, SystemTime::now())
             .finish_ok(None, SystemTime::now());
-        StdoutExporter::compact().export_spans(vec![span]).await.unwrap();
+        StdoutExporter::compact()
+            .export_spans(vec![span])
+            .await
+            .unwrap();
     }
 }

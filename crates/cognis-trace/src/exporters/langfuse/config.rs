@@ -57,32 +57,41 @@ impl LangfuseConfig {
         let secret_key = std::env::var("LANGFUSE_SECRET_KEY")
             .map_err(|_| TraceError::MissingEnvVar("LANGFUSE_SECRET_KEY".into()))?;
 
-        let host = std::env::var("LANGFUSE_HOST").unwrap_or_else(|_| "https://cloud.langfuse.com".into());
+        let host =
+            std::env::var("LANGFUSE_HOST").unwrap_or_else(|_| "https://cloud.langfuse.com".into());
         let environment = std::env::var("LANGFUSE_ENVIRONMENT").ok();
         let release = std::env::var("LANGFUSE_RELEASE").ok();
 
         let mut batcher = BatcherConfig::default();
         if let Ok(v) = std::env::var("LANGFUSE_FLUSH_INTERVAL_MS") {
             batcher.flush_interval = Duration::from_millis(
-                v.parse().map_err(|_| TraceError::InvalidConfig("LANGFUSE_FLUSH_INTERVAL_MS".into()))?,
+                v.parse()
+                    .map_err(|_| TraceError::InvalidConfig("LANGFUSE_FLUSH_INTERVAL_MS".into()))?,
             );
         }
         if let Ok(v) = std::env::var("LANGFUSE_MAX_BATCH") {
-            batcher.max_batch = v.parse().map_err(|_| TraceError::InvalidConfig("LANGFUSE_MAX_BATCH".into()))?;
+            batcher.max_batch = v
+                .parse()
+                .map_err(|_| TraceError::InvalidConfig("LANGFUSE_MAX_BATCH".into()))?;
         }
         if let Ok(v) = std::env::var("LANGFUSE_QUEUE_CAPACITY") {
-            batcher.queue_capacity = v.parse().map_err(|_| TraceError::InvalidConfig("LANGFUSE_QUEUE_CAPACITY".into()))?;
+            batcher.queue_capacity = v
+                .parse()
+                .map_err(|_| TraceError::InvalidConfig("LANGFUSE_QUEUE_CAPACITY".into()))?;
         }
 
         let timeout = match std::env::var("LANGFUSE_TIMEOUT_MS") {
             Ok(v) => Duration::from_millis(
-                v.parse().map_err(|_| TraceError::InvalidConfig("LANGFUSE_TIMEOUT_MS".into()))?,
+                v.parse()
+                    .map_err(|_| TraceError::InvalidConfig("LANGFUSE_TIMEOUT_MS".into()))?,
             ),
             Err(_) => Duration::from_secs(10),
         };
 
         let max_retries = match std::env::var("LANGFUSE_MAX_RETRIES") {
-            Ok(v) => v.parse().map_err(|_| TraceError::InvalidConfig("LANGFUSE_MAX_RETRIES".into()))?,
+            Ok(v) => v
+                .parse()
+                .map_err(|_| TraceError::InvalidConfig("LANGFUSE_MAX_RETRIES".into()))?,
             Err(_) => 3,
         };
 

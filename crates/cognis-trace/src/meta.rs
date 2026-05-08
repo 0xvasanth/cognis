@@ -104,7 +104,10 @@ mod tests {
     #[test]
     fn read_string_returns_none_when_missing() {
         assert_eq!(read_string(&Value::Null, keys::SESSION_ID), None);
-        assert_eq!(read_string(&serde_json::json!({"a": 1}), keys::SESSION_ID), None);
+        assert_eq!(
+            read_string(&serde_json::json!({"a": 1}), keys::SESSION_ID),
+            None
+        );
     }
 
     #[test]

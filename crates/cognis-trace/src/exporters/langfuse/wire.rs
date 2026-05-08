@@ -16,6 +16,7 @@ pub struct IngestionRequest {
 /// Discriminated by `type`.
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
+#[allow(clippy::enum_variant_names)] // variant suffix mirrors the Langfuse wire API names
 pub enum IngestionEvent {
     /// Trace root.
     TraceCreate {
@@ -41,8 +42,8 @@ pub enum IngestionEvent {
         id: String,
         /// Envelope timestamp.
         timestamp: String,
-        /// Generation body.
-        body: GenerationBody,
+        /// Generation body (boxed to keep enum size bounded).
+        body: Box<GenerationBody>,
     },
     /// Out-of-band score.
     ScoreCreate {
@@ -97,7 +98,10 @@ pub struct SpanBody {
     #[serde(rename = "traceId")]
     pub trace_id: String,
     /// Parent observation id.
-    #[serde(rename = "parentObservationId", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "parentObservationId",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub parent_observation_id: Option<String>,
     /// Friendly name.
     pub name: Option<String>,
@@ -133,7 +137,10 @@ pub struct GenerationBody {
     #[serde(flatten)]
     pub span: SpanBody,
     /// TTFT.
-    #[serde(rename = "completionStartTime", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "completionStartTime",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub completion_start_time: Option<String>,
     /// Concrete model id.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -182,8 +189,9 @@ pub struct ScoreBody {
 /// Response shape: 207 with successes + per-event errors.
 #[derive(Debug, Deserialize)]
 pub struct IngestionResponse {
-    /// Successful events.
+    /// Successful events (present for API completeness; checked indirectly via `errors`).
     #[serde(default)]
+    #[allow(dead_code)]
     pub successes: Vec<IngestionSuccess>,
     /// Failed events.
     #[serde(default)]
@@ -192,6 +200,7 @@ pub struct IngestionResponse {
 
 /// One successful envelope.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // fields populated by serde; consumed via IngestionResponse.errors path
 pub struct IngestionSuccess {
     /// Envelope id.
     pub id: String,
@@ -220,7 +229,13 @@ pub fn format_iso8601(t: std::time::SystemTime) -> String {
     let (year, month, day, hour, minute, second) = secs_to_ymd_hms(secs);
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
-        year, month, day, hour, minute, second, nanos / 1_000_000
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        nanos / 1_000_000
     )
 }
 
@@ -228,7 +243,7 @@ fn secs_to_ymd_hms(secs: i64) -> (i32, u32, u32, u32, u32, u32) {
     // Simple algorithm — accurate to seconds for 1970..2100.
     let mut s = secs;
     let day_secs = 86_400;
-    let mut days = (s / day_secs) as i64;
+    let mut days = s / day_secs;
     s -= days * day_secs;
     if s < 0 {
         days -= 1;
@@ -276,7 +291,7 @@ pub fn envelope_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, Duration};
+    use std::time::{Duration, SystemTime};
 
     #[test]
     fn format_iso8601_unix_epoch() {

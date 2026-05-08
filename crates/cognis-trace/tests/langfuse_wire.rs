@@ -25,8 +25,16 @@ fn cfg(host: String) -> LangfuseConfig {
 
 fn root_span() -> Span {
     let id = Uuid::new_v4();
-    SpanBuilder::open(id, None, id, SpanKind::Chain, "root", None, SystemTime::now())
-        .finish_ok(None, SystemTime::now())
+    SpanBuilder::open(
+        id,
+        None,
+        id,
+        SpanKind::Chain,
+        "root",
+        None,
+        SystemTime::now(),
+    )
+    .finish_ok(None, SystemTime::now())
 }
 
 fn child_generation(parent: Uuid, trace: Uuid) -> Span {
@@ -43,7 +51,12 @@ fn child_generation(parent: Uuid, trace: Uuid) -> Span {
     .with_generation(Generation {
         model: "gpt-4o-2024-08-06".into(),
         provider: "openai".into(),
-        usage: TokenUsage { input: 100, output: 50, cache_read: 0, cache_write: 0 },
+        usage: TokenUsage {
+            input: 100,
+            output: 50,
+            cache_read: 0,
+            cache_write: 0,
+        },
         ..Default::default()
     });
     b.span.metadata.clear();
@@ -79,12 +92,16 @@ async fn root_span_emits_trace_create_in_addition_to_span_or_generation() {
             let body: serde_json::Value = req.body_json().unwrap();
             let batch = body["batch"].as_array().expect("batch array");
             let types: Vec<&str> = batch.iter().map(|e| e["type"].as_str().unwrap()).collect();
-            assert!(types.contains(&"trace-create"), "missing trace-create in {types:?}");
+            assert!(
+                types.contains(&"trace-create"),
+                "missing trace-create in {types:?}"
+            );
             assert!(
                 types.contains(&"span-create") || types.contains(&"generation-create"),
                 "missing observation in {types:?}"
             );
-            ResponseTemplate::new(207).set_body_json(serde_json::json!({"successes":[],"errors":[]}))
+            ResponseTemplate::new(207)
+                .set_body_json(serde_json::json!({"successes":[],"errors":[]}))
         })
         .expect(1)
         .mount(&server)
@@ -108,7 +125,9 @@ async fn non_2xx_returns_backend_status_error() {
     let root = root_span();
     let err = exp.export_spans(vec![root]).await.unwrap_err();
     match err {
-        cognis_trace::TraceError::BackendStatus { backend, status, .. } => {
+        cognis_trace::TraceError::BackendStatus {
+            backend, status, ..
+        } => {
             assert_eq!(backend, "langfuse");
             assert_eq!(status, 401);
         }

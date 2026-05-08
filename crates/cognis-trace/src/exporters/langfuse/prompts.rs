@@ -137,7 +137,13 @@ impl LangfusePromptClient {
 
     fn store(&self, key: String, prompt: Prompt) {
         let mut map = self.cache.lock().unwrap();
-        map.insert(key, CacheEntry { prompt, inserted: Instant::now() });
+        map.insert(
+            key,
+            CacheEntry {
+                prompt,
+                inserted: Instant::now(),
+            },
+        );
     }
 
     async fn fetch(&self, path: &str, cache_key: String) -> Result<Prompt, TraceError> {
@@ -149,7 +155,10 @@ impl LangfusePromptClient {
             .request(reqwest::Method::GET, path)
             .send()
             .await
-            .map_err(|e| TraceError::Network { backend: "langfuse", source: e })?;
+            .map_err(|e| TraceError::Network {
+                backend: "langfuse",
+                source: e,
+            })?;
         if !resp.status().is_success() {
             let status = resp.status().as_u16();
             let body = resp.text().await.unwrap_or_default();
@@ -159,10 +168,10 @@ impl LangfusePromptClient {
                 body: body.chars().take(512).collect(),
             });
         }
-        let wire: WirePrompt = resp
-            .json()
-            .await
-            .map_err(|e| TraceError::Network { backend: "langfuse", source: e })?;
+        let wire: WirePrompt = resp.json().await.map_err(|e| TraceError::Network {
+            backend: "langfuse",
+            source: e,
+        })?;
         let p: Prompt = wire.into();
         self.store(cache_key, p.clone());
         Ok(p)

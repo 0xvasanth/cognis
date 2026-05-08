@@ -174,7 +174,7 @@ mod tests {
         b.send(1);
         b.send(2);
         b.send(3); // triggers flush
-        // Yield once so the task can run.
+                   // Yield once so the task can run.
         tokio::task::yield_now().await;
         sleep(Duration::from_millis(1)).await;
         assert_eq!(*collected.lock().unwrap(), vec![1, 2, 3]);
