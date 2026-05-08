@@ -13,7 +13,7 @@ A middleware implements `cognis::middleware::Middleware`, a trait with one async
 ```rust
 use std::sync::Arc;
 use cognis::middleware::{ModelRetry, RegexRedactor, MiddlewarePipeline};
-use cognis_llm::Client;
+use cognis_llm::{Client, provider::Provider};
 
 let primary = Client::from_env()?;
 
@@ -103,10 +103,14 @@ use cognis::middleware::{
     ModelRetry, ModelFallback, RateLimit, TokenBucket,
     PromptCaching, PiiRedactor, Summarization, MiddlewarePipeline,
 };
-use cognis_llm::Client;
+use cognis_llm::{Client, provider::Provider};
 
 let primary = Client::from_env()?;
-let backup  = Client::builder().model("gpt-4o-mini").build()?;
+let backup  = Client::builder()
+    .provider(Provider::OpenAI)
+    .api_key(std::env::var("OPENAI_API_KEY")?)
+    .model("gpt-4o-mini")
+    .build()?;
 
 // Innermost first, outermost last (reverse-push semantics).
 let pipelined = MiddlewarePipeline::new()

@@ -95,10 +95,10 @@ async fn main() -> Result<()> {
 
 ## How it works
 
-- **The approver runs *before* dispatch.** A reject means the tool never executes — the loop sees "rejected by operator" as the tool result.
+- **The approver runs *before* dispatch.** `with_approver(...)` wraps every registered tool in an `ApprovalGatedTool`. When the agent's dispatcher tries to run the tool, the wrapper consults the approver first.
+- **A `Reject` decision short-circuits the tool**, returning the rejection reason as the tool's output — the agent sees "rejected by operator" and can apologize, retry, or take a different path.
 - **`Edit` lets the human fix the model's args** without rejecting. Useful when the model picked the right tool but the wrong amount or recipient.
-- **The approver is `Arc<dyn Approver>`** because the same instance is used in two places — the builder's gate and the middleware. Sharing avoids state divergence.
-- **`HumanInTheLoop` is the middleware**, not the approver. The middleware enforces the gate inside the model-call wrapping; the approver is the policy.
+- **`Arc<dyn Approver>` is the shape passed in** — the builder takes ownership and uses the same instance for every gated tool, so the approver can hold state (a counter, a queue handle, an audit log) without divergence.
 
 ## Production approver
 

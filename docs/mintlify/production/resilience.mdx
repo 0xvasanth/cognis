@@ -21,9 +21,13 @@ A production-grade Client:
 ```rust
 use std::time::Duration;
 use cognis::prelude::*;
-use cognis_llm::Client;
+use cognis_llm::{Client, provider::Provider};
 
-let backup = Client::builder().model("gpt-4o-mini").build()?;
+let backup = Client::builder()
+    .provider(Provider::OpenAI)
+    .api_key(std::env::var("OPENAI_API_KEY")?)
+    .model("gpt-4o-mini")
+    .build()?;
 
 let client = Client::from_env()?
     .with_max_retries(3)
@@ -52,10 +56,14 @@ For policies that apply on every model call regardless of caller, use the middle
 ```rust
 use std::sync::Arc;
 use cognis::middleware::{ModelRetry, ModelFallback, RateLimit, TokenBucket, MiddlewarePipeline};
-use cognis_llm::Client;
+use cognis_llm::{Client, provider::Provider};
 
 let primary = Client::from_env()?;
-let backup  = Client::builder().model("gpt-4o-mini").build()?;
+let backup  = Client::builder()
+    .provider(Provider::OpenAI)
+    .api_key(std::env::var("OPENAI_API_KEY")?)
+    .model("gpt-4o-mini")
+    .build()?;
 
 // Push order: innermost first, outermost last.
 let pipelined = MiddlewarePipeline::new()

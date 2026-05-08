@@ -86,10 +86,13 @@ use cognis_trace::{ScoreRecord, ScoreValue};
 use cognis_trace::exporters::langfuse::{LangfuseConfig, LangfuseScorer};
 
 let scorer = LangfuseScorer::new(LangfuseConfig::from_env()?)?;
-for row in &report.rows {
+for (row, run_id) in report.rows.iter().zip(case_run_ids) {
     scorer.submit(ScoreRecord {
-        run_id: /* trace run_id from when the case was invoked */,
-        trace_id: None,
+        run_id,
+        // Set at least one of `trace_id` or `session_id` — `LangfuseScorer`
+        // skips submission when both are None (a score with nothing to link
+        // to is dropped).
+        trace_id: Some(run_id),       // attach to the case's trace
         session_id: None,
         name: "exact_match".into(),
         value: ScoreValue::Numeric(row.score as f64),
@@ -98,14 +101,14 @@ for row in &report.rows {
 }
 ```
 
-Run cases under a tracing observer to get the `run_id` per case; see [Trace with Langfuse](/observability/langfuse) for the wiring.
+Run cases under a tracing observer to get the `run_id` per case (`case_run_ids` above); see [Trace with Langfuse](/observability/langfuse) for the wiring.
 
 ## How it works
 
 - **Two passes per run:** the runner invokes every case under a concurrency cap, then scores actuals against expecteds.
 - **Concurrency follows `with_concurrency(n)`** — defaults to 4. Tune for your provider's quota when the runnable is a `Client`-backed chain.
 - **Errors per case** propagate from `runner.run().await?`. Wrap your runnable with `with_max_retries` if you want transient errors absorbed.
-- **Reports are serializable** with `Serialize` impls; snapshot them in tests, diff against baselines, gate CI on regressions.
+- **Reports are read-only summaries.** `EvalReport` and `EvalRow` aren't `Serialize` today — for snapshotting against baselines, build your own thin record from `(name, score, actual)` and serialize that.
 
 ## See also
 

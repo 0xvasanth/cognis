@@ -122,10 +122,11 @@ let hitl = HumanInTheLoop::new(|ctx| async move {
 
 let pipelined = MiddlewarePipeline::new().push(hitl).build(primary);
 
-let agent = AgentBuilder::new()
-    .with_llm(pipelined.into_client())
-    .build()?;
+// Use the pipelined client directly:
+let resp = pipelined.invoke(messages, tool_defs, opts).await?;
 ```
+
+To run middleware inside an `AgentBuilder`-built agent (where the loop drives the LLM), wrap a `PipelinedClient` in a custom `LLMProvider` and feed that into `Client::new(...)`. See [Middleware → Wiring middleware into an agent](/building-agents/middleware#wiring-middleware-into-an-agent).
 
 Built-in `HumanResponder` impls under `cognis::middleware`: `AlwaysSkip` (no-op for testing). Closures that return `HumanDecision` work too via a blanket impl.
 

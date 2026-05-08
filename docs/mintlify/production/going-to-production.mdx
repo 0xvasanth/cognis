@@ -106,13 +106,17 @@ use cognis::middleware::{
     MiddlewarePipeline, ModelRetry, ModelFallback, RateLimit, TokenBucket,
     PromptCaching, PiiRedactor, Summarization, ModelCallLimit,
 };
-use cognis_llm::Client;
+use cognis_llm::{Client, provider::Provider};
 use cognis_graph::SqliteCheckpointer;
 
 let primary = Client::from_env()?
     .with_max_retries(3)
     .with_timeout(Duration::from_secs(30));
-let backup = Client::builder().model("gpt-4o-mini").build()?;
+let backup = Client::builder()
+    .provider(Provider::OpenAI)
+    .api_key(std::env::var("OPENAI_API_KEY")?)
+    .model("gpt-4o-mini")
+    .build()?;
 
 // 1. Wrap the LLM client with middleware. Innermost first, outermost last.
 let pipelined = MiddlewarePipeline::new()
