@@ -11,6 +11,7 @@ pub mod health;
 pub mod lifecycle;
 pub mod memory;
 pub mod plugin;
+pub mod plugin_registry;
 pub mod state;
 pub mod think_node;
 pub mod tool_node;
@@ -27,6 +28,7 @@ pub use memory::{
     Window,
 };
 pub use plugin::{AgentPlugin, FnPlugin};
+pub use plugin_registry::{ClosurePlugin, LifecyclePlugin, PluginRegistry};
 pub use state::{AgentState, AgentStateUpdate};
 pub use think_node::ThinkNode;
 pub use tool_node::ToolDispatchNode;
