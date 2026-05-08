@@ -51,8 +51,16 @@ where
     }
 
     /// Add a named branch.
+    ///
+    /// **Panics** on duplicate names. Two branches under the same key
+    /// would race into the result map and the loser would be silently
+    /// dropped — almost always a programming error.
     pub fn branch(mut self, name: impl Into<String>, runnable: Arc<dyn Runnable<I, O>>) -> Self {
-        self.branches.push((name.into(), runnable));
+        let name = name.into();
+        if self.branches.iter().any(|(n, _)| n == &name) {
+            panic!("Assign::branch: duplicate branch name `{name}`");
+        }
+        self.branches.push((name, runnable));
         self
     }
 }
@@ -108,5 +116,13 @@ mod tests {
         assert_eq!(out.input, 5);
         assert_eq!(out.assigned["plus_one"], 6);
         assert_eq!(out.assigned["plus_ten"], 15);
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate branch name")]
+    fn duplicate_branch_name_panics() {
+        let _: Assign<u32, u32> = Assign::new()
+            .branch("dup", Arc::new(AddN(1)))
+            .branch("dup", Arc::new(AddN(2)));
     }
 }

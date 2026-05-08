@@ -42,8 +42,17 @@ where
     }
 
     /// Add a named branch.
+    ///
+    /// **Panics** if `name` is already registered. Two branches under the
+    /// same key would race into the result map and the loser would be
+    /// silently dropped — almost always a programming error, so we fail
+    /// loudly at construction time rather than at run time.
     pub fn branch(mut self, name: impl Into<String>, runnable: Arc<dyn Runnable<I, O>>) -> Self {
-        self.branches.push((name.into(), runnable));
+        let name = name.into();
+        if self.branches.iter().any(|(n, _)| n == &name) {
+            panic!("Parallel::branch: duplicate branch name `{name}`");
+        }
+        self.branches.push((name, runnable));
         self
     }
 }
@@ -100,5 +109,13 @@ mod tests {
         assert_eq!(out["plus_one"], 6);
         assert_eq!(out["plus_ten"], 15);
         assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate branch name")]
+    fn duplicate_branch_name_panics() {
+        let _: Parallel<u32, u32> = Parallel::new()
+            .branch("dup", Arc::new(AddN(1)))
+            .branch("dup", Arc::new(AddN(2)));
     }
 }
