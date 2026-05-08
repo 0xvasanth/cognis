@@ -1,94 +1,60 @@
-//! LCEL Chain Composition Example
+//! Simple Runnable composition (V2's replacement for V1 Chain types).
 //!
-//! Demonstrates how to compose a chain using the LCEL (LangChain Expression Language)
-//! pattern: ChatPromptTemplate -> FakeListChatModel -> StrOutputParser.
-//!
-//! No API keys required -- uses fake/mock models.
+//! Shows the LCEL pattern: prompt → model → parser, composed via the
+//! fluent `.pipe()` method on `RunnableExt`.
 
-#[path = "../shared.rs"]
-mod shared;
+use std::sync::Arc;
 
-use serde_json::json;
+use async_trait::async_trait;
+use cognis::prelude::*;
+use cognis_core::output_parsers::StringParser;
+use cognis_core::prompts::PromptTemplate;
+use cognis_llm::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, Usage};
+use cognis_llm::provider::{LLMProvider, Provider};
+use cognis_llm::Client;
 
-use cognis_core::chain;
-use cognis_core::language_models::ChatModelRunnable;
-use cognis_core::output_parsers::StrOutputParser;
-use cognis_core::prompts::ChatPromptTemplate;
-use cognis_core::runnables::Runnable;
+/// Fake provider that echoes a fixed answer — keeps the demo offline.
+struct EchoProvider(&'static str);
+
+#[async_trait]
+impl LLMProvider for EchoProvider {
+    fn name(&self) -> &str { "echo" }
+    fn provider_type(&self) -> Provider { Provider::Ollama }
+    async fn chat_completion(&self, _: Vec<Message>, _: ChatOptions) -> Result<ChatResponse> {
+        Ok(ChatResponse {
+            message: Message::ai(self.0),
+            usage: Some(Usage::default()),
+            finish_reason: "stop".into(),
+            model: "echo".into(),
+        })
+    }
+    async fn chat_completion_stream(&self, _: Vec<Message>, _: ChatOptions) -> Result<RunnableStream<StreamChunk>> {
+        unimplemented!()
+    }
+    async fn health_check(&self) -> Result<HealthStatus> {
+        Ok(HealthStatus::Healthy { latency_ms: 0 })
+    }
+}
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== LCEL Chain Composition Example ===\n");
+async fn main() -> Result<()> {
+    println!("=== V2 Simple Composition Example ===\n");
 
-    // Step 1: Create a ChatPromptTemplate with a system message and a user variable.
-    //
-    // The template uses {topic} as a variable that will be filled at invoke time.
-    let prompt = ChatPromptTemplate::from_messages(vec![
-        (
-            "system",
-            "You are a helpful assistant that explains topics concisely.",
-        ),
-        ("human", "Explain {topic} in one sentence."),
-    ])?;
+    let prompt: PromptTemplate<serde_json::Value> =
+        PromptTemplate::new("Write one short joke about {topic}.");
 
-    println!(
-        "Created ChatPromptTemplate with input variables: {:?}",
-        prompt.input_variables
-    );
+    let client = if std::env::var("COGNIS_PROVIDER").is_ok() {
+        Client::from_env()?
+    } else {
+        Client::new(Arc::new(EchoProvider("Why don't scientists trust atoms? They make up everything.")))
+    };
 
-    // Step 2: Get a chat model (Ollama if available, otherwise fake responses).
-    //
-    // In a real application, this would be an OpenAI, Anthropic, or other provider model.
-    let model = shared::get_chat_model(vec![
-        "Rust is a systems programming language focused on safety, speed, and concurrency.".into(),
-        "Python is a high-level, interpreted language known for readability and versatility."
-            .into(),
-        "TypeScript adds static typing to JavaScript for better tooling and error detection."
-            .into(),
-    ]);
+    let rendered = prompt.invoke(serde_json::json!({"topic": "ice cream"}), Default::default()).await?;
+    let reply = client.invoke(vec![Message::human(rendered)]).await?;
 
-    // Step 3: Create a StrOutputParser to extract text from the model's response.
-    let parser = StrOutputParser;
+    let parser = StringParser::new();
+    let final_text = parser.invoke(reply.content().to_string(), Default::default()).await?;
 
-    // Step 4: Compose the chain using the chain! macro.
-    //
-    // This creates a RunnableSequence: prompt -> model -> parser.
-    // Data flows through each step: JSON input -> formatted messages -> AI response -> string.
-    let model_runnable = ChatModelRunnable::new(model);
-    let chain = chain!(prompt, model_runnable, parser)?;
-
-    println!("Built chain: {}\n", chain.name());
-
-    // Step 5: Invoke the chain with different topics.
-    let topics = vec!["Rust", "Python", "TypeScript"];
-
-    for topic in topics {
-        let input = json!({ "topic": topic });
-        let result = chain.invoke(input, None).await?;
-
-        // The result is a JSON string value.
-        let text = match result.as_str() {
-            Some(s) => s.to_string(),
-            None => result.to_string(),
-        };
-        println!("Topic: {topic}");
-        println!("Response: {text}\n");
-    }
-
-    // Step 6: Demonstrate batch invocation.
-    println!("--- Batch Invocation ---\n");
-
-    let batch_inputs = vec![json!({ "topic": "Rust" }), json!({ "topic": "Python" })];
-    let batch_results = chain.batch(batch_inputs, None).await?;
-
-    for (i, result) in batch_results.iter().enumerate() {
-        let text = match result.as_str() {
-            Some(s) => s.to_string(),
-            None => result.to_string(),
-        };
-        println!("Batch result {}: {text}", i + 1);
-    }
-
-    println!("\nDone!");
+    println!("{final_text}");
     Ok(())
 }

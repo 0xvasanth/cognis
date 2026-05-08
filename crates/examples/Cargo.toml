@@ -15,6 +15,7 @@ cognis-rag = { path = "../cognis-rag", features = ["ollama", "openai"] }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+tokio-util = { version = "0.7", features = ["rt"] }
 async-trait.workspace = true
 futures.workspace = true
 
@@ -49,3 +50,89 @@ path = "../../examples/v2/07_ollama_structured_output.rs"
 [[example]]
 name = "08_ollama_multi_agent"
 path = "../../examples/v2/08_ollama_multi_agent.rs"
+
+# ----------------------------------------------------------------------
+# chains/ — V2 versions (Runnable composition replaces V1 Chain types)
+# ----------------------------------------------------------------------
+[[example]]
+name = "chains_simple"
+path = "../../examples/chains/simple_chain.rs"
+
+[[example]]
+name = "chains_composition"
+path = "../../examples/chains/chain_composition.rs"
+
+[[example]]
+name = "chains_conditional"
+path = "../../examples/chains/conditional_chains.rs"
+
+[[example]]
+name = "chains_extraction"
+path = "../../examples/chains/extraction_chain.rs"
+
+[[example]]
+name = "chains_pipe_operator"
+path = "../../examples/chains/pipe_operator_demo.rs"
+
+[[example]]
+name = "chains_qa"
+path = "../../examples/chains/qa_chain.rs"
+
+[[example]]
+name = "chains_structured_extraction"
+path = "../../examples/chains/structured_extraction.rs"
+
+[[example]]
+name = "chains_structured_parsing"
+path = "../../examples/chains/structured_parsing_demo.rs"
+
+[[example]]
+name = "chains_typed_runnable"
+path = "../../examples/chains/typed_runnable_demo.rs"
+
+[[example]]
+name = "chains_agent_output_parsing"
+path = "../../examples/chains/agent_output_parsing.rs"
+
+# ----------------------------------------------------------------------
+# agents/
+# ----------------------------------------------------------------------
+[[example]]
+name = "agents_react_agent"
+path = "../../examples/agents/react_agent.rs"
+[[example]]
+name = "agents_conversational"
+path = "../../examples/agents/conversational_agent.rs"
+[[example]]
+name = "agents_multi_agent"
+path = "../../examples/agents/multi_agent_collaboration.rs"
+[[example]]
+name = "agents_communication"
+path = "../../examples/agents/agent_communication.rs"
+[[example]]
+name = "agents_cancellation"
+path = "../../examples/agents/cancellation.rs"
+[[example]]
+name = "agents_context_management"
+path = "../../examples/agents/context_management_demo.rs"
+[[example]]
+name = "agents_streaming_events"
+path = "../../examples/agents/streaming_agent_events.rs"
+[[example]]
+name = "agents_lifecycle"
+path = "../../examples/agents/agent_lifecycle_demo.rs"
+[[example]]
+name = "agents_execution_hooks"
+path = "../../examples/agents/execution_hooks.rs"
+[[example]]
+name = "agents_planning_demo"
+path = "../../examples/agents/planning_demo.rs"
+[[example]]
+name = "agents_planning_middleware"
+path = "../../examples/agents/planning_middleware.rs"
+[[example]]
+name = "agents_plan_and_execute"
+path = "../../examples/agents/plan_and_execute.rs"
+[[example]]
+name = "agents_plugin_system"
+path = "../../examples/agents/plugin_system.rs"
