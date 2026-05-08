@@ -3,11 +3,11 @@
 mod client;
 mod exporter;
 mod prompts;
-// mod scores;     // Task 24
+mod scores;
 mod wire;
 pub mod config;
 
 pub use config::LangfuseConfig;
 pub use exporter::LangfuseExporter;
 pub use prompts::LangfusePromptClient;
-// pub use scores::LangfuseScorer;  // Task 24
+pub use scores::LangfuseScorer;

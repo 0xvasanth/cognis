@@ -47,4 +47,4 @@ pub mod scores;
 pub use scores::ScoreSink;
 
 #[cfg(feature = "langfuse")]
-pub use exporters::langfuse::{LangfuseConfig, LangfuseExporter, LangfusePromptClient};
+pub use exporters::langfuse::{LangfuseConfig, LangfuseExporter, LangfusePromptClient, LangfuseScorer};
