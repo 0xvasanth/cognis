@@ -56,12 +56,17 @@ impl CrossEncoder for LlmJudge {
                 d.content
             );
             let resp = self.client.invoke(vec![Message::human(prompt)]).await?;
-            let s = resp
-                .content()
-                .split_whitespace()
-                .next()
-                .and_then(|w| w.parse::<f32>().ok())
-                .unwrap_or(0.0);
+            // Models often pad the answer with prose ("Score: 7.5", "I'd say
+            // 8 / 10"). Sweep the reply for the first numeric token; if
+            // nothing parseable shows up, treat that as a neutral
+            // mid-scale score rather than 0.0 — a hard zero would
+            // catastrophically demote a doc just because the reranker
+            // model mis-formatted its reply.
+            let raw = resp.content();
+            let s = raw
+                .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+                .find_map(|w| w.parse::<f32>().ok().filter(|n| (0.0..=10.0).contains(n)))
+                .unwrap_or(5.0);
             scores.push(s);
         }
         Ok(scores)

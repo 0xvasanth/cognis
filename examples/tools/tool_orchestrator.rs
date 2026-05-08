@@ -14,7 +14,7 @@
 //!   A price-comparison flow. Three "vendor" stubs each fetch a
 //!   price for the same SKU; a fourth step depends on all three
 //!   completing and picks the lowest. With a sequential plan the
-//!   total wait would be ~240ms — the orchestrator runs the three
+//!   total wait would be ~300ms — the orchestrator runs the three
 //!   fetches in parallel so the elapsed time is closer to ~100ms.
 //!
 //! Run with:

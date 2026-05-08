@@ -74,15 +74,14 @@ async fn main() -> Result<()> {
     let raw = reply.content().to_string();
     println!("--- raw model output ---\n{raw}\n");
 
-    match parser.parse(&raw) {
-        Ok(items) => {
-            println!("--- parsed action items ---");
-            for it in &items {
-                let due = it.due.as_deref().unwrap_or("(no date)");
-                println!("  [{due}] {}: {}", it.who, it.what);
-            }
-        }
-        Err(e) => eprintln!("parse failed: {e}"),
+    // If the model wandered off the JSON contract, propagate the error
+    // so a CI run fails loudly. In production, wrap with `OutputFixingParser`
+    // so a second LLM call repairs the output instead of aborting.
+    let items = parser.parse(&raw)?;
+    println!("--- parsed action items ---");
+    for it in &items {
+        let due = it.due.as_deref().unwrap_or("(no date)");
+        println!("  [{due}] {}: {}", it.who, it.what);
     }
     Ok(())
 }

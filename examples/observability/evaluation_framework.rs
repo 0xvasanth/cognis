@@ -82,8 +82,10 @@ async fn main() -> Result<()> {
     }
     println!("\nresult: {pass}/{} passed", cases.len());
     if pass != cases.len() {
-        // In CI you'd `std::process::exit(1)` here.
-        eprintln!("(some cases regressed — fail the build)");
+        // Exit non-zero so CI flags the regression. The runner job sees
+        // the failure code and the build turns red.
+        eprintln!("FAIL: {} case(s) regressed", cases.len() - pass);
+        std::process::exit(1);
     }
     Ok(())
 }

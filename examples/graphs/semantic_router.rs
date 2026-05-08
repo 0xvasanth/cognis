@@ -12,9 +12,11 @@
 //!   is identical: read state, return `Goto::node(...)`.
 //!
 //! Scenario:
-//!   A classifier node inspects the incoming user message. If it ends
-//!   in a `?` it's a real question — route to the `qa` branch.
-//!   Otherwise treat it as small talk and route to `echo`.
+//!   A classifier node inspects the incoming user message. If it
+//!   contains a `?` it's a real question — route to the `qa` branch.
+//!   Otherwise treat it as small talk and route to `echo`. Real code
+//!   would call an LLM (or a small classifier) here; the routing
+//!   pattern is the same.
 //!
 //! Run with:
 //!   cargo run -p cognis-examples --example graphs_semantic_router

@@ -11,22 +11,33 @@
 //!   smarter backoff strategy without rewriting the loop.
 //!
 //! Scenario:
-//!   The agent kicked off a long-running export and got back a job
-//!   ID. We poll the (stubbed) status endpoint up to 5 times. If
-//!   the job finishes, we end successfully; if we hit the cap, we
-//!   end with `gave_up = true` so the caller can surface that to the
-//!   user.
+//!   The agent kicked off a long-running export and got back a job ID.
+//!   We poll the (stubbed) status endpoint up to 5 times. We run the
+//!   graph twice: once with a stub that finishes on attempt 3 (success
+//!   path), once with a stub that never finishes (timeout path,
+//!   `gave_up = true`).
 //!
 //! Run with:
 //!   cargo run -p cognis-examples --example graphs_state_machine
 //!
 //! Sample output (against ollama / llama3.1):
+//!   --- success path: completes on attempt 3 ---
 //!   [poll] attempt 1/5
 //!   [poll] attempt 2/5
 //!   [poll] attempt 3/5
 //!   [poll] job complete on attempt 3
-//!
 //!   final: State { attempts: 3, finished: true, gave_up: false }
+//!
+//!   --- timeout path: never finishes ---
+//!   [poll] attempt 1/5
+//!   [poll] attempt 2/5
+//!   [poll] attempt 3/5
+//!   [poll] attempt 4/5
+//!   [poll] attempt 5/5
+//!   [poll] giving up after 5 attempts
+//!   final: State { attempts: 5, finished: false, gave_up: true }
+
+use std::sync::Arc;
 
 use cognis::prelude::*;
 
@@ -57,22 +68,19 @@ impl GraphState for State {
 
 const MAX_ATTEMPTS: u32 = 5;
 
-/// Stand-in for a status check. The real call would be HTTP — the
-/// shape of the loop is the same.
-fn job_done(attempt: u32) -> bool {
-    // Pretend the job finishes on attempt 3.
-    attempt >= 3
-}
+/// Status-check stub: takes the attempt number, returns whether the
+/// (pretend) job is done. Real code would be an HTTP call.
+type StatusCheck = Arc<dyn Fn(u32) -> bool + Send + Sync>;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let poll = node_fn::<State, _, _>("poll", |s, _| {
+async fn run_once(label: &str, status_check: StatusCheck) -> Result<State> {
+    let poll = node_fn::<State, _, _>("poll", move |s, _| {
         let already = s.attempts;
+        let check = status_check.clone();
         async move {
             let attempt = already + 1;
             println!("[poll] attempt {attempt}/{MAX_ATTEMPTS}");
 
-            if job_done(attempt) {
+            if check(attempt) {
                 println!("[poll] job complete on attempt {attempt}");
                 return Ok(NodeOut {
                     update: Update {
@@ -107,11 +115,28 @@ async fn main() -> Result<()> {
         }
     });
 
+    println!("--- {label} ---");
     let graph = Graph::<State>::new()
         .node("poll", poll)
         .start_at("poll")
         .compile()?;
     let final_state = graph.invoke(State::default(), Default::default()).await?;
-    println!("\nfinal: {final_state:?}");
+    println!("final: {final_state:?}\n");
+    Ok(final_state)
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Path 1 — success: job finishes on attempt 3.
+    run_once(
+        "success path: completes on attempt 3",
+        Arc::new(|attempt| attempt >= 3),
+    )
+    .await?;
+
+    // Path 2 — timeout: status check never returns true; the
+    // max-attempts cap kicks in.
+    run_once("timeout path: never finishes", Arc::new(|_attempt| false)).await?;
+
     Ok(())
 }
