@@ -1,48 +1,44 @@
-//! Power-user demo: hand-build the graph yourself, hand it to Agent::wrap.
+//! What you'll learn:
+//!   How to bypass `AgentBuilder` and assemble the underlying graph
+//!   yourself, then hand it to `Agent::wrap` so it still drives like
+//!   a normal agent.
+//!
+//! Why this matters:
+//!   Most users never need this — but when you want a custom routing
+//!   topology (multi-step planners, branching workflows, custom
+//!   message-shaping), the graph is yours to build. `Agent::wrap` keeps
+//!   the public `run`/`stream` surface identical regardless of what's
+//!   inside.
+//!
+//! Scenario:
+//!   Hand-built single-node graph that calls the LLM and ends. The shape
+//!   you fall back to when `AgentBuilder`'s opinionated topology isn't
+//!   right for your workflow.
+//!
+//! Run with:
+//!   COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+//!     cargo run -p cognis-examples --example 03_custom_graph
+//!
+//! Sample output (against ollama / llama3.1):
+//!   Hello!
+//!
+//!   A customized graph, I assume you'd like to create a specific type of graph with tailored features. Can you please provide more context or details about the kind of graph you're interested in? This will help me better understand and assist you.
+//!
+//!   Here are some examples of types of graphs:
+//!
+//!   1. Line Graph: for showing trends over time
+//!   2. Bar Chart: for comparing categorical data
+//!   ...
+//!   5. Heatmap: for visualizing matrix data
+//!
+//!   Or perhaps you have something else in mind?
 
-use std::sync::Arc;
-
-use async_trait::async_trait;
 use cognis::prelude::*;
-use cognis_llm::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, Usage};
-use cognis_llm::provider::{LLMProvider, Provider};
-
-struct StaticEcho;
-#[async_trait]
-impl LLMProvider for StaticEcho {
-    fn name(&self) -> &str {
-        "echo"
-    }
-    fn provider_type(&self) -> Provider {
-        Provider::Ollama
-    }
-    async fn chat_completion(&self, msgs: Vec<Message>, _: ChatOptions) -> Result<ChatResponse> {
-        let last = msgs
-            .last()
-            .map(|m| m.content().to_string())
-            .unwrap_or_default();
-        Ok(ChatResponse {
-            message: Message::ai(format!("ECHO: {last}")),
-            usage: Some(Usage::default()),
-            finish_reason: "stop".into(),
-            model: "echo".into(),
-        })
-    }
-    async fn chat_completion_stream(
-        &self,
-        _: Vec<Message>,
-        _: ChatOptions,
-    ) -> Result<RunnableStream<StreamChunk>> {
-        unimplemented!()
-    }
-    async fn health_check(&self) -> Result<HealthStatus> {
-        Ok(HealthStatus::Healthy { latency_ms: 0 })
-    }
-}
+use cognis_llm::chat::ChatOptions;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Client::new(Arc::new(StaticEcho));
+    let client = Client::from_env()?;
 
     // Hand-build a single-node graph that calls the LLM and ends.
     let single_node = node_fn::<AgentState, _, _>("call", move |state, _ctx| {

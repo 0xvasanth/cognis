@@ -1,9 +1,34 @@
-//! End-to-end RAG: split → embed → store → retrieve → answer.
+//! What you'll learn:
+//!   The full RAG flow end-to-end: split documents into chunks, embed
+//!   them, store in a vector index, retrieve the top-k for a query,
+//!   then feed the context into an LLM call.
+//!
+//! Why this matters:
+//!   This is the canonical RAG pattern every Cognis user will reach
+//!   for. The pieces — splitter, embeddings, vector store, retriever,
+//!   client — are all swappable behind their traits, so swapping
+//!   `FakeEmbeddings` for `OllamaEmbeddings` or in-memory for sqlite
+//!   is a one-line change.
+//!
+//! Scenario:
+//!   Three short docs describe Cognis. We chunk, embed, and index them,
+//!   then ask "What does cognis-rag include?". The retriever finds the
+//!   matching chunk and the LLM answers grounded in only that context.
+//!
+//! Run with:
+//!   COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+//!     cargo run -p cognis-examples --example retrieval_rag_pipeline
+//!
+//! Sample output (against ollama / llama3.1):
+//!   --- context ---
+//!   - Cognis is a Rust LLM framework.
+//!   - cognisgraph offers a Pregel-style stateful graph engine.
+//!   --- answer ---
+//!   cognis-rag includes a relational algebra layer.
 
 use std::sync::Arc;
 
 use cognis::prelude::*;
-use cognis_llm::Client;
 use cognis_rag::{
     Document, Embeddings, FakeEmbeddings, InMemoryVectorStore, RecursiveCharSplitter, TextSplitter,
     VectorStore,
@@ -11,9 +36,6 @@ use cognis_rag::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if std::env::var("COGNIS_PROVIDER").is_err() {
-        std::env::set_var("COGNIS_PROVIDER", "ollama");
-    }
     let docs = vec![
         Document::new("Cognis is a Rust LLM framework."),
         Document::new("cognisgraph offers a Pregel-style stateful graph engine."),

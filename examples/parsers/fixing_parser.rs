@@ -1,8 +1,29 @@
-//! OutputFixingParser — try the inner parser, on failure ask an LLM-like
-//! "fixer" Runnable to rewrite the malformed output, then parse the rewrite.
+//! What you'll learn:
+//!   How `OutputFixingParser` tries the inner parser first, then on
+//!   failure asks a "fixer" `Runnable` to rewrite the malformed text
+//!   and re-parses the rewrite.
 //!
-//! In production the fixer is your `Client`; here we use a fake fixer
-//! built from a `lambda` so the example runs offline.
+//! Why this matters:
+//!   Small models occasionally produce invalid JSON. `OutputFixingParser`
+//!   re-prompts with the parse error attached and the model usually
+//!   fixes it on the second try. The fixer is just another Runnable —
+//!   in production it's `Client::invoke` wrapped as
+//!   `Runnable<String, String>`, so the same parser swaps cleanly
+//!   between offline tests and live model calls.
+//!
+//! Scenario:
+//!   A small model emits "title: Scrambled eggs, ingredients: eggs and
+//!   butter" — close to JSON but not parseable. The inner parser
+//!   fails; the fixer rewrites the text into clean JSON and the second
+//!   parse succeeds.
+//!
+//! Run with:
+//!   cargo run -p cognis-examples --example parsers_fixing
+//!
+//! Sample output (against ollama / llama3.1):
+//!   input (malformed): title: Scrambled eggs, ingredients: eggs and butter
+//!   inner parse failed as expected: serialization error: json parse: expected ident at line 1 column 2
+//!   repaired -> Scrambled eggs with 3 ingredients
 
 use std::sync::Arc;
 
@@ -19,9 +40,9 @@ struct Recipe {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // The fake fixer: in real life this is your `Client::invoke` wrapped
-    // as a Runnable<String, String>. Returning a clean JSON whatever the
-    // input asks.
+    // The fixer is `Runnable<String, String>` — in real code, that's
+    // your `Client` wrapped to take the raw text and return cleaned
+    // text. Here a lambda stands in so the demo is reproducible.
     let fixer: Arc<dyn Runnable<String, String>> = Arc::new(lambda(|_bad: String| async move {
         Ok::<_, CognisError>(
             r#"{"title":"Scrambled eggs","ingredients":["eggs","butter","salt"]}"#.into(),
@@ -30,7 +51,6 @@ async fn main() -> Result<()> {
 
     let parser = OutputFixingParser::new(JsonParser::<Recipe>::new(), fixer);
 
-    // Bad output the inner parser can't handle.
     let bad = "title: Scrambled eggs, ingredients: eggs and butter";
     println!("input (malformed): {bad}");
 
@@ -43,7 +63,7 @@ async fn main() -> Result<()> {
     // The async path repairs and re-parses.
     let r = parser.parse_with_fix(bad).await?;
     println!(
-        "repaired → {} with {} ingredients",
+        "repaired -> {} with {} ingredients",
         r.title,
         r.ingredients.len()
     );

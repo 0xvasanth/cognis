@@ -1,5 +1,30 @@
-//! Checkpoint + time-travel demo. Builds a small graph, runs it with a
-//! checkpointer attached, then loads each saved step.
+//! What you'll learn:
+//!   How to attach a checkpointer to a graph, capture state at every
+//!   step, and time-travel by loading any saved snapshot back.
+//!
+//! Why this matters:
+//!   Checkpointers are the foundation for crash recovery,
+//!   human-in-the-loop pauses, and debugging stuck runs. The same
+//!   `Checkpointer` trait swaps between in-memory, sqlite, and
+//!   postgres backends — your graph code is unchanged.
+//!
+//! Scenario:
+//!   A counter graph with a `Checkpointer` attached. After the run, list
+//!   every saved superstep — the shape you reach for when you need
+//!   time-travel debugging or HITL workflows.
+//!
+//! Run with:
+//!   cargo run -p cognis-examples --example 05_checkpoint_resume
+//!
+//! Sample output (against ollama / llama3.1):
+//!   final count: 5
+//!   checkpoints saved: [0, 1, 2, 3, 4, 5]
+//!   step 0: count = 1
+//!   step 1: count = 2
+//!   step 2: count = 3
+//!   step 3: count = 4
+//!   step 4: count = 5
+//!   step 5: count = 5
 
 use std::sync::Arc;
 

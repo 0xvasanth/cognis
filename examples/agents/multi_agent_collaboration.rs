@@ -1,9 +1,32 @@
-//! Multi-agent collaboration — V2's MultiAgentOrchestrator with
-//! Sequential, Supervisor, and ParallelVote handoff strategies.
+//! What you'll learn:
+//!   How to combine several specialised agents under
+//!   `MultiAgentOrchestrator` with two different strategies:
+//!   `Sequential` (handoff) and `ParallelVote` (majority answer).
+//!
+//! Why this matters:
+//!   Most production agent systems are a small team, not a single
+//!   prompt — a brainstormer hands to an editor, three classifiers
+//!   vote on a label. The orchestrator strategies abstract the
+//!   message-routing so swapping topologies is a one-line change.
+//!
+//! Scenario:
+//!   First, plan a kids' birthday party with a brainstormer-then-editor
+//!   handoff (Sequential). Then, ask three classifier agents the same
+//!   yes/no question and take the majority answer (ParallelVote).
+//!
+//! Run with:
+//!   COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+//!     cargo run -p cognis-examples --example agents_multi_agent
+//!
+//! Sample output (against ollama / llama3.1):
+//!   --- Sequential ---
+//!   The best idea is **Superhero Training Sessions**, where kids will participate in training sessions led by a "superhero instructor" (a party helper) and learn various superhero skills like jumping over obstacles, throwing foam balls, and using "super strength" to move heavy objects. This activity allows the kids to be actively engaged and creative while developing their physical and teamwork skills, making it an unforgettable experience for them.
+//!
+//!   --- ParallelVote ---
+//!   majority answer: Yes.
 
 use cognis::prelude::*;
-use cognis::{AgentBuilder, MultiAgentOrchestrator, ParallelVote, Sequential};
-use cognis_llm::Client;
+use cognis::{MultiAgentOrchestrator, ParallelVote, Sequential};
 
 fn make_agent(prompt: &str) -> Result<cognis::Agent> {
     AgentBuilder::new()
@@ -14,10 +37,6 @@ fn make_agent(prompt: &str) -> Result<cognis::Agent> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if std::env::var("COGNIS_PROVIDER").is_err() {
-        std::env::set_var("COGNIS_PROVIDER", "ollama");
-    }
-
     println!("--- Sequential ---");
     let orch = MultiAgentOrchestrator::new(Sequential)
         .add(

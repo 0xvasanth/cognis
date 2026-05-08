@@ -1,44 +1,31 @@
 ---
 title: "Retrieval (RAG)"
-description: "Splitters, vector stores, retrievers, indexing pipeline, rerankers, document transformers."
+description: "Splitters, end-to-end RAG, incremental indexing, cross-encoder reranking, retriever caching."
 sidebarTitle: "Retrieval"
 ---
 
-Retrieval examples cover every layer of RAG — chunking, storing, fetching, reranking, transforming. Sources under [`examples/retrieval/`](https://github.com/0xvasanth/cognis/tree/main/examples/retrieval).
+Retrieval examples enact the layers of a RAG pipeline. Sources under [`examples/retrieval/`](https://github.com/0xvasanth/cognis/tree/main/examples/retrieval).
 
-| Name | Topic | Source |
+| Name | Scenario | Source |
 |---|---|---|
-| `retrieval_text_splitters` | Splitter comparison | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/text_splitters.rs) |
-| `retrieval_text_splitting` | Splitting strategies in depth | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/text_splitting.rs) |
-| `retrieval_document_store` | `Docstore` for parent-document patterns | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/document_store.rs) |
-| `retrieval_vector_store` | In-memory vector store basics | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/vector_store.rs) |
-| `retrieval_vector_store_search` | Similarity-search shapes | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/vector_store_search.rs) |
-| `retrieval_rag_pipeline` | End-to-end RAG | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/rag_pipeline.rs) |
-| `retrieval_rag_with_vectorstore` | RAG against a hosted store | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/rag_with_vectorstore.rs) |
-| `retrieval_indexing_rag` | `IndexingPipeline` + `RecordManager` (incremental) | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/indexing_rag.rs) |
-| `retrieval_caching_retriever` | Hash-keyed retriever cache | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/caching_retriever.rs) |
-| `retrieval_document_compression` | `CompressorPipeline` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/document_compression.rs) |
-| `retrieval_cross_encoder` | `CrossEncoderReranker` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/cross_encoder.rs) |
-| `retrieval_reranking` | Reranking patterns | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/reranking_retriever.rs) |
-| `retrieval_document_transformers` | `LongContextReorder`, `MetadataTransformer` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/document_transformers.rs) |
+| `retrieval_text_splitters` | Compare `RecursiveCharSplitter`, `MarkdownSplitter`, `SentenceSplitter` on the same Markdown blog post — see how each carves it. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/text_splitters.rs) |
+| `retrieval_rag_pipeline` | End-to-end RAG — split, embed, store, retrieve, answer with the LLM. The canonical flow. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/rag_pipeline.rs) |
+| `retrieval_indexing_rag` | Docs-site re-indexer — round 1 indexes 3 docs, edit one, round 2 only re-embeds the changed doc. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/indexing_rag.rs) |
+| `retrieval_reranking` | Vector search returns top-10; cross-encoder (LLM-judge) reranks to top-3 for the prompt. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/reranking_retriever.rs) |
+| `retrieval_caching_retriever` | Chat session asks the same question twice — second call returns from cache (latency drops to ~0). | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/caching_retriever.rs) |
 
 ## How to run
 
 ```bash
-# Offline (uses FakeEmbeddings):
-cargo run -p cognis-examples --example retrieval_vector_store
-cargo run -p cognis-examples --example retrieval_indexing_rag
-
-# Provider-backed:
-COGNIS_PROVIDER=ollama \
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
   cargo run -p cognis-examples --example retrieval_rag_pipeline
 ```
 
 ## Pick a starting point
 
-- **First time touching RAG?** `retrieval_rag_pipeline` shows the full split → embed → store → retrieve → answer flow.
-- **Re-indexing a corpus?** `retrieval_indexing_rag` covers incremental updates.
-- **Improving retrieval quality?** `retrieval_cross_encoder` and `retrieval_document_transformers` are the post-processing layers.
+- **First time touching RAG?** `retrieval_rag_pipeline` is the canonical flow.
+- **Re-indexing a corpus?** `retrieval_indexing_rag` — incremental updates with a `RecordManager`.
+- **Improving retrieval quality?** `retrieval_reranking` adds a cross-encoder pass.
 
 ## See also
 

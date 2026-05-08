@@ -1,35 +1,23 @@
 ---
 title: "Observability"
-description: "Callbacks, tracing, health checks, evaluation framework, evaluation pipelines."
+description: "Observers for debugging, evaluation harness for CI, pre-flight provider health checks."
 sidebarTitle: "Observability"
 ---
 
-Observability examples show what's running and how it's doing — events, callbacks, health checks, evaluations. Sources under [`examples/observability/`](https://github.com/0xvasanth/cognis/tree/main/examples/observability).
+Observability examples enact what you'd add to a production deployment. Sources under [`examples/observability/`](https://github.com/0xvasanth/cognis/tree/main/examples/observability).
 
-| Name | Topic | Source |
+| Name | Scenario | Source |
 |---|---|---|
-| `obs_event_system` | The event system from the inside | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/event_system_demo.rs) |
-| `obs_callback_manager` | `CallbackManager` for stacked handlers | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/callback_manager.rs) |
-| `obs_tracing` | Stdout `TracingObserver` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/tracing_demo.rs) |
-| `obs_health_monitoring` | Provider health checks | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/health_monitoring.rs) |
-| `obs_evaluation_framework` | `EvalRunner` over a dataset of `EvalCase`s | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/evaluation_framework.rs) |
-| `obs_evaluation_pipeline` | Multi-dataset eval flow with custom evaluators | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/evaluation_pipeline.rs) |
+| `obs_event_system` | Add lightweight LLM-call timing logs without changing the chain code — attach a `TimedLogger` Observer. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/event_system_demo.rs) |
+| `obs_evaluation` | Regression eval — given 5 known (question, expected_answer) pairs, score the agent. Run in CI. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/evaluation_framework.rs) |
+| `obs_health_monitoring` | Pre-flight provider check — verify the LLM is reachable at startup; fail fast with a clear error. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/health_monitoring.rs) |
 
 ## How to run
 
 ```bash
-cargo run -p cognis-examples --example obs_event_system
-cargo run -p cognis-examples --example obs_tracing
-
-# Eval (offline-friendly):
-cargo run -p cognis-examples --example obs_evaluation_framework
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example obs_evaluation
 ```
-
-## Pick a starting point
-
-- **Just want to see what's happening?** `obs_tracing` prints events to stdout.
-- **Building eval into CI?** `obs_evaluation_framework` is the smallest working harness — `EvalRunner` over a `Vec<EvalCase>`.
-- **Stacking observers?** `obs_callback_manager` shows how to multiplex.
 
 ## See also
 

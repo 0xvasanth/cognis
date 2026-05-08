@@ -1,4 +1,29 @@
-//! Conditional routing — node returns a `Goto` based on state content.
+//! What you'll learn:
+//!   How a graph node returns a dynamic `Goto` based on the current
+//!   state — picking the `qa` branch for questions and the `echo`
+//!   branch for everything else.
+//!
+//! Why this matters:
+//!   Conditional routing is the difference between a linear pipeline
+//!   and a real workflow. Customer support intent routing is the
+//!   archetype: "refund" goes to the refund flow, "cancel" to the
+//!   cancel flow, anything else to general help. Whatever your
+//!   routing rule is — keyword, classifier, LLM call — the pattern
+//!   is identical: read state, return `Goto::node(...)`.
+//!
+//! Scenario:
+//!   A classifier node inspects the incoming user message. If it ends
+//!   in a `?` it's a real question — route to the `qa` branch.
+//!   Otherwise treat it as small talk and route to `echo`.
+//!
+//! Run with:
+//!   cargo run -p cognis-examples --example graphs_semantic_router
+//!
+//! Sample output (against ollama / llama3.1):
+//!   -> QA path
+//!   "What is 2+2?" -> qa
+//!   -> Echo path
+//!   "hello there" -> echo
 
 use cognis::prelude::*;
 
@@ -35,14 +60,14 @@ async fn main() -> Result<()> {
         }
     });
     let qa = node_fn::<State, _, _>("qa", |_, _| async {
-        println!("→ QA path");
+        println!("-> QA path");
         Ok(NodeOut {
             update: Update::default(),
             goto: Goto::end(),
         })
     });
     let echo = node_fn::<State, _, _>("echo", |_, _| async {
-        println!("→ Echo path");
+        println!("-> Echo path");
         Ok(NodeOut {
             update: Update::default(),
             goto: Goto::end(),
@@ -66,7 +91,7 @@ async fn main() -> Result<()> {
                 Default::default(),
             )
             .await?;
-        println!("{input:?} → {}", f.route);
+        println!("{input:?} -> {}", f.route);
     }
     Ok(())
 }

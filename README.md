@@ -276,28 +276,26 @@ cognis-rag = { version = "0.2", features = ["faiss", "openai"] }
 git clone https://github.com/0xvasanth/cognis.git
 cd cognis
 
-# Offline demos (no API keys needed)
-cargo run -p cognis-examples --example chains_pipe_operator
+# Offline demos (no LLM needed)
 cargo run -p cognis-examples --example tools_orchestrator
-cargo run -p cognis-examples --example agents_round_robin
-cargo run -p cognis-examples --example agents_bus_pubsub
-cargo run -p cognis-examples --example memory_entity
-cargo run -p cognis-examples --example memory_knowledge_graph
-cargo run -p cognis-examples --example retrieval_document_transformers
 cargo run -p cognis-examples --example graphs_state_machine
-cargo run -p cognis-examples --example graphs_dot_export
-cargo run -p cognis-examples --example resilience_advanced_rate_limiters
-cargo run -p cognis-examples --example parsers_fixing
-cargo run -p cognis-examples --example parsers_retry
+cargo run -p cognis-examples --example graphs_with_checkpoints
+cargo run -p cognis-examples --example graphs_interrupts
+cargo run -p cognis-examples --example resilience_ssrf_protection
+cargo run -p cognis-examples --example resilience_rate_limiters
 
-# Provider-backed demos (need a running LLM)
-COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.2:1b \
-  cargo run -p cognis-examples --example agents_react_agent
-COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.2:1b \
+# Provider-backed demos (need a running LLM — `ollama pull llama3.1`)
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example 02_five_line_agent
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example 06_ollama_tool_calling
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example agents_conversational
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
   cargo run -p cognis-examples --example retrieval_rag_pipeline
 ```
 
-The full demo set lives under [`examples/`](examples/) — organized by `chains/`, `agents/`, `memory/`, `models/`, `tools/`, `retrieval/`, `graphs/`, `observability/`, `resilience/`, and `parsers/`. Every example is registered in [`crates/examples/Cargo.toml`](crates/examples/Cargo.toml).
+47 curated examples live under [`examples/`](examples/) — organized by `v2/` (the numbered onboarding tour), `chains/`, `agents/`, `memory/`, `models/`, `tools/`, `retrieval/`, `graphs/`, `observability/`, `resilience/`, and `parsers/`. Every example file opens with a `What you'll learn / Why this matters / Scenario / Run with / Sample output` header so you can decide whether it's what you want before running.
 
 ## Build & test
 
