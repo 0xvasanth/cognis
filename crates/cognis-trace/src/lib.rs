@@ -42,3 +42,6 @@ pub use exporters::mock::MockExporter;
 
 pub mod prompts;
 pub use prompts::{ChatMessageTemplate, Prompt, PromptBody, PromptStore};
+
+pub mod scores;
+pub use scores::ScoreSink;
