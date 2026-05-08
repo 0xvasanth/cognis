@@ -307,9 +307,6 @@ cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ## Documentation
-
-- **[CLAUDE.md](CLAUDE.md)** — design rules, conventions, and known gotchas (the contributor's reference).
-- [docs/building-an-agent.md](docs/building-an-agent.md) — full agent walk-through.
 - API docs: [docs.rs/cognis](https://docs.rs/cognis), per-crate.
 
 ## Contributing
