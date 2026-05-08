@@ -311,6 +311,70 @@ impl HandoffStrategy for ParallelVote {
 }
 
 // ---------------------------------------------------------------------------
+// RoundRobin
+// ---------------------------------------------------------------------------
+
+/// Round-robin handoff: each `run` call picks the next agent in registration
+/// order, cycling. Useful for load distribution across agents that share
+/// the same role (e.g. "answerer" pool behind a load balancer) — every
+/// request goes to one agent only.
+///
+/// State is shared across all `run()` invocations on this strategy, so
+/// clone it (`Arc::clone(&strategy)`) if you want isolated counters.
+pub struct RoundRobin {
+    next: std::sync::atomic::AtomicUsize,
+}
+
+impl Default for RoundRobin {
+    fn default() -> Self {
+        Self {
+            next: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+}
+
+impl RoundRobin {
+    /// New with counter at 0.
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[async_trait]
+impl HandoffStrategy for RoundRobin {
+    async fn run(
+        &self,
+        agents: &[(String, Arc<Mutex<Agent>>)],
+        input: Message,
+        bus: Arc<dyn MessageBus>,
+    ) -> Result<AgentResponse> {
+        if agents.is_empty() {
+            return Err(CognisError::Configuration(
+                "RoundRobin: no agents registered".into(),
+            ));
+        }
+        let idx = self
+            .next
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            % agents.len();
+        let (id, agent) = &agents[idx];
+        bus.publish(AgentMessage {
+            from: "user".into(),
+            to: id.clone(),
+            content: input.clone(),
+            metadata: serde_json::json!({"strategy": "round_robin", "index": idx}),
+        })
+        .await?;
+        let mut a = agent.lock().await;
+        a.run(input).await
+    }
+
+    fn name(&self) -> &str {
+        "RoundRobin"
+    }
+}
+
+// ---------------------------------------------------------------------------
 // MultiAgentOrchestrator
 // ---------------------------------------------------------------------------
 
@@ -475,6 +539,36 @@ mod tests {
         let orch = MultiAgentOrchestrator::new(Sequential);
         let res = orch.run("input").await;
         assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn round_robin_cycles_through_agents() {
+        // Wrap the strategy in Arc so we can hand the same instance to
+        // multiple orchestrators sharing one counter. (Or, equivalently,
+        // run on the same orchestrator three times.)
+        let orch = MultiAgentOrchestrator::new(RoundRobin::new())
+            .add("a", agent_with_response("from-a"))
+            .add("b", agent_with_response("from-b"))
+            .add("c", agent_with_response("from-c"));
+        let r0 = orch.run("input").await.unwrap();
+        let r1 = orch.run("input").await.unwrap();
+        let r2 = orch.run("input").await.unwrap();
+        let r3 = orch.run("input").await.unwrap();
+        assert_eq!(r0.content, "from-a");
+        assert_eq!(r1.content, "from-b");
+        assert_eq!(r2.content, "from-c");
+        assert_eq!(r3.content, "from-a", "wraps back to first");
+    }
+
+    #[tokio::test]
+    async fn round_robin_publishes_routing_metadata() {
+        let orch = MultiAgentOrchestrator::new(RoundRobin::new())
+            .add("only", agent_with_response("ok"));
+        orch.run("input").await.unwrap();
+        let inbox = orch.bus().drain("only").await.unwrap();
+        assert_eq!(inbox.len(), 1);
+        let strategy = inbox[0].metadata.get("strategy").and_then(|v| v.as_str());
+        assert_eq!(strategy, Some("round_robin"));
     }
 
     #[tokio::test]

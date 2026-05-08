@@ -95,7 +95,7 @@ pub use middleware::{
 };
 pub use multi_agent::{
     AgentMessage, HandoffStrategy, InMemoryMessageBus, MessageBus, MultiAgentOrchestrator,
-    ParallelVote, Sequential, Supervisor,
+    ParallelVote, RoundRobin, Sequential, Supervisor,
 };
 pub use observers::TracingObserver;
 pub use retrievers::{
