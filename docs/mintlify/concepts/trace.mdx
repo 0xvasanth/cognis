@@ -1,0 +1,186 @@
+---
+title: "Trace"
+description: "Pluggable observability — bridge CallbackHandler events to Langfuse, LangSmith, or OpenTelemetry."
+sidebarTitle: "Trace"
+---
+
+`cognis-trace` ships LLM-aware observability. A single `TracingHandler` translates lifecycle events from `cognis_core::CallbackHandler` into typed `Span` and `Generation` records, then fans them out to one or more `TraceExporter` implementations.
+
+## What it captures
+
+<CardGroup cols={2}>
+  <Card title="Trace tree" icon="diagram-project">
+    Chains, tools, retrievers, and graph nodes nest correctly via `parent_run_id` propagation.
+  </Card>
+  <Card title="Token usage + cost" icon="dollar-sign">
+    Input/output/cache-read/cache-write tokens and structured USD cost from a price table.
+  </Card>
+  <Card title="Sessions and users" icon="users">
+    `session_id`, `user_id`, tags, environment — populated from `RunnableConfig.metadata`.
+  </Card>
+  <Card title="Prompts and scores" icon="star">
+    Pull versioned prompts from Langfuse; push numeric / categorical / boolean scores back.
+  </Card>
+</CardGroup>
+
+## Wire Langfuse
+
+<Steps>
+  <Step title="Add the dependency">
+    ```toml
+    cognis-trace = { version = "0.2", features = ["langfuse"] }
+    ```
+  </Step>
+  <Step title="Set credentials">
+    ```bash
+    export LANGFUSE_PUBLIC_KEY=pk-lf-...
+    export LANGFUSE_SECRET_KEY=sk-lf-...
+    export LANGFUSE_HOST=https://cloud.langfuse.com   # optional
+    ```
+  </Step>
+  <Step title="Build a TracingHandler">
+    ```rust
+    use std::sync::Arc;
+    use cognis_trace::{LangfuseExporter, TracingHandler};
+    use cognis::core::callbacks::HandlerObserver;
+
+    let handler = TracingHandler::builder()
+        .with_exporter(LangfuseExporter::from_env()?)
+        .with_default_pricing()
+        .build();
+    ```
+  </Step>
+  <Step title="Attach to invocations">
+    ```rust
+    use cognis::core::stream::Observer;
+
+    let observer: Arc<dyn Observer> = Arc::new(HandlerObserver(handler));
+    let cfg = RunnableConfig::default().with_observer(observer);
+
+    chain.invoke(input, cfg).await?;
+    ```
+  </Step>
+  <Step title="Drain on shutdown">
+    Call `handler.shutdown().await` before process exit so in-flight batches flush.
+  </Step>
+</Steps>
+
+## Trace metadata
+
+Use `TraceMeta` helpers to attach session, user, tags, and environment to the trace root.
+
+```rust
+use cognis_trace::{TraceMeta, meta::merge_into};
+use serde_json::Value;
+
+let metadata = [
+    TraceMeta::session("session-abc"),
+    TraceMeta::user("user-123"),
+    TraceMeta::release("v1.4.2"),
+    TraceMeta::environment("production"),
+]
+.into_iter()
+.fold(Value::Null, merge_into);
+
+let cfg = RunnableConfig::default()
+    .with_observer(observer)
+    .with_metadata(metadata)
+    .with_tag("checkout");
+```
+
+The bridge promotes these to trace-level fields when the trace root closes.
+
+## Cost tracking
+
+`TracingHandler` computes USD cost on every `on_llm_end` using a `PriceTable`. Defaults are a 2026-05 snapshot for the major providers; override per-model when your contract differs.
+
+```rust
+use cognis_trace::{ModelPrice, PriceTable, TracingHandler};
+
+let pricing = PriceTable::with_defaults();
+
+let handler = TracingHandler::builder()
+    .with_exporter(LangfuseExporter::from_env()?)
+    .with_pricing(pricing)
+    .override_price("gpt-4o", ModelPrice {
+        input: 2.50,
+        output: 10.00,
+        cache_read: 1.25,
+        cache_write: 0.0,
+    })
+    .build();
+```
+
+Costs land on each `Generation` span as `cost: { input, output, cache_read, cache_write, total }` and on the corresponding Langfuse `costDetails` field.
+
+## Prompt management
+
+Pull versioned prompts straight from Langfuse.
+
+```rust
+use cognis_trace::{LangfusePromptClient, LangfuseConfig, PromptStore};
+
+let client = LangfusePromptClient::new(LangfuseConfig::from_env()?)?;
+let prompt = client.get("greeting").await?;            // latest
+let prompt = client.get_version("greeting", 3).await?; // pinned
+let prompt = client.get_label("greeting", "production").await?;
+```
+
+`Prompt` carries `name`, `version`, `body` (text or chat), `config`, and `labels`. The bridge automatically stamps `prompt_name` and `prompt_version` on the resulting generation when you wire the prompt into your chain.
+
+## Evaluation scores
+
+Submit a numeric / categorical / boolean score for any run, in-band via the handler or out-of-band via `LangfuseScorer`.
+
+<CodeGroup>
+
+```rust In-band
+use cognis_trace::{ScoreRecord, ScoreValue};
+
+handler.record_score(ScoreRecord {
+    run_id,
+    trace_id: None,
+    session_id: None,
+    name: "novelty".into(),
+    value: ScoreValue::Numeric(0.87),
+    comment: Some("rated by eval pipeline".into()),
+});
+```
+
+```rust Out-of-band
+use cognis_trace::{LangfuseScorer, ScoreSink};
+
+let scorer = LangfuseScorer::new(LangfuseConfig::from_env()?)?;
+scorer.submit(ScoreRecord { ... }).await?;
+```
+
+</CodeGroup>
+
+## Multiple exporters
+
+Stack `Stdout` for local dev and `Langfuse` for production observability.
+
+```rust
+let handler = TracingHandler::builder()
+    .with_exporter(StdoutExporter::compact())
+    .with_exporter(LangfuseExporter::from_env()?)
+    .with_default_pricing()
+    .build();
+```
+
+Each exporter has its own bounded background batcher, so a slow Langfuse never blocks the `Stdout` path or the user's chain invocation. Failures are logged and counted in `handler.stats(name)`.
+
+<Note>
+LangSmith and OpenTelemetry exporters are on the roadmap. Until they ship, use a generic OTel collector pointed at your backend, or implement `TraceExporter` for your stack.
+</Note>
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Runnable" icon="code" href="/concepts/runnable">
+    `stream_events()` is the source of trace data.
+  </Card>
+  <Card title="Feature flags" icon="toggle-on" href="/reference/feature-flags">
+    `langfuse` is the only feature `cognis-trace` ships in v1.
+  </Card>
+</CardGroup>

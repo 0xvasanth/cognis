@@ -6,6 +6,7 @@
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
+pub mod analysis;
 pub mod audit;
 pub mod barrier;
 pub mod builder;
@@ -26,6 +27,7 @@ pub mod subgraph;
 pub(crate) mod validate;
 pub mod viz;
 
+pub use analysis::GraphAnalysis;
 pub use audit::{AuditEntry, AuditKind, AuditLog, AuditLogObserver, InMemoryAuditLog};
 pub use barrier::BarrierNode;
 pub use builder::{Graph, LinearBuilder};

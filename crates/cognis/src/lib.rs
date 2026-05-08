@@ -49,6 +49,7 @@ pub use cognis_rag::{
 // New stage-5 modules.
 pub mod agent;
 pub mod agent_bus;
+pub mod agent_events;
 pub mod backend;
 #[cfg(feature = "cache-sqlite")]
 pub mod cache_sqlite;
@@ -67,12 +68,13 @@ pub mod tools;
 pub use agent::{
     default_react_graph, default_react_graph_with_limits, Agent, AgentBuilder, AgentHealth,
     AgentLifecycle, AgentPlugin, AgentResponse, AgentState, AgentStateUpdate, Buffer,
-    ConversationMode, EntityExtractor, EntityFact, EntityMemory, FnPlugin, KnowledgeGraphMemory,
-    Memory, OnStart, SummaryBufferMemory, SummaryMemory, ThinkNode, TokenBufferMemory,
-    ToolDispatchNode, Triple, TripleExtractor, VectorMemory, Window, Workflow, WorkflowState,
-    WorkflowStateUpdate,
+    ClosurePlugin, ConversationMode, EntityExtractor, EntityFact, EntityMemory, FnPlugin,
+    HybridMemory, KnowledgeGraphMemory, LifecyclePlugin, Memory, OnStart, PluginRegistry,
+    SummaryBufferMemory, SummaryMemory, ThinkNode, TokenBufferMemory, ToolDispatchNode, Triple,
+    TripleExtractor, VectorMemory, Window, Workflow, WorkflowState, WorkflowStateUpdate,
 };
 pub use agent_bus::{AgentBus, SubscribeError, Subscription};
+pub use agent_events::{AgentEvent, AgentEventBus, EventSubscription, DEFAULT_EVENTS_TOPIC};
 pub use backend::{
     Backend, Blob, GrepHit, InMemoryStateBackend, InMemoryStorageBackend, LocalFsStorageBackend,
     MemoryBackend, SandboxedFsBackend, StateBackend, StorageBackend,
@@ -97,8 +99,8 @@ pub use middleware::{
     WorkspaceLister,
 };
 pub use multi_agent::{
-    AgentMessage, HandoffStrategy, InMemoryMessageBus, MessageBus, MultiAgentOrchestrator,
-    ParallelVote, RoundRobin, Sequential, Supervisor,
+    AgentMessage, Consensus, HandoffStrategy, Hierarchical, InMemoryMessageBus, MessageBus,
+    MultiAgentOrchestrator, ParallelVote, RoundRobin, Sequential, Supervisor,
 };
 pub use observers::TracingObserver;
 pub use retrievers::{

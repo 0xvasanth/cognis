@@ -11,6 +11,7 @@ pub mod health;
 pub mod lifecycle;
 pub mod memory;
 pub mod plugin;
+pub mod plugin_registry;
 pub mod state;
 pub mod think_node;
 pub mod tool_node;
@@ -22,11 +23,12 @@ pub use default_graph::{default_react_graph, default_react_graph_with_limits};
 pub use health::AgentHealth;
 pub use lifecycle::{AgentLifecycle, OnStart};
 pub use memory::{
-    Buffer, EntityExtractor, EntityFact, EntityMemory, KnowledgeGraphMemory, Memory,
+    Buffer, EntityExtractor, EntityFact, EntityMemory, HybridMemory, KnowledgeGraphMemory, Memory,
     SummaryBufferMemory, SummaryMemory, TokenBufferMemory, Triple, TripleExtractor, VectorMemory,
     Window,
 };
 pub use plugin::{AgentPlugin, FnPlugin};
+pub use plugin_registry::{ClosurePlugin, LifecyclePlugin, PluginRegistry};
 pub use state::{AgentState, AgentStateUpdate};
 pub use think_node::ThinkNode;
 pub use tool_node::ToolDispatchNode;
