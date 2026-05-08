@@ -23,3 +23,6 @@ pub mod cost;
 pub use cost::{default_pricing_2026_05, ModelPrice, PriceTable};
 
 pub mod parent;
+
+pub mod batch;
+pub use batch::{Batcher, BatcherConfig, BatcherStats};
