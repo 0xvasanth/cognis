@@ -40,7 +40,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -145,6 +145,9 @@ pub enum ApprovalError {
     /// [`CancellationToken`].
     #[error("approval wait cancelled")]
     Cancelled,
+    /// The registry mutex was poisoned by a panic in another thread.
+    #[error("approval registry mutex was poisoned")]
+    Poisoned,
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +172,7 @@ struct PendingEntry {
 
 impl fmt::Debug for ApprovalRegistry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let pending = self.pending.lock().unwrap();
+        let pending = self.lock_pending_recover();
         f.debug_struct("ApprovalRegistry")
             .field("pending_count", &pending.len())
             .finish()
@@ -182,13 +185,34 @@ impl ApprovalRegistry {
         Self::default()
     }
 
+    /// Lock the pending map, converting a `PoisonError` into
+    /// [`ApprovalError::Poisoned`] so callers can propagate rather than panic.
+    fn lock_pending(
+        &self,
+    ) -> std::result::Result<MutexGuard<'_, HashMap<ApprovalToken, PendingEntry>>, ApprovalError>
+    {
+        self.pending.lock().map_err(|_| ApprovalError::Poisoned)
+    }
+
+    /// Lock the pending map, recovering from poisoning by taking the inner
+    /// guard. Used by infallible read-only accessors where returning an error
+    /// would change the public API; the poisoned invariant is benign here
+    /// because the map's integrity is unaffected by a panicked writer.
+    fn lock_pending_recover(&self) -> MutexGuard<'_, HashMap<ApprovalToken, PendingEntry>> {
+        self.pending.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Register a new pending approval, returning the token and a receiver
     /// the caller should `.await` to get the decision.
+    ///
+    /// Returns [`ApprovalError::Poisoned`] if the registry mutex has been
+    /// poisoned by a panic in another thread.
     pub fn register(
         &self,
         tool_name: impl Into<String>,
         tool_input: Value,
-    ) -> (ApprovalToken, oneshot::Receiver<ApprovalDecision>) {
+    ) -> std::result::Result<(ApprovalToken, oneshot::Receiver<ApprovalDecision>), ApprovalError>
+    {
         let token = ApprovalToken::new();
         let (tx, rx) = oneshot::channel();
         let entry = PendingEntry {
@@ -196,8 +220,8 @@ impl ApprovalRegistry {
             tool_name: tool_name.into(),
             tool_input,
         };
-        self.pending.lock().unwrap().insert(token.clone(), entry);
-        (token, rx)
+        self.lock_pending()?.insert(token.clone(), entry);
+        Ok((token, rx))
     }
 
     /// Resolve a pending approval. Returns `UnknownToken` if no matching
@@ -208,9 +232,7 @@ impl ApprovalRegistry {
         decision: ApprovalDecision,
     ) -> std::result::Result<(), ApprovalError> {
         let entry = self
-            .pending
-            .lock()
-            .unwrap()
+            .lock_pending()?
             .remove(token)
             .ok_or_else(|| ApprovalError::UnknownToken(token.as_str().to_string()))?;
         // The receiver may have been dropped (e.g. the middleware was cancelled);
@@ -223,9 +245,7 @@ impl ApprovalRegistry {
 
     /// List all currently pending approvals.
     pub fn list_pending(&self) -> Vec<ApprovalRequest> {
-        self.pending
-            .lock()
-            .unwrap()
+        self.lock_pending_recover()
             .iter()
             .map(|(token, entry)| ApprovalRequest {
                 token: token.clone(),
@@ -237,18 +257,18 @@ impl ApprovalRegistry {
 
     /// Number of pending approvals.
     pub fn pending_count(&self) -> usize {
-        self.pending.lock().unwrap().len()
+        self.lock_pending_recover().len()
     }
 
     /// Whether a given token corresponds to a still-pending approval.
     pub fn is_pending(&self, token: &ApprovalToken) -> bool {
-        self.pending.lock().unwrap().contains_key(token)
+        self.lock_pending_recover().contains_key(token)
     }
 
     /// Drop all pending approvals. Any receivers awaiting resolution will
     /// observe [`ApprovalError::ResolverDropped`].
     pub fn clear(&self) {
-        self.pending.lock().unwrap().clear();
+        self.lock_pending_recover().clear();
     }
 }
 
@@ -410,7 +430,10 @@ impl Middleware for ApprovalGateMiddleware {
             return Ok(ToolGateDecision::Continue);
         }
 
-        let (token, rx) = self.registry.register(tool_name, tool_input.clone());
+        let (token, rx) = self
+            .registry
+            .register(tool_name, tool_input.clone())
+            .map_err(|e| DeepAgentError::Other(format!("approval registry: {}", e)))?;
 
         // Emit before awaiting so consumers see the pending approval even if
         // the decision is delivered synchronously from the same task.
@@ -427,7 +450,9 @@ impl Middleware for ApprovalGateMiddleware {
             Ok(d) => d,
             Err(ApprovalError::Timeout(d)) => {
                 // Cancel the pending entry so the registry stays clean.
-                let _ = self.registry.pending.lock().unwrap().remove(&token);
+                // Use the poison-recovering accessor: a stale entry is far
+                // less harmful than panicking the middleware.
+                let _ = self.registry.lock_pending_recover().remove(&token);
                 ApprovalDecision::reject(format!("approval timed out after {:?}", d))
             }
             Err(ApprovalError::ResolverDropped) => {
@@ -441,8 +466,11 @@ impl Middleware for ApprovalGateMiddleware {
                 // entry so the registry does not leak tokens, then surface a
                 // well-formed rejection so the agent loop sees a normal
                 // tool result rather than a hang.
-                let _ = self.registry.pending.lock().unwrap().remove(&token);
+                let _ = self.registry.lock_pending_recover().remove(&token);
                 ApprovalDecision::reject("cancelled")
+            }
+            Err(ApprovalError::Poisoned) => {
+                ApprovalDecision::reject("approval registry mutex was poisoned")
             }
         };
 
@@ -742,7 +770,7 @@ mod tests {
     #[tokio::test]
     async fn register_returns_working_token() {
         let registry = ApprovalRegistry::new();
-        let (token, rx) = registry.register("shell", json!({}));
+        let (token, rx) = registry.register("shell", json!({})).unwrap();
         assert!(registry.is_pending(&token));
         assert_eq!(registry.pending_count(), 1);
 
