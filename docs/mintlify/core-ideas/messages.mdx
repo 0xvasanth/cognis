@@ -1,0 +1,117 @@
+---
+title: "Messages and content"
+description: "The Message enum and ContentPart variants — the shape of every chat-style payload."
+sidebarTitle: "Messages"
+---
+
+LLMs talk in messages. Cognis models them as a closed enum so the compiler always knows which roles are possible, and a `ContentPart` enum so multimodal payloads ride alongside text without losing their type.
+
+## What it is
+
+```rust
+pub enum Message {
+    Human(HumanMessage),
+    Ai(AiMessage),
+    System(SystemMessage),
+    Tool(ToolMessage),
+}
+```
+
+Each variant carries a `content` string, plus role-specific fields:
+
+- `HumanMessage { content, parts }` — user input, optionally multimodal.
+- `AiMessage { content, tool_calls, parts }` — assistant reply, possibly with tool calls.
+- `SystemMessage { content }` — system instructions.
+- `ToolMessage { tool_call_id, content }` — the result of a tool invocation, threaded back to the matching call.
+
+## Building messages
+
+Constructors take any `impl Into<String>`.
+
+```rust
+use cognis::prelude::*;
+
+let messages = vec![
+    Message::system("You are a careful assistant."),
+    Message::human("What's 2 + 2?"),
+    Message::ai("4."),
+];
+```
+
+For tool replies inside an agent loop, the loop wires `Message::tool(call_id, content)` automatically — you only construct these by hand if you're driving the LLM yourself without an agent.
+
+## Multimodal content
+
+`HumanMessage` and `AiMessage` both carry a `parts: Vec<ContentPart>` for non-text payloads.
+
+```rust
+use cognis::prelude::*;
+use cognis_core::{ContentPart, ImageSource};
+
+let messages = vec![
+    Message::human("Describe this image:"),
+    Message::human_with_parts(
+        "",
+        vec![ContentPart::Image {
+            source: ImageSource::url("https://example.com/cat.jpg"),
+            mime: "image/jpeg".into(),
+        }],
+    ),
+];
+```
+
+The variants:
+
+| `ContentPart` | Fields |
+|---|---|
+| `Text` | `text: String` |
+| `Image` | `source: ImageSource`, `mime: String` |
+| `Audio` | `source: AudioSource`, `mime: String` |
+
+`ImageSource` and `AudioSource` are themselves enums:
+
+- `Url { url }` — pass a public URL the model can fetch.
+- `Base64 { data }` — inline payload for providers that accept it.
+
+Use the helpers: `ImageSource::url("...")`, `ImageSource::base64(data)`.
+
+## Provider serialization
+
+Each provider serializes parts into its own wire format — OpenAI's `image_url` blocks, Anthropic's `image` blocks, Gemini's `inline_data` / `file_data`. Cognis ships the conversions; you don't write them.
+
+```rust
+let part = ContentPart::Image {
+    source: ImageSource::url("https://example.com/cat.jpg"),
+    mime: "image/jpeg".into(),
+};
+let openai_json = part.to_openai();
+let anthropic_json = part.to_anthropic();
+let gemini_json = part.to_gemini();
+```
+
+The corresponding `ContentPart::from_openai`, `from_anthropic`, `from_gemini` parse provider responses back.
+
+## Reading messages
+
+A few accessors for the common fields:
+
+```rust
+let reply: Message = client.invoke(messages).await?;
+println!("{}", reply.content());        // &str — the text body
+let tools = reply.tool_calls();          // &[ToolCall]
+let parts = reply.parts();               // &[ContentPart]
+let has_calls = reply.has_tool_calls();
+```
+
+`ToolCall` carries `{ id, name, arguments: Value }`. The agent loop uses these to dispatch.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Building agents → Models" icon="plug" href="/building-agents/models">
+    Send messages through an LLM client.
+  </Card>
+  <Card title="Building agents → Tools" icon="screwdriver-wrench" href="/building-agents/tools">
+    What `tool_calls` and `Message::tool` are wired to.
+  </Card>
+</CardGroup>

@@ -1,0 +1,209 @@
+---
+title: "Tools"
+description: "Give your agent things to do — search the web, query a database, call your code. Three ways to define them, all type-safe."
+sidebarTitle: "Tools"
+---
+
+Tools are how an agent reaches outside the chat — searching the web, querying a database, running calculations, calling your domain functions. In Cognis, every tool implements the `Tool` trait. There are three idiomatic ways to write one, each more convenient than the last when you can use it.
+
+## What a tool is
+
+```rust
+#[async_trait::async_trait]
+pub trait Tool: Send + Sync {
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
+    fn args_schema(&self) -> Option<serde_json::Value>;
+    fn return_direct(&self) -> bool { false }
+    async fn _run(&self, input: ToolInput) -> Result<ToolOutput>;
+}
+```
+
+Four facts and a method:
+
+- **`name`** — what the model will type to call you.
+- **`description`** — what the model reads to decide when to call you. Make it good.
+- **`args_schema`** — JSON Schema for the arguments. The provider sends this to the model.
+- **`return_direct`** — when `true`, the tool's output becomes the final response (skips the next model turn).
+- **`_run`** — the body. Receives `ToolInput`, returns `ToolOutput`.
+
+## When to reach for which option
+
+| You have… | Use |
+|---|---|
+| A simple async function with typed inputs | `#[cognis::tool]` macro |
+| A struct with config (HTTP client, DB pool) and a typed input | `SchemaBasedTool` trait |
+| Anything more custom | Hand-written `impl Tool` |
+
+## Quick example — typed `SchemaBasedTool`
+
+The most common shape: typed `Params`, derive `JsonSchema`, implement one method.
+
+```rust
+use async_trait::async_trait;
+use cognis::prelude::*;
+use cognis_core::schemars::{self, JsonSchema};
+use cognis_llm::tools::{SchemaBasedTool, Tool};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+struct WeatherArgs {
+    /// City to look up.
+    city: String,
+    /// Either "c" or "f" — defaults to "c".
+    #[serde(default)]
+    unit: Option<String>,
+}
+
+struct WeatherTool;
+
+#[async_trait]
+impl SchemaBasedTool for WeatherTool {
+    type Params = WeatherArgs;
+    type Output = Value;
+
+    fn name(&self) -> &str { "get_weather" }
+    fn description(&self) -> &str { "Fetch current weather for a city." }
+
+    async fn execute_typed(&self, args: WeatherArgs) -> Result<Value> {
+        let unit = args.unit.unwrap_or_else(|| "c".into());
+        Ok(json!({"city": args.city, "temp": 21, "unit": unit}))
+    }
+}
+```
+
+`SchemaBasedTool` provides a blanket `Tool` impl that handles serde, validation, and the JSON Schema for you.
+
+## Quick example — hand-written `Tool`
+
+When you need control over the schema or want to handle raw `ToolInput`:
+
+```rust
+use std::sync::Arc;
+use async_trait::async_trait;
+use cognis::prelude::*;
+use cognis_core::schemars::{self, schema_for, JsonSchema};
+use cognis_llm::tools::{Tool, ToolInput, ToolOutput};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+struct SearchArgs {
+    /// The search query.
+    query: String,
+    /// Max results (default 5).
+    #[serde(default)]
+    limit: Option<u32>,
+}
+
+struct SearchTool;
+
+#[async_trait]
+impl Tool for SearchTool {
+    fn name(&self) -> &str { "search" }
+    fn description(&self) -> &str { "Search a knowledge base." }
+    fn args_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::to_value(schema_for!(SearchArgs)).unwrap())
+    }
+    async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
+        let args: SearchArgs = serde_json::from_value(input.into_json())?;
+        Ok(ToolOutput::Content(json!({
+            "results": [{"title": format!("Result for {}", args.query)}]
+        })))
+    }
+}
+```
+
+Source: [`examples/tools/derive_tool.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/tools/derive_tool.rs).
+
+## Wiring tools into an agent
+
+Tools are `Arc<dyn Tool>`. The builder accepts one or many.
+
+```rust
+use std::sync::Arc;
+use cognis::{AgentBuilder, Calculator};
+
+let mut agent = AgentBuilder::new()
+    .with_llm(client)
+    .with_tool(Arc::new(Calculator::new()))
+    .with_tool(Arc::new(SearchTool))
+    .with_system_prompt("Use tools when helpful.")
+    .build()?;
+```
+
+You can also gate which tools the model is allowed to call at runtime via [middleware](/building-agents/middleware) (`ToolAllowList`, `ToolDenyList`).
+
+## Validators
+
+When using `#[cognis::tool]` or `SchemaBasedTool`, you can declare per-field validators that emit both runtime checks *and* JSON Schema constraints:
+
+| Attribute | Effect |
+|---|---|
+| `#[schema(range(min = 0, max = 100))]` | Numeric bounds. |
+| `#[schema(length(min = 1, max = 200))]` | String / Vec length. |
+| `#[schema(pattern("^[A-Z][a-z]+$"))]` | Regex. |
+| `#[schema(enum_values("low", "medium", "high"))]` | Enum. |
+| `#[schema(format("email"))]` | JSON Schema format. |
+
+These ride on the args struct fields — the model sees them in the schema, and your tool receives validated input.
+
+## Built-in tools
+
+Cognis ships a few generally useful tools under `cognis::tools::*`:
+
+- `Calculator` — pure-Rust expression evaluator (`+ - * / % ^`, parens, unary `-`). No code execution.
+- `FilesystemTool` family — read/write/edit/list a workspace, gated by a `Backend`.
+- `HttpRequest` (feature `tools-http`) — make HTTP calls with allow-listed hosts.
+- `JsonQuery` — JMESPath-like query over JSON.
+- `PythonRepl` — sandboxed Python execution (where the runtime is available).
+- `OpenApiTool` — generate tools from an OpenAPI spec.
+- `HumanTool` — ask a human a question, return their reply.
+
+## ToolOrchestrator (no-loop DAG)
+
+When you need to call a fixed set of tools in a known DAG — not an agent loop — use `ToolOrchestrator`:
+
+```rust
+use cognis::{ExecutionPlan, ToolOrchestrator, ToolStep};
+use cognis_llm::tools::ToolInput;
+
+let orch = ToolOrchestrator::new()
+    .register(fetch_a)
+    .register(fetch_b)
+    .register(merge)
+    .with_max_concurrency(4);
+
+let plan = ExecutionPlan::new()
+    .step(ToolStep::new("a", "fetch_a", ToolInput::Text("doc-1".into())))
+    .step(ToolStep::new("b", "fetch_b", ToolInput::Text("doc-2".into())))
+    .step(ToolStep::new("m", "merge", ToolInput::Text("combine".into())).after(["a", "b"]));
+
+let result = orch.run(plan).await?;
+```
+
+Topo-sorts the DAG, runs independent steps concurrently, and skips downstream steps whose ancestors errored.
+
+## How it works
+
+- **The model never sees Rust types directly.** It sees the JSON Schema you produce. Make descriptions and field docs clear — that's the model's only signal.
+- **Tool dispatch is a node in the agent graph.** When the model emits tool calls, the dispatcher node parses arguments, runs the tool, and threads the result back as a `Message::tool` entry tied to the call id.
+- **Errors are tool-shaped.** Returning an error from `_run` becomes a `ToolMessage` with the error text — the agent sees it and can recover or apologize.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Models and providers" icon="plug" href="/building-agents/models">
+    The other half of the agent — the LLM that picks the tool.
+  </Card>
+  <Card title="Human-in-the-loop" icon="user-check" href="/building-agents/hitl">
+    Require approval before sensitive tools run.
+  </Card>
+  <Card title="Middleware" icon="layer-group" href="/building-agents/middleware">
+    `ToolAllowList`, `ToolDenyList`, `ToolRetry`, `ToolEmulator`.
+  </Card>
+  <Card title="Patterns → HITL approval" icon="grid" href="/patterns/hitl-approval">
+    A worked tool-approval flow.
+  </Card>
+</CardGroup>

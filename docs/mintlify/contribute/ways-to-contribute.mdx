@@ -1,0 +1,94 @@
+---
+title: "Ways to contribute"
+description: "Bugs, features, integrations, docs, examples — every contribution lane."
+sidebarTitle: "Ways to contribute"
+---
+
+Thanks for considering a contribution. Cognis is a young project; almost every kind of help is welcome. This page lists the most common contribution shapes and where to start with each.
+
+## Report a bug
+
+You hit something that doesn't work. Open an issue with:
+
+- The Cognis version (`cognis = "0.3.x"` or commit hash if from main).
+- A minimal reproducing example. The smaller, the faster we can fix it.
+- What you expected vs what happened.
+- Rust toolchain version (`rustc --version`).
+
+Bug reports go to [GitHub Issues](https://github.com/0xvasanth/cognis/issues). Use the Bug Report template if it's available.
+
+## Request a feature
+
+Open an issue describing:
+
+- The problem you're trying to solve.
+- The shape you'd want the API to take.
+- Why existing primitives don't cover it.
+
+For larger ideas, open a [Discussion](https://github.com/0xvasanth/cognis/discussions) first to align on direction before writing code.
+
+## Improve the docs
+
+Documentation contributions are first-class. Three flavors:
+
+- **Fix typos and rough edges** — open a PR directly.
+- **Sharpen explanations** — if a page felt confusing, rewrite the part you got stuck on. You're closer to that experience than the maintainers.
+- **Add missing pages** — propose a topic in an issue first; the docs site has a structure ([Learn / Reference / Contribute](/contribute/architecture)) that we try to keep coherent.
+
+The docs source lives at [`docs/mintlify/`](https://github.com/0xvasanth/cognis/tree/main/docs/mintlify). It's [Mintlify](https://mintlify.com) — write Markdown / MDX with Cognis-flavored conventions.
+
+## Add a provider
+
+Cognis is provider-pluggable by design. To add a new LLM provider (or vector store, embedder, checkpointer):
+
+| Adding a… | Read |
+|---|---|
+| LLM provider | [Adding a new provider](/contribute/adding-a-provider) |
+| Vector store | [Adding a new vector store](/contribute/adding-a-vector-store) |
+| Tool | [Adding a new tool](/contribute/adding-a-tool) |
+
+Each has a step-by-step. The TL;DR: implement the trait, gate behind a feature flag, add tests, add an example, update docs.
+
+## Contribute code
+
+For non-trivial changes, the workflow is:
+
+1. Open an issue or discussion describing the change.
+2. Fork, branch, implement.
+3. Run the [pre-push checklist](/contribute/development-setup#pre-push-checklist).
+4. Open a PR following the [PR guidelines](/contribute/pull-requests).
+5. Iterate on review.
+
+For tiny fixes (typos, missing imports, broken links), skip the issue and open the PR directly.
+
+## Build an integration
+
+Cognis pairs well with deployment platforms, observability tools, and frontend frameworks. If you build something that integrates Cognis (a Cognis-flavored crate, a hosted service connector, an Axum/Actix middleware), tell us — it can land on the docs site under integrations or be highlighted in releases.
+
+## Help triage
+
+Cognis maintains a small core team. Triage help is high-leverage:
+
+- Reproduce reported bugs and confirm they exist.
+- Label issues by area (`agent`, `graph`, `rag`, `trace`, `docs`).
+- Close stale duplicates with a friendly pointer.
+
+You don't need write access to do this — adding a comment with the reproduction and labels you'd suggest is genuinely useful.
+
+## Be respectful
+
+Be kind. We're building something together. Disagreement is fine; condescension and trolling aren't. See the [Code of conduct](/contribute/code-of-conduct).
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Development setup" icon="screwdriver" href="/contribute/development-setup">
+    Local build, test, and the pre-push checklist.
+  </Card>
+  <Card title="PR guidelines" icon="code-merge" href="/contribute/pull-requests">
+    Title format, description checklist, sign-off.
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/contribute/architecture">
+    Crate boundaries and design rules.
+  </Card>
+</CardGroup>

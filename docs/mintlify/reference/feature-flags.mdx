@@ -4,127 +4,137 @@ description: "Every feature flag in the workspace, what it pulls in, and where i
 sidebarTitle: "Feature flags"
 ---
 
-Cognis is feature-light by default — every external integration (HTTP providers, database backends, vector store clients) is feature-gated so the core crates compile with no network deps.
+Cognis is feature-light by default. Every external integration — providers, vector stores, checkpoint backends, observability exporters — is feature-gated so the core crates compile with no network deps. Pick what you need; pay for nothing else.
 
 ## cognis (umbrella)
 
 | Feature | Pulls in |
 |---|---|
-| `openai` | `cognis-llm/openai` — OpenAI chat + tools + structured output |
-| `anthropic` | `cognis-llm/anthropic` — Anthropic Messages API |
-| `google` | `cognis-llm/google` — Gemini |
-| `ollama` | `cognis-llm/ollama` — local Ollama |
-| `azure` | `cognis-llm/azure` — Azure OpenAI |
-| `openrouter` | `cognis-llm/openrouter` — attribution headers + extra-headers helpers |
-| `all-providers` | every provider above |
-| `pdf` | `cognis-rag/pdf` — PDF document loader |
-| `yaml` | `cognis-rag/yaml` — YAML loader |
-| `toml-loader` | `cognis-rag/toml-loader` — TOML loader |
+| `openai` (default) | OpenAI provider + embeddings |
+| `ollama` (default) | Ollama provider + embeddings |
+| `anthropic` | Anthropic Messages |
+| `google` | Gemini chat + embeddings |
+| `azure` | Azure OpenAI |
+| `voyage` | Voyage embeddings |
+| `all-providers` | Every provider above |
 | `cache-sqlite` | SQLite-backed model cache |
 | `tools-http` | HTTP request primitives for tools |
 
 ```bash
-cargo add cognis --features openai,anthropic,pdf
-cargo add cognis --features all-providers,cache-sqlite
+cargo add cognis --features anthropic,google,vectorstore-faiss
+cargo add cognis --features all-providers
 ```
+
+## cognis-core, cognis-macros
+
+These crates compile with **no** network features ever. Anything that does I/O lives in a sibling crate.
 
 ## cognis-llm
 
 | Feature | Effect |
 |---|---|
-| `openai` | `reqwest` + OpenAI client |
+| `openai` (default) | `reqwest` + OpenAI client |
+| `ollama` (default) | `reqwest` + Ollama client (no key) |
 | `anthropic` | `reqwest` + Anthropic client |
 | `google` | `reqwest` + Gemini client |
-| `ollama` | `reqwest` + Ollama client (no key) |
 | `azure` | `reqwest` + Azure OpenAI client |
-| `openrouter` | OpenAI-compatible client targeted at OpenRouter |
-| `all-providers` | every provider above |
+| `all-providers` | All of the above |
 
-Default: no provider features; the trait surface compiles offline.
+OpenRouter uses the OpenAI client with `Provider::OpenRouter`; no separate feature.
 
 ## cognis-rag
-
-### Vector stores
-
-| Feature | Backend |
-|---|---|
-| `faiss` | local FAISS index |
-| `chroma` | Chroma server |
-| `qdrant` | Qdrant server |
-| `pinecone` | Pinecone (managed) |
-| `weaviate` | Weaviate server |
 
 ### Embeddings
 
 | Feature | Provider |
 |---|---|
-| `openai` | OpenAI text-embedding-3-* |
-| `voyage` | Voyage AI |
+| `openai` (default) | OpenAI text-embedding-3-* |
+| `ollama` (default) | Local Ollama embeddings |
 | `google` | Google text-embedding-004, gemini-embedding |
+| `voyage` | Voyage AI |
+
+### Vector stores
+
+| Feature | Backend |
+|---|---|
+| `vectorstore-faiss` | Local FAISS index (no HTTP) |
+| `vectorstore-chroma` | Chroma server |
+| `vectorstore-qdrant` | Qdrant server |
+| `vectorstore-pinecone` | Pinecone (managed) |
+| `vectorstore-weaviate` | Weaviate server |
+| `all-vectorstores` | All of the above |
 
 ### Loaders
 
 | Feature | Loader |
 |---|---|
-| `pdf` | PDF |
-| `yaml` | YAML |
+| `csv-loader` | CSV |
+| `html-loader` | HTML |
+| `yaml-loader` | YAML |
 | `toml-loader` | TOML |
+| `web-loader` | HTTP fetch |
+| `pdf-loader` | PDF |
+| `all-loaders` | All loaders |
 
-`cognis-rag` ships with `InMemoryVectorStore`, `FakeEmbeddings`, `CachedEmbeddings`, `BatchedEmbeddings`, and the indexing pipeline always available.
+`InMemoryVectorStore`, `FakeEmbeddings`, `CachedEmbeddings`, `BatchedEmbeddings`, the indexing pipeline, and the in-memory record manager are always available.
 
 ## cognis-graph
 
 | Feature | Pulls in |
 |---|---|
-| `sqlite` | `sqlx/sqlite` — SQLite checkpointer |
-| `postgres` | `sqlx/postgres` — Postgres checkpointer |
+| `sqlite` | `sqlx/sqlite` for `SqliteCheckpointer` |
+| `postgres` | `sqlx/postgres` for `PostgresCheckpointer` |
+| `serializer-cbor` | CBOR-encoded checkpoint payloads |
 
-`MemoryCheckpointer` and the engine itself are always available.
+`InMemoryCheckpointer` and the engine are always available.
 
 ## cognis-trace
 
 | Feature | Pulls in |
 |---|---|
-| `stdout` | `StdoutExporter` (default) |
-| `langfuse` | `reqwest` + Langfuse exporter, prompt client, scorer |
-| `all` | every backend above |
-| `integration_tests` | enables tests that hit real services (off by default) |
-
-```toml
-cognis-trace = { version = "0.2", features = ["langfuse"] }
-```
+| `stdout` (default) | `StdoutExporter` |
+| `langfuse` | `reqwest`, `secrecy`, `base64`, plus Langfuse exporter / prompts / scorer |
+| `all` | Every exporter |
+| `integration_tests` | Tests against real services (off by default) |
 
 `MockExporter` is always built — useful in tests.
-
-## cognis-core, cognis-macros
-
-These crates compile with **no** network features ever. Anything that does I/O lives in a sibling crate.
 
 ## Picking the minimum set
 
 <Tabs>
   <Tab title="Local Ollama only">
     ```toml
-    cognis = { version = "0.2", features = ["ollama"] }
+    cognis = { version = "0.3", features = ["ollama"] }
     ```
   </Tab>
   <Tab title="OpenAI + RAG with FAISS">
     ```toml
-    cognis = { version = "0.2", features = ["openai"] }
-    cognis-rag = { version = "0.2", features = ["faiss", "openai"] }
+    cognis = { version = "0.3", features = ["openai"] }
+    cognis-rag = { version = "0.3", features = ["vectorstore-faiss", "openai"] }
     ```
   </Tab>
   <Tab title="Multi-provider with traces">
     ```toml
-    cognis = { version = "0.2", features = ["all-providers", "cache-sqlite"] }
-    cognis-trace = { version = "0.2", features = ["langfuse"] }
+    cognis = { version = "0.3", features = ["all-providers", "cache-sqlite"] }
+    cognis-trace = { version = "0.3", features = ["langfuse"] }
     ```
   </Tab>
   <Tab title="Stateful agents on Postgres">
     ```toml
-    cognis = { version = "0.2", features = ["openai"] }
-    cognis-graph = { version = "0.2", features = ["postgres"] }
-    cognis-trace = { version = "0.2", features = ["langfuse"] }
+    cognis = { version = "0.3", features = ["openai"] }
+    cognis-graph = { version = "0.3", features = ["postgres"] }
+    cognis-trace = { version = "0.3", features = ["langfuse"] }
     ```
   </Tab>
 </Tabs>
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/get-started/installation">
+    Where features live in your `Cargo.toml`.
+  </Card>
+  <Card title="Environment variables" icon="key" href="/reference/env-vars">
+    What `Client::from_env()` reads.
+  </Card>
+</CardGroup>

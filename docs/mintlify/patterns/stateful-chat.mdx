@@ -1,0 +1,124 @@
+---
+title: "Stateful chat with memory"
+description: "A multi-turn chatbot that remembers across messages — and across processes if you wire persistence."
+sidebarTitle: "Stateful chat"
+---
+
+The default agent is amnesiac: each `run` starts fresh. For chat, you want continuity — the user's name, the topic at hand, the last 10 turns. This pattern wires `SummaryBufferMemory` into the agent and stores conversation state in a graph checkpointer so a restart doesn't lose the thread.
+
+## What you'll build
+
+A chat loop where each user message goes through the same agent, the agent remembers earlier turns, and the conversation state survives process restarts.
+
+## How it works
+
+- **`stateful()`** keeps the agent's memory across `run` calls in a single process.
+- **`SummaryBufferMemory`** trims older turns into a running summary so the prompt stays bounded.
+- **A `Checkpointer`** persists the agent's underlying graph state, keyed on a `thread_id`.
+- **Resuming** is automatic — same `thread_id` on the next request, the loop picks up where it left off.
+
+## In-process version
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::AgentBuilder;
+use cognis_llm::Client;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = Client::from_env()?;
+    let memory = SummaryBufferMemory::new(client.clone(), 2000);
+
+    let mut agent = AgentBuilder::new()
+        .with_llm(client)
+        .with_system_prompt(
+            "You are a friendly assistant. Refer to the user by name once \
+             you've learned it. Keep replies to 2 sentences."
+        )
+        .with_memory(memory)
+        .stateful()
+        .build()?;
+
+    let inputs = [
+        "Hi, I'm Maya.",
+        "What's my name?",
+        "I'm planning a trip to Lisbon.",
+        "What did I just say I was planning?",
+    ];
+
+    for line in inputs {
+        let resp = agent.run(Message::human(line)).await?;
+        println!("> {}\n< {}\n", line, resp.content);
+    }
+    Ok(())
+}
+```
+
+The second turn answers "Maya" because the memory carried the first turn forward. The fourth answers "a trip to Lisbon" because the third stayed in the buffer.
+
+## Persistent across restarts
+
+To survive a process restart — common in production where the chat loop lives behind an HTTP server — persist the agent's graph state in a checkpointer keyed by a session id.
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::AgentBuilder;
+use cognis_llm::Client;
+use cognis_graph::SqliteCheckpointer;
+
+let cp = Arc::new(SqliteCheckpointer::open("./chat.db").await?);
+let client = Client::from_env()?;
+let memory = SummaryBufferMemory::new(client.clone(), 2000);
+
+let mut agent = AgentBuilder::new()
+    .with_llm(client)
+    .with_memory(memory)
+    .stateful()
+    .with_graph(default_react_graph().compile()?.with_checkpointer(cp.clone()))
+    .build()?;
+
+// Per request:
+let cfg = RunnableConfig::default().with_thread_id("user-123");
+let resp = agent.run_with_config(Message::human("hello"), cfg).await?;
+```
+
+`with_thread_id` (set on the config) tells the checkpointer which conversation this is. Same thread id on the next request → state restored.
+
+For multi-process deployments, swap `SqliteCheckpointer` for `PostgresCheckpointer` so several workers share the same store.
+
+## Picking a memory variant
+
+Different shapes for different chat profiles:
+
+| Use case | Memory |
+|---|---|
+| Short FAQ-style chat | `Window::new(20)` |
+| Long support sessions | `SummaryBufferMemory::new(client, 2000)` |
+| Customer profile that should survive sessions | `EntityMemory` + a separate persistent store |
+| Knowledge-graph-style memory across many sessions | `KnowledgeGraphMemory` |
+| Combined recency + semantic recall | `HybridMemory::new().with(Buffer::new()).with(VectorMemory::new(...))` |
+
+See [Memory](/building-agents/memory) for the full menu.
+
+## How it works
+
+- **Memory and checkpoints are different layers.** Memory shapes what the model sees on each turn; checkpoints persist the underlying graph state. You usually want both.
+- **`SummaryBufferMemory` calls the LLM** to compress older turns. Budget for that — it's a small extra cost per turn, paid only when the buffer overflows.
+- **`thread_id` is the unit of conversation.** Different users → different ids. The same user across devices → same id (with whatever auth check fits your model).
+- **Resume is exact.** The checkpointer restores the same state, including pinned system messages and the running summary.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Memory" icon="brain" href="/building-agents/memory">
+    The full memory variant catalog.
+  </Card>
+  <Card title="Checkpointing" icon="floppy-disk" href="/graph-workflows/checkpointing">
+    Persisting graph state across processes.
+  </Card>
+  <Card title="Patterns → Streaming UI" icon="grid" href="/patterns/streaming-ui">
+    Stream chat tokens to the frontend.
+  </Card>
+</CardGroup>

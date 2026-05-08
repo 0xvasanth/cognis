@@ -1,0 +1,174 @@
+---
+title: "cognis-trace"
+description: "Pluggable LLM-aware observability. Langfuse-first, OTel-friendly via custom exporters."
+sidebarTitle: "cognis-trace"
+---
+
+`cognis-trace` translates Cognis runtime events into spans, generations, and scores, then ships them to one or more exporters. Langfuse is the supported production backend; stdout and mock exporters ship for local use; LangSmith and OpenTelemetry are on the roadmap.
+
+## Crate metadata
+
+| Field | Value |
+|---|---|
+| Latest version | `0.3` |
+| docs.rs | [docs.rs/cognis-trace](https://docs.rs/cognis-trace) |
+| Repo path | [`crates/cognis-trace`](https://github.com/0xvasanth/cognis/tree/main/crates/cognis-trace) |
+| Default features | `stdout` |
+
+## Modules at a glance
+
+| Module | What |
+|---|---|
+| `handler` | `TracingHandler`, `TracingHandlerBuilder`. Implements `CallbackHandler`. |
+| `exporter` | `TraceExporter` trait. |
+| `exporters::stdout` | `StdoutExporter`, `StdoutExporter::compact()`. |
+| `exporters::langfuse` | `LangfuseExporter`, `LangfuseConfig`, `LangfusePromptClient`, `LangfuseScorer`. |
+| `cost` | `PriceTable`, `ModelPrice`. |
+| `meta` | `TraceMeta::session/user/release/environment`, `merge_into`. |
+| `span` | `Span`, `Generation`. |
+| `parent` | Parent-span tracking via `parent_run_id`. |
+| `prompts` | `Prompt`, `PromptStore`, `PromptBody`. |
+| `scores` | `ScoreSink`, `ScoreRecord`, `ScoreValue`. |
+| `batch` | `Batcher`, `BatcherConfig`. |
+
+## Key types
+
+### TracingHandler
+
+```rust
+pub struct TracingHandler { /* … */ }
+
+impl TracingHandler {
+    pub fn builder() -> TracingHandlerBuilder;
+    pub fn record_score(&self, score: ScoreRecord);
+    pub fn stats(&self, exporter_name: &str) -> Option<(usize, usize, usize)>;
+    pub async fn shutdown(self);
+}
+```
+
+Implements `CallbackHandler`. Use as an `Observer` via `cognis_core::HandlerObserver(handler)`.
+
+### TracingHandlerBuilder
+
+| Method | Purpose |
+|---|---|
+| `with_exporter<E: TraceExporter + 'static>(e: E)` | Append an exporter. Multiple are fine. |
+| `with_default_pricing()` | Load the dated default price table. |
+| `with_pricing(PriceTable)` | Custom price table. |
+| `override_price(model, ModelPrice)` | Single-model override. |
+| `with_batcher_config(BatcherConfig)` | Tune batching. |
+| `build()` | `TracingHandler`. Spawns one batcher per exporter. |
+
+### Exporters
+
+```rust
+// Stdout (always available; default feature):
+let exp = StdoutExporter::compact();   // or StdoutExporter::default()
+
+// Langfuse (feature `langfuse`):
+let exp = LangfuseExporter::from_env()?;
+let exp = LangfuseExporter::new(LangfuseConfig::from_env()?)?;
+
+// Mock (testing):
+let exp = MockExporter::new();
+```
+
+`TraceExporter`:
+
+```rust
+#[async_trait]
+pub trait TraceExporter: Send + Sync {
+    fn name(&self) -> &str;
+    async fn export_spans(&self, spans: Vec<Span>) -> Result<(), TraceError>;
+    async fn export_scores(&self, scores: Vec<ScoreRecord>) -> Result<(), TraceError>;
+}
+```
+
+Implement for LangSmith, OTel, your own backend.
+
+### Cost
+
+```rust
+pub struct ModelPrice {
+    pub input: f64,        // USD per 1M tokens
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_write: f64,
+}
+
+pub struct PriceTable { /* … */ }
+
+impl PriceTable {
+    pub fn with_defaults() -> Self;
+    pub fn insert(&mut self, model: impl Into<String>, price: ModelPrice);
+}
+```
+
+### TraceMeta
+
+```rust
+impl TraceMeta {
+    pub fn session(id: impl Into<String>) -> (&'static str, Value);
+    pub fn user(id: impl Into<String>) -> (&'static str, Value);
+    pub fn release(s: impl Into<String>) -> (&'static str, Value);
+    pub fn environment(s: impl Into<String>) -> (&'static str, Value);
+}
+
+pub fn merge_into(metadata: Value, kv: (&str, Value)) -> Value;
+```
+
+### Langfuse prompt client
+
+```rust
+pub struct LangfusePromptClient { /* … */ }
+
+impl LangfusePromptClient {
+    pub fn new(cfg: LangfuseConfig) -> Result<Self, TraceError>;
+    pub async fn get(&self, name: &str) -> Result<Prompt, TraceError>;
+    pub async fn get_version(&self, name: &str, version: u32) -> Result<Prompt, TraceError>;
+    pub async fn get_label(&self, name: &str, label: &str) -> Result<Prompt, TraceError>;
+}
+```
+
+### Scores
+
+```rust
+pub enum ScoreValue {
+    Numeric(f32),
+    Categorical(String),
+    Boolean(bool),
+}
+
+pub struct ScoreRecord {
+    pub run_id: Uuid,
+    pub trace_id: Option<String>,
+    pub session_id: Option<String>,
+    pub name: String,
+    pub value: ScoreValue,
+    pub comment: Option<String>,
+}
+
+#[async_trait]
+pub trait ScoreSink: Send + Sync {
+    async fn submit(&self, record: ScoreRecord) -> Result<(), TraceError>;
+}
+```
+
+`LangfuseScorer::new(LangfuseConfig::from_env()?)?` is a built-in `ScoreSink`.
+
+## Feature flags
+
+| Feature | Pulls in |
+|---|---|
+| `stdout` | `StdoutExporter` (default). |
+| `langfuse` | `reqwest`, `secrecy`, `base64`, plus the Langfuse exporter / prompt client / scorer. |
+| `all` | Every exporter. |
+| `integration_tests` | Tests that hit real services (off by default). |
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Trace with Langfuse" icon="chart-line" href="/observability/langfuse">User guide.</Card>
+  <Card title="Cost tracking" icon="dollar-sign" href="/observability/cost">Pricing.</Card>
+  <Card title="Prompts and scores" icon="star" href="/observability/prompts-scores">Versioned prompts and eval scores.</Card>
+</CardGroup>

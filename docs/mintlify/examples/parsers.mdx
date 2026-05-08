@@ -1,0 +1,40 @@
+---
+title: "Parsers"
+description: "Output-fixing and retry parsers for robust structured output."
+sidebarTitle: "Parsers"
+---
+
+Parser examples show how to harden structured output when models occasionally drift off the JSON contract. Sources under [`examples/parsers/`](https://github.com/0xvasanth/cognis/tree/main/examples/parsers).
+
+| Name | Topic | Source |
+|---|---|---|
+| `parsers_fixing` | `OutputFixingParser` — re-prompt to repair | [src](https://github.com/0xvasanth/cognis/blob/main/examples/parsers/fixing_parser.rs) |
+| `parsers_retry` | `RetryParser` — retry the original input | [src](https://github.com/0xvasanth/cognis/blob/main/examples/parsers/retry_parser.rs) |
+
+## How to run
+
+```bash
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example parsers_fixing
+
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example parsers_retry
+```
+
+## When to use which
+
+- **`OutputFixingParser`** — when the model is *capable* of valid JSON but slipped this time. Cheaper: one repair attempt with the parse error in the prompt.
+- **`RetryParser`** — when the original prompt is the problem and the fix needs the original context. More expensive but more robust.
+
+In production, layer them: `RetryParser::with_retries(OutputFixingParser::new(inner, fixer), 3)`.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Structured output" icon="brackets-curly" href="/building-agents/structured-output">
+    The user guide for parsers and recovery strategies.
+  </Card>
+  <Card title="Examples → Chains" icon="link" href="/examples/chains">
+    `chains_structured_parsing` shows the parsers in a chain.
+  </Card>
+</CardGroup>

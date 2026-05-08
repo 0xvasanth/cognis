@@ -1,0 +1,169 @@
+---
+title: "Security"
+description: "PII redaction, tool deny-lists, SSRF protection, sandboxing. Patterns for keeping an LLM app from making you the news."
+sidebarTitle: "Security"
+---
+
+LLMs are creative; some of their creativity gets you sued. This page covers the production patterns for limiting blast radius: redacting PII before it leaves your process, restricting which tools the model may call, protecting against SSRF when tools fetch URLs, and running the riskiest tools in sandboxes.
+
+## Threat surface
+
+Three categories of risk you can mitigate at the framework level:
+
+| Risk | Mitigation |
+|---|---|
+| Sensitive data leaving your process in prompts | `PiiRedactor` / `RegexRedactor` middleware |
+| Model calling tools you didn't intend | `ToolAllowList` / `ToolDenyList` / approver |
+| Tools fetching URLs they shouldn't (SSRF, internal networks) | SSRF-protected HTTP client, allow-listed hosts |
+| Tools executing arbitrary code | Sandbox `Backend`s, `PythonRepl` with restricted env |
+
+The framework provides hooks; *what* counts as PII or *which* tools are allowed is your call.
+
+## PII redaction
+
+`PiiRedactor` masks known PII patterns (emails, phone numbers, credit-card-like sequences, common identifiers) before any prompt leaves Cognis:
+
+```rust
+use cognis::middleware::PiiRedactor;
+
+let agent = AgentBuilder::new()
+    .with_llm(client)
+    .middleware(PiiRedactor::default())
+    // …
+    .build()?;
+```
+
+For domain-specific patterns, `RegexRedactor` accepts your own patterns:
+
+```rust
+use cognis::middleware::RegexRedactor;
+
+let redactor = RegexRedactor::new()
+    .add_pattern(r"\bACCT-\d{10}\b", "<ACCOUNT>")
+    .add_pattern(r"\bSSN-\d{3}-\d{2}-\d{4}\b", "<SSN>");
+
+let agent = AgentBuilder::new()
+    .with_llm(client)
+    .middleware(redactor)
+    // …
+    .build()?;
+```
+
+Combine — `PiiRedactor` for the obvious, `RegexRedactor` for your own patterns. Order doesn't matter much; both run before the request hits the wire.
+
+## Tool deny-lists and allow-lists
+
+Restrict which tools the agent may call at runtime:
+
+```rust
+use cognis::middleware::{ToolAllowList, ToolDenyList};
+
+// Belt:
+let agent = AgentBuilder::new()
+    .with_llm(client)
+    .with_tools(my_tools)
+    .middleware(ToolAllowList::new(vec!["search", "calculator"]))
+    .build()?;
+
+// Suspenders:
+let agent = AgentBuilder::new()
+    .with_llm(client)
+    .with_tools(my_tools)
+    .middleware(ToolDenyList::new(vec!["execute_shell", "delete_account"]))
+    .build()?;
+```
+
+Why two? Defense in depth. Allow-lists are enumerable from the registered tools (model can't call what's not registered), but deny-lists guard against accidental future registrations.
+
+`LimitTools::new(n)` caps how many tool definitions are sent in any single model call — useful when you have a large tool registry and want the model to focus.
+
+## Human-in-the-loop for the riskiest tools
+
+For actions that should never run unattended — moving money, sending email, deleting data — use [HITL approval](/patterns/hitl-approval). Even with allow-lists, an `Approver` ensures every sensitive call faces a human first.
+
+## SSRF protection
+
+Tools that fetch URLs are SSRF-prone. The HTTP tool primitives in `cognis::tools::http` (feature `tools-http`) protect against:
+
+- requests to internal IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
+- requests to link-local addresses (`169.254.0.0/16`)
+- requests to localhost (`127.0.0.0/8`, `::1`)
+- redirect chains that escape an allow-listed host
+
+By default, internal addresses are blocked. Configure an explicit allow-list when you need to reach internal services:
+
+```rust
+use cognis::tools::http::HttpTool;
+
+let tool = HttpTool::builder()
+    .allow_host("api.example.com")
+    .allow_host("api.internal.example.com")
+    .build()?;
+```
+
+Source pattern: [`examples/resilience/ssrf_protection.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/ssrf_protection.rs).
+
+## Sandboxing tool execution
+
+For tools that run code (Python, shell), use a sandbox `Backend`. The agent reads / writes through the backend; the sandbox enforces FS and network limits.
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::SandboxedFsBackend;
+
+let backend: Arc<dyn Backend> = Arc::new(
+    SandboxedFsBackend::new("./agent-workspace")?
+        .with_path_allow_list(["./agent-workspace/scratch"])
+);
+
+let agent = AgentBuilder::new()
+    .with_llm(client)
+    .with_filesystem(backend)
+    // …
+    .build()?;
+```
+
+Use this when:
+
+- The agent writes files (you don't want it to write outside `./scratch`).
+- The agent runs shell or Python (you don't want it touching `~/.ssh`).
+
+For full process isolation (Docker, Firecracker, gVisor), implement a custom `Backend` that shells out to your isolation provider.
+
+## Output filtering
+
+Models sometimes emit content that shouldn't go to users — internal reasoning, system-prompt leaks, training-data slips. For high-risk applications:
+
+- **Strip CoT before sending to the user.** Reasoning models emit `<thinking>` blocks; filter them out.
+- **Run a moderation pass.** Use a smaller, fast model to classify the output before display.
+- **Cap message length.** `CapMessageLength` middleware truncates if a runaway loop produces a megabyte of text.
+
+## Prompt injection
+
+Cognis can't fully prevent prompt injection — that's an open problem in the field. But you can shrink the surface:
+
+- **Don't put untrusted text in the system prompt.** System prompts should be your own.
+- **Quote untrusted input.** Wrap user input in clearly delimited blocks ("USER MESSAGE START / END") so the model has a chance to recognize boundaries.
+- **Restrict tool actions for untrusted contexts.** A user-facing chat agent should not have a `delete_account` tool.
+
+## How it works
+
+- **Middleware runs in the agent loop, before each LLM call.** PII redaction sees the rendered prompt; tool gates see the model's tool calls.
+- **Approvers run between the model's reply and tool dispatch.** The model can't bypass them; the dispatcher always asks first.
+- **Backends mediate file operations.** Sandboxed implementations refuse paths outside the allow-list; the agent gets an error it can recover from.
+- **SSRF protection is in the HTTP client, not the framework.** Bring your own client if you need different rules.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Patterns → HITL approval" icon="grid" href="/patterns/hitl-approval">
+    Approval workflow for sensitive tools.
+  </Card>
+  <Card title="Middleware" icon="layer-group" href="/building-agents/middleware">
+    Full catalog including `EditPolicy` and `WorkspaceLister`.
+  </Card>
+  <Card title="Going to production" icon="rocket" href="/production/going-to-production">
+    Deploying with these defaults on.
+  </Card>
+</CardGroup>

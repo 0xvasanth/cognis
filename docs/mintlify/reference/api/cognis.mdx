@@ -1,0 +1,84 @@
+---
+title: "cognis"
+description: "Umbrella crate. Re-exports the foundation, LLM, RAG, and graph layers, plus the agent layer."
+sidebarTitle: "cognis"
+---
+
+The umbrella crate. Most apps depend on this and write `use cognis::prelude::*;`. It re-exports the four sibling capability crates and adds the agent layer (builder, multi-agent orchestration, memory, middleware, built-in tools, observers, eval).
+
+## Crate metadata
+
+| Field | Value |
+|---|---|
+| Latest version | `0.3` |
+| docs.rs | [docs.rs/cognis](https://docs.rs/cognis) |
+| Repo path | [`crates/cognis`](https://github.com/0xvasanth/cognis/tree/main/crates/cognis) |
+| Default features | `openai`, `ollama` |
+
+## What's exported
+
+| Re-exported from | Path |
+|---|---|
+| `cognis-core` | `cognis::cognis_core::*` (the crate) plus flat top-level (e.g. `cognis::Message`, `cognis::Runnable`, `cognis::RunnableConfig`, `cognis::Event`, `cognis::Observer`). |
+| `cognis-graph` | `cognis::cognis_graph::*` plus `cognis::Graph`, `cognis::node_fn`, `cognis::Goto`, `cognis::NodeOut`, `cognis::GraphState`, `cognis::Checkpointer`, `cognis::InMemoryCheckpointer`, `cognis::CompiledGraph`. |
+| `cognis-llm` | `cognis::cognis_llm::*` plus `cognis::Client`, `cognis::Tool`, `cognis::ToolDefinition`, `cognis::ToolInput`, `cognis::ToolOutput`, `cognis::ToolRegistry`. |
+| `cognis-rag` | `cognis::cognis_rag::*` plus `cognis::Document`, `cognis::Embeddings`, `cognis::InMemoryVectorStore`, `cognis::VectorStore`, `cognis::SearchResult`, retrievers, transformers. |
+
+## What lives in the umbrella itself
+
+| Module | What |
+|---|---|
+| `agent` | `AgentBuilder`, `Agent`, `AgentResponse`, `AgentState`, `default_react_graph`, lifecycle, plugins. |
+| `agent_bus` | `AgentBus`, `Subscription`, `SubscribeError`. |
+| `agent_events` | `AgentEvent`, `AgentEventBus`, `EventSubscription`, `DEFAULT_EVENTS_TOPIC`. |
+| `backend` | `Backend`, `InMemoryStorageBackend`, `LocalFsStorageBackend`, `SandboxedFsBackend`, `MemoryBackend`. |
+| `eval` | `EvaluationFramework`, `EvaluationPipeline`, `EvalCase`, `Scorer`, `ScoreContext`. |
+| `history` | Conversation persistence helpers. |
+| `middleware` | The full middleware catalog (see [Middleware](/building-agents/middleware)). |
+| `multi_agent` | `MultiAgentOrchestrator`, `Sequential`, `Supervisor`, `ParallelVote`, `RoundRobin`, `HandoffStrategy`. |
+| `observers` | `TracingObserver` — stdout-friendly observer for local debugging. |
+| `presets` | Out-of-the-box agent recipes. |
+| `retrievers` | LLM-driven retrievers (multi-query expansion, contextual compression). |
+| `session` | `Session`, `SessionStore`, `InMemorySessionStore`. |
+| `skills` | Reusable agent skills. |
+| `telemetry` | Lightweight metrics. |
+| `tools` | Built-in tools — `Calculator`, `FilesystemTool`, `HttpRequest`, `JsonQuery`, `OpenApiTool`, `PythonRepl`, `HumanTool`. Plus `ToolOrchestrator`, `ExecutionPlan`, `ToolStep`. |
+
+## prelude
+
+`use cognis::prelude::*;` brings in:
+
+- The umbrella's flat top-level re-exports.
+- `Distance`, `Embeddings`, `InMemoryVectorStore`, `SearchResult`, `VectorStore`.
+- `async_trait::async_trait`.
+- The `RunnableExt` trait so `pipe`, `with_max_retries`, `with_timeout`, etc. are in scope.
+- Common memory variants and their constructors.
+
+If something feels like it should be importable, try `cognis::prelude` first.
+
+## Feature flags
+
+| Feature | Pulls in |
+|---|---|
+| `openai` | OpenAI provider in `cognis-llm`, OpenAI embeddings in `cognis-rag`. |
+| `anthropic` | Anthropic provider. |
+| `google` | Google provider + embeddings. |
+| `ollama` | Ollama provider + embeddings (default). |
+| `azure` | Azure OpenAI provider. |
+| `voyage` | Voyage embeddings. |
+| `all-providers` | All of the above. |
+| `tools-http` | HTTP tool primitives. |
+| `cache-sqlite` | SQLite-backed cache. |
+
+See [Feature flags](/reference/feature-flags) for the full table.
+
+## See also
+
+<CardGroup cols={3}>
+  <Card title="cognis-core" icon="cube" href="/reference/api/cognis-core">Foundation crate.</Card>
+  <Card title="cognis-llm" icon="plug" href="/reference/api/cognis-llm">LLM clients & providers.</Card>
+  <Card title="cognis-rag" icon="database" href="/reference/api/cognis-rag">RAG building blocks.</Card>
+  <Card title="cognis-graph" icon="diagram-project" href="/reference/api/cognis-graph">Graph engine.</Card>
+  <Card title="cognis-trace" icon="chart-line" href="/reference/api/cognis-trace">Observability.</Card>
+  <Card title="cognis-macros" icon="wand-magic-sparkles" href="/reference/api/cognis-macros">Proc macros.</Card>
+</CardGroup>

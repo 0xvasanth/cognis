@@ -1,0 +1,144 @@
+---
+title: "Quickstart"
+description: "Build a tool-calling agent in five minutes."
+sidebarTitle: "Quickstart"
+---
+
+This guide walks you through building your first Cognis agent — a small assistant that can do arithmetic by calling a `Calculator` tool. By the end you'll have a binary that runs against any of seven LLM providers, switching with a single environment variable.
+
+## Prerequisites
+
+- Rust 1.75 or newer.
+- An API key from a model provider, **or** a local [Ollama](https://ollama.com) install (no key required).
+
+## Step 1 — Add cognis
+
+```toml Cargo.toml
+[dependencies]
+cognis = { version = "0.3", features = ["openai", "ollama"] }
+tokio = { version = "1", features = ["full"] }
+```
+
+The `openai` and `ollama` features come on by default. Enable other providers with `anthropic`, `google`, `azure`, `openrouter`, or take everything with `all-providers`.
+
+## Step 2 — Set credentials
+
+`Client::from_env()` reads `COGNIS_PROVIDER` and a matching `COGNIS_<PROVIDER>_API_KEY` (and optionally `COGNIS_<PROVIDER>_MODEL`).
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```bash
+    export COGNIS_PROVIDER=openai
+    export COGNIS_OPENAI_API_KEY=sk-...
+    export COGNIS_OPENAI_MODEL=gpt-4o-mini   # optional
+    ```
+  </Tab>
+  <Tab title="Anthropic">
+    ```bash
+    export COGNIS_PROVIDER=anthropic
+    export COGNIS_ANTHROPIC_API_KEY=sk-ant-...
+    export COGNIS_ANTHROPIC_MODEL=claude-sonnet-4   # optional
+    ```
+  </Tab>
+  <Tab title="Google">
+    ```bash
+    export COGNIS_PROVIDER=google
+    export COGNIS_GOOGLE_API_KEY=...
+    export COGNIS_GOOGLE_MODEL=gemini-2.0-flash    # optional
+    ```
+  </Tab>
+  <Tab title="Ollama (local)">
+    No key needed — make sure `ollama serve` is running with the model pulled.
+    ```bash
+    ollama pull llama3.1
+    export COGNIS_PROVIDER=ollama
+    export COGNIS_OLLAMA_MODEL=llama3.1
+    ```
+  </Tab>
+  <Tab title="Azure">
+    ```bash
+    export COGNIS_PROVIDER=azure
+    export COGNIS_AZURE_API_KEY=...
+    export COGNIS_AZURE_ENDPOINT=https://your-resource.openai.azure.com
+    export COGNIS_AZURE_DEPLOYMENT=gpt-4o-prod
+    export COGNIS_AZURE_API_VERSION=2024-08-06
+    ```
+  </Tab>
+  <Tab title="OpenRouter">
+    ```bash
+    export COGNIS_PROVIDER=openrouter
+    export COGNIS_OPENROUTER_API_KEY=...
+    export COGNIS_OPENROUTER_MODEL=anthropic/claude-sonnet-4
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+Cognis never reads `.env` files. Use your shell, `direnv`, or `envchain` — see [Installation](/get-started/installation#set-credentials) for a recommended setup.
+</Note>
+
+## Step 3 — Write the agent
+
+```rust src/main.rs
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::{AgentBuilder, Calculator};
+use cognis_llm::Client;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = Client::from_env()?;
+
+    let mut agent = AgentBuilder::new()
+        .with_llm(client)
+        .with_tool(Arc::new(Calculator::new()))
+        .with_system_prompt(
+            "You are a math assistant. Use the calculator tool for any \
+             arithmetic. Always state the final answer.",
+        )
+        .with_max_iterations(4)
+        .build()?;
+
+    let resp = agent.run(Message::human("What is 23 * 17 + 4?")).await?;
+    println!("{}", resp.content);
+    Ok(())
+}
+```
+
+```bash
+cargo run
+```
+
+You should see something like `23 * 17 + 4 = 395`.
+
+## How it works
+
+Behind the scenes, `AgentBuilder` compiled a small `Graph<AgentState>` and `agent.run` walked it:
+
+- **The model decided to call a tool.** The system prompt told it `calculator` exists; the user asked an arithmetic question; the model emitted a tool call.
+- **The tool dispatcher ran the call.** `Calculator` parsed the expression and returned the number.
+- **The model saw the result and produced a final answer.** No more tool calls, so the loop terminated.
+- **Iteration limits kicked in if needed.** `with_max_iterations(4)` capped the round-trips. Hit it, and the loop returns the last assistant message even if more tool calls were pending.
+
+The response object — `AgentResponse` — carries `content` (the final string) and `messages` (the full transcript), so you can replay or display the reasoning.
+
+## What's next
+
+<CardGroup cols={2}>
+  <Card title="Add memory" icon="brain" href="/building-agents/memory">
+    Make the agent remember earlier turns across calls.
+  </Card>
+  <Card title="Try a real tool" icon="screwdriver-wrench" href="/building-agents/tools">
+    Define your own `Tool` impl with typed arguments and JSON Schema.
+  </Card>
+  <Card title="Switch to multi-agent" icon="people-arrows" href="/building-agents/multi-agent">
+    Hand off between specialized agents with Sequential, Supervisor, ParallelVote, or RoundRobin.
+  </Card>
+  <Card title="Run a Pattern" icon="grid" href="/patterns/research-assistant">
+    Full worked applications: research, code Q&A, debate, more.
+  </Card>
+</CardGroup>
+
+<Tip>
+Want to see the agent's planning and tool calls in real time? Wire up [observability](/observability/callbacks) — three lines and you're streaming events to stdout, Langfuse, or your own observer.
+</Tip>

@@ -1,0 +1,179 @@
+---
+title: "Embeddings and vector stores"
+description: "Turn text into vectors, store them, search them. Six vector stores, four embedding providers, one trait."
+sidebarTitle: "Embeddings & stores"
+---
+
+Embeddings are how RAG turns text into something a computer can compare. A vector store remembers them and answers similarity queries. Cognis has both pieces behind clean traits, with multiple implementations of each — pick the one that fits your scale and operational footprint.
+
+## What an embedder does
+
+```rust
+pub trait Embeddings: Send + Sync {
+    async fn embed_documents(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>>;
+    async fn embed_query(&self, text: String) -> Result<Vec<f32>>;
+    fn dimensions(&self) -> Option<usize>;
+    fn model(&self) -> &str;
+}
+```
+
+Two methods because production embedders often treat documents and queries differently — you can prepend role markers, tune normalization, or call a smaller model for queries.
+
+## Pick an embedder
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```rust
+    use cognis_rag::OpenAIEmbeddings;
+
+    // Quick:
+    let embed = OpenAIEmbeddings::new(std::env::var("OPENAI_API_KEY")?);
+
+    // Configurable:
+    let embed = OpenAIEmbeddings::builder()
+        .api_key(std::env::var("OPENAI_API_KEY")?)
+        .model("text-embedding-3-large")
+        .build()?;
+    ```
+    Feature: `cognis-rag/openai`.
+  </Tab>
+  <Tab title="Google">
+    ```rust
+    use cognis_rag::GoogleEmbeddings;
+
+    let embed = GoogleEmbeddings::builder()
+        .api_key(std::env::var("GOOGLE_API_KEY")?)
+        .model("text-embedding-004")
+        .build()?;
+    ```
+    Feature: `cognis-rag/google`.
+  </Tab>
+  <Tab title="Voyage">
+    ```rust
+    use cognis_rag::VoyageEmbeddings;
+
+    let embed = VoyageEmbeddings::builder()
+        .api_key(std::env::var("VOYAGE_API_KEY")?)
+        .model("voyage-3")
+        .build()?;
+    ```
+    Feature: `cognis-rag/voyage`. Often best-in-class for retrieval quality.
+  </Tab>
+  <Tab title="Ollama (local)">
+    ```rust
+    use cognis_rag::OllamaEmbeddings;
+
+    let embed = OllamaEmbeddings::new("nomic-embed-text");
+    ```
+    Feature: `cognis-rag/ollama`. No key, runs against local Ollama.
+  </Tab>
+</Tabs>
+
+## Wrappers
+
+You'll usually wrap your real embedder once or twice:
+
+| Wrapper | Why |
+|---|---|
+| `CachedEmbeddings` | Hash-keyed cache so re-indexing the same chunk is free. |
+| `BatchedEmbeddings` | Batch many calls into provider-friendly windows. Honors rate limits. |
+| `EmbeddingsRouter` (`FnRouter`, `LengthRouter`) | Route different docs to different embedders — e.g., short queries to a fast model, long passages to a quality model. |
+| `FakeEmbeddings::new(dim)` | Deterministic vectors for tests. No network. |
+
+```rust
+use std::sync::Arc;
+use cognis_rag::{BatchedEmbeddings, CachedEmbeddings, Embeddings};
+
+let raw = OpenAIEmbeddings::new(key);
+let cached = CachedEmbeddings::new(raw);
+let batched = BatchedEmbeddings::new(cached).with_batch_size(96);
+let embed: Arc<dyn Embeddings> = Arc::new(batched);
+```
+
+## Pick a vector store
+
+| Store | Hosted? | Feature | When to use |
+|---|---|---|---|
+| `InMemoryVectorStore` | no | always | Tests, prototypes, ≤ 100k chunks. |
+| `FaissVectorStore` | local | `vectorstore-faiss` | Local production, no external service. |
+| `ChromaVectorStore` | hosted | `vectorstore-chroma` | Self-hosted Chroma server. |
+| `QdrantVectorStore` | hosted | `vectorstore-qdrant` | Production-grade, fast. |
+| `PineconeVectorStore` | hosted | `vectorstore-pinecone` | Managed cloud. |
+| `WeaviateVectorStore` | hosted | `vectorstore-weaviate` | When you also need symbolic / hybrid search. |
+
+All implement `VectorStore`:
+
+```rust
+pub trait VectorStore: Send + Sync {
+    async fn add_texts(&mut self, texts: Vec<String>, ids: Option<Vec<String>>) -> Result<Vec<String>>;
+    async fn add_vectors(&mut self, vectors: Vec<(String, Vec<f32>, HashMap<String, Value>)>) -> Result<()>;
+    async fn similarity_search(&self, query: &str, k: usize) -> Result<Vec<SearchResult>>;
+    async fn similarity_search_by_vector(&self, vector: &[f32], k: usize) -> Result<Vec<SearchResult>>;
+    async fn similarity_search_with_filter(&self, query: &str, k: usize, filter: Filter) -> Result<Vec<SearchResult>>;
+    async fn delete(&mut self, ids: Vec<String>) -> Result<()>;
+}
+```
+
+## Quick example — in-memory
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis_rag::{
+    Document, Embeddings, FakeEmbeddings, InMemoryVectorStore,
+    RecursiveCharSplitter, TextSplitter, VectorStore,
+};
+
+let docs = vec![
+    Document::new("Cognis is a Rust LLM framework."),
+    Document::new("cognisgraph offers a StateGraph engine."),
+    Document::new("cognis-rag bundles embeddings, vector stores, and retrievers."),
+];
+let chunks = RecursiveCharSplitter::new().with_chunk_size(120).split_all(&docs);
+
+let emb: Arc<dyn Embeddings> = Arc::new(FakeEmbeddings::new(32));
+let mut store = InMemoryVectorStore::new(emb);
+let texts: Vec<_> = chunks.iter().map(|c| c.content.clone()).collect();
+store.add_texts(texts, None).await?;
+
+let hits = store.similarity_search("What does cognis-rag include?", 2).await?;
+for h in hits {
+    println!("score={:.3}  {}", h.score, h.text);
+}
+```
+
+`SearchResult` carries `{ id, text, score, metadata }`. Score is provider-specific (cosine similarity for most).
+
+## Filtered search
+
+Vector stores support metadata filters when their backend does:
+
+```rust
+use cognis_rag::Filter;
+
+let filter = Filter::eq("section", "intro");
+let hits = store.similarity_search_with_filter("…", 5, filter).await?;
+```
+
+`Filter` is a small DSL — `eq`, `ne`, `in`, `not_in`, plus `and`/`or` combinators. The store translates it to its native query language.
+
+## How it works
+
+- **Embedders are stateless.** They turn text into floats. Wrappers add memory, batching, routing.
+- **Vector stores own state.** That's why they take `&mut self` for mutations. Wrap with `Arc<RwLock<…>>` to share between tasks (the indexing pipeline does this).
+- **Embeddings are not interchangeable.** A query embedded with model A can't be searched against vectors stored with model B. Always re-index when you change embedders.
+- **Dimension mismatches are caught at runtime.** `dimensions()` lets you cross-check before persistence layouts go wrong.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Retrievers" icon="magnifying-glass" href="/building-rag/retrievers">
+    Turn a vector store into a query interface.
+  </Card>
+  <Card title="Indexing pipeline" icon="arrows-rotate" href="/building-rag/indexing">
+    Keep stores in sync with sources.
+  </Card>
+  <Card title="Reference → cognis-rag" icon="book" href="/reference/api/cognis-rag">
+    Full method signatures and feature flags.
+  </Card>
+</CardGroup>

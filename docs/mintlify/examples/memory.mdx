@@ -1,0 +1,42 @@
+---
+title: "Memory"
+description: "Buffer, Window, TokenBuffer, SummaryBuffer, Entity, KnowledgeGraph — side by side."
+sidebarTitle: "Memory"
+---
+
+Memory examples compare the variants and show how each shapes what the model sees. Sources under [`examples/memory/`](https://github.com/0xvasanth/cognis/tree/main/examples/memory).
+
+| Name | Topic | Source |
+|---|---|---|
+| `memory_types` | Side-by-side variant comparison | [src](https://github.com/0xvasanth/cognis/blob/main/examples/memory/memory_types.rs) |
+| `memory_agent` | Memory wired into an agent | [src](https://github.com/0xvasanth/cognis/blob/main/examples/memory/agent_memory.rs) |
+| `memory_conversation` | Multi-turn conversation memory | [src](https://github.com/0xvasanth/cognis/blob/main/examples/memory/conversation_memory.rs) |
+| `memory_summary_buffer` | `SummaryBufferMemory` with token budget | [src](https://github.com/0xvasanth/cognis/blob/main/examples/memory/summary_buffer_memory.rs) |
+| `memory_entity` | `EntityMemory` for entity tracking | [src](https://github.com/0xvasanth/cognis/blob/main/examples/memory/entity_memory.rs) |
+| `memory_knowledge_graph` | `KnowledgeGraphMemory` triple store | [src](https://github.com/0xvasanth/cognis/blob/main/examples/memory/knowledge_graph_memory.rs) |
+
+## How to run
+
+```bash
+cargo run -p cognis-examples --example memory_types
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example memory_summary_buffer
+```
+
+## Pick a starting point
+
+- **Brand new to Cognis memory?** Run `memory_types` — it walks every variant.
+- **Building a chat agent?** `memory_agent` is the canonical wiring.
+- **Long sessions?** `memory_summary_buffer` shows the right defaults.
+- **Knowledge-base-style memory?** `memory_knowledge_graph` for triples, `memory_entity` for named entities.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Memory guide" icon="brain" href="/building-agents/memory">
+    All 9 variants explained.
+  </Card>
+  <Card title="Patterns → Stateful chat" icon="grid" href="/patterns/stateful-chat">
+    Memory + persistence in a real chat backend.
+  </Card>
+</CardGroup>

@@ -1,0 +1,225 @@
+---
+title: "Adding a new built-in tool"
+description: "Contribute a generally-useful tool that ships with the cognis crate."
+sidebarTitle: "Adding a tool"
+---
+
+The `cognis::tools::*` module ships generally-useful tools — `Calculator`, `FilesystemTool`, `HttpRequest`, `JsonQuery`, `OpenApiTool`, `PythonRepl`, `HumanTool`. If you've built a tool that you think belongs in the standard library — clear scope, broad utility, no proprietary backend — this page covers how to land it.
+
+## Is it a fit?
+
+Built-in tools should be:
+
+- **General-purpose.** Useful in many domains, not just yours.
+- **Self-contained.** No external service required for the basic shape (or behind a feature flag if needed).
+- **Predictable.** Stable behavior the model can rely on. No "sometimes returns the right answer."
+- **Safe by default.** A tool that runs code or fetches URLs ships with conservative limits.
+
+If your tool is domain-specific (a calculator for your insurance product, a search over your private knowledge base), it lives in your codebase, not Cognis. The `Tool` trait is stable enough that you can ship it from a downstream crate.
+
+## What you'll add
+
+- A new module under `crates/cognis/src/tools/<name>.rs`.
+- A struct implementing `Tool` (or `SchemaBasedTool` for typed convenience).
+- Tests covering normal use, error cases, and any safety limits.
+- An entry in `cognis::tools::*` exports.
+- An example under `examples/tools/`.
+- A doc entry in [Tools](/building-agents/tools).
+
+## Step 1 — Define the tool
+
+Two shapes; pick whichever fits.
+
+<Tabs>
+  <Tab title="SchemaBasedTool (typed)">
+    ```rust
+    use async_trait::async_trait;
+    use cognis_core::schemars::{self, JsonSchema};
+    use cognis_llm::tools::{SchemaBasedTool, Tool};
+    use cognis_core::Result;
+    use serde::{Deserialize, Serialize};
+    use serde_json::{json, Value};
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    pub struct WordCountArgs {
+        /// The text to count words in.
+        pub text: String,
+    }
+
+    pub struct WordCountTool;
+
+    #[async_trait]
+    impl SchemaBasedTool for WordCountTool {
+        type Params = WordCountArgs;
+        type Output = Value;
+
+        fn name(&self) -> &str { "word_count" }
+        fn description(&self) -> &str {
+            "Count the number of whitespace-separated words in a text."
+        }
+
+        async fn execute_typed(&self, args: WordCountArgs) -> Result<Value> {
+            let count = args.text.split_whitespace().count();
+            Ok(json!({"text_length": args.text.len(), "word_count": count}))
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Tool (raw)">
+    ```rust
+    use async_trait::async_trait;
+    use cognis_core::Result;
+    use cognis_llm::tools::{Tool, ToolInput, ToolOutput};
+
+    pub struct MyTool;
+
+    #[async_trait]
+    impl Tool for MyTool {
+        fn name(&self) -> &str { "my_tool" }
+        fn description(&self) -> &str { "What it does, in one sentence." }
+        fn args_schema(&self) -> Option<serde_json::Value> {
+            // Hand-written schema or schema_for!(MyArgs).
+            None
+        }
+        async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
+            // Parse input.into_json() and produce ToolOutput.
+            todo!()
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Step 2 — Wire up the description
+
+The description is what the model reads to decide whether to call you. Make it good:
+
+- Lead with the verb. "Count the number of words" beats "A function for word counting."
+- Mention the units. "Returns a number." vs "Returns a JSON object with `word_count`."
+- Don't promise capabilities you don't have. Models will try.
+
+Field doc-comments matter too — `/// The text to count words in.` becomes the JSON Schema description. The model uses it.
+
+## Step 3 — Validators (where it makes sense)
+
+For tools that take strings, numbers, or enums, declare validators on the args struct:
+
+```rust
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct FetchUrlArgs {
+    /// URL to fetch (http or https only).
+    #[schema(pattern("^https?://"))]
+    pub url: String,
+    /// Maximum bytes to read.
+    #[schema(range(min = 0, max = 10_000_000))]
+    #[serde(default = "default_max_bytes")]
+    pub max_bytes: u64,
+}
+```
+
+These show up in the JSON Schema *and* run as runtime checks before `execute_typed` is called.
+
+## Step 4 — Safety
+
+Built-in tools should ship with safety defaults:
+
+- **HTTP tools** — block internal networks (RFC1918, link-local) by default. Allow-list via builder.
+- **Filesystem tools** — gate by a `Backend`. No raw `std::fs::read` against arbitrary paths.
+- **Code execution** — sandbox or constrain. Calculators should be expression evaluators, not `eval`.
+- **Long-running** — time out. Don't let the model wedge an agent on a slow tool.
+
+If your tool needs configuration to be safe (allow-list, sandbox path), make that configuration *required* in the builder, not optional.
+
+## Step 5 — Tests
+
+Cover:
+
+- The happy path.
+- Argument validation — invalid inputs get a clear error before the body runs.
+- Edge cases — empty input, max-size input, unicode.
+- Safety — for an HTTP tool, a test that internal IPs are blocked.
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn counts_words() {
+        let tool = WordCountTool;
+        let out = tool.execute_typed(WordCountArgs { text: "hello world".into() }).await.unwrap();
+        assert_eq!(out["word_count"], 2);
+    }
+
+    #[tokio::test]
+    async fn empty_string_is_zero() {
+        let tool = WordCountTool;
+        let out = tool.execute_typed(WordCountArgs { text: "".into() }).await.unwrap();
+        assert_eq!(out["word_count"], 0);
+    }
+}
+```
+
+## Step 6 — Re-export
+
+```rust
+// crates/cognis/src/tools/mod.rs
+pub mod word_count;
+pub use word_count::{WordCountTool, WordCountArgs};
+```
+
+The umbrella's top-level re-exports include `pub use tools::*`, so consumers will see `cognis::WordCountTool`.
+
+## Step 7 — Example
+
+```rust
+// examples/tools/word_count.rs
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::{AgentBuilder, WordCountTool};
+use cognis_llm::Client;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let mut agent = AgentBuilder::new()
+        .with_llm(Client::from_env()?)
+        .with_tool(Arc::new(WordCountTool))
+        .with_system_prompt("Use the word_count tool when the user asks how long a text is.")
+        .build()?;
+
+    let resp = agent.run(Message::human(
+        "How many words are in 'the quick brown fox jumps over the lazy dog'?"
+    )).await?;
+    println!("{}", resp.content);
+    Ok(())
+}
+```
+
+Register as `tools_word_count`.
+
+## Step 8 — Document
+
+Add a row in [Tools → Built-in tools](/building-agents/tools#built-in-tools).
+
+## Step 9 — PR
+
+Title: `feat(tools): add WordCountTool`. Description:
+
+- What it does.
+- Why it belongs in the standard library (not just in your downstream code).
+- Safety defaults.
+- Tested coverage.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Tools" icon="screwdriver-wrench" href="/building-agents/tools">
+    User guide for the trait shape.
+  </Card>
+  <Card title="Adding a provider" icon="plug" href="/contribute/adding-a-provider">
+    Different domain, same shape.
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/contribute/architecture">
+    Where your tool lands in the workspace.
+  </Card>
+</CardGroup>

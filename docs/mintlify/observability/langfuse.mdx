@@ -1,0 +1,136 @@
+---
+title: "Trace with Langfuse"
+description: "Production observability in three steps. Spans, generations, sessions, users, and pricing — all wired."
+sidebarTitle: "Trace with Langfuse"
+---
+
+[Langfuse](https://langfuse.com) is the default production observability backend for Cognis. The `cognis-trace` crate ships a `TracingHandler` that translates Cognis runtime events into Langfuse spans, generations, and scores — including token usage, USD cost, prompts, and trace metadata. Three steps and you're shipping data.
+
+## Step 1 — Add the dependency
+
+```toml
+cognis-trace = { version = "0.3", features = ["langfuse"] }
+```
+
+## Step 2 — Set credentials
+
+```bash
+export LANGFUSE_PUBLIC_KEY=pk-lf-...
+export LANGFUSE_SECRET_KEY=sk-lf-...
+export LANGFUSE_HOST=https://cloud.langfuse.com   # optional, override for self-hosted
+```
+
+## Step 3 — Build a TracingHandler
+
+```rust
+use cognis_trace::{LangfuseExporter, TracingHandler};
+
+let handler = TracingHandler::builder()
+    .with_exporter(LangfuseExporter::from_env()?)
+    .with_default_pricing()
+    .build();
+```
+
+## Step 4 — Attach to your runs
+
+`TracingHandler` implements `CallbackHandler`. Wrap it with `HandlerObserver` to use it on a `RunnableConfig`:
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis_core::HandlerObserver;
+
+let observer: Arc<dyn Observer> = Arc::new(HandlerObserver(handler));
+let cfg = RunnableConfig::default().with_observer(observer);
+
+agent.run(Message::human("…")).await?;
+```
+
+Every chain, model call, tool, and graph node now becomes a span in Langfuse.
+
+## Step 5 — Drain on shutdown
+
+`TracingHandler` runs background batchers per exporter so a slow Langfuse never blocks your hot path. Before the process exits, drain them:
+
+```rust
+handler.shutdown().await;
+```
+
+## Trace metadata
+
+Set session / user / release / environment so traces are filterable in the Langfuse UI:
+
+```rust
+use cognis_trace::{meta::merge_into, TraceMeta};
+use serde_json::Value;
+
+let metadata = [
+    TraceMeta::session("session-abc"),
+    TraceMeta::user("user-123"),
+    TraceMeta::release("v1.4.2"),
+    TraceMeta::environment("production"),
+]
+.into_iter()
+.fold(Value::Null, merge_into);
+
+let cfg = RunnableConfig::default()
+    .with_observer(observer.clone())
+    .with_tag("checkout");
+let cfg = RunnableConfig { metadata, ..cfg };
+```
+
+The handler promotes these fields to trace-level when the trace root closes.
+
+## Multiple exporters
+
+Stack stdout (for local logs) and Langfuse (for production) on the same handler:
+
+```rust
+use cognis_trace::{StdoutExporter, LangfuseExporter, TracingHandler};
+
+let handler = TracingHandler::builder()
+    .with_exporter(StdoutExporter::compact())
+    .with_exporter(LangfuseExporter::from_env()?)
+    .with_default_pricing()
+    .build();
+```
+
+Each exporter has its own background batcher. A failure in one doesn't block the other; you can read per-exporter metrics with `handler.stats(name)`.
+
+## How it works
+
+- **`TracingHandler` is a `CallbackHandler`.** Lifecycle hooks turn into Langfuse spans (chains, tools, retrievers) and generations (LLM calls).
+- **Token usage and cost are computed automatically.** `with_default_pricing()` loads a 2026-05 snapshot for the major providers; override with `override_price` for negotiated rates.
+- **Trace nesting follows `parent_run_id`.** Every Cognis composition site already propagates this — sub-runs nest correctly.
+- **Batching keeps the hot path fast.** No blocking HTTP in `on_llm_end`. Slow Langfuse → batches accumulate → emergency dropping (logged) before they OOM.
+
+## Beyond traces
+
+`cognis-trace` also surfaces:
+
+- **Cost details** — see [Cost tracking](/observability/cost).
+- **Versioned prompts pulled from Langfuse** — see [Prompts and scores](/observability/prompts-scores).
+- **Evaluation scores submitted back to Langfuse** — see [Evaluation](/observability/evaluation).
+
+## What about LangSmith and OpenTelemetry?
+
+Both are on the roadmap. Until they ship:
+
+- For **OTel**: implement `TraceExporter` (it's a thin async trait) and forward to your collector.
+- For **LangSmith**: implement `TraceExporter` against the LangSmith ingest API.
+
+The `TraceExporter` interface is small, and the batching infrastructure is already there — you only write the format conversion.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Cost tracking" icon="dollar-sign" href="/observability/cost">
+    USD cost per request from a price table.
+  </Card>
+  <Card title="Prompts and scores" icon="star" href="/observability/prompts-scores">
+    Versioned prompts and eval scores.
+  </Card>
+  <Card title="Callbacks and observers" icon="bolt" href="/observability/callbacks">
+    The lower-level interface.
+  </Card>
+</CardGroup>

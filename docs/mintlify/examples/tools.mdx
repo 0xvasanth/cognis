@@ -1,0 +1,47 @@
+---
+title: "Tools"
+description: "Tool definitions, derive macros, schema-based tools, ToolOrchestrator DAG, stateful HTTP, file tools."
+sidebarTitle: "Tools"
+---
+
+Tool examples cover the three ways to define a tool (hand-written `impl Tool`, `SchemaBasedTool` with typed params, `#[cognis::tool]` macro), plus orchestration patterns. Sources under [`examples/tools/`](https://github.com/0xvasanth/cognis/tree/main/examples/tools).
+
+| Name | Topic | Source |
+|---|---|---|
+| `tools_derive` | Hand-written `impl Tool` with `JsonSchema` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/derive_tool.rs) |
+| `tools_schema` | `SchemaBasedTool` with typed params | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/tool_schema.rs) |
+| `tools_typed_search` | A typed search tool end-to-end | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/typed_search.rs) |
+| `tools_file` | Filesystem tools via a `Backend` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/file_tools.rs) |
+| `tools_stateful_http` | A stateful HTTP tool with shared client | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/stateful_http.rs) |
+| `tools_agent` | A tool-using agent | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/tool_agent.rs) |
+| `tools_calling_agent` | Tool calling under different shapes | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/tool_calling_agent.rs) |
+| `tools_ollama_calling` | Tool calling against a local Ollama model | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/ollama_tool_calling.rs) |
+| `tools_orchestrator` | `ToolOrchestrator` DAG (no agent loop) | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/tool_orchestrator.rs) |
+
+## How to run
+
+```bash
+cargo run -p cognis-examples --example tools_orchestrator
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example tools_ollama_calling
+```
+
+## Pick a starting point
+
+- **Building a typed tool?** Start with `tools_schema`.
+- **Need to wrap an HTTP call?** `tools_stateful_http` shows how to share a `reqwest::Client`.
+- **Calling tools without an agent loop?** `tools_orchestrator` runs a DAG of tools concurrently.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Tools guide" icon="screwdriver-wrench" href="/building-agents/tools">
+    Tool, SchemaBasedTool, validators, ToolOrchestrator.
+  </Card>
+  <Card title="Production → Security" icon="lock" href="/production/security">
+    Deny-lists, SSRF protection, sandboxing.
+  </Card>
+  <Card title="Patterns → HITL approval" icon="grid" href="/patterns/hitl-approval">
+    Approval-gated tool calls.
+  </Card>
+</CardGroup>

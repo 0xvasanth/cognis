@@ -1,0 +1,114 @@
+---
+title: "Structured output"
+description: "Get a typed Rust struct back from the LLM. Three parsers, three failure-recovery strategies, one consistent pattern."
+sidebarTitle: "Structured output"
+---
+
+LLMs talk in prose, but most of your code wants structs. Structured output is the bridge: ask the model to emit JSON that matches a schema, then parse it into a typed value.
+
+## How it works
+
+Three pieces collaborate:
+
+- **A struct deriving `JsonSchema`** so the parser can describe the format to the model.
+- **A parser** — `StructuredOutputParser<T>` — that injects format instructions into the prompt and parses replies back into `T`.
+- **A recovery strategy** — `OutputFixingParser` or `RetryParser` — for the cases when the model wanders off-format.
+
+```rust
+use cognis::prelude::*;
+use cognis_core::output_parsers::{OutputParser, StructuredOutputParser};
+use cognis_core::schemars::{self, JsonSchema};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct Recipe {
+    title: String,
+    ingredients: Vec<String>,
+    steps: Vec<String>,
+}
+
+let parser: StructuredOutputParser<Recipe> = StructuredOutputParser::new();
+let format_hint = OutputParser::format_instructions(&parser).unwrap_or_default();
+
+let prompt = format!("Give me a recipe for scrambled eggs.\n\n{format_hint}");
+let reply = client.invoke(vec![Message::human(prompt)]).await?;
+let recipe: Recipe = parser.parse(reply.content())?;
+```
+
+Source: [`examples/v2/07_ollama_structured_output.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/v2/07_ollama_structured_output.rs).
+
+## When models drift
+
+Smaller and instruction-tuned models sometimes produce *almost* valid JSON. Two recovery wrappers are available:
+
+<Tabs>
+  <Tab title="OutputFixingParser">
+    Re-prompt the model with the original output and the parse error; ask it to fix the JSON. One repair attempt by default.
+    ```rust
+    use cognis_core::output_parsers::{OutputFixingParser, StructuredOutputParser};
+
+    let inner = StructuredOutputParser::<Recipe>::new();
+    let parser = OutputFixingParser::new(inner, fixer_client);
+    let recipe: Recipe = parser.parse(reply.content())?;
+    ```
+    Useful when the model is *capable* of valid JSON but slipped — a fix attempt with the error in the prompt usually succeeds.
+  </Tab>
+  <Tab title="RetryParser">
+    Retry by re-running the original input through a primary chain N times. Useful when the prompt itself is the problem and the fix needs the original context, not just the error.
+    ```rust
+    use cognis_core::output_parsers::RetryParser;
+
+    let parser = RetryParser::with_retries(inner, fixer, 5);
+    ```
+  </Tab>
+</Tabs>
+
+## Other parsers
+
+For simpler shapes, Cognis has lightweight parsers without JSON Schema:
+
+| Parser | Output |
+|---|---|
+| `StringParser` | Identity — passes the message text through. |
+| `BooleanParser` | Parses a yes/no / true/false answer. |
+| `NumberedListParser` | Splits a numbered list into `Vec<String>`. |
+| `CommaListParser` | Splits a comma-separated list into `Vec<String>`. |
+| `JsonParser` / `JsonExtractor` | Best-effort JSON extraction (handles fenced code blocks). |
+| `XmlParser` | Parse XML when that's what the model emits. |
+
+## How it composes
+
+Parsers are `Runnable<Message, T>`, so they slot into chains:
+
+```rust
+let chain = prompt.pipe(model).pipe(parser);
+let recipe: Recipe = chain.invoke(query, cfg).await?;
+```
+
+Wrappers like `with_retry` work the same as anywhere else.
+
+## Provider tips
+
+- **Anthropic and Google** generally produce excellent JSON when the schema is in the system prompt.
+- **OpenAI's "JSON mode" / structured output API** is a tighter contract. Cognis' `StructuredOutputParser` works with any provider; if you want the provider's strict mode, build your own `Tool` definition and use the provider's structured-output route.
+- **Smaller Ollama models** (`llama3.2:1b`, etc.) drift often. Always wrap with `OutputFixingParser` in production.
+
+## How it works
+
+- **Schema goes in the prompt, not in the request.** The parser appends `format_instructions()` to the user prompt — that's how providers without a structured-output API still emit valid JSON.
+- **Fixing is a sub-call.** `OutputFixingParser` makes another LLM call for the repair. Budget for it.
+- **Errors are typed.** Parse failures return `Err(CognisError::OutputParse { … })` with the raw text and the parse error — surface those so users see a useful message, not a panic.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Tools" icon="screwdriver-wrench" href="/building-agents/tools">
+    Tools also use `JsonSchema` for typed args.
+  </Card>
+  <Card title="Patterns → Code Q&A" icon="grid" href="/patterns/code-qa">
+    Structured-output answers over a code corpus.
+  </Card>
+  <Card title="Reference → cognis-core" icon="book" href="/reference/api/cognis-core">
+    Full parser list.
+  </Card>
+</CardGroup>

@@ -1,0 +1,144 @@
+---
+title: "cognis-rag"
+description: "Embeddings, vector stores, retrievers, splitters, document loaders, indexing pipeline."
+sidebarTitle: "cognis-rag"
+---
+
+`cognis-rag` is the building-block crate for retrieval-augmented generation. Eight splitters, four embedders, six vector stores, eight retrievers, plus the indexing pipeline that ties them together.
+
+## Crate metadata
+
+| Field | Value |
+|---|---|
+| Latest version | `0.3` |
+| docs.rs | [docs.rs/cognis-rag](https://docs.rs/cognis-rag) |
+| Repo path | [`crates/cognis-rag`](https://github.com/0xvasanth/cognis/tree/main/crates/cognis-rag) |
+| Default features | `openai`, `ollama` |
+
+## Modules at a glance
+
+| Module | What |
+|---|---|
+| `document` | `Document`, `with_id`, `with_metadata`. |
+| `splitters` | `TextSplitter` trait + 8 impls. |
+| `embeddings` | `Embeddings` trait + 8 impls (real, fake, cached, batched, router). |
+| `vectorstore` | `VectorStore` trait + 6 impls. |
+| `retrievers` | 8 retriever impls implementing `Runnable<String, Vec<Document>>`. |
+| `loaders` | `DocumentLoader` trait + format-specific loaders. |
+| `indexing` | `IndexingPipeline`, `IncrementalReport`. |
+| `record_manager` | `RecordManager` trait + `InMemoryRecordManager`. |
+| `transformers` | `LongContextReorder`, `MetadataTransformer`. |
+| `cross_encoder` | `CrossEncoder`, `CrossEncoderReranker`, `FnCrossEncoder`. |
+| `docstore` | `Docstore`, `InMemoryDocstore` for parent-document patterns. |
+| `multi_vector` | `MultiVectorIndexer` for summary+chunk indexing. |
+| `distance` | `Distance::{Cosine, Euclidean, DotProduct}`. |
+| `filter` | `Filter::{eq, ne, in_, not_in, and, or}`. |
+
+## Splitters
+
+| Splitter | Constructor |
+|---|---|
+| `RecursiveCharSplitter` | `::new().with_chunk_size(n).with_overlap(n).with_separators(...)` |
+| `CharacterSplitter` | `::new().with_chunk_size(n)` |
+| `TokenAwareSplitter` | `::new(tokenizer).with_chunk_tokens(n)` |
+| `MarkdownSplitter` | `::new()` |
+| `SentenceSplitter` | `::new()` |
+| `CodeSplitter` | `::new(Language::Rust)` |
+| `HtmlSplitter` | `::new()` |
+| `JsonSplitter` | `::new()` |
+
+All implement `TextSplitter`: `split(&Document) -> Vec<Document>`, `split_all(&[Document]) -> Vec<Document>`.
+
+## Embeddings
+
+| Type | Feature | Constructor |
+|---|---|---|
+| `OpenAIEmbeddings` | `openai` | `::new(api_key)` or `::builder()` |
+| `GoogleEmbeddings` | `google` | `::new(api_key)` or `::builder()` |
+| `OllamaEmbeddings` | `ollama` | `::new(model_name)` |
+| `VoyageEmbeddings` | `voyage` | `::new(api_key)` or `::builder()` |
+| `FakeEmbeddings` | always | `::new(dimensions)` |
+| `CachedEmbeddings` | always | `::new(inner)` |
+| `BatchedEmbeddings` | always | `::new(inner).with_batch_size(n)` |
+| `EmbeddingsRouter` (`FnRouter`, `LengthRouter`) | always | `::new()` builder |
+
+All implement `Embeddings`: `embed_documents`, `embed_query`, `dimensions`, `model`.
+
+## Vector stores
+
+| Store | Feature | Notes |
+|---|---|---|
+| `InMemoryVectorStore` | always | `::new(emb)`, `::with_distance(emb, dist)` |
+| `FaissVectorStore` | `vectorstore-faiss` | Local, on-disk |
+| `ChromaVectorStore` (`ChromaBuilder`) | `vectorstore-chroma` | Self-hosted Chroma |
+| `QdrantVectorStore` (`QdrantBuilder`) | `vectorstore-qdrant` | Production-grade |
+| `PineconeVectorStore` (`PineconeBuilder`) | `vectorstore-pinecone` | Managed cloud |
+| `WeaviateVectorStore` (`WeaviateBuilder`) | `vectorstore-weaviate` | Hybrid search |
+
+All implement `VectorStore`:
+
+```rust
+pub trait VectorStore: Send + Sync {
+    async fn add_texts(&mut self, texts: Vec<String>, ids: Option<Vec<String>>) -> Result<Vec<String>>;
+    async fn add_vectors(&mut self, vectors: Vec<(String, Vec<f32>, Metadata)>) -> Result<()>;
+    async fn similarity_search(&self, query: &str, k: usize) -> Result<Vec<SearchResult>>;
+    async fn similarity_search_by_vector(&self, vector: &[f32], k: usize) -> Result<Vec<SearchResult>>;
+    async fn similarity_search_with_filter(&self, query: &str, k: usize, filter: Filter) -> Result<Vec<SearchResult>>;
+    async fn delete(&mut self, ids: Vec<String>) -> Result<()>;
+}
+```
+
+## Retrievers
+
+| Retriever | Notes |
+|---|---|
+| `VectorRetriever` | `::new(store).with_top_k(n).with_filter(filter)` |
+| `BM25Retriever` | `::from_documents(docs).with_top_k(n)` |
+| `EnsembleRetriever` | `::new().add(retriever, weight)` |
+| `MultiVectorRetriever` | Summary embedding routes to chunk retrieval |
+| `ParentDocumentRetriever` | Sharp chunk match → enclosing parent |
+| `QueryTranslatorRetriever` | LLM rewrites the query |
+| `CompressorPipeline` | Chain of transformers |
+| `CachingRetriever` | Hash-keyed wrapper |
+
+## IndexingPipeline
+
+```rust
+pub struct IndexingPipeline<L, T> { /* … */ }
+
+impl<L: DocumentLoader, T: TextSplitter> IndexingPipeline<L, T> {
+    pub fn new(loader: L, splitter: T, store: Arc<RwLock<dyn VectorStore>>) -> Self;
+    pub async fn run(&self) -> Result<usize>;
+    pub async fn run_incremental(
+        &self,
+        record_manager: &dyn RecordManager,
+        group: &str,
+        key_fn: impl Fn(&Document) -> Option<String>,
+    ) -> Result<IncrementalReport>;
+}
+```
+
+`IncrementalReport { added, changed, unchanged, deleted }`.
+
+## Feature flags
+
+| Feature | Pulls in |
+|---|---|
+| `openai` | OpenAI embeddings (default). |
+| `google` | Google embeddings. |
+| `voyage` | Voyage embeddings. |
+| `ollama` | Ollama embeddings (default). |
+| `csv-loader`, `html-loader`, `yaml-loader`, `toml-loader`, `web-loader`, `pdf-loader` | Format-specific loaders. |
+| `all-loaders` | All loaders. |
+| `vectorstore-faiss` | FAISS local store. |
+| `vectorstore-chroma`, `-qdrant`, `-pinecone`, `-weaviate` | Hosted stores. |
+| `all-vectorstores` | All vector stores. |
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Documents and splitters" icon="scissors" href="/building-rag/documents">User guide for splitters.</Card>
+  <Card title="Embeddings" icon="database" href="/building-rag/embeddings">Embedders and stores.</Card>
+  <Card title="Retrievers" icon="magnifying-glass" href="/building-rag/retrievers">Retrieval shapes.</Card>
+  <Card title="Indexing" icon="arrows-rotate" href="/building-rag/indexing">Incremental updates.</Card>
+</CardGroup>

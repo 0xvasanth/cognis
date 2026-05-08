@@ -1,0 +1,146 @@
+---
+title: "Development setup"
+description: "Clone, build, test, lint. The local loop."
+sidebarTitle: "Development setup"
+---
+
+Cognis is a Cargo workspace. If you've worked in Rust before, this should feel familiar. If not, the steps below are everything you need.
+
+## Prerequisites
+
+- **Rust 1.75 or newer.** Install via [rustup](https://rustup.rs/).
+- **A Unix-like shell.** Most commands assume bash/zsh; PowerShell works for the cargo bits.
+- **Optional: `cargo-watch`** for `cargo watch -x test` during iteration.
+- **Optional: `cargo-expand`** when working on macros.
+
+## Clone and build
+
+```bash
+git clone https://github.com/0xvasanth/cognis.git
+cd cognis
+
+cargo build --workspace
+cargo test --workspace
+```
+
+The first build takes a few minutes — `reqwest`, `sqlx`, and `tokio` aren't small. Subsequent builds are incremental.
+
+## Build with all providers
+
+Most provider-specific code is feature-gated. To compile everything:
+
+```bash
+cargo build -p cognis --features all-providers
+cargo build -p cognis-trace --features langfuse
+cargo build -p cognis-graph --features sqlite,postgres
+cargo build -p cognis-rag --features all-loaders,all-vectorstores
+```
+
+CI builds a matrix of feature combinations; matching that locally before pushing saves cycles.
+
+## Run a single test
+
+```bash
+cargo test -p cognis-core
+cargo test -p cognis --lib agent::memory          # one module
+cargo test -p cognis-graph test_resume_after_interrupt   # one test by name
+```
+
+## Run an example
+
+Examples live in `examples/` and are registered in `crates/examples/Cargo.toml`. Run by registered name:
+
+```bash
+cargo run -p cognis-examples --example chains_pipe_operator
+
+# Provider-backed:
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example agents_react_agent
+```
+
+See [Examples](/examples/index) for the full list.
+
+## Worktrees
+
+For non-trivial changes (multi-day work, parallel branches), a worktree gives you an isolated checkout without leaving your primary tree:
+
+```bash
+git worktree add .worktrees/my-feature -b feature/my-feature
+cd .worktrees/my-feature
+# work here…
+git worktree remove .worktrees/my-feature
+```
+
+The `.worktrees/` directory is project-local and globally gitignored.
+
+## Pre-push checklist
+
+Before opening a PR, run these in order. They match what CI runs:
+
+```bash
+# 1. Format.
+cargo fmt --all
+
+# 2. Clippy with all features (matches CI).
+cargo clippy --workspace --features all-providers -- -D warnings
+
+# 3. Tests across the workspace.
+cargo test --workspace
+```
+
+If you have access to [Cubic](https://cubic.dev), also run a code review pass:
+
+```bash
+cubic review
+```
+
+Fix any issues Cubic flags before pushing.
+
+## Working on docs
+
+The docs site lives under `docs/mintlify/` and is built with Mintlify.
+
+Preview locally if you have the Mintlify CLI:
+
+```bash
+cd docs/mintlify
+mintlify dev
+```
+
+Otherwise, write Markdown and check it in `mintlify`'s preview environment when you open the PR.
+
+## Working on macros
+
+Macros live in `crates/cognis-macros`. To inspect what a derive expands to:
+
+```bash
+cargo install cargo-expand
+cargo expand -p cognis --tests
+```
+
+Output should be readable Rust. Macros that produce unreadable code are a smell — keep generated code transparent.
+
+## Clean rebuild
+
+If the build gets confused after large dependency churn:
+
+```bash
+cargo clean
+cargo build --workspace
+```
+
+`cargo clean` is heavy; reach for it after upgrading Rust or changing many features at once, not as a daily habit.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="diagram-project" href="/contribute/architecture">
+    Crate boundaries and design rules.
+  </Card>
+  <Card title="PR guidelines" icon="code-merge" href="/contribute/pull-requests">
+    What to include in your PR description.
+  </Card>
+  <Card title="Adding a provider" icon="plug" href="/contribute/adding-a-provider">
+    Step-by-step for a new LLM client.
+  </Card>
+</CardGroup>

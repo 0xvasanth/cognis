@@ -1,0 +1,167 @@
+---
+title: "Local-only with Ollama"
+description: "Build agents that run entirely on your machine. No API keys, no provider bills, fast iteration."
+sidebarTitle: "Local Ollama"
+---
+
+You can build a complete Cognis app — agent, RAG, even multi-agent — without leaving localhost. [Ollama](https://ollama.com) runs LLMs and embedders locally; Cognis ships clients for both. This pattern walks through a fully local research-style assistant with an in-memory vector store.
+
+## What you'll build
+
+A local agent that:
+
+- chats via a local Ollama model
+- embeds via a local Ollama embedder
+- searches a small in-memory knowledge base
+- streams tokens in real time
+
+No API keys. No outbound traffic.
+
+## Step 0 — Install Ollama and pull models
+
+```bash
+ollama pull llama3.1                  # ~4.7 GB
+ollama pull nomic-embed-text          # ~270 MB embedder
+```
+
+You can substitute any model: `qwen2.5:3b`, `phi3`, `mistral-nemo`, etc. For tool-calling, prefer models that support function calling natively (`llama3.1`, `qwen2.5`, `mistral-nemo`).
+
+## Step 1 — Add cognis with the ollama feature
+
+```toml
+[dependencies]
+cognis = { version = "0.3", features = ["ollama"] }
+tokio = { version = "1", features = ["full"] }
+```
+
+`ollama` is in the default feature set, so you actually only need `cognis = "0.3"`. But being explicit doesn't hurt.
+
+## Step 2 — Configure the env
+
+```bash
+export COGNIS_PROVIDER=ollama
+export COGNIS_OLLAMA_MODEL=llama3.1
+# Optional: export COGNIS_OLLAMA_BASE_URL=http://localhost:11434
+```
+
+## Step 3 — Build a tool-calling agent
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::{AgentBuilder, Calculator};
+use cognis_llm::Client;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = Client::from_env()?;
+
+    let mut agent = AgentBuilder::new()
+        .with_llm(client)
+        .with_tool(Arc::new(Calculator::new()))
+        .with_system_prompt(
+            "You are a math assistant. Use the calculator for any arithmetic. \
+             Always state the final answer clearly."
+        )
+        .with_max_iterations(4)
+        .build()?;
+
+    let resp = agent.run(Message::human("What is 23 * 17 + 4?")).await?;
+    println!("{}", resp.content);
+    Ok(())
+}
+```
+
+If your model is small (`llama3.2:1b` etc), tool calling can be flaky — switch to a model that's known to handle it (`llama3.1`, `qwen2.5`).
+
+## Step 4 — Add local RAG
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis_llm::Client;
+use cognis_rag::{
+    Document, Embeddings, InMemoryVectorStore, OllamaEmbeddings,
+    RecursiveCharSplitter, TextSplitter, VectorStore,
+};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let docs = vec![
+        Document::new("Cognis is a Rust LLM framework."),
+        Document::new("cognisgraph offers a StateGraph engine like LangGraph."),
+        Document::new("cognis-rag bundles embeddings, vector stores, and retrievers."),
+    ];
+    let chunks = RecursiveCharSplitter::new()
+        .with_chunk_size(120)
+        .split_all(&docs);
+
+    let emb: Arc<dyn Embeddings> = Arc::new(OllamaEmbeddings::new("nomic-embed-text"));
+    let mut store = InMemoryVectorStore::new(emb);
+    let texts: Vec<_> = chunks.iter().map(|c| c.content.clone()).collect();
+    store.add_texts(texts, None).await?;
+
+    let q = "What does cognis-rag include?";
+    let hits = store.similarity_search(q, 2).await?;
+    let context: String = hits.iter().map(|h| format!("- {}", h.text)).collect::<Vec<_>>().join("\n");
+
+    let client = Client::from_env()?;
+    let prompt = format!("Answer using only:\n{context}\n\nQ: {q}\nA:");
+    let resp = client.invoke(vec![Message::human(prompt)]).await?;
+    println!("{}", resp.content());
+    Ok(())
+}
+```
+
+Replace `OllamaEmbeddings` with `OpenAIEmbeddings` later when you want quality up; the rest of the pipeline doesn't change.
+
+## Step 5 — Stream tokens
+
+```rust
+use cognis::prelude::*;
+use futures::StreamExt;
+use cognis_llm::Client;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = Client::from_env()?;
+    let mut s = client.stream(vec![Message::human("Tell me a one-line joke.")]).await?;
+    while let Some(chunk) = s.next().await {
+        print!("{}", chunk?.content);
+    }
+    println!();
+    Ok(())
+}
+```
+
+## How it works
+
+- **`Client::from_env()` reads `COGNIS_PROVIDER=ollama`** and points at the daemon. Same code as any other provider.
+- **`OllamaEmbeddings::new(model)`** talks to the same daemon for embeddings. No second service to install.
+- **No keys, ever.** The Ollama wire protocol uses no auth. Don't expose your daemon to untrusted networks.
+- **Speed depends on hardware.** A 7B model on Apple Silicon is interactive; on a CPU-only laptop it's slow. Pick small models when iterating.
+
+## When to graduate to a hosted provider
+
+| Local strength | Hosted strength |
+|---|---|
+| Zero cost | Larger models (Claude Opus, GPT-4o) |
+| Privacy | Faster cold start |
+| Offline iteration | Better tool-calling reliability on smaller prompts |
+| Predictable latency on your hardware | Higher quality on hard tasks |
+
+The transition is one env var. Build your app local-first, set `COGNIS_PROVIDER=openai` when you want production quality, and toggle by environment.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Models and providers" icon="plug" href="/building-agents/models">
+    All providers, all builder knobs.
+  </Card>
+  <Card title="Embeddings and vector stores" icon="database" href="/building-rag/embeddings">
+    Local embedders and stores.
+  </Card>
+  <Card title="Examples → Quickstart V2" icon="grid" href="/examples/quickstart">
+    The numbered demo set, all of which work against Ollama.
+  </Card>
+</CardGroup>

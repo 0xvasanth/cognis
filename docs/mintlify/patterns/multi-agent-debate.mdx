@@ -1,0 +1,105 @@
+---
+title: "Multi-agent debate"
+description: "A proposer and a critic argue for N rounds. Better answers from disagreement."
+sidebarTitle: "Multi-agent debate"
+---
+
+When a single model gets the wrong answer, asking it to "double-check" rarely helps — it lacks the perspective. Two agents with different roles, going back and forth, often catch what one would miss. This pattern wires a proposer and a critic with `RoundRobin` orchestration.
+
+## What you'll build
+
+Two agents, three rounds. Round 1: proposer drafts an answer. Round 2: critic finds problems. Round 3: proposer revises in response. Final reply is the proposer's revised answer.
+
+## How it works
+
+- **`RoundRobin`** alternates agents in registration order for `rounds` cycles. Each gets the running transcript.
+- **The proposer's role** is to commit to a position. The critic's job is *only* to find weaknesses. Forcing the asymmetry is the whole point.
+- **The transcript is the shared state.** No fancy passing — each agent sees what the other said.
+
+## The code
+
+```rust
+use cognis::prelude::*;
+use cognis::{AgentBuilder, MultiAgentOrchestrator, RoundRobin};
+use cognis_llm::Client;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let new_client = || Client::from_env();
+
+    let proposer = AgentBuilder::new()
+        .with_llm(new_client()?)
+        .with_system_prompt(
+            "You are a confident analyst. Take a clear position with concrete \
+             reasoning. When you receive a critique, rewrite your answer addressing \
+             every point — don't waffle, don't apologize, just respond.",
+        )
+        .with_max_iterations(2)
+        .build()?;
+
+    let critic = AgentBuilder::new()
+        .with_llm(new_client()?)
+        .with_system_prompt(
+            "You are a sharp critic. Read the proposer's most recent claim. List \
+             every flaw you can find: factual errors, missing considerations, weak \
+             reasoning. Be specific. Do NOT propose alternatives — only critique.",
+        )
+        .with_max_iterations(2)
+        .build()?;
+
+    let orch = MultiAgentOrchestrator::new(RoundRobin::default())
+        .add("proposer", proposer)
+        .add("critic", critic);
+
+    let resp = orch.run(
+        "Should a small Rust startup pick PostgreSQL or SQLite for their first \
+         production deployment? Take a position."
+    ).await?;
+    println!("{}", resp.content);
+    Ok(())
+}
+```
+
+`RoundRobin::default()` does 3 rounds. For more, use `RoundRobin::new(rounds)`.
+
+## How it works
+
+- **Both agents have low `max_iterations` (2).** Each round is one model call plus optional tool use. We don't want either side to spiral inside its own loop.
+- **The system prompts encode the asymmetry.** Without it, both agents tend to "be balanced" and the disagreement collapses. The "do NOT propose alternatives" line in the critic's prompt is load-bearing.
+- **The final reply is whoever spoke last.** With 3 rounds and the proposer first, that's the proposer's revised answer — which is what you usually want.
+
+## Variations
+
+| Variation | How |
+|---|---|
+| More rounds | `RoundRobin::new(5)` for deeper iteration. |
+| Three voices | Add a third agent (a moderator, a domain expert) — round-robin still works. |
+| Vote at the end | Replace the final round with `ParallelVote` over multiple proposer instances. |
+| Tool-using critic | Give the critic a `search` tool so it can fact-check claims. |
+| Stop early on agreement | Implement a custom `HandoffStrategy` that watches for "I agree" and terminates. |
+
+## When this pattern shines
+
+- **Open-ended questions** without a known correct answer.
+- **Trade-off decisions** where the right call depends on context.
+- **Hallucination-prone domains** — the critic's job is hallucination-spotting.
+
+## When it's overkill
+
+- Simple lookups (a single agent with a tool is faster).
+- Math and code (correctness, not perspective, is the bottleneck — use a calculator or a compiler).
+- Real-time chat (debate is slow; users wait for round 3).
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Multi-agent orchestration" icon="people-arrows" href="/building-agents/multi-agent">
+    Strategies, custom handoffs, AgentBus.
+  </Card>
+  <Card title="Patterns → Research assistant" icon="grid" href="/patterns/research-assistant">
+    Sequential pipeline alternative.
+  </Card>
+  <Card title="Building agents → Memory" icon="brain" href="/building-agents/memory">
+    Give each agent its own memory.
+  </Card>
+</CardGroup>

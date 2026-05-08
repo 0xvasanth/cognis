@@ -1,0 +1,119 @@
+---
+title: "Prompts and scores"
+description: "Pull versioned prompts from Langfuse, push numeric or categorical scores back. Close the eval loop without leaving Cognis."
+sidebarTitle: "Prompts & scores"
+---
+
+Once your traces are flowing into Langfuse, two more things become useful:
+
+- **Versioned prompts** — keep the prompt text out of your code, change it without redeploying, A/B test in production.
+- **Evaluation scores** — record how well a run did and tie it back to the trace. Build dashboards, regression alarms, and rolling quality checks.
+
+Both are implemented in `cognis-trace` and feature-gated behind `langfuse`.
+
+## Versioned prompts
+
+```rust
+use cognis_trace::exporters::langfuse::{LangfuseConfig, LangfusePromptClient};
+
+let client = LangfusePromptClient::new(LangfuseConfig::from_env()?)?;
+
+let latest = client.get("greeting").await?;            // newest version
+let pinned = client.get_version("greeting", 3).await?; // exact version
+let prod   = client.get_label("greeting", "production").await?;
+```
+
+`Prompt` carries:
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | `String` | Stable identifier. |
+| `version` | `u32` | Monotonic. |
+| `body` | `PromptBody` | Either `text(String)` or `chat(Vec<Message>)`. |
+| `config` | `serde_json::Value` | Free-form metadata you maintain alongside the prompt. |
+| `labels` | `Vec<String>` | E.g., `production`, `staging`, `experiment-a`. |
+
+When you wire a fetched prompt into a chain, the `TracingHandler` automatically stamps `prompt_name` and `prompt_version` on the resulting generation span — so you can filter "all calls using prompt v3" in Langfuse.
+
+## Submitting scores
+
+Every run gets a `run_id`. Score it any time — during the run (in-band) or later (out-of-band).
+
+<Tabs>
+  <Tab title="In-band">
+    Submit a score directly through the handler:
+    ```rust
+    use cognis_trace::{ScoreRecord, ScoreValue};
+
+    handler.record_score(ScoreRecord {
+        run_id,
+        trace_id: None,
+        session_id: None,
+        name: "novelty".into(),
+        value: ScoreValue::Numeric(0.87),
+        comment: Some("eval pipeline".into()),
+    });
+    ```
+    Useful for synchronous eval — your eval ran, you have the answer, attach it to the trace before the user sees the response.
+  </Tab>
+  <Tab title="Out-of-band">
+    Score from a separate process (a nightly eval job, a thumbs-up/down on the front end, an LLM-as-judge scorer):
+    ```rust
+    use cognis_trace::exporters::langfuse::{LangfuseConfig, LangfuseScorer};
+    use cognis_trace::{ScoreRecord, ScoreSink};
+
+    let scorer = LangfuseScorer::new(LangfuseConfig::from_env()?)?;
+    scorer.submit(ScoreRecord {
+        run_id: existing_run_id,
+        // …
+    }).await?;
+    ```
+    `LangfuseScorer` doesn't need a `TracingHandler` — it's a thin posting client.
+  </Tab>
+</Tabs>
+
+## Score values
+
+| `ScoreValue` | Use for |
+|---|---|
+| `Numeric(f32)` | quality, novelty, helpfulness — anything on a continuous scale |
+| `Categorical(String)` | "good" / "bad" / "skip", custom labels |
+| `Boolean(bool)` | binary thumbs up/down |
+
+## Bring-your-own backend
+
+If Langfuse isn't your eval backend, implement `ScoreSink`:
+
+```rust
+use async_trait::async_trait;
+use cognis_trace::{ScoreRecord, ScoreSink};
+
+struct MyScorer;
+
+#[async_trait]
+impl ScoreSink for MyScorer {
+    async fn submit(&self, record: ScoreRecord) -> Result<(), cognis_trace::TraceError> {
+        // POST to your service.
+        todo!()
+    }
+}
+```
+
+Pass `Arc::new(MyScorer)` anywhere a `ScoreSink` is expected. The trait is one method.
+
+## How it works
+
+- **Prompt fetches are HTTP calls.** Cache them locally if your access pattern is "fetch on every request" — `client.get` is fast but it's still a round-trip.
+- **Score submission is async and best-effort.** The Langfuse scorer batches in the background like the trace exporter; failures are logged.
+- **Run IDs link the world.** A trace, its scores, the prompt version it used — all keyed on the same `run_id` Cognis generated for the run.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" icon="check" href="/observability/evaluation">
+    Run evals over a dataset and feed scores back.
+  </Card>
+  <Card title="Trace with Langfuse" icon="chart-line" href="/observability/langfuse">
+    Where the runs themselves land.
+  </Card>
+</CardGroup>

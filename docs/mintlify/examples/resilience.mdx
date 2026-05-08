@@ -1,0 +1,45 @@
+---
+title: "Resilience"
+description: "Retries, fallbacks, rate limiters, error recovery, SSRF protection, caching."
+sidebarTitle: "Resilience"
+---
+
+Resilience examples show production patterns for keeping an LLM app up when providers wobble. Sources under [`examples/resilience/`](https://github.com/0xvasanth/cognis/tree/main/examples/resilience).
+
+| Name | Topic | Source |
+|---|---|---|
+| `resilience_demo` | End-to-end resilience stack | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/resilience_demo.rs) |
+| `resilience_error_handling` | Handling and surfacing errors | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/error_handling.rs) |
+| `resilience_error_recovery` | `Recovery` middleware patterns | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/error_recovery.rs) |
+| `resilience_rate_limiter` | Token-bucket rate limiting | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/rate_limiter.rs) |
+| `resilience_advanced_rate_limiters` | Composite limiters (per-second + per-minute) | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/advanced_rate_limiters.rs) |
+| `resilience_caching` | Caching patterns | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/caching_demo.rs) |
+| `resilience_ssrf_protection` | SSRF-safe HTTP tools | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/ssrf_protection.rs) |
+
+## How to run
+
+```bash
+cargo run -p cognis-examples --example resilience_demo
+cargo run -p cognis-examples --example resilience_advanced_rate_limiters
+cargo run -p cognis-examples --example resilience_ssrf_protection
+```
+
+## Pick a starting point
+
+- **One example to read?** `resilience_demo` shows a layered stack with retry, fallback, and rate limit.
+- **Scaling beyond one provider tier?** `resilience_advanced_rate_limiters` covers composite limits.
+- **Building HTTP-tool agents?** `resilience_ssrf_protection` is the safety baseline.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Resilience guide" icon="shield" href="/production/resilience">
+    Wrappers, middleware, recovery patterns.
+  </Card>
+  <Card title="Caching" icon="bolt" href="/production/caching">
+    Don't pay twice.
+  </Card>
+  <Card title="Security" icon="lock" href="/production/security">
+    PII, deny-lists, sandboxing.
+  </Card>
+</CardGroup>

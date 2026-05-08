@@ -1,0 +1,124 @@
+---
+title: "Long-context summarization"
+description: "Compress a 200k-token document into a useful summary without losing the threads. Map-reduce, hierarchical summaries, and reorder."
+sidebarTitle: "Long-context"
+---
+
+Modern models have huge context windows, but stuffing them is rarely the right move — quality drops, costs balloon, and the "lost in the middle" effect bites hard. This pattern handles long documents with a map-reduce approach: split, summarize each chunk, summarize the summaries, optionally reorder.
+
+## What you'll build
+
+A function that takes a long document and returns a 1-page summary, scaling to inputs that wouldn't fit in any single context window.
+
+## How it works
+
+- **Split** the document into chunk-sized pieces with `RecursiveCharSplitter`.
+- **Map**: summarize each chunk in parallel with the LLM.
+- **Reduce**: summarize the chunk-summaries together. If even *those* don't fit, recurse.
+- **Reorder** the final summary's source list (best-first → edge-first) for the model that consumes the summary downstream.
+
+## The code
+
+```rust
+use std::sync::Arc;
+use futures::stream::{self, StreamExt};
+use cognis::prelude::*;
+use cognis_llm::Client;
+use cognis_rag::{Document, RecursiveCharSplitter, TextSplitter};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = Arc::new(Client::from_env()?);
+
+    let raw = std::fs::read_to_string("./long-doc.txt")?;
+    let chunks = RecursiveCharSplitter::new()
+        .with_chunk_size(4_000)        // ~1k tokens
+        .with_overlap(200)
+        .split_all(&[Document::new(raw)]);
+
+    // MAP: summarize each chunk concurrently.
+    let summaries: Vec<String> = stream::iter(chunks)
+        .map(|chunk| {
+            let client = client.clone();
+            async move {
+                let prompt = format!(
+                    "Summarize the following passage in 2-3 sentences. \
+                     Preserve names, numbers, and dates. Return prose only.\n\n{}",
+                    chunk.content
+                );
+                let reply = client.invoke(vec![Message::human(prompt)]).await?;
+                Ok::<_, CognisError>(reply.content().to_string())
+            }
+        })
+        .buffer_unordered(8)            // 8 calls in flight
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<_>>()?;
+
+    // REDUCE: summarize the summaries.
+    let combined = summaries.join("\n\n");
+    let reduce_prompt = format!(
+        "You will receive a series of partial summaries of one long document. \
+         Produce a single coherent one-page summary. Group related points, \
+         preserve key facts, and keep the structure of the original.\n\n{}",
+        combined
+    );
+    let final_summary = client.invoke(vec![Message::human(reduce_prompt)]).await?;
+    println!("{}", final_summary.content());
+    Ok(())
+}
+```
+
+## How it works
+
+- **Concurrency comes from `buffer_unordered`.** Eight chunks summarize in parallel; the embedder rate limit is the throttle. Tune to your provider's quota.
+- **`with_overlap(200)` keeps cross-chunk references stable.** A claim that spans two chunks survives because both chunks share the boundary text.
+- **Two passes scales linearly.** A 200k-token doc with 1k-token chunks is 200 chunks → 200 summaries (5–10k tokens) → one final summary. Each LLM call is cheap.
+- **Recurse when needed.** If the combined summaries themselves don't fit, treat them as a new doc and run the same map-reduce.
+
+## When the document has structure
+
+For docs with sections (Markdown, HTML, books with chapters), use `MarkdownSplitter` or `HtmlSplitter` so chunks align to natural boundaries. Hierarchical summaries (per-section, then per-chapter, then overall) preserve structure better than flat map-reduce.
+
+## Long-context reorder
+
+If you're feeding a *list* of summaries (not a flattened blob) into a final model, use `LongContextReorder` to put the most-relevant ones at the edges where the model's attention is best:
+
+```rust
+use cognis_rag::LongContextReorder;
+
+let reordered = LongContextReorder::default().reorder(scored_summaries);
+```
+
+Pair this with retrieval: rank summaries by relevance to a question, reorder, then prompt — see [Reranking](/building-rag/reranking).
+
+## Production considerations
+
+| Concern | Add |
+|---|---|
+| Retries on transient errors | Wrap the client with `with_max_retries(3)`. |
+| Cost cap | `RateLimit::token_bucket(...)` middleware; or precompute token counts and refuse oversized inputs. |
+| Caching | Hash chunks; skip the map call when the chunk has been seen. |
+| Monitoring | Wire `cognis-trace` so each map call is its own generation span — see [Trace with Langfuse](/observability/langfuse). |
+| Determinism | Set `temperature=0` (via `Client::builder().temperature(...)` or `ChatOptions`) for reproducible summaries in tests. |
+
+## When to skip this pattern
+
+- Document fits comfortably in one context. Just send it.
+- You only need a *quick* gist. Truncate, then summarize.
+- The doc is highly redundant (logs, API responses). Deduplicate first; you may not need to summarize at all.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Documents and splitters" icon="scissors" href="/building-rag/documents">
+    Pick the right chunker for your input.
+  </Card>
+  <Card title="Reranking and compression" icon="arrow-down-up-across-line" href="/building-rag/reranking">
+    Compress and reorder retrieved docs.
+  </Card>
+  <Card title="Middleware → Summarization" icon="layer-group" href="/building-agents/middleware">
+    Auto-summarize an agent's transcript when context grows.
+  </Card>
+</CardGroup>

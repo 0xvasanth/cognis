@@ -1,0 +1,48 @@
+---
+title: "Models"
+description: "LLM clients, streaming, embeddings, similarity, model routing, multimodal content."
+sidebarTitle: "Models"
+---
+
+Model examples show what happens at the LLM-client layer — how to stream, how to embed, how to compare embeddings, and how to route between models. Sources under [`examples/models/`](https://github.com/0xvasanth/cognis/tree/main/examples/models).
+
+| Name | Topic | Source |
+|---|---|---|
+| `models_streaming_chat` | Streaming chat with tool calls | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/streaming_chat.rs) |
+| `models_streaming` | Token streaming basics | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/streaming.rs) |
+| `models_streaming_demo` | Streaming with usage and finish-reason | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/streaming_demo.rs) |
+| `models_embedding` | Calling an embeddings API | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/embedding_models.rs) |
+| `models_embedding_similarity` | Cosine / dot-product comparison | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/embedding_similarity.rs) |
+| `models_routing` | Routing requests across multiple models | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/model_routing.rs) |
+| `models_registry` | The chat-model registry | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/chat_model_registry.rs) |
+| `models_content_blocks` | Multimodal `ContentPart`s — text + image + audio | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/content_blocks.rs) |
+
+## How to run
+
+```bash
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example models_streaming_chat
+
+# Embeddings (Ollama embedder):
+COGNIS_PROVIDER=ollama \
+  cargo run -p cognis-examples --example models_embedding
+```
+
+## Tips
+
+- Streaming over Ollama works; tool-calling-while-streaming requires a model that natively supports function calling (`llama3.1`, `qwen2.5`, `mistral-nemo`).
+- `models_content_blocks` shows the multimodal payload shape but needs a vision-capable provider (OpenAI gpt-4o, Anthropic Claude, Gemini).
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Models and providers" icon="plug" href="/building-agents/models">
+    The user guide for `Client` and provider builders.
+  </Card>
+  <Card title="Streaming" icon="signal" href="/building-agents/streaming">
+    Tokens vs structured events.
+  </Card>
+  <Card title="Embeddings & stores" icon="database" href="/building-rag/embeddings">
+    Where the embedders feed.
+  </Card>
+</CardGroup>

@@ -1,0 +1,43 @@
+---
+title: "Chains"
+description: "Composing primitives with pipe, branch, parallel, lambda. Output parsers, structured extraction, typed runnables."
+sidebarTitle: "Chains"
+---
+
+Chain examples cover everything between "I have a Runnable" and "I have a typed answer." Composition operators, output parsers, structured extraction, conditional branching. Sources live under [`examples/chains/`](https://github.com/0xvasanth/cognis/tree/main/examples/chains).
+
+| Name | Topic | Source |
+|---|---|---|
+| `chains_simple` | The smallest pipe chain | [src](https://github.com/0xvasanth/cognis/blob/main/examples/chains/simple_chain.rs) |
+| `chains_pipe_operator` | The `pipe` pattern explained | [src](https://github.com/0xvasanth/cognis/blob/main/examples/chains/pipe_operator_demo.rs) |
+| `chains_composition` | Pipe + branch + parallel composition | [src](https://github.com/0xvasanth/cognis/blob/main/examples/chains/chain_composition.rs) |
+| `chains_conditional` | `Branch` selector for state-based routing | [src](https://github.com/0xvasanth/cognis/blob/main/examples/chains/conditional_chains.rs) |
+| `chains_qa` | Q&A chain with prompt + model + parser | [src](https://github.com/0xvasanth/cognis/blob/main/examples/chains/qa_chain.rs) |
+| `chains_extraction` | Information extraction with typed output | [src](https://github.com/0xvasanth/cognis/blob/main/examples/chains/extraction_chain.rs) |
+| `chains_structured_extraction` | Extracting structured fields from free text | [src](https://github.com/0xvasanth/cognis/blob/main/examples/chains/structured_extraction.rs) |
+| `chains_structured_parsing` | `StructuredOutputParser<T>` end-to-end | [src](https://github.com/0xvasanth/cognis/blob/main/examples/chains/structured_parsing_demo.rs) |
+| `chains_typed_runnable` | Typed `Runnable<I, O>` with custom impls | [src](https://github.com/0xvasanth/cognis/blob/main/examples/chains/typed_runnable_demo.rs) |
+| `chains_agent_output_parsing` | Parsing an agent's reply into typed values | [src](https://github.com/0xvasanth/cognis/blob/main/examples/chains/agent_output_parsing.rs) |
+
+## How to run
+
+```bash
+cargo run -p cognis-examples --example chains_pipe_operator
+cargo run -p cognis-examples --example chains_structured_parsing
+```
+
+Most chain examples are offline — they use a fake provider or pure-Rust composition. Provider-backed ones (Q&A, extraction) need `COGNIS_PROVIDER` set; see [Environment variables](/reference/env-vars).
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Runnables" icon="code" href="/core-ideas/runnables">
+    The contract these chains compose.
+  </Card>
+  <Card title="Structured output" icon="brackets-curly" href="/building-agents/structured-output">
+    Parsers, fixers, retry strategies.
+  </Card>
+  <Card title="Parsers examples" icon="grid" href="/examples/parsers">
+    `OutputFixingParser` and `RetryParser` in action.
+  </Card>
+</CardGroup>

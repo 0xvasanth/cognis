@@ -1,0 +1,46 @@
+---
+title: "Observability"
+description: "Callbacks, tracing, health checks, evaluation framework, evaluation pipelines."
+sidebarTitle: "Observability"
+---
+
+Observability examples show what's running and how it's doing — events, callbacks, health checks, evaluations. Sources under [`examples/observability/`](https://github.com/0xvasanth/cognis/tree/main/examples/observability).
+
+| Name | Topic | Source |
+|---|---|---|
+| `obs_event_system` | The event system from the inside | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/event_system_demo.rs) |
+| `obs_callback_manager` | `CallbackManager` for stacked handlers | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/callback_manager.rs) |
+| `obs_tracing` | Stdout `TracingObserver` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/tracing_demo.rs) |
+| `obs_health_monitoring` | Provider health checks | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/health_monitoring.rs) |
+| `obs_evaluation_framework` | `EvaluationFramework` over a dataset | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/evaluation_framework.rs) |
+| `obs_evaluation_pipeline` | `EvaluationPipeline` with multiple datasets | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/evaluation_pipeline.rs) |
+
+## How to run
+
+```bash
+cargo run -p cognis-examples --example obs_event_system
+cargo run -p cognis-examples --example obs_tracing
+
+# Eval (offline-friendly):
+cargo run -p cognis-examples --example obs_evaluation_framework
+```
+
+## Pick a starting point
+
+- **Just want to see what's happening?** `obs_tracing` prints events to stdout.
+- **Building eval into CI?** `obs_evaluation_framework` is the smallest working harness.
+- **Stacking observers?** `obs_callback_manager` shows how to multiplex.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Callbacks & observers" icon="bolt" href="/observability/callbacks">
+    The user guide.
+  </Card>
+  <Card title="Trace with Langfuse" icon="chart-line" href="/observability/langfuse">
+    Production observability.
+  </Card>
+  <Card title="Evaluation" icon="check" href="/observability/evaluation">
+    Datasets, scorers, reports.
+  </Card>
+</CardGroup>

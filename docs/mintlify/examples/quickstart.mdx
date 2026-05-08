@@ -1,0 +1,55 @@
+---
+title: "Quickstart V2 examples"
+description: "Eight numbered demos that walk the V2 surface — Runnable, agents, graphs, streaming, checkpoints, multi-agent."
+sidebarTitle: "Quickstart V2"
+---
+
+The numbered V2 demos are the fastest way to learn the shape of Cognis end-to-end. Each is a self-contained `.rs` file under [`examples/v2/`](https://github.com/0xvasanth/cognis/tree/main/examples/v2). All eight default to a fake or local Ollama provider, so they run offline.
+
+## How to run
+
+```bash
+cargo run -p cognis-examples --example 02_five_line_agent
+# or with Ollama:
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example 06_ollama_tool_calling
+```
+
+## The set
+
+| # | Name | Topic | Source |
+|---|---|---|---|
+| 01 | `01_hello_runnable` | Custom `Runnable<I, O>` — invoke, batch, stream | [src](https://github.com/0xvasanth/cognis/blob/main/examples/v2/01_hello_runnable.rs) |
+| 02 | `02_five_line_agent` | The smallest tool-calling agent | [src](https://github.com/0xvasanth/cognis/blob/main/examples/v2/02_five_line_agent.rs) |
+| 03 | `03_custom_graph` | Hand-built `Graph<S>` wrapped via `Agent::wrap` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/v2/03_custom_graph.rs) |
+| 04 | `04_streaming_chat` | Token-by-token streaming via `Client::stream` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/v2/04_streaming_chat.rs) |
+| 05 | `05_checkpoint_resume` | Checkpointer + time-travel through saved steps | [src](https://github.com/0xvasanth/cognis/blob/main/examples/v2/05_checkpoint_resume.rs) |
+| 06 | `06_ollama_tool_calling` | Tool calling against a local Ollama model | [src](https://github.com/0xvasanth/cognis/blob/main/examples/v2/06_ollama_tool_calling.rs) |
+| 07 | `07_ollama_structured_output` | `StructuredOutputParser<T>` over Ollama | [src](https://github.com/0xvasanth/cognis/blob/main/examples/v2/07_ollama_structured_output.rs) |
+| 08 | `08_ollama_multi_agent` | `Sequential` planner → executor handoff | [src](https://github.com/0xvasanth/cognis/blob/main/examples/v2/08_ollama_multi_agent.rs) |
+
+## Recommended order
+
+Read in number order if you want the full guided tour. If you're impatient, jump to whichever maps to your use case:
+
+- **Building a chat agent?** → 02, then 06 for tools, then 07 for structured output.
+- **Building a graph workflow?** → 01, then 03, then 05 for checkpoints.
+- **Building multi-agent?** → 02, then 08.
+- **Building a streaming UI?** → 04, then [Patterns → Streaming UI](/patterns/streaming-ui).
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Quickstart guide" icon="bolt" href="/get-started/quickstart">
+    The narrative version of demo 02 — explained step by step.
+  </Card>
+  <Card title="Examples → Agents" icon="robot" href="/examples/agents">
+    More agent demos beyond the V2 set.
+  </Card>
+  <Card title="Examples → Graphs" icon="diagram-project" href="/examples/graphs">
+    More graph demos beyond demo 03.
+  </Card>
+  <Card title="Patterns" icon="grid" href="/patterns/research-assistant">
+    Larger applications that combine multiple V2 demos.
+  </Card>
+</CardGroup>
