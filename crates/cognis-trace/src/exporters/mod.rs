@@ -4,4 +4,5 @@
 pub mod stdout;
 
 pub mod mock;
-// #[cfg(feature = "langfuse")] pub mod langfuse;  // added in Task 18
+#[cfg(feature = "langfuse")]
+pub mod langfuse;
