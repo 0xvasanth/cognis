@@ -37,3 +37,5 @@ pub mod exporters;
 
 #[cfg(feature = "stdout")]
 pub use exporters::stdout::StdoutExporter;
+
+pub use exporters::mock::MockExporter;
