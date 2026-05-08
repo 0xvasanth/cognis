@@ -1,42 +1,28 @@
-//! V2 doesn't ship a built-in KnowledgeGraphMemory. The Memory trait
-//! is the extension point: implement it with whatever graph / DB you
-//! want. Below is a tiny in-memory triple store wrapped as `Memory`.
+//! KnowledgeGraphMemory — extracts (subject, predicate, object) triples
+//! from messages and surfaces them as a "Knowledge:" system preamble.
 
 use cognis::prelude::*;
-use cognis::Memory;
-
-#[derive(Default)]
-struct TripleMemory {
-    triples: Vec<(String, String, String)>, // (subject, predicate, object)
-    history: Vec<Message>,
-}
-
-impl TripleMemory {
-    fn record_fact(&mut self, s: &str, p: &str, o: &str) {
-        self.triples.push((s.into(), p.into(), o.into()));
-    }
-    fn facts(&self) -> Vec<String> {
-        self.triples.iter().map(|(s, p, o)| format!("{s} {p} {o}.")).collect()
-    }
-}
-
-impl Memory for TripleMemory {
-    fn read(&self) -> &[Message] { &self.history }
-    fn write(&mut self, msg: Message) { self.history.push(msg); }
-    fn clear(&mut self) { self.history.clear(); self.triples.clear(); }
-    fn seed(&self) -> Vec<Message> {
-        let kb = format!("Known facts:\n{}", self.facts().join("\n"));
-        let mut out = vec![Message::system(kb)];
-        out.extend(self.history.iter().cloned());
-        out
-    }
-}
+use cognis::KnowledgeGraphMemory;
 
 fn main() {
-    let mut m = TripleMemory::default();
-    m.record_fact("Rust", "released_in", "2010");
-    m.record_fact("Rust", "creator", "Mozilla");
-    m.write(Message::human("Tell me about Rust."));
-    let seed = m.seed();
-    println!("seed has {} messages; first one is the synthesized KB:\n{}", seed.len(), seed[0].content());
+    let mut mem = KnowledgeGraphMemory::new();
+    mem.write(Message::human("Cognis is a Rust framework. Tokio is async."));
+    mem.write(Message::human("cognis-rag has embeddings."));
+    mem.write(Message::human("Cognis is a Rust framework.")); // dup → no-op
+
+    println!("=== triples (deduped) ===");
+    for (s, p, o) in mem.triples() {
+        println!("  ({s}, {p}, {o})");
+    }
+
+    println!("\n=== seed ===");
+    for m in mem.seed() {
+        let role = match &m {
+            Message::System(_) => "system",
+            Message::Human(_) => "human",
+            Message::Ai(_) => "ai",
+            Message::Tool(_) => "tool",
+        };
+        println!("[{role}] {}", m.content().replace('\n', " | "));
+    }
 }

@@ -67,8 +67,9 @@ pub mod tools;
 pub use agent::{
     default_react_graph, default_react_graph_with_limits, Agent, AgentBuilder, AgentHealth,
     AgentLifecycle, AgentPlugin, AgentResponse, AgentState, AgentStateUpdate, Buffer,
-    ConversationMode, FnPlugin, Memory, OnStart, SummaryBufferMemory, SummaryMemory, ThinkNode,
-    TokenBufferMemory, ToolDispatchNode, VectorMemory, Window, Workflow, WorkflowState,
+    ConversationMode, EntityExtractor, EntityFact, EntityMemory, FnPlugin, KnowledgeGraphMemory,
+    Memory, OnStart, SummaryBufferMemory, SummaryMemory, ThinkNode, TokenBufferMemory,
+    ToolDispatchNode, Triple, TripleExtractor, VectorMemory, Window, Workflow, WorkflowState,
     WorkflowStateUpdate,
 };
 pub use backend::{
@@ -113,10 +114,11 @@ pub use telemetry::{
 };
 pub use tools::{
     register_filesystem_tools, AllowList, ApprovalGatedTool, Approver, AutoApprove, CachedTool,
-    Calculator, CodeSanitizer, Decision, DotPathEngine, FileEditTool, FileExistsTool, FileGlobTool,
-    FileGrepTool, FileListTool, FileReadTool, FileWriteTool, HumanTool, JsonQueryTool,
-    PythonReplConfig, PythonReplTool, QueryEngine, RejectAll, RetrieverTool, SanitizationError,
-    ShellTool, StaticResponder, SubAgentTool, ToolHumanResponder,
+    Calculator, CodeSanitizer, Decision, DotPathEngine, ExecutionPlan, FileEditTool,
+    FileExistsTool, FileGlobTool, FileGrepTool, FileListTool, FileReadTool, FileWriteTool,
+    HumanTool, JsonQueryTool, OrchestratorResult, PythonReplConfig, PythonReplTool, QueryEngine,
+    RejectAll, RetrieverTool, SanitizationError, ShellTool, StaticResponder, SubAgentTool,
+    ToolHumanResponder, ToolOrchestrator, ToolStep,
 };
 #[cfg(feature = "tools-http")]
 pub use tools::{

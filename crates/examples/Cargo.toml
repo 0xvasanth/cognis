@@ -337,3 +337,34 @@ path = "../../examples/resilience/ssrf_protection.rs"
 [[example]]
 name = "resilience_demo"
 path = "../../examples/resilience/resilience_demo.rs"
+
+# parsers/ — self-correcting output parsers
+[[example]]
+name = "parsers_fixing"
+path = "../../examples/parsers/fixing_parser.rs"
+[[example]]
+name = "parsers_retry"
+path = "../../examples/parsers/retry_parser.rs"
+
+# new feature demos
+[[example]]
+name = "retrieval_document_transformers"
+path = "../../examples/retrieval/document_transformers.rs"
+[[example]]
+name = "graphs_dot_export"
+path = "../../examples/graphs/graph_dot_export.rs"
+[[example]]
+name = "resilience_advanced_rate_limiters"
+path = "../../examples/resilience/advanced_rate_limiters.rs"
+[[example]]
+name = "memory_entity"
+path = "../../examples/memory/entity_memory.rs"
+[[example]]
+name = "agents_round_robin"
+path = "../../examples/agents/round_robin_agents.rs"
+[[example]]
+name = "agents_bus_pubsub"
+path = "../../examples/agents/agent_bus_pubsub.rs"
+[[example]]
+name = "tools_orchestrator"
+path = "../../examples/tools/tool_orchestrator.rs"
