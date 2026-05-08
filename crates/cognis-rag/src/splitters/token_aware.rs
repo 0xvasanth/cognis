@@ -34,11 +34,39 @@ impl TokenAwareSplitter {
         }
     }
 
-    /// Token-overlap between adjacent chunks.
+    /// Token-overlap between adjacent chunks. Clamped to `max_tokens - 1`
+    /// so the second-pass walker always makes progress; if the caller
+    /// passes a larger value, the chunk would just feed itself back in
+    /// as overlap and the splitter would loop or emit chunks > max.
     pub fn with_overlap_tokens(mut self, n: usize) -> Self {
-        self.overlap_tokens = n;
+        let cap = self.max_tokens.saturating_sub(1);
+        self.overlap_tokens = n.min(cap);
         self
     }
+}
+
+/// Take a suffix of `s` whose token count is exactly `n_tokens` (or
+/// the largest suffix below it). Counts via `tok` so the result is
+/// honest about the configured token unit.
+fn token_tail(s: &str, n_tokens: usize, tok: &dyn Tokenizer) -> String {
+    if n_tokens == 0 {
+        return String::new();
+    }
+    // Walk back char-by-char, growing the tail until the tokenizer
+    // reports n_tokens. Char-stepping is bounded by the chunk size so
+    // this is O(chunk_chars) — fine for typical RAG sizes.
+    let chars: Vec<char> = s.chars().collect();
+    let mut tail = String::new();
+    for &c in chars.iter().rev() {
+        let mut candidate = String::with_capacity(tail.len() + c.len_utf8());
+        candidate.push(c);
+        candidate.push_str(&tail);
+        if tok.count(&candidate) > n_tokens {
+            break;
+        }
+        tail = candidate;
+    }
+    tail
 }
 
 impl TextSplitter for TokenAwareSplitter {
@@ -59,16 +87,12 @@ impl TextSplitter for TokenAwareSplitter {
                 if self.tokenizer.count(&buf) >= self.max_tokens {
                     out.push(child_doc(doc, std::mem::take(&mut buf), out.len()));
                     if self.overlap_tokens > 0 {
-                        let last = out.last().unwrap().content.clone();
-                        let tail: String = last
-                            .chars()
-                            .rev()
-                            .take(self.overlap_tokens)
-                            .collect::<Vec<_>>()
-                            .into_iter()
-                            .rev()
-                            .collect();
-                        buf.push_str(&tail);
+                        let last = &out.last().unwrap().content;
+                        buf.push_str(&token_tail(
+                            last,
+                            self.overlap_tokens,
+                            self.tokenizer.as_ref(),
+                        ));
                     }
                 }
             }
@@ -99,5 +123,31 @@ mod tests {
         // Pretend each whitespace-separated word is one token.
         let tok: Arc<dyn Tokenizer> = Arc::new(FnTokenizer(|s: &str| s.split_whitespace().count()));
         assert_eq!(tok.count("hello rust world"), 3);
+    }
+
+    #[test]
+    fn overlap_clamps_below_max_tokens() {
+        let tok: Arc<dyn Tokenizer> = Arc::new(CharTokenizer);
+        let s = TokenAwareSplitter::new(tok, 5).with_overlap_tokens(20);
+        // Clamped to max - 1 = 4.
+        assert_eq!(s.overlap_tokens, 4);
+    }
+
+    #[test]
+    fn overlap_uses_token_count_not_char_count() {
+        // Word tokenizer: tokens = whitespace-separated word count.
+        let tok: Arc<dyn Tokenizer> = Arc::new(FnTokenizer(|s: &str| s.split_whitespace().count()));
+        let tail = token_tail("alpha beta gamma delta", 2, tok.as_ref());
+        // Last 2 word-tokens: "gamma delta" (length 11 chars), not the
+        // last 2 *characters* ("ta"). The tail-walker grows char-by-char,
+        // so leading whitespace from word boundaries can be included.
+        assert_eq!(tok.count(&tail), 2);
+        assert!(tail.ends_with("gamma delta"), "tail = {tail:?}");
+    }
+
+    #[test]
+    fn overlap_zero_tokens_returns_empty_tail() {
+        let tok: Arc<dyn Tokenizer> = Arc::new(CharTokenizer);
+        assert_eq!(token_tail("anything", 0, tok.as_ref()), "");
     }
 }
