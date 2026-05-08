@@ -9,7 +9,7 @@ use crate::batch::BatcherConfig;
 use crate::error::TraceError;
 
 /// Langfuse client + exporter configuration.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LangfuseConfig {
     /// Base URL (default: https://cloud.langfuse.com).
     pub host: String,

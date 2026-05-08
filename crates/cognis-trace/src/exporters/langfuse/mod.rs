@@ -4,7 +4,7 @@
 // mod exporter;   // Task 21
 // mod prompts;    // Task 23
 // mod scores;     // Task 24
-// mod wire;       // Task 19
+mod wire;
 pub mod config;
 
 pub use config::LangfuseConfig;
