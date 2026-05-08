@@ -19,9 +19,9 @@ An agent with two tools — one safe (`get_balance`), one sensitive (`transfer_f
 ## The approver
 
 ```rust
-use std::sync::Arc;
 use async_trait::async_trait;
-use cognis::tools::{Approver, ApprovalDecision};
+use cognis::tools::{Approver, Decision};
+use cognis::Result;
 use serde_json::Value;
 
 struct CliApprover {
@@ -30,13 +30,13 @@ struct CliApprover {
 
 #[async_trait]
 impl Approver for CliApprover {
-    async fn approve(&self, tool: &str, args: &Value) -> cognis::Result<ApprovalDecision> {
-        if !self.sensitive.contains(&tool) {
-            return Ok(ApprovalDecision::Approve);
+    async fn approve(&self, tool_name: &str, args: &Value) -> Result<Decision> {
+        if !self.sensitive.contains(&tool_name) {
+            return Ok(Decision::Approve);
         }
 
         println!("\n[approval needed]");
-        println!("  tool: {tool}");
+        println!("  tool: {tool_name}");
         println!("  args: {}", serde_json::to_string_pretty(args)?);
         print!("  approve? (y / n / e=edit): ");
         std::io::Write::flush(&mut std::io::stdout())?;
@@ -44,16 +44,16 @@ impl Approver for CliApprover {
         let mut line = String::new();
         std::io::stdin().read_line(&mut line)?;
         match line.trim() {
-            "y" | "yes" => Ok(ApprovalDecision::Approve),
+            "y" | "yes" => Ok(Decision::Approve),
             "e" | "edit" => {
                 print!("  new JSON args: ");
                 std::io::Write::flush(&mut std::io::stdout())?;
                 let mut edit = String::new();
                 std::io::stdin().read_line(&mut edit)?;
                 let new_args: Value = serde_json::from_str(edit.trim())?;
-                Ok(ApprovalDecision::Edit(new_args))
+                Ok(Decision::Edit { args: new_args })
             }
-            _ => Ok(ApprovalDecision::Reject("rejected by operator".into())),
+            _ => Ok(Decision::reject("rejected by operator")),
         }
     }
 }
@@ -65,8 +65,7 @@ impl Approver for CliApprover {
 use std::sync::Arc;
 use cognis::prelude::*;
 use cognis::AgentBuilder;
-use cognis::middleware::HumanInTheLoop;
-use cognis_llm::Client;
+use cognis::Client;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -78,8 +77,7 @@ async fn main() -> Result<()> {
         .with_llm(Client::from_env()?)
         .with_tool(Arc::new(GetBalanceTool))     // (your impls)
         .with_tool(Arc::new(TransferFundsTool))
-        .with_approver(approver.clone())
-        .middleware(HumanInTheLoop::new(approver))
+        .with_approver(approver)                 // wraps every registered tool
         .with_system_prompt(
             "You are a banking assistant. Use tools to inspect accounts and \
              move money. Confirm intent in plain English before any transfer.",
@@ -97,10 +95,10 @@ async fn main() -> Result<()> {
 
 ## How it works
 
-- **The approver runs *before* dispatch.** A reject means the tool never executes — the loop sees "rejected by operator" as the tool result.
+- **The approver runs *before* dispatch.** `with_approver(...)` wraps every registered tool in an `ApprovalGatedTool`. When the agent's dispatcher tries to run the tool, the wrapper consults the approver first.
+- **A `Reject` decision short-circuits the tool**, returning the rejection reason as the tool's output — the agent sees "rejected by operator" and can apologize, retry, or take a different path.
 - **`Edit` lets the human fix the model's args** without rejecting. Useful when the model picked the right tool but the wrong amount or recipient.
-- **The approver is `Arc<dyn Approver>`** because the same instance is used in two places — the builder's gate and the middleware. Sharing avoids state divergence.
-- **`HumanInTheLoop` is the middleware**, not the approver. The middleware enforces the gate inside the model-call wrapping; the approver is the policy.
+- **`Arc<dyn Approver>` is the shape passed in** — the builder takes ownership and uses the same instance for every gated tool, so the approver can hold state (a counter, a queue handle, an audit log) without divergence.
 
 ## Production approver
 
@@ -123,7 +121,7 @@ For long-running approvals (the human is asleep), persist the agent's state and 
 
 <CardGroup cols={2}>
   <Card title="Human-in-the-loop" icon="user-check" href="/building-agents/hitl">
-    Approver, ApprovalDecision, graph interrupts.
+    Approver, Decision, graph interrupts.
   </Card>
   <Card title="Tools" icon="screwdriver-wrench" href="/building-agents/tools">
     Define the tools being gated.

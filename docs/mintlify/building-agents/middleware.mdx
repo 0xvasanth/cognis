@@ -1,159 +1,212 @@
 ---
 title: "Middleware"
-description: "Cross-cutting policies that wrap every model call. Retry, fallback, rate limits, redaction, prompt caching, summarization, planning, HITL — all composable."
+description: "Cross-cutting policies that wrap LLM calls. Retry, fallback, redaction, prompt caching, summarization, planning — composable, and agent-friendly via a custom provider."
 sidebarTitle: "Middleware"
 ---
 
-Middleware is how Cognis adds production discipline without rewriting your agent loop. A middleware sits between the agent and the model, sees every call, and can mutate the request, retry, redact, gate, log, or replace the response. They compose: add three, and they stack in declared order.
+Middleware is how Cognis adds production discipline around `Client` calls — retry, fallback, rate limits, redaction, prompt caching, planning, summarization. Each middleware wraps a `Client` and runs on every chat call. Multiple middlewares compose into a `MiddlewarePipeline`.
 
 ## How it works
 
-Each middleware implements `Middleware`, a trait with one method that wraps a `Next` (the rest of the chain ending at the LLM). The agent's `MiddlewarePipeline` runs them in order on every model call inside the loop.
+A middleware implements `cognis::middleware::Middleware`, a trait with one async method (`call`) that receives a `MiddlewareCtx` and an `Arc<dyn Next>`. The pipeline runs them in **reverse-push order** — the most-recently-pushed layer is the *outermost* wrapper.
 
 ```rust
-use cognis::middleware::{ModelRetry, RateLimit, PromptCaching};
+use std::sync::Arc;
+use cognis::middleware::{ModelRetry, RegexRedactor, MiddlewarePipeline};
+use cognis_llm::{Client, provider::Provider};
 
-let agent = AgentBuilder::new()
-    .with_llm(client)
-    .middleware(RateLimit::token_bucket(rate, burst))
-    .middleware(ModelRetry::exponential(3))
-    .middleware(PromptCaching::default())
-    .build()?;
+let primary = Client::from_env()?;
+
+let pipelined = MiddlewarePipeline::new()
+    .push(ModelRetry::new(3))         // innermost (closest to the client)
+    .push(RegexRedactor::new())       // outermost (sees the request first)
+    .build(primary);
+
+// Use directly:
+let resp = pipelined.invoke(messages, tool_defs, opts).await?;
 ```
 
-The order matters: the first one declared is the outermost. So `RateLimit` enforces *before* a retry burns through your tokens; `PromptCaching` shapes what the provider sees regardless of retries.
+The chain executes outside-in: `RegexRedactor::call` runs first, then `ModelRetry::call`, then the raw client. Push order is "innermost first."
+
+<Note>
+Middleware is **not** auto-wired into `AgentBuilder` in v0.3. To run middleware inside an agent loop, wrap your client into a `PipelinedClient` and serve it through a custom `LLMProvider` — see [Wiring middleware into an agent](#wiring-middleware-into-an-agent) below.
+</Note>
 
 ## What's in the box
 
-The full catalog lives under `cognis::middleware::*`. Reach for these by job:
+The full catalog under `cognis::middleware::*`. Reach for these by job:
 
 ### Resilience
 
-| Middleware | Effect |
+| Middleware | Constructor |
 |---|---|
-| `ModelRetry` | Retry on transient errors and rate limits with backoff. |
-| `ModelFallback` | Fall back to another model on failure. |
-| `Recovery` / `FixedRecovery` / `FnRecovery` | Custom recovery strategies on errors. |
-| `ToolRetry` / `ToolRetryClassifier` | Retry tool calls that the model emitted but that failed. |
+| `ModelRetry` | `ModelRetry::new(max_attempts)` — exponential backoff (100ms initial, 2x, 30s cap) by default |
+| `ModelFallback` | `ModelFallback::new(fallback_client: Client)` |
+| `Recovery` (`FixedRecovery`, `FnRecovery`) | Custom recovery on errors |
+| `ToolRetry` (`ToolRetryClassifier`) | `ToolRetry::new(max_attempts)` for retrying tool calls the model emitted that failed |
 
 ### Rate and cost
 
-| Middleware | Effect |
+| Middleware | Constructor |
 |---|---|
-| `RateLimit` (with `TokenBucket`) | Token-bucket rate limiting per model or globally. |
-| `ModelCallLimit`, `ToolCallLimit` | Hard caps per run. |
+| `RateLimit` | `RateLimit::new(Arc::new(TokenBucket::new(rate_per_sec, burst)))` — also accepts `SlidingWindow`, `Composite`, `CostBased` |
+| `ModelCallLimit` | `ModelCallLimit::new(cap)` — hard cap on calls per pipeline run |
+| `ToolCallLimit` | `ToolCallLimit::new(cap)` |
 
 ### Privacy
 
-| Middleware | Effect |
+| Middleware | Constructor |
 |---|---|
-| `PiiRedactor` | Mask known PII patterns before the request leaves your process. |
-| `RegexRedactor` | Bring-your-own-pattern redaction. |
+| `PiiRedactor` | `PiiRedactor::new()` — masks common PII patterns (emails, phones, etc.) |
+| `RegexRedactor` | `RegexRedactor::new()` — bring your own patterns |
 
 ### Prompt and context
 
-| Middleware | Effect |
+| Middleware | Constructor |
 |---|---|
-| `PromptCaching` | Mark messages as cacheable for providers that support it (Anthropic). |
-| `ContextEditing` | Mutate messages before they go to the model. |
-| `ContextInjection` (`FnContextProvider`) | Inject context derived from your app state. |
-| `Summarization` | Compress old turns when the transcript grows. |
-| `CapMessageLength` | Truncate over-long messages. |
-| `DropMatching` | Filter messages by predicate. |
+| `PromptCaching` | `PromptCaching::new()` (or `::default()`) — Anthropic prompt-cache markers |
+| `ContextEditing` | `ContextEditing::new(policy)` — mutate messages before they go to the model |
+| `ContextInjection` | `ContextInjection::new(provider)` — inject context derived from your app state |
+| `Summarization` | `Summarization::new(keep_last)` — compress old turns when the transcript grows |
+
+### Planning and todos
+
+| Middleware | Constructor |
+|---|---|
+| `Planning` | `Planning::new()` |
+| `TodoMiddleware` | Maintain an internal task list the agent can read and update |
 
 ### Tools
 
 | Middleware | Effect |
 |---|---|
-| `ToolAllowList` / `ToolDenyList` / `ToolFilter` | Restrict which tools the model may call. |
-| `LimitTools` | Cap the number of tool definitions sent to the model. |
-| `ToolEmulator` (`MapEmulator`, `EmulatorSource`) | Replay tool calls deterministically — great for tests. |
-| `ToolSelection` | Steer the model toward a subset of tools per turn. |
-| `PatchToolCalls` (`FnToolCallPatcher`) | Fix or rewrite the model's tool calls before dispatch. |
+| `ToolEmulator` (`MapEmulator`, `EmulatorSource`) | Replay tool calls deterministically — great for tests |
+| `ToolSelection` | Steer the model toward a subset of tools per turn |
+| `PatchToolCalls` (`FnToolCallPatcher`) | Fix or rewrite the model's tool calls before dispatch |
 
-### Planning and todos
-
-| Middleware | Effect |
-|---|---|
-| `Planning` | Inject a planning step before tool selection. |
-| `TodoMiddleware` | Maintain an internal task list the agent can read and update. |
-
-### Human-in-the-loop
-
-| Middleware | Effect |
-|---|---|
-| `HumanInTheLoop` (`HumanResponder`, `HumanDecision`, `ChatApproval`, `ChatApprover`) | Pause for human approval or input on configured tools. |
-| `ApprovalGate` / `AlwaysSkip` / `AutoApproveAll` / `AutoRejectAll` | Approval policies. |
+For tool-call **gating** (require human approval before specific tools run), use `Approver` + `AgentBuilder::with_approver`, not middleware. See [Human-in-the-loop](/building-agents/hitl).
 
 ### Workspace and subagents
 
 | Middleware | Effect |
 |---|---|
-| `FilesystemMiddleware`, `WorkspaceLister` | Expose a virtual workspace to the model. |
-| `EditPolicy` | Gate which files the agent may edit. |
-| `SubagentMiddleware`, `SubagentRouter` | Spawn subagents from inside the loop for context isolation. |
-
-### Pipelines
-
-| Type | Effect |
-|---|---|
-| `MiddlewarePipeline` | Compose multiple middlewares programmatically. |
-| `PipelinedClient` | A `Client` wrapper that runs the pipeline on every call. |
+| `FilesystemMiddleware` | Expose a virtual workspace to the model |
+| `SubagentMiddleware` (`SubagentRouter`) | Spawn subagents from inside the pipeline for context isolation |
 
 ## Quick example — production stack
 
-A reasonable defaults stack for a customer-facing agent:
+A reasonable defaults stack for a customer-facing client:
 
 ```rust
 use std::sync::Arc;
-use cognis::prelude::*;
-use cognis::AgentBuilder;
 use cognis::middleware::{
     ModelRetry, ModelFallback, RateLimit, TokenBucket,
-    PromptCaching, PiiRedactor, Summarization,
+    PromptCaching, PiiRedactor, Summarization, MiddlewarePipeline,
 };
+use cognis_llm::{Client, provider::Provider};
 
 let primary = Client::from_env()?;
-let backup = /* a cheaper Client::builder() */;
+let backup  = Client::builder()
+    .provider(Provider::OpenAI)
+    .api_key(std::env::var("OPENAI_API_KEY")?)
+    .model("gpt-4o-mini")
+    .build()?;
 
-let agent = AgentBuilder::new()
-    .with_llm(primary)
-    .middleware(RateLimit::new(TokenBucket::per_minute(60_000)))
-    .middleware(PiiRedactor::default())
-    .middleware(PromptCaching::default())
-    .middleware(Summarization::token_budget(8_000))
-    .middleware(ModelRetry::exponential(3))
-    .middleware(ModelFallback::to(backup))
-    .with_system_prompt("…")
-    .with_tools(my_tools)
+// Innermost first, outermost last (reverse-push semantics).
+let pipelined = MiddlewarePipeline::new()
+    .push(ModelFallback::new(backup))                          // last-resort fallback
+    .push(ModelRetry::new(3))                                  // retry transients
+    .push(Summarization::new(8))                               // keep last 8 turns
+    .push(PromptCaching::new())                                // mark cacheable
+    .push(PiiRedactor::new())                                  // redact before send
+    .push(RateLimit::new(Arc::new(TokenBucket::new(1000.0, 60_000)))) // outermost
+    .build(primary);
+```
+
+Read top-to-bottom (push order): retry happens *inside* redaction, redaction happens *inside* the rate limiter — so the rate limiter sees every retry attempt, and the model never sees raw PII.
+
+## Wiring middleware into an agent
+
+`AgentBuilder` accepts a raw `Client`; it doesn't take a `PipelinedClient` directly. Two ways to bridge:
+
+**Option 1 — `PipelinedClient` standalone**, for code that calls the model directly without the agent harness:
+
+```rust
+let resp = pipelined.invoke(messages, tool_defs, opts).await?;
+```
+
+**Option 2 — Custom `LLMProvider`** that delegates to the pipeline. Wrap that provider into a `Client`, then hand it to `AgentBuilder`:
+
+```rust
+use std::sync::Arc;
+use async_trait::async_trait;
+use cognis_llm::{Client, provider::{LLMProvider, Provider}};
+use cognis_llm::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk};
+use cognis::middleware::PipelinedClient;
+use cognis_core::{Message, Result, RunnableStream};
+
+struct PipelinedProvider(Arc<PipelinedClient>);
+
+#[async_trait]
+impl LLMProvider for PipelinedProvider {
+    fn name(&self) -> &str { "pipelined" }
+    fn provider_type(&self) -> Provider { self.0.client().provider().provider_type() }
+    async fn chat_completion(&self, messages: Vec<Message>, opts: ChatOptions) -> Result<ChatResponse> {
+        self.0.invoke(messages, vec![], opts).await
+    }
+    async fn chat_completion_with_tools(&self, messages: Vec<Message>, tools: Vec<cognis_llm::tools::ToolDefinition>, opts: ChatOptions) -> Result<ChatResponse> {
+        self.0.invoke(messages, tools, opts).await
+    }
+    async fn chat_completion_stream(&self, m: Vec<Message>, o: ChatOptions) -> Result<RunnableStream<StreamChunk>> {
+        self.0.client().provider().chat_completion_stream(m, o).await
+    }
+    async fn health_check(&self) -> Result<HealthStatus> {
+        self.0.client().provider().health_check().await
+    }
+}
+
+let agent = cognis::AgentBuilder::new()
+    .with_llm(Client::new(Arc::new(PipelinedProvider(Arc::new(pipelined)))))
     .build()?;
 ```
 
-Read top-to-bottom: rate-limit first (don't waste retries on a 429), redact PII before it ever reaches a wire, mark cacheable for Anthropic, summarize old turns when context grows, retry transients, fall back to a cheaper model if everything else fails.
+This is a power-user pattern; reach for it when you need every agent-driven LLM call to go through the same middleware chain.
 
 ## Writing your own middleware
 
 The trait is small:
 
 ```rust
+use std::sync::Arc;
 use async_trait::async_trait;
 use cognis::middleware::{Middleware, MiddlewareCtx, Next};
+use cognis_llm::chat::ChatResponse;
+use cognis_core::Result;
 
 struct LogTokens;
 
 #[async_trait]
 impl Middleware for LogTokens {
-    async fn handle(&self, ctx: MiddlewareCtx<'_>, next: Next<'_>) -> cognis::Result<ChatResponse> {
-        let resp = next.run(ctx).await?;
+    async fn call(&self, ctx: MiddlewareCtx, next: Arc<dyn Next>) -> Result<ChatResponse> {
+        let resp = next.invoke(ctx).await?;
         if let Some(usage) = &resp.usage {
             tracing::info!(input = usage.input_tokens, output = usage.output_tokens, "llm call");
         }
         Ok(resp)
     }
+
+    fn name(&self) -> &str { "LogTokens" }
 }
 ```
 
-Plug it in with `.middleware(LogTokens)` like any other. Order in the chain is your call.
+Push it onto the pipeline like any other:
+
+```rust
+let pipelined = MiddlewarePipeline::new()
+    .push(LogTokens)
+    .push(ModelRetry::new(3))
+    .build(client);
+```
 
 ## See also
 
@@ -165,7 +218,7 @@ Plug it in with `.middleware(LogTokens)` like any other. Order in the chain is y
     PII redaction, deny-lists, SSRF protection.
   </Card>
   <Card title="Human-in-the-loop" icon="user-check" href="/building-agents/hitl">
-    Approval-gated tools.
+    Approval-gated tools — different from middleware.
   </Card>
   <Card title="Reference → cognis" icon="book" href="/reference/api/cognis">
     Full middleware re-export list.

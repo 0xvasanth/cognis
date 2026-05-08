@@ -24,58 +24,52 @@ The framework provides hooks; *what* counts as PII or *which* tools are allowed 
 `PiiRedactor` masks known PII patterns (emails, phone numbers, credit-card-like sequences, common identifiers) before any prompt leaves Cognis:
 
 ```rust
-use cognis::middleware::PiiRedactor;
+use cognis::middleware::{PiiRedactor, MiddlewarePipeline};
 
-let agent = AgentBuilder::new()
-    .with_llm(client)
-    .middleware(PiiRedactor::default())
-    // …
-    .build()?;
+let pipelined = MiddlewarePipeline::new()
+    .push(PiiRedactor::new())
+    .build(client);
 ```
 
 For domain-specific patterns, `RegexRedactor` accepts your own patterns:
 
 ```rust
-use cognis::middleware::RegexRedactor;
+use cognis::middleware::{RegexRedactor, MiddlewarePipeline};
 
 let redactor = RegexRedactor::new()
     .add_pattern(r"\bACCT-\d{10}\b", "<ACCOUNT>")
     .add_pattern(r"\bSSN-\d{3}-\d{2}-\d{4}\b", "<SSN>");
 
-let agent = AgentBuilder::new()
-    .with_llm(client)
-    .middleware(redactor)
-    // …
-    .build()?;
+let pipelined = MiddlewarePipeline::new()
+    .push(redactor)
+    .build(client);
 ```
 
-Combine — `PiiRedactor` for the obvious, `RegexRedactor` for your own patterns. Order doesn't matter much; both run before the request hits the wire.
+Combine — `PiiRedactor` for the obvious, `RegexRedactor` for your own patterns. To wire either into an `AgentBuilder` agent, see [Middleware → Wiring middleware into an agent](/building-agents/middleware#wiring-middleware-into-an-agent).
 
 ## Tool deny-lists and allow-lists
 
-Restrict which tools the agent may call at runtime:
+Restrict which tools the model is offered at request time, via the middleware pipeline:
 
 ```rust
-use cognis::middleware::{ToolAllowList, ToolDenyList};
+use cognis::middleware::{ToolAllowList, ToolDenyList, MiddlewarePipeline};
 
 // Belt:
-let agent = AgentBuilder::new()
-    .with_llm(client)
-    .with_tools(my_tools)
-    .middleware(ToolAllowList::new(vec!["search", "calculator"]))
-    .build()?;
+let pipelined_allow = MiddlewarePipeline::new()
+    .push(ToolAllowList::new(vec!["search".into(), "calculator".into()]))
+    .build(client.clone());
 
 // Suspenders:
-let agent = AgentBuilder::new()
-    .with_llm(client)
-    .with_tools(my_tools)
-    .middleware(ToolDenyList::new(vec!["execute_shell", "delete_account"]))
-    .build()?;
+let pipelined_deny = MiddlewarePipeline::new()
+    .push(ToolDenyList::new(vec!["execute_shell".into(), "delete_account".into()]))
+    .build(client);
 ```
 
 Why two? Defense in depth. Allow-lists are enumerable from the registered tools (model can't call what's not registered), but deny-lists guard against accidental future registrations.
 
-`LimitTools::new(n)` caps how many tool definitions are sent in any single model call — useful when you have a large tool registry and want the model to focus.
+`LimitTools(n)` caps how many tool definitions are sent in any single model call — useful when you have a large tool registry and want the model to focus.
+
+For tool-call **approval gating** (require human sign-off before specific tools run, regardless of allow-list), use `Approver` + `AgentBuilder::with_approver` — see [Human-in-the-loop](/building-agents/hitl).
 
 ## Human-in-the-loop for the riskiest tools
 

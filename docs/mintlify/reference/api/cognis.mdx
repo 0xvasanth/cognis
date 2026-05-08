@@ -32,7 +32,7 @@ The umbrella crate. Most apps depend on this and write `use cognis::prelude::*;`
 | `agent_bus` | `AgentBus`, `Subscription`, `SubscribeError`. |
 | `agent_events` | `AgentEvent`, `AgentEventBus`, `EventSubscription`, `DEFAULT_EVENTS_TOPIC`. |
 | `backend` | `Backend`, `InMemoryStorageBackend`, `LocalFsStorageBackend`, `SandboxedFsBackend`, `MemoryBackend`. |
-| `eval` | `EvaluationFramework`, `EvaluationPipeline`, `EvalCase`, `Scorer`, `ScoreContext`. |
+| `eval` | `EvalRunner`, `EvalCase`, `EvalRow`, `EvalReport`, `Evaluator` trait, plus built-in `ExactMatch`, `Contains`, `LlmJudge`. |
 | `history` | Conversation persistence helpers. |
 | `middleware` | The full middleware catalog (see [Middleware](/building-agents/middleware)). |
 | `multi_agent` | `MultiAgentOrchestrator`, `Sequential`, `Supervisor`, `ParallelVote`, `RoundRobin`, `HandoffStrategy`. |
@@ -42,7 +42,7 @@ The umbrella crate. Most apps depend on this and write `use cognis::prelude::*;`
 | `session` | `Session`, `SessionStore`, `InMemorySessionStore`. |
 | `skills` | Reusable agent skills. |
 | `telemetry` | Lightweight metrics. |
-| `tools` | Built-in tools — `Calculator`, `FilesystemTool`, `HttpRequest`, `JsonQuery`, `OpenApiTool`, `PythonRepl`, `HumanTool`. Plus `ToolOrchestrator`, `ExecutionPlan`, `ToolStep`. |
+| `tools` | Built-in tools — `Calculator`, file tools (`FileReadTool`/`FileWriteTool`/`FileEditTool`/`FileListTool`/`FileGlobTool`/`FileGrepTool`/`FileExistsTool`), `JsonQueryTool`, `PythonReplTool`, `HumanTool`, `ShellTool`, `SubAgentTool`, `RetrieverTool`. Plus `ToolOrchestrator`, `ExecutionPlan`, `ToolStep`, and the approval primitives (`Approver`, `Decision`, `AllowList`, `AutoApprove`, `RejectAll`, `ApprovalGatedTool`). HTTP / OpenAPI / web-search / Wikipedia tools (`HttpRequest`, `OpenApiToolset`, `WebSearchTool`, `TavilyProvider*`, `WikipediaTool`) are gated behind the `tools-http` feature. |
 
 ## prelude
 

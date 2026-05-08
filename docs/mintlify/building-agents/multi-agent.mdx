@@ -43,12 +43,12 @@ let resp: AgentResponse = orch.run(input).await?;
     Source: [`examples/v2/08_ollama_multi_agent.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/v2/08_ollama_multi_agent.rs).
   </Tab>
   <Tab title="Supervisor">
-    The first agent acts as a router: its reply names the next worker and the prompt to send. The orchestrator keeps cycling until a worker terminates without naming another.
+    The first agent acts as a router: it sees the input, replies, and its reply is parsed for the next worker's name + the prompt to send. The chosen worker runs once; its reply is the final answer. Single hop — to chain further hops, run another `orch.run(...)` with the previous output.
 
     ```rust
     use cognis::{MultiAgentOrchestrator, Supervisor};
 
-    let orch = MultiAgentOrchestrator::new(Supervisor::default())
+    let orch = MultiAgentOrchestrator::new(Supervisor::new())
         .add("supervisor", supervisor_agent)   // first agent is the router
         .add("researcher", researcher_agent)
         .add("writer", writer_agent);
@@ -57,63 +57,81 @@ let resp: AgentResponse = orch.run(input).await?;
     Customize how the supervisor's reply is parsed:
 
     ```rust
+    use std::sync::Arc;
+
     let orch = MultiAgentOrchestrator::new(
-        Supervisor::new().with_parser(|reply: &str| {
+        Supervisor::new().with_parser(Arc::new(|reply: &str| {
             // return Some((agent_id, prompt_for_that_agent))
-            // or None to terminate.
-            todo!()
-        })
+            // or None to keep the supervisor's reply as the final answer.
+            None
+        }))
     );
     ```
   </Tab>
   <Tab title="ParallelVote">
-    All agents run on the same input concurrently. Outputs are aggregated by majority vote — the modal answer wins. The constructor takes a quorum (0.0–1.0); if no answer crosses it, the orchestrator returns the most-voted answer with a low-confidence flag.
+    All agents run on the same input concurrently. Outputs are tallied by content equality — the most-frequent reply wins; ties break by registration order.
 
     ```rust
     use cognis::{MultiAgentOrchestrator, ParallelVote};
 
-    let orch = MultiAgentOrchestrator::new(ParallelVote::new(0.5))
+    let orch = MultiAgentOrchestrator::new(ParallelVote)
         .add("a", a)
         .add("b", b)
         .add("c", c);
     ```
-    Useful for high-stakes classifications, fact-check ensembles, or running the same prompt across multiple models.
+    Useful for high-stakes classifications, fact-check ensembles, or running the same prompt across multiple models. For quorum-based voting (require a minimum agreement before accepting), use the `Consensus` strategy instead — `Consensus::new(0.5)` requires 50% agreement.
   </Tab>
   <Tab title="RoundRobin">
-    Turn-taking. Each agent goes in order, gets the running transcript, replies, and the next agent gets the updated transcript. Loops for N rounds.
+    Round-robin load-balancing across agents that share the same role (e.g. an "answerer" pool). Each `run()` call routes to the next agent in registration order, cycling. The picked agent handles the request alone; the others are not invoked for this call.
 
     ```rust
     use cognis::{MultiAgentOrchestrator, RoundRobin};
 
-    let orch = MultiAgentOrchestrator::new(RoundRobin::default())
-        .add("proposer", proposer)
-        .add("critic", critic);
+    let orch = MultiAgentOrchestrator::new(RoundRobin::new())
+        .add("worker_a", worker_a)
+        .add("worker_b", worker_b)
+        .add("worker_c", worker_c);
     ```
-    Useful for debate loops, propose-then-critique-then-revise patterns, multi-perspective brainstorming.
+    Useful when you want to spread requests across replicas. For iterative debate / propose-then-critique loops, drive the back-and-forth from your application code by calling `orch.run(...)` (or specific agents) in sequence.
   </Tab>
 </Tabs>
 
 ## How it works
 
-- **Each strategy is a struct that implements `HandoffStrategy`.** That trait is two methods: pick the next step, and decide when to terminate.
+- **Each strategy is a struct that implements `HandoffStrategy`.** That trait has one required async method: `run(&self, agents, input, bus) -> Result<AgentResponse>`. The strategy decides everything that happens between the user's input and the final response.
 - **Agents inside the orchestrator are still `Agent`s.** Each runs its own loop with its own memory, tools, and middleware. The orchestrator only decides who runs next.
 - **Errors propagate.** If an agent inside the orchestrator returns `Err`, the orchestrator returns `Err`. Wrap a sub-agent's client with `with_fallback` if you want graceful degradation.
 - **The orchestrator returns an `AgentResponse`.** Same shape as a single agent — drop-in callers don't change.
+- **Other strategies in the box.** Beyond the four covered above, `cognis::multi_agent` also ships `Hierarchical` (manager → workers tree) and `Consensus` (quorum-based voting).
 
 ## Custom handoff
 
 Implement `HandoffStrategy` for full control:
 
 ```rust
-use cognis::multi_agent::{HandoffStrategy, /* … */};
+use std::sync::Arc;
+use async_trait::async_trait;
+use tokio::sync::Mutex;
+use cognis::multi_agent::{HandoffStrategy, MessageBus};
+use cognis::{Agent, AgentResponse, Message, Result};
 
 struct EscalateOnUnsure;
 
+#[async_trait]
 impl HandoffStrategy for EscalateOnUnsure {
+    async fn run(
+        &self,
+        agents: &[(String, Arc<Mutex<Agent>>)],
+        input: Message,
+        bus: Arc<dyn MessageBus>,
+    ) -> Result<AgentResponse> {
+        // 1. Run a primary agent.
+        // 2. If its reply is unsure, route to a senior agent.
+        // 3. Return the chosen reply.
+        todo!()
+    }
+
     fn name(&self) -> &str { "EscalateOnUnsure" }
-    // Two required methods: select next step + termination check.
-    // Full signature in the cognis::multi_agent module.
-    // …
 }
 ```
 

@@ -4,7 +4,7 @@ description: "Build a tool-calling agent in five minutes."
 sidebarTitle: "Quickstart"
 ---
 
-This guide walks you through building your first Cognis agent — a small assistant that can do arithmetic by calling a `Calculator` tool. By the end you'll have a binary that runs against any of seven LLM providers, switching with a single environment variable.
+This guide walks you through building your first Cognis agent — a small assistant that can do arithmetic by calling a `Calculator` tool. By the end you'll have a binary that runs against any of six LLM providers (OpenAI, Anthropic, Google, Ollama, Azure, OpenRouter), switching with a single environment variable.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ cognis = { version = "0.3", features = ["openai", "ollama"] }
 tokio = { version = "1", features = ["full"] }
 ```
 
-The `openai` and `ollama` features come on by default. Enable other providers with `anthropic`, `google`, `azure`, `openrouter`, or take everything with `all-providers`.
+The `openai` and `ollama` features come on by default. Enable others with `anthropic`, `google`, `azure`, or take everything with `all-providers`. OpenRouter uses the OpenAI wire format, so the `openai` feature already covers it — no separate flag.
 
 ## Step 2 — Set credentials
 
@@ -82,8 +82,7 @@ Cognis never reads `.env` files. Use your shell, `direnv`, or `envchain` — see
 ```rust src/main.rs
 use std::sync::Arc;
 use cognis::prelude::*;
-use cognis::{AgentBuilder, Calculator};
-use cognis_llm::Client;
+use cognis::{AgentBuilder, Calculator, Client};
 
 #[tokio::main]
 async fn main() -> Result<()> {

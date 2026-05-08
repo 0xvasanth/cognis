@@ -137,10 +137,10 @@ When you're ready to ship, layer on:
 | Concern | What to add |
 |---|---|
 | Real search | A Tavily / Brave / SerpAPI tool — see [Tools](/building-agents/tools). |
-| Cost control | `RateLimit::token_bucket(rate, burst)` and `ModelCallLimit` middleware on each agent. |
+| Cost control | `RateLimit::new(Arc::new(TokenBucket::new(rate, burst)))` and `ModelCallLimit::new(n)` in a `MiddlewarePipeline` around your `Client`. |
 | Tracing | Wire `cognis-trace` so each agent appears as a nested span in Langfuse. |
 | Caching | Cache search results with a `CachedRetriever`-style wrapper around the tool. |
-| Eval | Build an `EvaluationFramework` over a small set of known good questions, score with an LLM-as-judge. |
+| Eval | Build an `EvalRunner` over a small set of known good questions and an `LlmJudge` evaluator. |
 | Streaming UI | `orch.stream_events(...)` and forward `OnLlmToken` to your frontend — see [Patterns → Streaming UI](/patterns/streaming-ui). |
 
 ## Variations

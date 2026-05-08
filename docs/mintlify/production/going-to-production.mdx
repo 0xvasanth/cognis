@@ -11,7 +11,7 @@ This page is a checklist. Each section links to the deeper guide.
 ## Resilience
 
 - ✅ **Wrap the LLM client** with `with_max_retries(3)` and `with_timeout(Duration::from_secs(30))`.
-- ✅ **Add a fallback model** via `with_fallback(...)` or `ModelFallback::to(...)` middleware. A cheaper backup beats a 5xx.
+- ✅ **Add a fallback model** via `Client::with_fallback(...)` or `ModelFallback::new(backup_client)` middleware. A cheaper backup beats a 5xx.
 - ✅ **Retry on rate limits.** `RetryPolicy::new(n)` with backoff handles 429s correctly.
 - ✅ **Cap retry attempts.** Infinite retry is a bug. 3–5 attempts with exponential backoff.
 - ✅ **Cap loop iterations.** Always set `with_max_iterations(n)` on agents.
@@ -20,7 +20,7 @@ See [Resilience](/production/resilience) for the patterns.
 
 ## Rate and cost
 
-- ✅ **Rate-limit upstream.** `RateLimit::new(TokenBucket::per_minute(n))` with bucket sized to your provider tier.
+- ✅ **Rate-limit upstream.** `RateLimit::new(Arc::new(TokenBucket::new(rate_per_sec, burst)))` with bucket sized to your provider tier.
 - ✅ **Track cost.** Wire `cognis-trace` with `with_default_pricing()` so every call has a USD attached.
 - ✅ **Cap cost per run.** `ModelCallLimit` and `ToolCallLimit` middleware bound how much one user request can spend.
 - ✅ **Cache obvious repeats.** `CachedEmbeddings` for indexing; `with_memory_cache` for LLM calls; `PromptCaching` middleware for Anthropic-style prefix caching.
@@ -75,7 +75,7 @@ See [Streaming](/building-agents/streaming).
 ## Evals and CI
 
 - ✅ **Build a small golden set.** 30–100 cases of "I know what the answer should be."
-- ✅ **Run evals on every change.** `EvaluationFramework` over the golden set; gate CI on regressions.
+- ✅ **Run evals on every change.** `EvalRunner` over the golden set; gate CI on regressions.
 - ✅ **Push scores to Langfuse.** Tie eval scores to traces so you can drill from "this regressed" to "the trace that broke it."
 
 See [Evaluation](/observability/evaluation).
@@ -84,7 +84,7 @@ See [Evaluation](/observability/evaluation).
 
 - ✅ **Build with the right features.** `cargo build --release --features all-providers,langfuse,vectorstore-faiss` (adapt to your stack).
 - ✅ **Pin secrets in your runner's secret store.** Same env-var names as local dev.
-- ✅ **Health checks.** Wire a tiny `Client::builder().health_check()` endpoint so your platform's load balancer can detect bad pods.
+- ✅ **Health checks.** Wire a tiny endpoint that calls `client.provider().health_check().await` so your platform's load balancer can detect bad pods.
 - ✅ **Graceful shutdown.** Drain the trace handler, cancel in-flight requests, then exit.
 
 ## Cost containers
@@ -103,31 +103,47 @@ use std::time::Duration;
 use cognis::prelude::*;
 use cognis::AgentBuilder;
 use cognis::middleware::{
-    ModelRetry, ModelFallback, RateLimit, TokenBucket,
+    MiddlewarePipeline, ModelRetry, ModelFallback, RateLimit, TokenBucket,
     PromptCaching, PiiRedactor, Summarization, ModelCallLimit,
 };
-use cognis::observers::TracingObserver;          // or a Langfuse-bridged HandlerObserver
-use cognis_llm::Client;
+use cognis_llm::{Client, provider::Provider};
 use cognis_graph::SqliteCheckpointer;
 
 let primary = Client::from_env()?
     .with_max_retries(3)
     .with_timeout(Duration::from_secs(30));
-let backup = Client::builder().model("gpt-4o-mini").build()?;
+let backup = Client::builder()
+    .provider(Provider::OpenAI)
+    .api_key(std::env::var("OPENAI_API_KEY")?)
+    .model("gpt-4o-mini")
+    .build()?;
 
+// 1. Wrap the LLM client with middleware. Innermost first, outermost last.
+let pipelined = MiddlewarePipeline::new()
+    .push(ModelFallback::new(backup))
+    .push(ModelRetry::new(3))
+    .push(Summarization::new(8))
+    .push(PromptCaching::new())
+    .push(PiiRedactor::new())
+    .push(ModelCallLimit::new(20))
+    .push(RateLimit::new(Arc::new(TokenBucket::new(1000.0, 60_000))))
+    .build(primary.clone());
+
+// 2. Persist agent graph state across processes via the checkpointer.
 let cp = Arc::new(SqliteCheckpointer::open("./state.db").await?);
+let custom_graph = cognis::default_react_graph()
+    .compile()?
+    .with_checkpointer(cp);
+
 let memory = SummaryBufferMemory::new(primary.clone(), 2000)
     .with_system("You are a careful assistant.");
 
 let agent = AgentBuilder::new()
+    // For middleware to wrap every model call inside the agent, see
+    // /building-agents/middleware#wiring-middleware-into-an-agent
+    // (build a custom LLMProvider that delegates to `pipelined`).
     .with_llm(primary)
-    .middleware(RateLimit::new(TokenBucket::per_minute(60_000)))
-    .middleware(ModelCallLimit::new(20))
-    .middleware(PiiRedactor::default())
-    .middleware(PromptCaching::default())
-    .middleware(Summarization::token_budget(8_000))
-    .middleware(ModelRetry::exponential(3))
-    .middleware(ModelFallback::to(backup))
+    .with_graph(custom_graph)
     .with_tools(my_tools)
     .with_memory(memory)
     .with_max_iterations(8)
