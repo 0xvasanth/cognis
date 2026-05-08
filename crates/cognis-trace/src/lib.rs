@@ -21,3 +21,5 @@ pub use meta::TraceMeta;
 
 pub mod cost;
 pub use cost::{default_pricing_2026_05, ModelPrice, PriceTable};
+
+pub mod parent;
