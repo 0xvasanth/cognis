@@ -66,7 +66,9 @@ pub use patch_tool_calls::{FnToolCallPatcher, PatchToolCalls, ToolCallPatcher};
 pub use pii::PiiRedactor;
 pub use planning::Planning;
 pub use prompt_caching::PromptCaching;
-pub use rate_limit::{RateLimit, RateLimiter, TokenBucket};
+pub use rate_limit::{
+    CompositeLimiter, CostBasedLimiter, RateLimit, RateLimiter, SlidingWindowLimiter, TokenBucket,
+};
 pub use recovery::{FixedRecovery, FnRecovery, Recovery, RecoveryStrategy};
 pub use redaction::RegexRedactor;
 pub use subagent::{SubagentMiddleware, SubagentRouter};
