@@ -1,21 +1,17 @@
 ---
 title: "Models"
-description: "LLM clients, streaming, embeddings, similarity, model routing, multimodal content."
+description: "LLM clients, streaming, embeddings + similarity search, length-based routing, multimodal."
 sidebarTitle: "Models"
 ---
 
-Model examples show what happens at the LLM-client layer — how to stream, how to embed, how to compare embeddings, and how to route between models. Sources under [`examples/models/`](https://github.com/0xvasanth/cognis/tree/main/examples/models).
+Model examples enact what happens at the LLM-client layer. Sources under [`examples/models/`](https://github.com/0xvasanth/cognis/tree/main/examples/models).
 
-| Name | Topic | Source |
+| Name | Scenario | Source |
 |---|---|---|
-| `models_streaming_chat` | Streaming chat with tool calls | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/streaming_chat.rs) |
-| `models_streaming` | Token streaming basics | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/streaming.rs) |
-| `models_streaming_demo` | Streaming with usage and finish-reason | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/streaming_demo.rs) |
-| `models_embedding` | Calling an embeddings API | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/embedding_models.rs) |
-| `models_embedding_similarity` | Cosine / dot-product comparison | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/embedding_similarity.rs) |
-| `models_routing` | Routing requests across multiple models | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/model_routing.rs) |
-| `models_registry` | The chat-model registry | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/chat_model_registry.rs) |
-| `models_content_blocks` | Multimodal `ContentPart`s — text + image + audio | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/content_blocks.rs) |
+| `models_streaming_chat` | Stream a one-line explanation to a CLI chat UI — print tokens as they arrive. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/streaming_chat.rs) |
+| `models_embedding` | Find the most similar product description for a search query, using cosine similarity. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/embedding_models.rs) |
+| `models_routing` | Route by intent — short greetings to a fast model, long technical questions to a bigger one. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/model_routing.rs) |
+| `models_content_blocks` | Caption an image — multimodal `ContentPart::Image`. (Needs a vision model: `COGNIS_OLLAMA_MODEL=llava` or hosted equivalent.) | [src](https://github.com/0xvasanth/cognis/blob/main/examples/models/content_blocks.rs) |
 
 ## How to run
 
@@ -23,21 +19,17 @@ Model examples show what happens at the LLM-client layer — how to stream, how 
 COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
   cargo run -p cognis-examples --example models_streaming_chat
 
-# Embeddings (Ollama embedder):
-COGNIS_PROVIDER=ollama \
-  cargo run -p cognis-examples --example models_embedding
+# For multimodal:
+ollama pull llava
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llava \
+  cargo run -p cognis-examples --example models_content_blocks
 ```
-
-## Tips
-
-- Streaming over Ollama works; tool-calling-while-streaming requires a model that natively supports function calling (`llama3.1`, `qwen2.5`, `mistral-nemo`).
-- `models_content_blocks` shows the multimodal payload shape but needs a vision-capable provider (OpenAI gpt-4o, Anthropic Claude, Gemini).
 
 ## See also
 
 <CardGroup cols={2}>
   <Card title="Models and providers" icon="plug" href="/building-agents/models">
-    The user guide for `Client` and provider builders.
+    `Client::from_env`, provider builders, the env-var table.
   </Card>
   <Card title="Streaming" icon="signal" href="/building-agents/streaming">
     Tokens vs structured events.

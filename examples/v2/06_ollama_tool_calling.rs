@@ -1,27 +1,37 @@
-//! Ollama + tool calling. Builds an agent with a Calculator tool and
-//! runs it against a local Ollama model. Requires Ollama to be running
-//! with a model that supports function calling (e.g. `llama3.1`,
-//! `qwen2.5`). Smaller `llama3.2:1b` may not always emit tool calls.
+//! What you'll learn:
+//!   How to register a tool with `AgentBuilder` and watch the agent
+//!   loop pick it, call it, and feed the result back to the model.
 //!
-//! Usage:
-//! ```bash
-//! COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=qwen2.5:3b \
-//!   cargo run --example 06_ollama_tool_calling -p cognis-examples
-//! ```
+//! Why this matters:
+//!   Tool calling is the single biggest force-multiplier for an LLM:
+//!   it's how the model reaches calculators, databases, and APIs
+//!   instead of guessing. The agent loop, the tool dispatch, and the
+//!   message wiring are all handled — you just register the tool.
+//!
+//! Scenario:
+//!   The user asks "What is 23 * 17 + 4?". The agent decides to call
+//!   the `calculator` tool, observes the result, and replies with the
+//!   final number — the textbook ReAct loop wired in five lines.
+//!
+//! Run with:
+//!   COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=qwen2.5:3b \
+//!     cargo run -p cognis-examples --example 06_ollama_tool_calling
+//!
+//! Sample output (against ollama / llama3.1):
+//!   ---
+//!   The result of the calculation 23 * 17 + 4 is 395.
+//!   ---
+//!   messages exchanged: 3
+//!
+//! Note: needs a model with native function-calling (e.g. `llama3.1`,
+//! `qwen2.5`). Smaller `llama3.2:1b` may not always emit tool calls.
 
 use std::sync::Arc;
 
 use cognis::prelude::*;
-use cognis::{AgentBuilder, Calculator};
-use cognis_llm::Client;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if std::env::var("COGNIS_PROVIDER").is_err() {
-        // Default to ollama for this example so it Just Works locally
-        // when an Ollama daemon is up.
-        std::env::set_var("COGNIS_PROVIDER", "ollama");
-    }
     let client = Client::from_env()?;
     let mut agent = AgentBuilder::new()
         .with_llm(client)

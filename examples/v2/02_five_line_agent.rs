@@ -1,65 +1,30 @@
-//! The canonical "5-line agent" demo.
+//! What you'll learn:
+//!   How to spin up a working LLM agent in five lines: pick a client,
+//!   feed it to `AgentBuilder`, and call `run`.
 //!
-//! By default uses a fake in-process provider so it works without any
-//! network calls. Set `COGNIS_PROVIDER=ollama` (with `COGNIS_OLLAMA_MODEL`
-//! optionally) to run against a local Ollama server instead.
+//! Why this matters:
+//!   This is the smallest possible agent — no tools, no memory, no graph
+//!   wiring. It's the shape your code takes when you want a single LLM
+//!   round-trip behind the same `Agent` API you'll later layer tools and
+//!   middleware onto.
+//!
+//! Scenario:
+//!   Greet the user. The shortest possible agent — pure LLM round-trip
+//!   via `AgentBuilder`, no tools, no memory. The shape you start from
+//!   when wiring an agent into a new app.
+//!
+//! Run with:
+//!   COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+//!     cargo run -p cognis-examples --example 02_five_line_agent
+//!
+//! Sample output (against ollama / llama3.1):
+//!   Hello, how can I assist you today?
 
-use std::sync::Arc;
-
-use async_trait::async_trait;
 use cognis::prelude::*;
-use cognis_llm::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, Usage};
-use cognis_llm::provider::{LLMProvider, Provider};
-
-struct FakeProvider;
-
-#[async_trait]
-impl LLMProvider for FakeProvider {
-    fn name(&self) -> &str {
-        "fake"
-    }
-    fn provider_type(&self) -> Provider {
-        Provider::Ollama
-    }
-    async fn chat_completion(&self, msgs: Vec<Message>, _: ChatOptions) -> Result<ChatResponse> {
-        let last = msgs
-            .last()
-            .map(|m| m.content().to_string())
-            .unwrap_or_default();
-        Ok(ChatResponse {
-            message: Message::ai(format!("(fake reply to: {last})")),
-            usage: Some(Usage::default()),
-            finish_reason: "stop".into(),
-            model: "fake".into(),
-        })
-    }
-    async fn chat_completion_stream(
-        &self,
-        _: Vec<Message>,
-        _: ChatOptions,
-    ) -> Result<RunnableStream<StreamChunk>> {
-        unimplemented!()
-    }
-    async fn health_check(&self) -> Result<HealthStatus> {
-        Ok(HealthStatus::Healthy { latency_ms: 0 })
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Pick provider: env-driven if `COGNIS_PROVIDER` is set, otherwise
-    // the fake in-process provider so the demo runs without network.
-    let client = if std::env::var("COGNIS_PROVIDER").is_ok() {
-        println!(
-            "[using {} provider via env]",
-            std::env::var("COGNIS_PROVIDER").unwrap()
-        );
-        Client::from_env()?
-    } else {
-        println!("[using fake in-process provider — set COGNIS_PROVIDER=ollama for real LLM]");
-        Client::new(Arc::new(FakeProvider))
-    };
-
+    let client = Client::from_env()?;
     let mut agent = AgentBuilder::new().with_llm(client).build()?;
     let resp = agent
         .run(Message::human("Say hello in one sentence."))

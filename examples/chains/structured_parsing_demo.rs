@@ -1,6 +1,35 @@
-//! Robust JSON parsing — V2's `StructuredOutputParser` extracts the
-//! first balanced JSON object/array out of prose, so chatty model
-//! replies parse cleanly.
+//! What you'll learn:
+//!   That `StructuredOutputParser` finds the first balanced JSON value
+//!   inside chatty model output — bare JSON, JSON wrapped in prose, or
+//!   JSON inside a fenced ```json block all parse identically.
+//!
+//! Why this matters:
+//!   Real LLM replies almost never come back as "just JSON". The model
+//!   adds "Sure!", apologises, wraps the payload in ```json fences. The
+//!   parser handles all three transparently so your downstream code
+//!   sees a clean typed value instead of a tangle of regex.
+//!
+//! Scenario:
+//!   We replay three real-looking sentiment-analysis replies through
+//!   the same parser: bare JSON, JSON buried in prose, and JSON inside
+//!   a fenced code block. All three deserialise to `Sentiment`.
+//!
+//! Run with:
+//!   cargo run -p cognis-examples --example chains_structured_parsing
+//!
+//! Sample output (against ollama / llama3.1):
+//!   warning: fields `label` and `confidence` are never read
+//!     --> crates/examples/../../examples/chains/structured_parsing_demo.rs:30:5
+//!      |
+//!   29 | struct Sentiment {
+//!      |        --------- fields in this struct
+//!   30 |     label: String,
+//!      |     ^^^^^
+//!   31 |     confidence: f32,
+//!   ...
+//!   ok: Sentiment { label: "positive", confidence: 0.92 }
+//!   ok: Sentiment { label: "negative", confidence: 0.7 }
+//!   ok: Sentiment { label: "neutral", confidence: 0.55 }
 
 use cognis::prelude::*;
 use cognis_core::output_parsers::{OutputParser, StructuredOutputParser};

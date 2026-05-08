@@ -1,30 +1,27 @@
 ---
 title: "Parsers"
-description: "Output-fixing and retry parsers for robust structured output."
+description: "Output-fixing and retry parsers for when an LLM emits dirty JSON."
 sidebarTitle: "Parsers"
 ---
 
-Parser examples show how to harden structured output when models occasionally drift off the JSON contract. Sources under [`examples/parsers/`](https://github.com/0xvasanth/cognis/tree/main/examples/parsers).
+Parser examples enact what happens when the LLM gets the JSON contract slightly wrong. Sources under [`examples/parsers/`](https://github.com/0xvasanth/cognis/tree/main/examples/parsers).
 
-| Name | Topic | Source |
+| Name | Scenario | Source |
 |---|---|---|
-| `parsers_fixing` | `OutputFixingParser` — re-prompt to repair | [src](https://github.com/0xvasanth/cognis/blob/main/examples/parsers/fixing_parser.rs) |
-| `parsers_retry` | `RetryParser` — retry the original input | [src](https://github.com/0xvasanth/cognis/blob/main/examples/parsers/retry_parser.rs) |
+| `parsers_fixing` | LLM emits malformed JSON — `OutputFixingParser` re-prompts with the parse error, the model usually fixes it on the second try. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/parsers/fixing_parser.rs) |
+| `parsers_retry` | When the prompt itself needs revision — `RetryParser` re-runs the entire prompt N times with stricter guidance. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/parsers/retry_parser.rs) |
 
 ## How to run
 
 ```bash
-COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
-  cargo run -p cognis-examples --example parsers_fixing
-
-COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
-  cargo run -p cognis-examples --example parsers_retry
+cargo run -p cognis-examples --example parsers_fixing
+cargo run -p cognis-examples --example parsers_retry
 ```
 
 ## When to use which
 
-- **`OutputFixingParser`** — when the model is *capable* of valid JSON but slipped this time. Cheaper: one repair attempt with the parse error in the prompt.
-- **`RetryParser`** — when the original prompt is the problem and the fix needs the original context. More expensive but more robust.
+- **`OutputFixingParser`** — model is *capable* of valid JSON but slipped this time. Cheaper: one repair attempt with the parse error in the prompt.
+- **`RetryParser`** — original prompt is the problem and the fix needs the original context. More expensive but more robust.
 
 In production, layer them: `RetryParser::with_retries(OutputFixingParser::new(inner, fixer), 3)`.
 

@@ -1,48 +1,28 @@
 ---
 title: "Graphs"
-description: "Graph<S>, state machines, checkpoints, interrupts, visualization, routers, message graphs."
+description: "Stateful workflows — polling state machines, checkpointing, HITL interrupts, semantic routing, topic channels."
 sidebarTitle: "Graphs"
 ---
 
-Graph examples cover every part of `cognis-graph` — state design, control flow, checkpointing, time travel, streaming, visualization. Sources under [`examples/graphs/`](https://github.com/0xvasanth/cognis/tree/main/examples/graphs).
+Graph examples enact recognizable workflows on top of `Graph<S>`. Sources under [`examples/graphs/`](https://github.com/0xvasanth/cognis/tree/main/examples/graphs).
 
-| Name | Topic | Source |
+| Name | Scenario | Source |
 |---|---|---|
-| `graphs_state_machine` | State-machine flow | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/state_machine.rs) |
-| `graphs_state_management` | State + reducers explained | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_state_management.rs) |
-| `graphs_runtime` | Engine internals walkthrough | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_runtime.rs) |
-| `graphs_with_checkpoints` | Checkpoint basics | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_with_checkpoints.rs) |
-| `graphs_checkpoint_persistence` | Persisting checkpoints to disk | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/checkpoint_persistence.rs) |
-| `graphs_state_snapshot` | State snapshots and time-travel | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/state_snapshot.rs) |
-| `graphs_interrupts` | Interrupts + resume | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_interrupts_demo.rs) |
-| `graphs_validation` | Graph validation rules | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_validation_demo.rs) |
-| `graphs_visualization` | Multi-format viz | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_visualization.rs) |
-| `graphs_dot_export` | GraphViz / Mermaid / ASCII export | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_dot_export.rs) |
-| `graphs_analysis` | Graph analysis (cycles, reachability) | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_analysis.rs) |
-| `graphs_metrics` | Per-node metrics | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_metrics.rs) |
-| `graphs_debug` | Debug tooling | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_debug_demo.rs) |
-| `graphs_node_scheduler` | Custom node scheduling | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/node_scheduler.rs) |
-| `graphs_topic_channels` | Topic-based channels | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/topic_channels.rs) |
-| `graphs_semantic_router` | Semantic routing in a graph | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/semantic_router.rs) |
-| `graphs_message_graph` | Messages-shaped graph | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/message_graph.rs) |
-| `graphs_agent_builder` | High-level agent built via `AgentBuilder` (compare to `graphs_message_graph`) | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/agent_builder_graph.rs) |
+| `graphs_state_machine` | Polling loop — check up to 5 times whether an external job is done; give up if not. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/state_machine.rs) |
+| `graphs_with_checkpoints` | Resumable 5-step ETL pipeline — extract / validate / transform / load / notify, snapshot per step. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_with_checkpoints.rs) |
+| `graphs_interrupts` | HITL pause-for-approval — agent drafts an email, graph stops before the `send` node so a reviewer can approve. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_interrupts_demo.rs) |
+| `graphs_semantic_router` | Customer-support intent routing — `"refund"` → refund_flow, `"cancel"` → cancel_flow, else general help. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/semantic_router.rs) |
+| `graphs_topic_channels` | Onboarding agent that collects (name, hobbies, todo) across turns — reducers per field (last_value vs. append). | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/topic_channels.rs) |
 
 ## How to run
 
-Most graph examples are offline — they build typed state and run a small graph in-process.
+Most graph examples are offline (no LLM needed):
 
 ```bash
 cargo run -p cognis-examples --example graphs_state_machine
 cargo run -p cognis-examples --example graphs_with_checkpoints
-cargo run -p cognis-examples --example graphs_dot_export
+cargo run -p cognis-examples --example graphs_interrupts
 ```
-
-## Pick a starting point
-
-- **New to graphs?** `graphs_state_machine` is the simplest — counter that loops.
-- **Need persistence?** `graphs_checkpoint_persistence` shows on-disk checkpoints.
-- **Building human-in-the-loop?** `graphs_interrupts` is the canonical pattern.
-- **Want to visualize?** `graphs_dot_export` produces DOT, Mermaid, and ASCII.
 
 ## See also
 
@@ -55,8 +35,5 @@ cargo run -p cognis-examples --example graphs_dot_export
   </Card>
   <Card title="Patterns → HITL approval" icon="grid" href="/patterns/hitl-approval">
     Interrupts in a real flow.
-  </Card>
-  <Card title="Visualization" icon="eye" href="/graph-workflows/visualization">
-    Render compiled graphs.
   </Card>
 </CardGroup>

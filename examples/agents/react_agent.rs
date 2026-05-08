@@ -1,18 +1,33 @@
-//! ReAct-style agent: AgentBuilder + tools + Ollama.
+//! What you'll learn:
+//!   How to wire up the textbook ReAct loop — model reasons, calls a
+//!   tool, observes the result, then writes the final answer — with
+//!   `AgentBuilder`.
 //!
-//! Run with: COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.2:1b cargo run -p cognis-examples --example agents_react_agent
+//! Why this matters:
+//!   ReAct is the default control flow for tool-using LLM agents.
+//!   Cognis ships it as the standard agent shape; once you understand
+//!   `with_tool` + `with_max_iterations`, the same code drives anything
+//!   from a calculator to a multi-tool research agent.
+//!
+//! Scenario:
+//!   The user asks a multi-step arithmetic question. The agent reasons
+//!   about it, dispatches the `calculator` tool, observes the result,
+//!   and writes the final answer — the canonical ReAct trace.
+//!
+//! Run with:
+//!   COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+//!     cargo run -p cognis-examples --example agents_react_agent
+//!
+//! Sample output (against ollama / llama3.1):
+//!   The result of multiplying 12 by 8 is 96.
+//!   (iterations: 3 messages)
 
 use std::sync::Arc;
 
 use cognis::prelude::*;
-use cognis::{AgentBuilder, Calculator};
-use cognis_llm::Client;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if std::env::var("COGNIS_PROVIDER").is_err() {
-        std::env::set_var("COGNIS_PROVIDER", "ollama");
-    }
     let mut agent = AgentBuilder::new()
         .with_llm(Client::from_env()?)
         .with_tool(Arc::new(Calculator::new()))

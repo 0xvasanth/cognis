@@ -1,13 +1,32 @@
-//! Agent with two tools: Calculator + a hand-written WordCount tool.
-//! Demonstrates tool registration and the agent picking between them.
+//! What you'll learn:
+//!   How to register more than one tool with an agent and let the LLM
+//!   pick the right one — `Calculator` for arithmetic, a hand-written
+//!   `WordCount` tool for text length.
+//!
+//! Why this matters:
+//!   Single-tool agents are toys. Real agents juggle a handful of
+//!   tools — a calculator, a search call, a database query — and the
+//!   model decides which to call. The agent loop dispatches on the
+//!   tool name in the LLM's reply; you just hand it `Arc<dyn Tool>`s.
+//!
+//! Scenario:
+//!   Two tools sit on the agent: `calculator` for arithmetic and
+//!   `word_count` for text length. The user asks "How many words in:
+//!   'rust is fast and safe'?" — the model picks `word_count`, not
+//!   `calculator`, and answers from the tool's reply.
+//!
+//! Run with:
+//!   COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+//!     cargo run -p cognis-examples --example tools_calling_agent
+//!
+//! Sample output (against ollama / llama3.1):
+//!   There are 5 words in 'rust is fast and safe'.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use cognis::prelude::*;
-use cognis::{AgentBuilder, Calculator};
 use cognis_llm::tools::{Tool, ToolInput, ToolOutput};
-use cognis_llm::Client;
 use serde_json::json;
 
 struct WordCount;
@@ -41,9 +60,6 @@ impl Tool for WordCount {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if std::env::var("COGNIS_PROVIDER").is_err() {
-        std::env::set_var("COGNIS_PROVIDER", "ollama");
-    }
     let mut agent = AgentBuilder::new()
         .with_llm(Client::from_env()?)
         .with_tool(Arc::new(Calculator::new()))
