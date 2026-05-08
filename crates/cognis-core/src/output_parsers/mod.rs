@@ -8,6 +8,7 @@
 //! in a prompt to tell the LLM how to format its output.
 
 pub mod boolean;
+pub mod fixing;
 pub mod json;
 pub mod list;
 pub mod string;
@@ -15,6 +16,7 @@ pub mod structured;
 pub mod xml;
 
 pub use boolean::BooleanParser;
+pub use fixing::{OutputFixingParser, RetryParser};
 pub use json::JsonParser;
 pub use list::{CommaListParser, NumberedListParser};
 pub use string::StringParser;
