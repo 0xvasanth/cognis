@@ -3,7 +3,7 @@
 //! Bridges [`cognis_core::CallbackHandler`] events to external observability
 //! backends. Phase 1 ships the bridge handler, three core types, two built-in
 //! exporters (stdout + mock), and the Langfuse backend (traces, prompts,
-//! scores). LangSmith and OpenTelemetry are Phase 2.
+//! scores). OpenTelemetry support is Phase 2.
 //!
 //! # Quick start
 //!

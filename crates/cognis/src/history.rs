@@ -1,9 +1,9 @@
 //! `RunnableWithMessageHistory` — wrap a `Runnable<Vec<Message>, Message>`
 //! so it carries conversation history per session ID.
 //!
-//! This is the LangChain-equivalent message-history wrapper. The wrapper
-//! holds an `Arc<dyn HistoryStore>` so different storage backends (memory,
-//! Redis, sqlite, ...) plug in.
+//! Per-session message-history wrapper around any chat-shaped Runnable.
+//! Holds an `Arc<dyn HistoryStore>` so different storage backends
+//! (memory, Redis, SQLite, …) plug in.
 
 use std::collections::HashMap;
 use std::sync::Arc;

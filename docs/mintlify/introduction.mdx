@@ -4,9 +4,9 @@ description: "The Rust-native way to build LLM agents, RAG pipelines, and statef
 sidebarTitle: "Overview"
 ---
 
-Cognis is the easiest way to build LLM-powered apps in Rust. If you've used LangChain, LangGraph, or DeepAgents in Python, you'll find the same shapes here — `Runnable`, agent loops, graph state, retrieval — translated into idiomatic Rust with type safety, ownership, and zero-cost composition.
+Cognis is the easiest way to build LLM-powered apps in Rust. The shapes are familiar — typed `Runnable`s you compose with `pipe`, an agent loop with tools and memory, a stateful graph engine with checkpoints and interrupts, a RAG pipeline with pluggable splitters and stores — all translated into idiomatic Rust with type safety, ownership, and zero-cost composition.
 
-It's not a port. It's a rebuild that keeps the *intent* and discards the dynamism.
+It's a rebuild, not a port. The intent is to take the patterns the Python LLM ecosystem proved out and recast them around Rust's strengths.
 
 ```rust
 use std::sync::Arc;
@@ -43,7 +43,7 @@ That's a real, working tool-calling agent. Swap `COGNIS_PROVIDER` between `opena
     Documents → splitters → embeddings → vector store → retriever → prompt. Six vector store backends, eight splitters, and an indexing pipeline that only re-embeds what changed.
   </Card>
   <Card title="Stateful graphs" icon="diagram-project">
-    `Graph<S>` with typed state, reducers, conditional edges, checkpoints, time-travel, interrupts, and seven stream modes. Inspired by LangGraph; built around Rust's type system.
+    `Graph<S>` with typed state, reducers, conditional edges, checkpoints, time-travel, interrupts, and seven stream modes. Pregel-style execution; built around Rust's type system.
   </Card>
   <Card title="Production observability" icon="chart-line">
     LLM-aware tracing into Langfuse out of the box. Token counts, USD cost, prompt versioning, and evaluation scores — opt in with one feature flag.
@@ -99,6 +99,3 @@ You don't need to think about crate boundaries while building — `cognis` re-ex
   </Card>
 </CardGroup>
 
-<Note>
-Cognis is heavily inspired by [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), and [DeepAgents](https://github.com/langchain-ai/deepagents). Thanks to the LangChain team for pioneering the composable LLM framework paradigm.
-</Note>

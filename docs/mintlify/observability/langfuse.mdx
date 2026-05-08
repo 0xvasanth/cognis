@@ -112,14 +112,9 @@ Each exporter has its own background batcher. A failure in one doesn't block the
 - **Versioned prompts pulled from Langfuse** — see [Prompts and scores](/observability/prompts-scores).
 - **Evaluation scores submitted back to Langfuse** — see [Evaluation](/observability/evaluation).
 
-## What about LangSmith and OpenTelemetry?
+## What about OpenTelemetry?
 
-Both are on the roadmap. Until they ship:
-
-- For **OTel**: implement `TraceExporter` (it's a thin async trait) and forward to your collector.
-- For **LangSmith**: implement `TraceExporter` against the LangSmith ingest API.
-
-The `TraceExporter` interface is small, and the batching infrastructure is already there — you only write the format conversion.
+OpenTelemetry support is on the roadmap. Until it ships, implement `TraceExporter` (it's a thin async trait) and forward to your OTel collector — the batching infrastructure is already there, you only write the format conversion. The same path works for any other observability backend you'd want to send spans to.
 
 ## See also
 

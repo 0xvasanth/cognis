@@ -9,8 +9,7 @@ use super::{child_doc, TextSplitter};
 /// separators until each chunk is at most `chunk_size` characters.
 ///
 /// Adjacent chunks share a `chunk_overlap` window so context isn't lost
-/// at boundaries. Mirrors LangChain's `RecursiveCharacterTextSplitter` in
-/// behaviour but operates on Rust `&str` and counts characters, not tokens.
+/// at boundaries. Operates on Rust `&str` and counts characters, not tokens.
 pub struct RecursiveCharSplitter {
     chunk_size: usize,
     chunk_overlap: usize,
