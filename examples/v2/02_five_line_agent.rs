@@ -1,4 +1,8 @@
-//! The canonical "5-line agent" demo — works without any network calls.
+//! The canonical "5-line agent" demo.
+//!
+//! By default uses a fake in-process provider so it works without any
+//! network calls. Set `COGNIS_PROVIDER=ollama` (with `COGNIS_OLLAMA_MODEL`
+//! optionally) to run against a local Ollama server instead.
 
 use std::sync::Arc;
 
@@ -43,9 +47,23 @@ impl LLMProvider for FakeProvider {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Client::new(Arc::new(FakeProvider));
+    // Pick provider: env-driven if `COGNIS_PROVIDER` is set, otherwise
+    // the fake in-process provider so the demo runs without network.
+    let client = if std::env::var("COGNIS_PROVIDER").is_ok() {
+        println!(
+            "[using {} provider via env]",
+            std::env::var("COGNIS_PROVIDER").unwrap()
+        );
+        Client::from_env()?
+    } else {
+        println!("[using fake in-process provider — set COGNIS_PROVIDER=ollama for real LLM]");
+        Client::new(Arc::new(FakeProvider))
+    };
+
     let mut agent = AgentBuilder::new().with_llm(client).build()?;
-    let resp = agent.run(Message::human("hello, world")).await?;
+    let resp = agent
+        .run(Message::human("Say hello in one sentence."))
+        .await?;
     println!("{}", resp.content);
     Ok(())
 }
