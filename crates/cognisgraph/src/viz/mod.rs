@@ -1,6 +1,8 @@
-//! Render compiled graphs as Mermaid or ASCII diagrams for docs / debugging.
+//! Render compiled graphs as Mermaid, GraphViz DOT, or ASCII diagrams
+//! for docs / debugging.
 
 pub mod ascii;
+pub mod dot;
 pub mod mermaid;
 
 use std::collections::BTreeSet;
