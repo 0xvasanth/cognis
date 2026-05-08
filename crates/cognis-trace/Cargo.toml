@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Pluggable observability for Cognis: bridges CallbackHandler events to Langfuse, LangSmith, and OpenTelemetry."
+repository = "https://github.com/0xvasanth/cognis"
 
 [dependencies]
 cognis-core.workspace = true

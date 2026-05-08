@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Procedural macros for Cognis: #[tool] attribute for tool definitions and #[derive(GraphState)] for graph state with per-field reducers."
+repository = "https://github.com/0xvasanth/cognis"
 
 [lib]
 proc-macro = true

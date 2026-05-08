@@ -99,22 +99,24 @@ impl<O> EvalReport<O> {
         self.passing(threshold) as f32 / self.rows.len() as f32
     }
 
-    /// Lowest scoring case (or `None` for empty).
+    /// Lowest scoring case (or `None` for empty / all-NaN). Rows with
+    /// NaN scores are excluded from the comparison — they're not "low"
+    /// or "high", just unscored. Ties on real values use `total_cmp`
+    /// for a deterministic result.
     pub fn worst(&self) -> Option<&EvalRow<O>> {
-        self.rows.iter().min_by(|a, b| {
-            a.score
-                .partial_cmp(&b.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        self.rows
+            .iter()
+            .filter(|r| !r.score.is_nan())
+            .min_by(|a, b| a.score.total_cmp(&b.score))
     }
 
-    /// Highest scoring case (or `None` for empty).
+    /// Highest scoring case (or `None` for empty / all-NaN). Same NaN
+    /// handling as [`EvalReport::worst`].
     pub fn best(&self) -> Option<&EvalRow<O>> {
-        self.rows.iter().max_by(|a, b| {
-            a.score
-                .partial_cmp(&b.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        self.rows
+            .iter()
+            .filter(|r| !r.score.is_nan())
+            .max_by(|a, b| a.score.total_cmp(&b.score))
     }
 
     /// Total case count.
@@ -312,6 +314,25 @@ mod tests {
         let r = report_with(vec![(Some("a"), 0.3), (Some("b"), 0.9), (Some("c"), 0.5)]);
         assert_eq!(r.best().unwrap().name.as_deref(), Some("b"));
         assert_eq!(r.worst().unwrap().name.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn nan_score_is_excluded_from_extremes() {
+        let r = report_with(vec![
+            (Some("a"), 0.5),
+            (Some("nan"), f32::NAN),
+            (Some("b"), 0.9),
+        ]);
+        // NaN rows don't compete for best/worst.
+        assert_eq!(r.best().unwrap().name.as_deref(), Some("b"));
+        assert_eq!(r.worst().unwrap().name.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn all_nan_scores_yield_no_extremes() {
+        let r = report_with(vec![(Some("x"), f32::NAN), (Some("y"), f32::NAN)]);
+        assert!(r.best().is_none());
+        assert!(r.worst().is_none());
     }
 
     #[test]
