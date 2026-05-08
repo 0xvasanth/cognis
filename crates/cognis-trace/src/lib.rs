@@ -39,3 +39,6 @@ pub mod exporters;
 pub use exporters::stdout::StdoutExporter;
 
 pub use exporters::mock::MockExporter;
+
+pub mod prompts;
+pub use prompts::{ChatMessageTemplate, Prompt, PromptBody, PromptStore};
