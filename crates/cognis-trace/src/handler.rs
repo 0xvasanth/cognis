@@ -183,6 +183,63 @@ impl TracingHandler {
             b.send(span.clone());
         }
     }
+
+    /// Parse a provider's `on_llm_end` payload into a `Generation` per the
+    /// schema documented in spec §4.3. Missing fields default cleanly.
+    fn parse_generation(&self, model_hint: &str, payload: &serde_json::Value) -> crate::span::Generation {
+        use crate::span::{Generation, TokenUsage};
+
+        let obj = payload.as_object();
+        let model = obj
+            .and_then(|o| o.get("model"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(model_hint)
+            .to_string();
+        let provider = obj
+            .and_then(|o| o.get("provider"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let finish_reason = obj
+            .and_then(|o| o.get("finish_reason"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let model_parameters = obj
+            .and_then(|o| o.get("model_parameters"))
+            .and_then(|v| v.as_object())
+            .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
+        let usage = obj
+            .and_then(|o| o.get("usage"))
+            .and_then(|v| v.as_object())
+            .map(|u| TokenUsage {
+                input: u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                output: u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                cache_read: u.get("cache_read_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                cache_write: u.get("cache_creation_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+            })
+            .unwrap_or_default();
+        let prompt_name = obj
+            .and_then(|o| o.get("prompt_name"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let prompt_version = obj
+            .and_then(|o| o.get("prompt_version"))
+            .and_then(|v| v.as_u64())
+            .map(|n| n as u32);
+        let cost = self.pricing.compute(&model, usage);
+        Generation {
+            model,
+            provider,
+            model_parameters,
+            usage,
+            cost,
+            completion_start_time: None,
+            finish_reason,
+            prompt_name,
+            prompt_version,
+        }
+    }
 }
 
 impl CallbackHandler for TracingHandler {
@@ -245,9 +302,30 @@ impl CallbackHandler for TracingHandler {
         self.dispatch(span);
     }
 
-    // LLM hooks implemented in Task 13.
-    fn on_llm_start(&self, _model: &str, _prompt: &serde_json::Value, _run_id: Uuid) {}
-    fn on_llm_end(&self, _model: &str, _output: &serde_json::Value, _run_id: Uuid) {}
-    fn on_llm_error(&self, _model: &str, _error: &str, _run_id: Uuid) {}
-    fn on_llm_token(&self, _token: &str, _run_id: Uuid) {}
+    fn on_llm_start(&self, model: &str, prompt: &serde_json::Value, run_id: Uuid) {
+        self.start_span(SpanKind::Generation, model, Some(prompt.clone()), run_id);
+    }
+
+    fn on_llm_token(&self, _token: &str, _run_id: Uuid) {
+        // Streaming tokens are not buffered into the trace by default.
+    }
+
+    fn on_llm_end(&self, model: &str, output: &serde_json::Value, run_id: Uuid) {
+        let generation = self.parse_generation(model, output);
+        if let Some((_, b)) = self.inflight.remove(&run_id) {
+            let b = b.with_generation(generation);
+            // Use the payload's `content` field as `output` if present, else the whole payload.
+            let out = output
+                .as_object()
+                .and_then(|o| o.get("content").cloned())
+                .or_else(|| Some(output.clone()));
+            let span = b.finish_ok(out, std::time::SystemTime::now());
+            self.dispatch(span);
+        }
+        crate::parent::pop(run_id);
+    }
+
+    fn on_llm_error(&self, _model: &str, error: &str, run_id: Uuid) {
+        self.finish_error(run_id, error);
+    }
 }
