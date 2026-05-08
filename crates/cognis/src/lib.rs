@@ -49,6 +49,7 @@ pub use cognis_rag::{
 // New stage-5 modules.
 pub mod agent;
 pub mod agent_bus;
+pub mod agent_events;
 pub mod backend;
 #[cfg(feature = "cache-sqlite")]
 pub mod cache_sqlite;
@@ -73,6 +74,7 @@ pub use agent::{
     TripleExtractor, VectorMemory, Window, Workflow, WorkflowState, WorkflowStateUpdate,
 };
 pub use agent_bus::{AgentBus, SubscribeError, Subscription};
+pub use agent_events::{AgentEvent, AgentEventBus, EventSubscription, DEFAULT_EVENTS_TOPIC};
 pub use backend::{
     Backend, Blob, GrepHit, InMemoryStateBackend, InMemoryStorageBackend, LocalFsStorageBackend,
     MemoryBackend, SandboxedFsBackend, StateBackend, StorageBackend,
