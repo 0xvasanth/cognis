@@ -1,0 +1,130 @@
+---
+title: "Control flow"
+description: "Goto, edges, parallel fan-out, subgraphs. The choreography of a graph."
+sidebarTitle: "Control flow"
+---
+
+A graph's logic lives in two places: nodes (what happens at each step) and edges (where it goes next). Cognis lets you mix two styles — declare static edges when the topology is fixed, and let nodes return `Goto` when the path depends on state.
+
+## Goto
+
+Every node returns `NodeOut { update, goto }`. The `goto` is a `Goto` enum:
+
+| Constructor / Variant | Effect |
+|---|---|
+| `Goto::node("name")` | Single successor — go to this named node. |
+| `Goto::end()` | Terminate the graph. The current state is the final result. |
+| `Goto::halt()` | Pause the graph without ending. Caller gets a halt error and can resume. |
+| `Goto::Multiple(vec!["a", "b"])` | Parallel fan-out. Both targets run in the next superstep. |
+| `Goto::Send(vec![("worker", payload)])` | Cross-graph dispatch with an inline payload (subgraph entry). |
+
+Most code uses the helpers (`Goto::node(...)`, `Goto::end()`); the variants are there for advanced shapes.
+
+## Static edges
+
+When two nodes always go in sequence, declare an edge instead of routing in the node body:
+
+```rust
+let g = Graph::<S>::new()
+    .node("plan", plan)
+    .node("execute", execute)
+    .node("review", review)
+    .edge("plan", "execute")
+    .edge("execute", "review")
+    .start_at("plan")
+    .compile()?;
+```
+
+A node with a static outgoing edge can return any `Goto` it wants — the engine prefers the node's `goto` when it's not `Goto::end()`. Use static edges when the *default* successor is predictable; let `Goto` override when the node has a reason to.
+
+## Conditional flow inside a node
+
+For state-dependent routing, branch in the node body:
+
+```rust
+let agent = node_fn::<AgentState, _, _>("agent", |state, _| {
+    let needs_tools = !state.pending.is_empty();
+    async move {
+        Ok(NodeOut {
+            update: AgentStateUpdate::default(),
+            goto: if needs_tools { Goto::node("tools") } else { Goto::end() },
+        })
+    }
+});
+```
+
+This is the common shape for ReAct-style loops: the model node decides whether to dispatch tools or finish.
+
+## Parallel fan-out
+
+`Goto::Multiple(vec![...])` runs all named targets in the next superstep. Their updates merge through `apply` (so reducers matter), and execution flows back into whatever each branch returns.
+
+```rust
+let dispatch = node_fn::<S, _, _>("dispatch", |_, _| async {
+    Ok(NodeOut {
+        update: SUpdate::default(),
+        goto: Goto::Multiple(vec!["worker_a".into(), "worker_b".into(), "worker_c".into()]),
+    })
+});
+```
+
+Use this for map-style work — fan out to N workers, fold their results in the next superstep.
+
+## Loops
+
+Loops are just `Goto::node` pointing back at the current node:
+
+```rust
+let tick = node_fn::<S, _, _>("tick", |state, _| {
+    let cur = state.count;
+    async move {
+        if cur >= 5 {
+            Ok(NodeOut { update: Update { count: 0 }, goto: Goto::end() })
+        } else {
+            Ok(NodeOut { update: Update { count: 1 }, goto: Goto::node("tick") })
+        }
+    }
+});
+```
+
+Use `RunnableConfig::recursion_limit` to cap runaway loops — the engine errors with `RecursionLimit` if exceeded.
+
+## Subgraphs
+
+A `Subgraph` is a graph wrapped to look like a node from the parent's perspective. Nest them when:
+
+- A team owns a sub-flow and wants to develop / version it independently.
+- You want checkpoint isolation — the subgraph has its own state and its own `checkpoint_ns`.
+- You want to reuse the same flow in multiple parents.
+
+```rust
+let sub = Graph::<SubState>::new().node("…", …).start_at("…").compile()?;
+let parent = Graph::<ParentState>::new()
+    .node("delegate", Subgraph::new(sub, /* state mapper */))
+    .start_at("delegate")
+    .compile()?;
+```
+
+The state mapper translates parent state in / sub state out so the parent doesn't need to know the sub's internal shape.
+
+## How it works
+
+- **Each superstep schedules eligible nodes.** A node is eligible if some predecessor's `Goto` points at it.
+- **All eligible nodes run concurrently.** Their updates merge through `apply` after the superstep finishes.
+- **`Goto::end()` from any node terminates the run** — even if other nodes also fired in the same step.
+- **`recursion_limit` is the safety net.** It bounds total supersteps, not just loops.
+- **Subgraphs are isolated.** A subgraph's checkpoints, observers, and namespace are scoped under the parent's run.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="State and reducers" icon="layer-group" href="/graph-workflows/state">
+    What `apply` does to the merged updates.
+  </Card>
+  <Card title="Streaming" icon="signal" href="/graph-workflows/streaming">
+    See the supersteps unfold in real time.
+  </Card>
+  <Card title="Checkpointing" icon="floppy-disk" href="/graph-workflows/checkpointing">
+    Pause, edit, resume.
+  </Card>
+</CardGroup>

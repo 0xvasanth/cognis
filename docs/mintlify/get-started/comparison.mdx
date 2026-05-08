@@ -1,0 +1,74 @@
+---
+title: "Cognis vs LangChain / LangGraph / DeepAgents"
+description: "How Cognis maps onto the Python ecosystem it was inspired by, and what's different."
+sidebarTitle: "Comparison"
+---
+
+If you've used the Python ecosystem, you'll recognize most of Cognis at a glance. The shapes are deliberately the same — `Runnable<I, O>` matches `Runnable[Input, Output]`, `Graph<S>` matches `StateGraph`, `AgentBuilder` plays the role of DeepAgents' `create_deep_agent`. The differences are about what Rust gives us for free.
+
+## Side-by-side
+
+| Concept | LangChain (Python) | Cognis (Rust) |
+|---|---|---|
+| Composable primitive | `Runnable[Input, Output]` | `Runnable<I, O>` (typed all the way through) |
+| Pipe operator | `prompt \| model \| parser` | `prompt.pipe(model).pipe(parser)` |
+| State machine | `StateGraph` | `Graph<S>` with typed state and reducers |
+| Agent harness | `create_deep_agent(...)` | `AgentBuilder::new()...build()?` |
+| Tool macro | `@tool` decorator | `#[cognis::tool]` attribute or `impl Tool` |
+| Vector store | `langchain.vectorstores.*` | `cognis_rag::*VectorStore` (feature-gated) |
+| Observability | LangSmith | `cognis-trace` → Langfuse (LangSmith / OTel on roadmap) |
+
+## What Cognis keeps
+
+- **The mental model.** Build a chain by piping primitives. Express complex flows as a `Graph<S>`. Wrap a model in middleware. Plug in a vector store and a retriever for RAG. If you can describe what you want in LangChain terms, you can write it in Cognis.
+- **The agent harness shape.** DeepAgents' opinion is that an agent is a model + tools + system prompt + planning + memory. `AgentBuilder` carries the same opinion. `with_tool`, `with_memory`, `with_system_prompt`, `with_max_iterations`, `build()` — same vocabulary.
+- **The streaming contract.** Like Python, we expose `invoke`, `batch`, `stream`, and `stream_events`. The graph engine supports all seven LangGraph stream modes (`Values`, `Updates`, `Messages`, `Tasks`, `Checkpoints`, `Debug`, `Custom`).
+- **Pluggability.** Providers, vector stores, checkpointers, exporters are all behind traits and feature flags. Bring your own.
+
+## What Cognis does differently
+
+- **Compile-time types instead of Pydantic at runtime.** `Runnable<I, O>` flows real types through pipes. Tool argument schemas come from `JsonSchema` derives. Graph state transitions are structs, not dicts.
+- **Builders return `Self`, not `&mut self`.** `with_X(self, x) -> Self` chains read top-to-bottom and don't carry mutability surprises.
+- **Enums for closed sets.** Where Python uses union types or magic strings (`stream_mode="updates"`), Cognis uses enums — `StreamMode::Updates`, `Goto::End`, `ToolChoice::Named(...)`. Exhaustive match is a feature, not a chore.
+- **No global state.** No callback manager singleton; observers travel with `RunnableConfig`. No implicit context. Your tests don't need to monkey-patch.
+- **Feature gating is the default.** A binary using only Anthropic doesn't compile or link OpenAI. The supply chain is whatever you opted into.
+- **Async by default, no sync compat layer.** Every I/O method is `async`; callers use `block_on` if they need to.
+
+## What's deliberately *not* ported
+
+| LangChain pattern | Why we skipped it |
+|---|---|
+| The `Chain` base class (deprecated upstream) | Compose with `Runnable` and `pipe` instead. |
+| `**kwargs` config pass-through | Rust has builders. Be explicit. |
+| Mixin classes | Trait composition handles it. |
+| `langchain_classic.chains` module | Build equivalents as Runnable compositions. |
+| `getattr` / dynamic attribute access | Enum dispatch or trait objects. |
+
+## Choosing between Cognis layers
+
+DeepAgents has its "agent harness" framing — the same idea applies here:
+
+- **Need a one-shot LLM call?** Use `Client` directly.
+- **Need a model + tools + a loop?** Use `AgentBuilder`.
+- **Need branching, persistence, parallel fan-out, time travel?** Drop down to `Graph<S>`.
+- **Need RAG?** `cognis-rag` has the building blocks; an agent can wrap a retriever as a tool.
+- **Need multi-agent?** `MultiAgentOrchestrator` with one of four strategies, or write your own `HandoffStrategy`.
+
+You can mix freely — most production apps use `AgentBuilder` with custom middleware, a `cognis-rag` retriever as a tool, and `cognis-trace` wired up.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/get-started/quickstart">
+    Five minutes to a working tool-calling agent.
+  </Card>
+  <Card title="Core ideas → Runnables" icon="lightbulb" href="/core-ideas/runnables">
+    The trait every primitive shares.
+  </Card>
+  <Card title="Patterns" icon="grid" href="/patterns/research-assistant">
+    Worked applications that combine multiple layers.
+  </Card>
+  <Card title="API reference" icon="book" href="/reference/api/cognis">
+    The full surface, organized by crate.
+  </Card>
+</CardGroup>

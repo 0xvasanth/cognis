@@ -1,0 +1,147 @@
+---
+title: "Resilience"
+description: "Retries, fallbacks, rate limits, recovery. Production patterns for keeping an LLM app up when the providers wobble."
+sidebarTitle: "Resilience"
+---
+
+LLM providers fail. Networks blip. Rate limits get hit. Cognis ships idiomatic patterns for all of these as `Runnable` wrappers and middleware so adding resilience is one line, not a refactor.
+
+## The mental model
+
+Three layers, picked by which kind of failure you're absorbing:
+
+- **`Runnable` wrappers** — apply to any Runnable: a `Client`, a tool, a chain. Best for individual call resilience.
+- **Agent middleware** — applies to *every* model call inside the agent loop. Best for cross-cutting policy.
+- **Strategy** — domain-specific recovery (LLM-as-judge, escalation chains, retry-with-different-model). Best when generic retry isn't enough.
+
+## Quick example
+
+A production-grade Client:
+
+```rust
+use std::time::Duration;
+use cognis::prelude::*;
+use cognis_llm::Client;
+
+let primary = Client::from_env()?
+    .with_max_retries(3)
+    .with_timeout(Duration::from_secs(30));
+
+let backup_client = Client::builder().model("gpt-4o-mini").build()?;
+let client = primary.with_fallback(backup_client);
+```
+
+The chain reads top-to-bottom: try the primary three times with a 30s timeout; if all retries fail, try the backup once.
+
+## Wrappers reference
+
+| Wrapper | What it absorbs |
+|---|---|
+| `with_max_retries(n)` | Transient errors, rate limits. Default policy is exponential. |
+| `with_retry(RetryPolicy)` | Custom policy — exponential, linear, fixed. |
+| `with_timeout(Duration)` | Slow responses (provider hangs). |
+| `with_fallback(other)` | Total failure of the primary. `other` must also be `Runnable<I, O>`. |
+| `with_memory_cache(key_fn)` | Repeated identical inputs (deduplicate at the call layer). |
+
+For more, see [Runnables → Wrappers](/core-ideas/runnables#wrappers).
+
+## Middleware reference
+
+Inside an agent loop, prefer middleware so policy applies everywhere uniformly:
+
+```rust
+use cognis::middleware::{ModelRetry, ModelFallback, RateLimit, TokenBucket};
+
+let agent = AgentBuilder::new()
+    .with_llm(primary)
+    .middleware(RateLimit::new(TokenBucket::per_minute(60_000)))
+    .middleware(ModelRetry::exponential(3))
+    .middleware(ModelFallback::to(backup))
+    // …
+    .build()?;
+```
+
+| Middleware | Effect |
+|---|---|
+| `ModelRetry` | Retry transient errors and 429s with backoff. |
+| `ModelFallback` | Fall through to a backup model. |
+| `Recovery` (`FixedRecovery`, `FnRecovery`) | Custom recovery on errors. |
+| `RateLimit` (`TokenBucket`) | Rate-limit per minute / per second. |
+| `ModelCallLimit`, `ToolCallLimit` | Hard caps per run. |
+| `ToolRetry` (`ToolRetryClassifier`) | Retry tool calls the model emitted that failed. |
+
+The order is the chain order. `RateLimit` first means retries don't bypass it. See [Middleware](/building-agents/middleware) for the full catalog.
+
+## Retry policies
+
+`RetryPolicy::new(attempts)` is the default exponential policy. For finer control:
+
+```rust
+use cognis_core::wrappers::RetryPolicy;
+
+let policy = RetryPolicy::new(5)
+    .with_initial_delay(std::time::Duration::from_millis(500))
+    .with_max_delay(std::time::Duration::from_secs(30))
+    .with_backoff_multiplier(2.0)
+    .with_jitter(0.1);
+
+let resilient = client.with_retry(policy);
+```
+
+Exponential backoff with jitter is the right default for rate-limited APIs — you don't want all retries marching in lockstep.
+
+## Rate limiting strategies
+
+`RateLimit` accepts any `RateLimiter` impl. Built-ins:
+
+| Limiter | Behavior |
+|---|---|
+| `TokenBucket::per_minute(n)` | Refill at `n` tokens/min, with a configurable burst. Best general-purpose. |
+| `TokenBucket::per_second(n)` | Tighter window when latency budget matters. |
+| Sliding-window | Stricter over a fixed window — useful for compliance bounds. |
+| Cost-based | Charges *cost*, not call count. Lets cheap calls flow but throttles expensive ones. |
+| Composite | Combine multiple limiters (per-second AND per-minute AND per-day). |
+
+For provider-specific quotas (e.g., OpenAI's per-org TPM), match the bucket size to your tier.
+
+## When retries don't fit
+
+Some failures aren't transient. The model emitted bad JSON. The tool returned a 4xx your code can fix. Use **recovery middleware** for these:
+
+```rust
+use cognis::middleware::{Recovery, FnRecovery};
+
+let recovery = FnRecovery::new(|err, ctx| async move {
+    // Decide based on the error.
+    // Return Some(ChatResponse) to recover, or None to propagate.
+    todo!()
+});
+
+let agent = AgentBuilder::new()
+    .with_llm(client)
+    .middleware(Recovery::new(recovery))
+    .build()?;
+```
+
+Recovery sees the error and the call context. It can synthesize a response, re-prompt with a fix, or escalate.
+
+## How it works
+
+- **Wrappers compose by re-wrapping.** `client.with_max_retries(3).with_timeout(d)` builds nested Runnables — types are explicit at every layer.
+- **Middleware runs in declaration order, outermost first.** `RateLimit → ModelRetry → ModelFallback` means the limiter sees the original call (not retries), the retry tries fallbacks each attempt, the fallback only kicks in after retries are exhausted.
+- **Errors carry structure.** `CognisError::RateLimited { retry_after_ms }` lets retry policy honor the provider's hint. `CognisError::ProviderError { provider, message, .. }` distinguishes between provider classes.
+- **Cancellation is cooperative.** All wrappers honor `RunnableConfig::cancel_token` and `deadline`.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Middleware" icon="layer-group" href="/building-agents/middleware">
+    The full middleware catalog.
+  </Card>
+  <Card title="Caching" icon="bolt" href="/production/caching">
+    Don't pay for repeated calls.
+  </Card>
+  <Card title="Going to production" icon="rocket" href="/production/going-to-production">
+    Putting it all together.
+  </Card>
+</CardGroup>

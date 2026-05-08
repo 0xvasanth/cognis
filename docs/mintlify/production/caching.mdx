@@ -1,0 +1,130 @@
+---
+title: "Caching"
+description: "Don't pay twice for the same call. In-memory, SQLite, and provider-side prompt caches."
+sidebarTitle: "Caching"
+---
+
+LLM calls are expensive and slow. Cognis has three caching layers, each fitting a different access pattern. Pick the one that matches what you're trying to skip.
+
+## Pick a cache
+
+| Layer | Hits | When |
+|---|---|---|
+| **In-memory cache** | Same input, same call | Per-process; tests; short-lived workers. |
+| **SQLite cache** | Same input across processes | Single-host services; CLI tools that retain state. |
+| **Provider prompt caching** | Same prefix across calls | Anthropic-style cached prompts; long system contexts. |
+
+The three layers compose — you can have all of them on at once. Each catches a different category of "we already did this."
+
+## In-memory cache
+
+`with_memory_cache(key_fn)` wraps a Runnable with a hash-keyed in-memory cache. The closure produces the cache key from the input.
+
+```rust
+use cognis::prelude::*;
+use cognis_llm::Client;
+
+let client = Client::from_env()?;
+
+// Key the cache on the rendered messages.
+let cached = client.with_memory_cache(|messages: &Vec<Message>| {
+    messages.iter().map(|m| m.content().to_string()).collect::<Vec<_>>().join("|")
+});
+```
+
+Identical inputs return immediately. Cache lives for the lifetime of the wrapped value.
+
+## SQLite cache
+
+For multi-process or long-running services, use the SQLite-backed cache (feature `cognis/cache-sqlite`):
+
+```rust
+use cognis::cache_sqlite::SqliteCache;
+
+let cache = SqliteCache::new("./cache.db")?;
+// Wire it via wrappers / middleware that accept a CacheBackend.
+```
+
+The cache survives restarts and is shared across processes that point at the same file. Good for CLI tools, batch jobs, and single-host services.
+
+## Provider prompt caching
+
+Anthropic and some others support marking the *start* of a prompt as cacheable on the provider side. You pay full price the first time, a fraction on subsequent calls. Use the `PromptCaching` middleware:
+
+```rust
+use cognis::middleware::PromptCaching;
+
+let agent = AgentBuilder::new()
+    .with_llm(client)
+    .middleware(PromptCaching::default())
+    // …
+    .build()?;
+```
+
+The middleware adds the right markers; the provider does the deduplication. Particularly powerful for agents with long, stable system prompts and tool definitions — those rarely change between turns.
+
+## How it composes
+
+A typical stack:
+
+```rust
+use std::time::Duration;
+use cognis::prelude::*;
+use cognis::middleware::{PromptCaching, ModelRetry};
+
+let resilient = Client::from_env()?
+    .with_memory_cache(|m: &Vec<Message>| /* key */ "todo".to_string())
+    .with_max_retries(3)
+    .with_timeout(Duration::from_secs(30));
+
+let agent = AgentBuilder::new()
+    .with_llm(resilient)
+    .middleware(PromptCaching::default())
+    .middleware(ModelRetry::exponential(3))   // outer retry — handles cache failures too
+    .build()?;
+```
+
+Read top-to-bottom: serve from in-memory cache when possible, retry on failure, time out on hangs. Inside the agent, mark cacheable prompts and retry on transient errors.
+
+## Embedder cache
+
+For RAG, wrap your embedder with `CachedEmbeddings`:
+
+```rust
+use std::sync::Arc;
+use cognis_rag::{CachedEmbeddings, Embeddings, OpenAIEmbeddings};
+
+let raw = OpenAIEmbeddings::new(key);
+let cached = CachedEmbeddings::new(raw);
+let embed: Arc<dyn Embeddings> = Arc::new(cached);
+```
+
+Same chunk, embedded twice → second call free. This is hugely valuable when re-running indexing pipelines on slowly-changing corpora.
+
+## Cache invalidation
+
+A cache only helps if a hit returns the *right* answer. Three invalidation knobs:
+
+- **Key carefully.** Include everything that influences output: messages, model name, temperature, tool list, system prompt. Two prompts with the same text but different tools are different cache entries.
+- **Bypass on demand.** `with_memory_cache` doesn't have a force-bypass switch by design; if you need one, wrap your own cache backend.
+- **TTL.** The default in-memory cache is unbounded — explicitly limit with `MemoryCache::with_capacity(n)` if you're worried about memory.
+
+## How it works
+
+- **Hashing happens in your `key_fn`.** Whatever string the closure returns *is* the cache key. No automatic introspection.
+- **Cache entries are typed.** A `Cache<R, I, O, K, B>` only stores `O`. Different output types → separate caches.
+- **Provider prompt caching is opaque to the client.** The middleware adds protocol markers; the provider returns whether the cache hit. Trace via [cost tracking](/observability/cost) to see cache_read_tokens.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Resilience" icon="shield" href="/production/resilience">
+    Combine caching with retries and fallbacks.
+  </Card>
+  <Card title="Cost tracking" icon="dollar-sign" href="/observability/cost">
+    See provider cache hits in your cost numbers.
+  </Card>
+  <Card title="Embeddings" icon="database" href="/building-rag/embeddings">
+    `CachedEmbeddings` for RAG.
+  </Card>
+</CardGroup>

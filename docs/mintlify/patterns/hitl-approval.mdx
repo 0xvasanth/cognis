@@ -1,0 +1,134 @@
+---
+title: "Tool calling with human approval"
+description: "An agent that pauses before sensitive actions and waits for a human to approve, edit, or reject."
+sidebarTitle: "HITL approval"
+---
+
+Some tools you don't want the model running unsupervised — sending email, executing code, charging cards. This pattern wires an `Approver` so the agent loop pauses before specified tools run, surfaces the pending call to a human, and only proceeds when they say yes.
+
+## What you'll build
+
+An agent with two tools — one safe (`get_balance`), one sensitive (`transfer_funds`). The safe tool runs without intervention; the sensitive one prompts for approval at a CLI before dispatching.
+
+## How it works
+
+- **`with_approver(...)`** plus the `HumanInTheLoop` middleware tap into the agent loop's tool-dispatch step.
+- **Your `Approver` decides per call.** Approve, reject (with a reason the model sees), or edit (rewrite the args before running).
+- **Rejection becomes a tool message.** The agent sees "the tool was not approved" and can apologize, ask for clarification, or try a different approach.
+
+## The approver
+
+```rust
+use std::sync::Arc;
+use async_trait::async_trait;
+use cognis::tools::{Approver, ApprovalDecision};
+use serde_json::Value;
+
+struct CliApprover {
+    sensitive: Vec<&'static str>,
+}
+
+#[async_trait]
+impl Approver for CliApprover {
+    async fn approve(&self, tool: &str, args: &Value) -> cognis::Result<ApprovalDecision> {
+        if !self.sensitive.contains(&tool) {
+            return Ok(ApprovalDecision::Approve);
+        }
+
+        println!("\n[approval needed]");
+        println!("  tool: {tool}");
+        println!("  args: {}", serde_json::to_string_pretty(args)?);
+        print!("  approve? (y / n / e=edit): ");
+        std::io::Write::flush(&mut std::io::stdout())?;
+
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line)?;
+        match line.trim() {
+            "y" | "yes" => Ok(ApprovalDecision::Approve),
+            "e" | "edit" => {
+                print!("  new JSON args: ");
+                std::io::Write::flush(&mut std::io::stdout())?;
+                let mut edit = String::new();
+                std::io::stdin().read_line(&mut edit)?;
+                let new_args: Value = serde_json::from_str(edit.trim())?;
+                Ok(ApprovalDecision::Edit(new_args))
+            }
+            _ => Ok(ApprovalDecision::Reject("rejected by operator".into())),
+        }
+    }
+}
+```
+
+## The agent
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::AgentBuilder;
+use cognis::middleware::HumanInTheLoop;
+use cognis_llm::Client;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let approver = Arc::new(CliApprover {
+        sensitive: vec!["transfer_funds"],
+    });
+
+    let mut agent = AgentBuilder::new()
+        .with_llm(Client::from_env()?)
+        .with_tool(Arc::new(GetBalanceTool))     // (your impls)
+        .with_tool(Arc::new(TransferFundsTool))
+        .with_approver(approver.clone())
+        .middleware(HumanInTheLoop::new(approver))
+        .with_system_prompt(
+            "You are a banking assistant. Use tools to inspect accounts and \
+             move money. Confirm intent in plain English before any transfer.",
+        )
+        .with_max_iterations(6)
+        .build()?;
+
+    let resp = agent.run(Message::human(
+        "Move $50 from checking to savings, then tell me the new balances."
+    )).await?;
+    println!("\n{}", resp.content);
+    Ok(())
+}
+```
+
+## How it works
+
+- **The approver runs *before* dispatch.** A reject means the tool never executes — the loop sees "rejected by operator" as the tool result.
+- **`Edit` lets the human fix the model's args** without rejecting. Useful when the model picked the right tool but the wrong amount or recipient.
+- **The approver is `Arc<dyn Approver>`** because the same instance is used in two places — the builder's gate and the middleware. Sharing avoids state divergence.
+- **`HumanInTheLoop` is the middleware**, not the approver. The middleware enforces the gate inside the model-call wrapping; the approver is the policy.
+
+## Production approver
+
+A CLI approver is a starting point. In production you'd swap in:
+
+| Surface | How |
+|---|---|
+| Slack | Post the tool + args to a channel; wait for an emoji or button click. |
+| Web UI | Persist the pending call to your DB; poll for the human's decision. |
+| Mobile push | Push notification with approve / reject quick actions. |
+| Auto-approve under threshold | Approve transfers under $X, prompt above. |
+
+The trait is `async`, so you can wait on a long-lived signal. Just don't block the agent's hot path — if approval might take minutes, push to a queue and resume from a checkpoint.
+
+## Pair with checkpoints
+
+For long-running approvals (the human is asleep), persist the agent's state and resume later. Use a `Checkpointer` and rebuild the agent from state on the resume side. See [Graph workflows → Checkpointing](/graph-workflows/checkpointing) for the time-travel surface.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Human-in-the-loop" icon="user-check" href="/building-agents/hitl">
+    Approver, ApprovalDecision, graph interrupts.
+  </Card>
+  <Card title="Tools" icon="screwdriver-wrench" href="/building-agents/tools">
+    Define the tools being gated.
+  </Card>
+  <Card title="Checkpointing" icon="floppy-disk" href="/graph-workflows/checkpointing">
+    Pause across processes.
+  </Card>
+</CardGroup>

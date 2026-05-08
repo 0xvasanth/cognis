@@ -1,0 +1,123 @@
+---
+title: "Pull request guidelines"
+description: "Title format, description checklist, sign-off — what makes a PR easy to review."
+sidebarTitle: "PR guidelines"
+---
+
+A small PR is reviewable in a few minutes. A 500-line PR with no description sits in the queue for days. The goal of this page is to keep your PR closer to the first.
+
+## Before you open
+
+Run the [pre-push checklist](/contribute/development-setup#pre-push-checklist):
+
+```bash
+cargo fmt --all
+cargo clippy --workspace --features all-providers -- -D warnings
+cargo test --workspace
+```
+
+All three must pass. CI runs the same commands; failing locally just means CI will too.
+
+## Title format
+
+Conventional commits. The PR title becomes the squash-merge commit subject, so make it useful:
+
+```
+feat(crate): add OpenRouter attribution + extra-headers
+fix(rag): fingerprint must be stable across Rust releases
+docs(graph): clarify resume after interrupt
+refactor(core): collapse Pipe internal types
+test(llm): cover Anthropic streaming with tool calls
+chore: bump workspace to 0.3.0
+```
+
+The `(crate)` suffix is the most-affected crate, lowercase. For changes spanning multiple crates, drop it.
+
+## Description
+
+The description is for the reviewer. Include:
+
+- **What** the PR does — one paragraph max.
+- **Why** — link the issue or describe the problem you're solving.
+- **How to verify** — commands to run, or "covered by existing tests."
+- **Breaking changes** — if any, call them out. The release notes pull from here.
+
+If you're closing an issue, write `closes #123` so GitHub links them.
+
+## Size
+
+Smaller is better. As a rough guide:
+
+| PR | Size |
+|---|---|
+| Tiny — typo, doc tweak, missing import | go ahead, no issue needed |
+| Small — < 200 lines, one concern | great default |
+| Medium — 200–500 lines | open an issue first; split if you can |
+| Large — > 500 lines | discuss in an issue; expect to split |
+
+If a PR has to be large (a new provider, a refactor across crates), say so in the description and orient the reviewer.
+
+## Tests
+
+New code gets new tests. The conventions:
+
+- **Unit tests** live next to the code they test, in a `#[cfg(test)] mod tests`.
+- **Doc-tests** are the easy way to test a public function — they double as docs.
+- **Integration tests** for things that hit a real service go behind `#[cfg(feature = "integration_tests")]` so CI doesn't run them by default.
+- **`Fake*` / `Mock*` impls** of every trait are welcome — they make tests fast and offline.
+
+If a bug fix doesn't add a regression test, the reviewer will ask for one.
+
+## Documentation
+
+Updating docs alongside code is part of the change, not a follow-up. Specifically:
+
+- **New public API** → `///` doc comment on the item.
+- **New user-visible feature** → corresponding update to the relevant Learn page (e.g., a new memory variant lands a row in [Memory](/building-agents/memory)).
+- **New feature flag** → add it to [Feature flags](/reference/feature-flags).
+- **New env var** → add it to [Environment variables](/reference/env-vars).
+- **New example** → register it in `crates/examples/Cargo.toml` and link it from the relevant page in [Examples](/examples/index).
+
+## Don'ts
+
+- **Don't bypass commit signing.** No `--no-gpg-sign`. If signing fails, fix the underlying issue or ask.
+- **Don't bypass hooks.** No `--no-verify`. Pre-commit hooks exist for a reason.
+- **Don't `git add -f` ignored files.** If `.gitignore` blocks something you want to add, the rule is intentional — discuss before adding.
+- **Don't push to `main`.** Always work from a branch.
+- **Don't add `Co-Authored-By: Claude/AI` trailers.** Commits should look like normal human-authored commits.
+- **Don't skip review feedback.** Review comments aren't optional polish — they're the merge gate.
+
+## What reviewers check
+
+- **Correctness.** The logic does what the description says. Edge cases handled.
+- **Crate boundaries.** Code lands in the right crate (see [Architecture](/contribute/architecture)).
+- **Trait & builder shapes.** New variants match the conventions of existing ones.
+- **Errors actionable.** Variants are specific enough that callers can match on them.
+- **Doc comments on public API.** `///` everywhere it's public.
+- **Tests.** Real coverage, not just "compiles."
+- **Feature gating.** External integrations are behind the right feature.
+- **No `unwrap`/`expect`/`println!` in library code.**
+
+## After merge
+
+Squash-merge is the default. Your PR title is the merge commit subject; your description carries to the release notes (so write it well).
+
+Once merged:
+
+- **Update the release notes** if your PR is user-facing — the next release will reference it.
+- **Close any issues** the PR resolves (the `closes #123` syntax does this automatically).
+- **Watch CI** for the merge build. Sometimes a feature combination passes locally but trips on CI's matrix.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Development setup" icon="screwdriver" href="/contribute/development-setup">
+    Building, testing, the pre-push checklist.
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/contribute/architecture">
+    Crate boundaries and design rules the review applies.
+  </Card>
+  <Card title="Code of conduct" icon="hand-holding-heart" href="/contribute/code-of-conduct">
+    How we work together.
+  </Card>
+</CardGroup>

@@ -1,0 +1,155 @@
+---
+title: "Going to production"
+description: "A checklist. Resilience, observability, security, persistence, cost. The things you'd add to a prototype before showing it to real users."
+sidebarTitle: "Going to production"
+---
+
+A working agent is a starting point. Going to production is about adding the layers that *aren't* about the agent's behavior — they're about keeping it up, watching it, and bounding what it can do.
+
+This page is a checklist. Each section links to the deeper guide.
+
+## Resilience
+
+- ✅ **Wrap the LLM client** with `with_max_retries(3)` and `with_timeout(Duration::from_secs(30))`.
+- ✅ **Add a fallback model** via `with_fallback(...)` or `ModelFallback::to(...)` middleware. A cheaper backup beats a 5xx.
+- ✅ **Retry on rate limits.** `RetryPolicy::new(n)` with backoff handles 429s correctly.
+- ✅ **Cap retry attempts.** Infinite retry is a bug. 3–5 attempts with exponential backoff.
+- ✅ **Cap loop iterations.** Always set `with_max_iterations(n)` on agents.
+
+See [Resilience](/production/resilience) for the patterns.
+
+## Rate and cost
+
+- ✅ **Rate-limit upstream.** `RateLimit::new(TokenBucket::per_minute(n))` with bucket sized to your provider tier.
+- ✅ **Track cost.** Wire `cognis-trace` with `with_default_pricing()` so every call has a USD attached.
+- ✅ **Cap cost per run.** `ModelCallLimit` and `ToolCallLimit` middleware bound how much one user request can spend.
+- ✅ **Cache obvious repeats.** `CachedEmbeddings` for indexing; `with_memory_cache` for LLM calls; `PromptCaching` middleware for Anthropic-style prefix caching.
+
+See [Cost tracking](/observability/cost) and [Caching](/production/caching).
+
+## Observability
+
+- ✅ **Wire `cognis-trace`.** `LangfuseExporter::from_env()` plus a `TracingHandler` plus the wrapped `HandlerObserver` on every `RunnableConfig`.
+- ✅ **Set trace metadata.** `TraceMeta::session(...)`, `user(...)`, `release(...)`, `environment(...)`. Without these, you can't filter your dashboards.
+- ✅ **Drain on shutdown.** `handler.shutdown().await` before exit so batches flush.
+- ✅ **Log structured errors.** Cognis uses `tracing` — make sure your subscriber is on.
+
+See [Trace with Langfuse](/observability/langfuse).
+
+## Security
+
+- ✅ **PII redaction.** `PiiRedactor::default()` middleware on every customer-facing agent. Add `RegexRedactor` for domain-specific patterns.
+- ✅ **Tool deny-lists.** Even if the model has no reason to call `delete_account`, deny-list it.
+- ✅ **HITL for the riskiest tools.** Money, customer data, irreversible actions get an `Approver`.
+- ✅ **SSRF-safe HTTP tools.** Use the built-in protected client; allow-list explicit hosts.
+- ✅ **Sandboxed FS for file-writing agents.** `SandboxedFsBackend` over a scratch directory.
+- ✅ **No `.env` files.** Use envchain / direnv / your secret manager.
+
+See [Security](/production/security).
+
+## Persistence
+
+- ✅ **Pick a checkpointer.** `SqliteCheckpointer` for single-host, `PostgresCheckpointer` for multi-process.
+- ✅ **Use stable thread ids.** Tie them to your auth (user id, conversation id) so resume is deterministic.
+- ✅ **Test resume paths.** Kill a process mid-run; verify the next call resumes correctly.
+- ✅ **Bound history.** Don't keep checkpoints forever — implement a TTL on your checkpointer.
+
+See [Checkpointing](/graph-workflows/checkpointing).
+
+## Memory
+
+- ✅ **Pick a memory variant.** `SummaryBufferMemory` is the safe default; switch when usage tells you otherwise.
+- ✅ **Pin the system prompt.** Use `with_system(...)` on the memory so it survives summarization.
+- ✅ **Bound the budget.** `SummaryBufferMemory::new(client, max_tokens)` with `max_tokens` matched to your model and your latency target.
+
+See [Memory](/building-agents/memory).
+
+## Streaming
+
+- ✅ **Stream by default.** Long agents feel broken when they don't stream. Use `stream_events` or `stream_mode`.
+- ✅ **Handle disconnects.** When the client disconnects, cancel the run with `cancel_token`.
+- ✅ **Protect against backpressure.** Bounded channels; drop or summarize on overflow.
+
+See [Streaming](/building-agents/streaming).
+
+## Evals and CI
+
+- ✅ **Build a small golden set.** 30–100 cases of "I know what the answer should be."
+- ✅ **Run evals on every change.** `EvaluationFramework` over the golden set; gate CI on regressions.
+- ✅ **Push scores to Langfuse.** Tie eval scores to traces so you can drill from "this regressed" to "the trace that broke it."
+
+See [Evaluation](/observability/evaluation).
+
+## Deploys
+
+- ✅ **Build with the right features.** `cargo build --release --features all-providers,langfuse,vectorstore-faiss` (adapt to your stack).
+- ✅ **Pin secrets in your runner's secret store.** Same env-var names as local dev.
+- ✅ **Health checks.** Wire a tiny `Client::builder().health_check()` endpoint so your platform's load balancer can detect bad pods.
+- ✅ **Graceful shutdown.** Drain the trace handler, cancel in-flight requests, then exit.
+
+## Cost containers
+
+- ✅ **Per-tenant limits.** Different rate buckets for different customers. Use one bucket per tenant; share the same `RateLimit` middleware.
+- ✅ **Daily caps.** Sliding-window or composite limiter that stops a runaway use case before it surprises your bill.
+- ✅ **Fallback to cheaper.** Production stack: try the good model, fall back to a cheap one, then return a graceful error.
+
+## How it all fits
+
+A reference production agent setup:
+
+```rust
+use std::sync::Arc;
+use std::time::Duration;
+use cognis::prelude::*;
+use cognis::AgentBuilder;
+use cognis::middleware::{
+    ModelRetry, ModelFallback, RateLimit, TokenBucket,
+    PromptCaching, PiiRedactor, Summarization, ModelCallLimit,
+};
+use cognis::observers::TracingObserver;          // or a Langfuse-bridged HandlerObserver
+use cognis_llm::Client;
+use cognis_graph::SqliteCheckpointer;
+
+let primary = Client::from_env()?
+    .with_max_retries(3)
+    .with_timeout(Duration::from_secs(30));
+let backup = Client::builder().model("gpt-4o-mini").build()?;
+
+let cp = Arc::new(SqliteCheckpointer::open("./state.db").await?);
+let memory = SummaryBufferMemory::new(primary.clone(), 2000)
+    .with_system("You are a careful assistant.");
+
+let agent = AgentBuilder::new()
+    .with_llm(primary)
+    .middleware(RateLimit::new(TokenBucket::per_minute(60_000)))
+    .middleware(ModelCallLimit::new(20))
+    .middleware(PiiRedactor::default())
+    .middleware(PromptCaching::default())
+    .middleware(Summarization::token_budget(8_000))
+    .middleware(ModelRetry::exponential(3))
+    .middleware(ModelFallback::to(backup))
+    .with_tools(my_tools)
+    .with_memory(memory)
+    .with_max_iterations(8)
+    .stateful()
+    .build()?;
+```
+
+That's not a starting point — it's the *end* state. Build the simple version, then layer on what your usage tells you you need.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Resilience" icon="shield" href="/production/resilience">
+    Retries, fallbacks, recovery.
+  </Card>
+  <Card title="Observability" icon="chart-line" href="/observability/langfuse">
+    Where your runs land.
+  </Card>
+  <Card title="Security" icon="lock" href="/production/security">
+    PII, tools, sandboxes.
+  </Card>
+  <Card title="Caching" icon="bolt" href="/production/caching">
+    Don't pay twice.
+  </Card>
+</CardGroup>

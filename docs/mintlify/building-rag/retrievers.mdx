@@ -1,0 +1,135 @@
+---
+title: "Retrievers"
+description: "A retriever turns a query into ranked Documents. Vector, keyword, hybrid, multi-query — pick or compose."
+sidebarTitle: "Retrievers"
+---
+
+A vector store answers "give me chunks similar to this query." A retriever is the layer above that — same job, more knobs. Cognis ships eight retrievers; most apps use one or two, occasionally combined. They all share the same shape: `Runnable<String, Vec<Document>>`.
+
+## Pick a retriever
+
+| Retriever | What it does | Use when |
+|---|---|---|
+| `VectorRetriever` | Vector similarity search over a `VectorStore`. | Default for embedding-based RAG. |
+| `BM25Retriever` | Sparse keyword retrieval. | Exact-term recall (names, IDs, code). |
+| `EnsembleRetriever` | Combines multiple retrievers with weights. | Hybrid dense + sparse. |
+| `MultiVectorRetriever` | Index multiple vectors per document (summary + chunks). | Long docs where a summary embedding routes to chunk-level retrieval. |
+| `ParentDocumentRetriever` | Retrieve small chunks; return the enclosing parents. | Want sharp matching but full-context generation. |
+| `QueryTranslatorRetriever` | LLM rewrites the query before retrieval. | Vague user queries that need expansion. |
+| `CompressorPipeline` | Chain of compressors (filter, rerank, summarize). | Post-process retrieved docs before they hit the model. |
+| `CachingRetriever` | Wraps any retriever with a hash-keyed cache. | Repeated identical queries (chat with re-asks). |
+
+For LLM-driven retrievers (multi-query expansion, contextual compression, query decomposition), see also `cognis::retrievers::*` — those live in the umbrella because they hold a `Client`.
+
+## Quick example
+
+```rust
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use cognis::prelude::*;
+use cognis_rag::{
+    InMemoryVectorStore, VectorRetriever, VectorStore, FakeEmbeddings, Embeddings,
+};
+
+let emb: Arc<dyn Embeddings> = Arc::new(FakeEmbeddings::new(32));
+let store = Arc::new(RwLock::new(InMemoryVectorStore::new(emb)));
+
+// (populate the store…)
+
+let retriever = VectorRetriever::new(store.clone()).with_top_k(5);
+let docs = retriever.invoke("how does the bridge work?".into(), RunnableConfig::default()).await?;
+```
+
+Every retriever returns `Vec<Document>`, ready to fold into a prompt or pass to the next stage.
+
+## Hybrid retrieval
+
+Combine dense (vector) and sparse (BM25) retrieval for the best of both:
+
+```rust
+use cognis_rag::{BM25Retriever, EnsembleRetriever, VectorRetriever};
+
+let dense = VectorRetriever::new(store).with_top_k(20);
+let sparse = BM25Retriever::from_documents(docs.clone()).with_top_k(20);
+
+let hybrid = EnsembleRetriever::new()
+    .add(dense, 0.7)
+    .add(sparse, 0.3);
+```
+
+Weights are normalized; the result merges and re-ranks.
+
+## Reranking
+
+After initial retrieval, a cross-encoder can re-rank top-K candidates by direct query-document scoring:
+
+```rust
+use cognis_rag::{CrossEncoderReranker, FnCrossEncoder};
+
+let reranker = CrossEncoderReranker::new(
+    FnCrossEncoder::new(|query, docs| async move {
+        // Score each (query, doc) pair, return Vec<(usize, f32)>.
+        todo!()
+    })
+);
+
+let chained = retriever.pipe(reranker);
+```
+
+Cognis ships `CrossEncoder` as a trait; bring your own scorer (a small reranker model, a heuristic, or a remote service).
+
+## Filtering and metadata
+
+Retrievers respect the metadata filters their underlying store supports:
+
+```rust
+use cognis_rag::Filter;
+
+let filter = Filter::and(vec![
+    Filter::eq("source", "docs"),
+    Filter::ne("draft", true),
+]);
+let docs = retriever.with_filter(filter).invoke(query, cfg).await?;
+```
+
+## Composing in a chain
+
+Retrievers are Runnables, so they pipe like anything else:
+
+```rust
+use cognis::prelude::*;
+use cognis_core::compose::lambda;
+
+let format_docs = lambda(|docs: Vec<Document>| async move {
+    Ok::<_, CognisError>(
+        docs.iter().map(|d| format!("- {}", d.content)).collect::<Vec<_>>().join("\n")
+    )
+});
+
+// Retrieve → format → answer
+let context_chain = retriever.pipe(format_docs);
+let context: String = context_chain.invoke(query, cfg).await?;
+```
+
+The full RAG pattern lives in [Patterns → Code Q&A](/patterns/code-qa).
+
+## How it works
+
+- **Retrievers compose.** Layer caching, reranking, and translation by piping retrievers together.
+- **`top_k` is a request, not a guarantee.** A store with fewer than `k` matching docs returns what it has.
+- **Filters happen at the store layer when possible.** When the underlying backend can do it (Qdrant, Pinecone, Weaviate), it does — no scan-then-filter penalty.
+- **Caching is a thin shell.** `CachingRetriever` keys on the query string; if your retriever takes a filter, two different filters with the same query are different cache entries.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Reranking and compression" icon="arrow-down-up-across-line" href="/building-rag/reranking">
+    Cross-encoders, compressors, long-context reorder.
+  </Card>
+  <Card title="Indexing pipeline" icon="arrows-rotate" href="/building-rag/indexing">
+    Make sure the store has the right docs.
+  </Card>
+  <Card title="Patterns → Code Q&A" icon="grid" href="/patterns/code-qa">
+    A complete retriever-driven Q&A.
+  </Card>
+</CardGroup>

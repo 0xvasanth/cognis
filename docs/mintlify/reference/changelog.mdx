@@ -1,0 +1,46 @@
+---
+title: "Changelog"
+description: "Versioned releases. The full text lives on GitHub."
+sidebarTitle: "Changelog"
+---
+
+Cognis publishes coordinated releases of all crates. Versions move together; the workspace `version` is the single source of truth.
+
+For the full notes — commits, PRs, breaking changes — see [GitHub Releases](https://github.com/0xvasanth/cognis/releases). Below is a high-level summary.
+
+## 0.3.x — V2 release line
+
+The V2 rebuild. The crate boundaries firmed up around five sibling crates (`cognis-core`, `cognis-llm`, `cognis-rag`, `cognis-graph`, `cognis-trace`) plus the `cognis` umbrella. The agent layer landed under `cognis::agent`. The graph engine moved to its current shape (`Graph<S>`, `node_fn`, `Goto`, typed `GraphState`).
+
+Highlights:
+
+- **0.3.0** — V2 release. Rebuilt foundation, `AgentBuilder`, `MultiAgentOrchestrator`, eight memory variants, full middleware catalog, RAG primitives, graph engine with checkpointers, `cognis-trace` with Langfuse exporter.
+- **Subsequent 0.3 releases** — RAG fingerprinting stability across Rust releases, V1-parity additions (Hierarchical / Consensus orchestration, `PluginRegistry`, `HybridMemory`, `AgentEventBus`, graph analysis), various fixes.
+
+## 0.2.x — V1 line
+
+The original line. Some crate names and module paths differ. The `crates/v1/` directory in the repo retains the V1 source. New code should target V2 (0.3+).
+
+If you're migrating from V1, the comparison page may help: [Cognis vs LangChain / LangGraph / DeepAgents](/get-started/comparison). The shape of the V2 API is closer to LangChain/LangGraph/DeepAgents than V1 was.
+
+## How releases work
+
+- Every published crate uses the workspace `version` (set in `Cargo.toml` `[workspace.package]`).
+- Tags are GitHub release tags; the same tag is reflected in `Cargo.toml`.
+- Breaking changes are called out in the release notes; semver applies.
+
+## Subscribing
+
+- **GitHub**: watch the [releases page](https://github.com/0xvasanth/cognis/releases).
+- **crates.io**: `cargo install cargo-update` and run `cargo update` against your `Cargo.toml`.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Comparison" icon="arrows-left-right" href="/get-started/comparison">
+    How V2 maps to LangChain / LangGraph / DeepAgents.
+  </Card>
+  <Card title="Contribute" icon="code-merge" href="/contribute/ways-to-contribute">
+    Help shape the next release.
+  </Card>
+</CardGroup>

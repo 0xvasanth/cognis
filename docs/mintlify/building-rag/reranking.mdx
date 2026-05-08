@@ -1,0 +1,119 @@
+---
+title: "Reranking and compression"
+description: "Make retrieved context better — rerank with a cross-encoder, compress with a pipeline, fight lost-in-the-middle."
+sidebarTitle: "Reranking"
+---
+
+A vector store gives you "approximately relevant" docs. Retrieval-augmented quality usually wins or loses on what happens *after* — re-ranking the top-K with a model that scores query-document pairs directly, compressing redundant chunks, and ordering the final list to fight the lost-in-the-middle effect.
+
+## Why post-process
+
+- **Vector similarity is approximate.** A bi-encoder (the embedder) scores query and doc separately. A cross-encoder reads them *together* and is consistently better at ranking — but too slow to use as the primary retriever.
+- **Top-K is noisy.** Even after a cross-encoder, two of your K docs might be near-duplicates. Compression collapses them.
+- **LLMs lose the middle.** Studies show models attend best to the *start* and *end* of context. `LongContextReorder` puts the most-relevant chunks at the edges.
+
+The pattern: vector store → top-K → cross-encoder rerank → dedup / filter → reorder → prompt.
+
+## Cross-encoder reranking
+
+`CrossEncoder` is a trait — bring your own scorer. The simplest path is `FnCrossEncoder` wrapping a closure or an HTTP call to a hosted reranker.
+
+```rust
+use cognis_rag::{CrossEncoderReranker, FnCrossEncoder};
+
+let reranker = CrossEncoderReranker::new(
+    FnCrossEncoder::new(|query: String, docs: Vec<Document>| async move {
+        // Call your reranker; return (index, score) pairs.
+        // E.g., post to a Cohere /rerank endpoint or a local model server.
+        let scores: Vec<(usize, f32)> = call_reranker(&query, &docs).await?;
+        Ok(scores)
+    })
+);
+
+let chained = vector_retriever.pipe(reranker);
+```
+
+`CrossEncoderReranker` calls the cross-encoder, reorders the docs by score, and trims to top-N (configurable).
+
+## Compression pipeline
+
+`CompressorPipeline` chains compressors that *transform* the retrieved docs — drop, rewrite, summarize, filter:
+
+```rust
+use cognis_rag::{CompressorPipeline, /* compressors… */};
+
+let compressed = retriever.pipe(
+    CompressorPipeline::new()
+        .add(Dedup::default())          // collapse near-duplicates
+        .add(MetadataTransformer::new(/*…*/)) // strip private fields
+);
+```
+
+Each compressor is itself a `Runnable<Vec<Document>, Vec<Document>>`, so the pipeline is just `pipe`-composed.
+
+## Long-context reorder
+
+When you do hand a list of chunks to the model, put the best ones at the edges:
+
+```rust
+use cognis_rag::LongContextReorder;
+
+let pipeline = retriever
+    .pipe(reranker)
+    .pipe(LongContextReorder::default());
+```
+
+The reorderer takes a sorted list (best first) and emits the same docs in *edge-first* order: best, third-best, fifth-best, …, sixth-best, fourth-best, second-best. Empirically helpful with long inputs.
+
+## Document transformers
+
+Smaller transformations that don't fit "compressor" framing:
+
+| Transformer | Effect |
+|---|---|
+| `LongContextReorder` | Edge-first ordering. |
+| `MetadataTransformer` | Rewrite, filter, or attach metadata before docs reach the prompt. |
+
+## How a complete RAG chain looks
+
+```rust
+use cognis::prelude::*;
+use cognis_core::compose::lambda;
+use cognis_rag::{LongContextReorder, VectorRetriever};
+
+let retriever = VectorRetriever::new(store).with_top_k(20);
+
+let format_docs = lambda(|docs: Vec<Document>| async move {
+    Ok::<_, CognisError>(docs.iter().map(|d| format!("- {}", d.content)).collect::<Vec<_>>().join("\n"))
+});
+
+let context_chain = retriever
+    .pipe(reranker)                       // 20 → top 5
+    .pipe(LongContextReorder::default())  // edge-first
+    .pipe(format_docs);                   // → String
+
+let context: String = context_chain.invoke("how does X work?".into(), cfg).await?;
+```
+
+For the full prompt-build-answer flow, see [Patterns → Code Q&A](/patterns/code-qa).
+
+## How it works
+
+- **Each post-processor is a Runnable.** Pipe in any order, swap implementations, wrap with retries — same surface as everything else.
+- **Reranking widens the candidate set.** Set `top_k` on the retriever generously (20–50) and let the reranker trim. The vector store is fast at K=20; the reranker is the slow step but only runs over the candidates.
+- **`LongContextReorder` is order-only.** It doesn't drop or merge — it just shuffles for the LLM's attention curve.
+- **Compressors can change document count.** Make sure downstream code handles fewer-than-expected docs.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Retrievers" icon="magnifying-glass" href="/building-rag/retrievers">
+    The other half of the chain.
+  </Card>
+  <Card title="Patterns → Long-context summarization" icon="grid" href="/patterns/long-context">
+    A worked long-doc compression flow.
+  </Card>
+  <Card title="Reference → cognis-rag" icon="book" href="/reference/api/cognis-rag">
+    Full transformer / compressor list.
+  </Card>
+</CardGroup>

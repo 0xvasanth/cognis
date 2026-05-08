@@ -1,0 +1,130 @@
+---
+title: "cognis-macros"
+description: "Proc macros: #[cognis::tool] and #[derive(GraphState)] / #[derive(GraphStateV2)]."
+sidebarTitle: "cognis-macros"
+---
+
+`cognis-macros` is the proc-macro crate. It exists so the rest of the workspace can use derives without dragging proc-macro infrastructure into every dependency. You don't normally depend on this directly — `cognis-core` re-exports the derives, and `cognis` re-exports them through that.
+
+## Crate metadata
+
+| Field | Value |
+|---|---|
+| Latest version | `0.3` |
+| docs.rs | [docs.rs/cognis-macros](https://docs.rs/cognis-macros) |
+| Repo path | [`crates/cognis-macros`](https://github.com/0xvasanth/cognis/tree/main/crates/cognis-macros) |
+
+## #[cognis::tool]
+
+Attribute macro that turns an `async fn` into an `Arc<dyn Tool>`-producing function.
+
+```rust
+use cognis_core::schemars::{self, JsonSchema};
+use serde::Deserialize;
+
+#[derive(Deserialize, JsonSchema)]
+struct GetWeatherArgs {
+    /// City to look up.
+    city: String,
+}
+
+#[cognis::tool(
+    name = "get_weather",
+    description = "Look up current weather for a city.",
+    return_direct = false,
+)]
+async fn get_weather(args: GetWeatherArgs) -> cognis::Result<String> {
+    Ok(format!("It's 22°C in {}.", args.city))
+}
+```
+
+Attributes:
+
+| Attribute | Default | Effect |
+|---|---|---|
+| `name = "..."` | fn name | Tool name as the model sees it. |
+| `description = "..."` | fn doc-comment | Description as the model sees it. |
+| `return_direct = true/false` | `false` | If true, the tool's output becomes the final response (skip the next model turn). |
+| `crate_path = "..."` | `cognis_core` | Override for renamed re-export paths. |
+
+Schema validators on fn arguments:
+
+| Attribute | Effect |
+|---|---|
+| `#[schema(range(min = 0, max = 100))]` | Numeric bounds. |
+| `#[schema(length(min = 1, max = 200))]` | String / Vec length. |
+| `#[schema(pattern("regex"))]` | Regex. |
+| `#[schema(enum_values("low", "medium", "high"))]` | Enum. |
+| `#[schema(format("email"))]` | JSON Schema format. |
+
+These emit *both* runtime validation and `#[schemars(...)]` annotations on the generated args struct, so the model sees them in the JSON Schema.
+
+The macro can also wrap an `impl` block containing exactly one `#[tool]`-marked async method — useful when the tool struct holds shared config (HTTP client, DB pool):
+
+```rust
+struct MyTool {
+    client: reqwest::Client,
+}
+
+impl MyTool {
+    #[cognis::tool(name = "fetch", description = "GET a URL.")]
+    async fn fetch(&self, args: FetchArgs) -> cognis::Result<String> {
+        // self.client.get(args.url).send().await…
+        todo!()
+    }
+}
+```
+
+## #[derive(GraphStateV2)]
+
+Generates a sibling `<Name>Update` struct and an `impl GraphState for <Name>` from a state struct annotated with per-field `#[reducer(...)]` attributes.
+
+```rust
+use cognis::prelude::*;
+
+#[derive(Default, Clone, Debug, GraphStateV2)]
+struct MyState {
+    #[reducer(append)]   messages: Vec<Message>,
+    #[reducer(add)]      counter: u32,
+    #[reducer(merge)]    metadata: serde_json::Value,
+    // unannotated → last_value
+    pending: Option<ToolCall>,
+}
+```
+
+Reducer options:
+
+| `#[reducer(...)]` | Behavior |
+|---|---|
+| `last_value` (default) | `self.field = update.field` |
+| `append` | `self.field.extend(update.field)` |
+| `add` | `self.field += update.field` |
+| `merge` | deep-merge JSON |
+
+The macro produces:
+
+- A struct `MyStateUpdate` mirroring the fields.
+- `impl GraphState for MyState { type Update = MyStateUpdate; fn apply(&mut self, u: MyStateUpdate) { /* per reducer */ } }`.
+
+`#[derive(GraphState)]` is the older, slightly different shape; new code should use `GraphStateV2`.
+
+## When to import directly
+
+You usually shouldn't. The derives are re-exported through `cognis_core` (and through the umbrella `cognis::prelude`), so:
+
+```rust
+use cognis::prelude::*;  // GraphStateV2 derive in scope
+
+// or, for #[cognis::tool], use the path-qualified form:
+#[cognis::tool(name = "foo", description = "…")]
+async fn foo(/* … */) { /* … */ }
+```
+
+If you have your own crate that vends the derives under a different path, set `crate_path = "your_crate"` on the tool macro.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Tools" icon="screwdriver-wrench" href="/building-agents/tools">User guide for `#[cognis::tool]`.</Card>
+  <Card title="Graph state" icon="layer-group" href="/graph-workflows/state">User guide for `GraphStateV2`.</Card>
+</CardGroup>

@@ -1,0 +1,173 @@
+---
+title: "Middleware"
+description: "Cross-cutting policies that wrap every model call. Retry, fallback, rate limits, redaction, prompt caching, summarization, planning, HITL — all composable."
+sidebarTitle: "Middleware"
+---
+
+Middleware is how Cognis adds production discipline without rewriting your agent loop. A middleware sits between the agent and the model, sees every call, and can mutate the request, retry, redact, gate, log, or replace the response. They compose: add three, and they stack in declared order.
+
+## How it works
+
+Each middleware implements `Middleware`, a trait with one method that wraps a `Next` (the rest of the chain ending at the LLM). The agent's `MiddlewarePipeline` runs them in order on every model call inside the loop.
+
+```rust
+use cognis::middleware::{ModelRetry, RateLimit, PromptCaching};
+
+let agent = AgentBuilder::new()
+    .with_llm(client)
+    .middleware(RateLimit::token_bucket(rate, burst))
+    .middleware(ModelRetry::exponential(3))
+    .middleware(PromptCaching::default())
+    .build()?;
+```
+
+The order matters: the first one declared is the outermost. So `RateLimit` enforces *before* a retry burns through your tokens; `PromptCaching` shapes what the provider sees regardless of retries.
+
+## What's in the box
+
+The full catalog lives under `cognis::middleware::*`. Reach for these by job:
+
+### Resilience
+
+| Middleware | Effect |
+|---|---|
+| `ModelRetry` | Retry on transient errors and rate limits with backoff. |
+| `ModelFallback` | Fall back to another model on failure. |
+| `Recovery` / `FixedRecovery` / `FnRecovery` | Custom recovery strategies on errors. |
+| `ToolRetry` / `ToolRetryClassifier` | Retry tool calls that the model emitted but that failed. |
+
+### Rate and cost
+
+| Middleware | Effect |
+|---|---|
+| `RateLimit` (with `TokenBucket`) | Token-bucket rate limiting per model or globally. |
+| `ModelCallLimit`, `ToolCallLimit` | Hard caps per run. |
+
+### Privacy
+
+| Middleware | Effect |
+|---|---|
+| `PiiRedactor` | Mask known PII patterns before the request leaves your process. |
+| `RegexRedactor` | Bring-your-own-pattern redaction. |
+
+### Prompt and context
+
+| Middleware | Effect |
+|---|---|
+| `PromptCaching` | Mark messages as cacheable for providers that support it (Anthropic). |
+| `ContextEditing` | Mutate messages before they go to the model. |
+| `ContextInjection` (`FnContextProvider`) | Inject context derived from your app state. |
+| `Summarization` | Compress old turns when the transcript grows. |
+| `CapMessageLength` | Truncate over-long messages. |
+| `DropMatching` | Filter messages by predicate. |
+
+### Tools
+
+| Middleware | Effect |
+|---|---|
+| `ToolAllowList` / `ToolDenyList` / `ToolFilter` | Restrict which tools the model may call. |
+| `LimitTools` | Cap the number of tool definitions sent to the model. |
+| `ToolEmulator` (`MapEmulator`, `EmulatorSource`) | Replay tool calls deterministically — great for tests. |
+| `ToolSelection` | Steer the model toward a subset of tools per turn. |
+| `PatchToolCalls` (`FnToolCallPatcher`) | Fix or rewrite the model's tool calls before dispatch. |
+
+### Planning and todos
+
+| Middleware | Effect |
+|---|---|
+| `Planning` | Inject a planning step before tool selection. |
+| `TodoMiddleware` | Maintain an internal task list the agent can read and update. |
+
+### Human-in-the-loop
+
+| Middleware | Effect |
+|---|---|
+| `HumanInTheLoop` (`HumanResponder`, `HumanDecision`, `ChatApproval`, `ChatApprover`) | Pause for human approval or input on configured tools. |
+| `ApprovalGate` / `AlwaysSkip` / `AutoApproveAll` / `AutoRejectAll` | Approval policies. |
+
+### Workspace and subagents
+
+| Middleware | Effect |
+|---|---|
+| `FilesystemMiddleware`, `WorkspaceLister` | Expose a virtual workspace to the model. |
+| `EditPolicy` | Gate which files the agent may edit. |
+| `SubagentMiddleware`, `SubagentRouter` | Spawn subagents from inside the loop for context isolation. |
+
+### Pipelines
+
+| Type | Effect |
+|---|---|
+| `MiddlewarePipeline` | Compose multiple middlewares programmatically. |
+| `PipelinedClient` | A `Client` wrapper that runs the pipeline on every call. |
+
+## Quick example — production stack
+
+A reasonable defaults stack for a customer-facing agent:
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::AgentBuilder;
+use cognis::middleware::{
+    ModelRetry, ModelFallback, RateLimit, TokenBucket,
+    PromptCaching, PiiRedactor, Summarization,
+};
+
+let primary = Client::from_env()?;
+let backup = /* a cheaper Client::builder() */;
+
+let agent = AgentBuilder::new()
+    .with_llm(primary)
+    .middleware(RateLimit::new(TokenBucket::per_minute(60_000)))
+    .middleware(PiiRedactor::default())
+    .middleware(PromptCaching::default())
+    .middleware(Summarization::token_budget(8_000))
+    .middleware(ModelRetry::exponential(3))
+    .middleware(ModelFallback::to(backup))
+    .with_system_prompt("…")
+    .with_tools(my_tools)
+    .build()?;
+```
+
+Read top-to-bottom: rate-limit first (don't waste retries on a 429), redact PII before it ever reaches a wire, mark cacheable for Anthropic, summarize old turns when context grows, retry transients, fall back to a cheaper model if everything else fails.
+
+## Writing your own middleware
+
+The trait is small:
+
+```rust
+use async_trait::async_trait;
+use cognis::middleware::{Middleware, MiddlewareCtx, Next};
+
+struct LogTokens;
+
+#[async_trait]
+impl Middleware for LogTokens {
+    async fn handle(&self, ctx: MiddlewareCtx<'_>, next: Next<'_>) -> cognis::Result<ChatResponse> {
+        let resp = next.run(ctx).await?;
+        if let Some(usage) = &resp.usage {
+            tracing::info!(input = usage.input_tokens, output = usage.output_tokens, "llm call");
+        }
+        Ok(resp)
+    }
+}
+```
+
+Plug it in with `.middleware(LogTokens)` like any other. Order in the chain is your call.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Production → Resilience" icon="shield" href="/production/resilience">
+    Patterns for `ModelRetry`, `ModelFallback`, and `Recovery`.
+  </Card>
+  <Card title="Production → Security" icon="lock" href="/production/security">
+    PII redaction, deny-lists, SSRF protection.
+  </Card>
+  <Card title="Human-in-the-loop" icon="user-check" href="/building-agents/hitl">
+    Approval-gated tools.
+  </Card>
+  <Card title="Reference → cognis" icon="book" href="/reference/api/cognis">
+    Full middleware re-export list.
+  </Card>
+</CardGroup>

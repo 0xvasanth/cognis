@@ -1,0 +1,136 @@
+---
+title: "State and reducers"
+description: "Define a state struct, decide how updates apply. The compiler does the rest."
+sidebarTitle: "State"
+---
+
+State is the core idea behind `Graph<S>`. Every node reads the current state and emits an *update*; the engine applies the update and moves on. How updates apply is up to you — concatenate lists, deep-merge JSON, replace whole values. That decision is encoded in your `GraphState` impl, either by hand or via a derive.
+
+## The shape
+
+```rust
+pub trait GraphState: Send + Sync {
+    type Update: Default + Send + Sync;
+    fn apply(&mut self, update: Self::Update);
+}
+```
+
+`apply` is the heart. The engine calls it once per superstep with the merged update from all nodes that ran in that step.
+
+## Two ways to define state
+
+<Tabs>
+  <Tab title="Manual impl">
+    Most explicit. Every field decision is in front of you.
+    ```rust
+    use cognis::prelude::*;
+
+    #[derive(Default, Clone, Debug)]
+    struct State {
+        messages: Vec<Message>,
+        counter: u32,
+    }
+
+    #[derive(Default, Clone)]
+    struct Update {
+        messages: Vec<Message>,
+        counter: u32,
+    }
+
+    impl GraphState for State {
+        type Update = Update;
+        fn apply(&mut self, u: Update) {
+            self.messages.extend(u.messages);  // append
+            self.counter += u.counter;         // add
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Derive macro">
+    `#[derive(GraphStateV2)]` emits the `Update` struct and the `apply` impl. Per-field `#[reducer(...)]` controls how each field is combined.
+    ```rust
+    use cognis::prelude::*;
+
+    #[derive(Default, Clone, Debug, GraphStateV2)]
+    struct State {
+        #[reducer(append)]   messages: Vec<Message>,
+        #[reducer(add)]      counter: u32,
+        #[reducer(merge)]    metadata: serde_json::Value,
+        // unannotated → last_value (replace)
+        pending: Option<ToolCall>,
+    }
+    ```
+
+    The macro generates a sibling `StateUpdate` with the same fields and an `apply` body that follows the reducer instructions.
+  </Tab>
+</Tabs>
+
+## Reducer reference
+
+| `#[reducer(...)]` | Apply behavior | Typical fields |
+|---|---|---|
+| `last_value` (default) | `self.field = update.field` | options, scalars |
+| `append` | `self.field.extend(update.field)` | message lists, logs |
+| `add` | `self.field += update.field` | counters, costs |
+| `merge` | deep-merge JSON objects | metadata, accumulating maps |
+
+## Why typed state matters
+
+In Python, graph state is a dict. You learn at runtime whether a key exists, whether the type is right, whether the reducer is hooked up. In Rust:
+
+- **Missing fields don't compile.** The `Update` struct must include every field your `apply` mutates.
+- **Reducer mismatches don't compile.** A reducer for `Vec<Message>` won't accept `String`.
+- **The state shape is shared with consumers.** Observers, time-travel debuggers, checkpointers — they all see the same `S`.
+
+## Default values
+
+`State` and `Update` need `Default` (for the engine's bootstrap). Either derive it (`#[derive(Default)]`) or implement it manually for non-trivial cases:
+
+```rust
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            messages: vec![Message::system("kickoff")],
+            counter: 0,
+        }
+    }
+}
+```
+
+The default is what you get from `Graph::invoke(State::default(), cfg)` and also what every checkpoint resumes from when there's no prior state.
+
+## Custom reducers
+
+For fields that don't fit the four built-ins, write `apply` yourself. Either drop the macro or mix manual + macro per-field — the macro emits standard Rust, so you can `expand` and tweak.
+
+```rust
+fn apply_decay(prev: f32, new: f32) -> f32 { prev * 0.9 + new }
+
+impl GraphState for State {
+    type Update = StateUpdate;
+    fn apply(&mut self, u: StateUpdate) {
+        // …macro-style fields…
+        self.confidence = apply_decay(self.confidence, u.confidence);
+    }
+}
+```
+
+## How it works
+
+- **Updates are merged within a superstep, then applied once.** If two nodes ran in the same superstep, both their updates contribute.
+- **`apply` is sync.** Don't block in there — it runs on the engine's hot path.
+- **Snapshots are taken after `apply`.** Checkpoints, observers, and stream events all see the post-apply state.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Graphs and state" icon="diagram-project" href="/core-ideas/graphs">
+    The wider mental model.
+  </Card>
+  <Card title="Control flow" icon="arrow-up-right-from-square" href="/graph-workflows/control-flow">
+    `Goto`, edges, fan-out.
+  </Card>
+  <Card title="Checkpointing" icon="floppy-disk" href="/graph-workflows/checkpointing">
+    Persist state, time-travel, resume.
+  </Card>
+</CardGroup>

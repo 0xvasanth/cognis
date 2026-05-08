@@ -1,0 +1,53 @@
+---
+title: "Agents"
+description: "ReAct loops, multi-agent orchestration, planning, lifecycle, plugins, AgentBus pub/sub."
+sidebarTitle: "Agents"
+---
+
+Agent examples cover everything from a basic ReAct loop to multi-agent orchestration with custom strategies, planning middleware, lifecycle hooks, and pub/sub communication. Sources under [`examples/agents/`](https://github.com/0xvasanth/cognis/tree/main/examples/agents).
+
+| Name | Topic | Source |
+|---|---|---|
+| `agents_react_agent` | The standard ReAct loop | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/react_agent.rs) |
+| `agents_conversational` | Conversational agent with memory | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/conversational_agent.rs) |
+| `agents_multi_agent` | Multi-agent collaboration | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/multi_agent_collaboration.rs) |
+| `agents_round_robin` | Round-robin orchestration | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/round_robin_agents.rs) |
+| `agents_communication` | Cross-agent communication | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/agent_communication.rs) |
+| `agents_bus_pubsub` | `AgentBus` pub/sub broadcast | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/agent_bus_pubsub.rs) |
+| `agents_planning_demo` | Planning step before tool selection | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/planning_demo.rs) |
+| `agents_planning_middleware` | `Planning` middleware in the loop | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/planning_middleware.rs) |
+| `agents_plan_and_execute` | Plan-then-execute pattern | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/plan_and_execute.rs) |
+| `agents_streaming_events` | Per-event streaming from an agent | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/streaming_agent_events.rs) |
+| `agents_cancellation` | Cancellation tokens and cooperative shutdown | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/cancellation.rs) |
+| `agents_context_management` | Trimming and shaping the prompt window | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/context_management_demo.rs) |
+| `agents_lifecycle` | Lifecycle plugins (start, end, error) | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/agent_lifecycle_demo.rs) |
+| `agents_execution_hooks` | Hooks around model and tool calls | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/execution_hooks.rs) |
+| `agents_plugin_system` | The plugin registry | [src](https://github.com/0xvasanth/cognis/blob/main/examples/agents/plugin_system.rs) |
+
+## How to run
+
+```bash
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example agents_react_agent
+
+# Offline-friendly (uses fake provider):
+cargo run -p cognis-examples --example agents_round_robin
+cargo run -p cognis-examples --example agents_bus_pubsub
+```
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Agents and the loop" icon="robot" href="/core-ideas/agents">
+    The mental model.
+  </Card>
+  <Card title="Multi-agent" icon="people-arrows" href="/building-agents/multi-agent">
+    Strategies and custom handoffs.
+  </Card>
+  <Card title="Memory examples" icon="brain" href="/examples/memory">
+    Plug memory into any of these agents.
+  </Card>
+  <Card title="Patterns → Research assistant" icon="grid" href="/patterns/research-assistant">
+    A worked multi-agent application.
+  </Card>
+</CardGroup>

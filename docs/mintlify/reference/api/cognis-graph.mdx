@@ -1,0 +1,173 @@
+---
+title: "cognis-graph"
+description: "Stateful Graph<S>, Pregel engine, channels, checkpointers, visualization."
+sidebarTitle: "cognis-graph"
+---
+
+`cognis-graph` (crate name `cognis-graph`, repo dir `crates/cognisgraph`) is the graph runtime. Pregel-style supersteps, typed state, conditional `Goto`, three checkpointer backends, seven stream modes, three viz formats.
+
+## Crate metadata
+
+| Field | Value |
+|---|---|
+| Latest version | `0.3` |
+| docs.rs | [docs.rs/cognis-graph](https://docs.rs/cognis-graph) |
+| Repo path | [`crates/cognisgraph`](https://github.com/0xvasanth/cognis/tree/main/crates/cognisgraph) |
+| Default features | none |
+
+## Modules at a glance
+
+| Module | What |
+|---|---|
+| `builder` | `Graph<S>`, `LinearBuilder`. |
+| `compiled` | `CompiledGraph<S>` — implements `Runnable<S, S>`, plus checkpoint/interrupt/resume methods. |
+| `node` | `Node`, `NodeCtx`, `NodeOut`, `node_fn`. |
+| `goto` | `Goto` enum + constructors. |
+| `state` | `GraphState` trait. |
+| `checkpoint` | `Checkpointer` trait + `InMemoryCheckpointer`, `SqliteCheckpointer`, `PostgresCheckpointer`. |
+| `engine` | Internal Pregel runner. Not for direct use. |
+| `stream_mode` | `StreamMode`, `StreamModes`. |
+| `viz` | `to_dot`, `to_mermaid`, `to_ascii` (methods on `CompiledGraph`). |
+| `subgraph` | `Subgraph` for nested graphs. |
+| `metrics`, `audit_log` | Observability helpers. |
+| `retry` | `NodeRetryPolicy` for per-node retry. |
+
+## Key types
+
+### `Graph<S>`
+
+```rust
+pub struct Graph<S: GraphState> { /* … */ }
+
+impl<S: GraphState> Graph<S> {
+    pub fn new() -> Self;
+    pub fn with_version(self, v: impl Into<String>) -> Self;
+    pub fn node(self, name: impl Into<String>, node: impl Node<S> + 'static) -> Self;
+    pub fn edge(self, from: impl Into<String>, to: impl Into<String>) -> Self;
+    pub fn start_at(self, name: impl Into<String>) -> Self;
+    pub fn compile(self) -> Result<CompiledGraph<S>>;
+}
+
+impl Graph<()> {
+    pub fn linear() -> LinearBuilder;
+}
+```
+
+### node_fn
+
+```rust
+pub fn node_fn<S, F, Fut>(name: impl Into<String>, f: F) -> impl Node<S>
+where
+    S: GraphState,
+    F: Fn(&S, &NodeCtx) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<NodeOut<S>>> + Send + 'static;
+```
+
+### NodeOut
+
+```rust
+pub struct NodeOut<S: GraphState> {
+    pub update: S::Update,
+    pub goto: Goto,
+}
+
+impl<S> NodeOut<S> {
+    pub fn end_with(update: S::Update) -> Self;
+    pub fn goto_only(goto: Goto) -> Self;
+}
+```
+
+### Goto
+
+```rust
+pub enum Goto {
+    Node(String),
+    Multiple(Vec<String>),
+    Send(Vec<(String, serde_json::Value)>),
+    Halt,
+    End,
+}
+
+impl Goto {
+    pub fn node(name: impl Into<String>) -> Self;
+    pub fn end() -> Self;
+    pub fn halt() -> Self;
+    pub fn targets(&self) -> Vec<&str>;
+    pub fn is_end(&self) -> bool;
+}
+```
+
+### GraphState
+
+```rust
+pub trait GraphState: Send + Sync {
+    type Update: Default + Send + Sync;
+    fn apply(&mut self, update: Self::Update);
+}
+```
+
+`#[derive(GraphStateV2)]` from `cognis-macros` emits the `Update` struct and the impl. Reducer attributes: `#[reducer(append/last_value/add/merge)]`.
+
+### `CompiledGraph<S>`
+
+```rust
+impl<S: GraphState + Clone + Send + 'static> CompiledGraph<S> {
+    pub fn with_checkpointer(self, cp: Arc<dyn Checkpointer<S>>) -> Self;
+    pub fn with_interrupt_before<I, N>(self, names: I) -> Self;
+    pub fn with_interrupt_after<I, N>(self, names: I) -> Self;
+
+    pub async fn invoke(&self, input: S, config: RunnableConfig) -> Result<S>;
+    pub async fn resume(&self, run_id: Uuid, step: u64, state: S, config: RunnableConfig) -> Result<S>;
+
+    pub async fn get_state(&self, run_id: Uuid) -> Result<Option<S>>;
+    pub async fn get_state_at(&self, run_id: Uuid, step: u64) -> Result<Option<S>>;
+    pub async fn get_state_history(&self, run_id: Uuid) -> Result<Vec<(u64, S)>>;
+    pub async fn update_state(&self, run_id: Uuid, step: u64, state: &S) -> Result<()>;
+
+    pub async fn stream_mode(&self, input: S, modes: StreamModes, config: RunnableConfig) -> Result<EventStream>;
+
+    pub fn to_dot(&self) -> String;
+    pub fn to_mermaid(&self) -> String;
+    pub fn to_ascii(&self) -> String;
+}
+```
+
+### Checkpointer
+
+```rust
+pub trait Checkpointer<S: GraphState>: Send + Sync {
+    async fn save(&self, run_id: Uuid, step: u64, state: &S) -> Result<()>;
+    async fn load(&self, run_id: Uuid, step: Option<u64>) -> Result<Option<S>>;
+    async fn list(&self, run_id: Uuid) -> Result<Vec<u64>>;
+    async fn delete(&self, run_id: Uuid) -> Result<()>;
+}
+```
+
+Implementations: `InMemoryCheckpointer<S>::new()`, `SqliteCheckpointer::open(path)` (feature `sqlite`), `PostgresCheckpointer::connect(dsn)` (feature `postgres`).
+
+### StreamMode
+
+```rust
+pub enum StreamMode {
+    Values, Updates, Messages, Tasks, Checkpoints, Debug, Custom,
+}
+```
+
+`StreamModes::only(StreamMode::Updates)`, `StreamModes::default().push(...)`, `StreamModes::debug()`, `StreamModes::none()`.
+
+## Feature flags
+
+| Feature | Pulls in |
+|---|---|
+| `sqlite` | `sqlx/sqlite` for `SqliteCheckpointer`. |
+| `postgres` | `sqlx/postgres` for `PostgresCheckpointer`. |
+| `serializer-cbor` | CBOR-encoded checkpoint payloads. |
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Graphs and state" icon="diagram-project" href="/core-ideas/graphs">User guide.</Card>
+  <Card title="Control flow" icon="arrow-up-right-from-square" href="/graph-workflows/control-flow">Goto, edges, fan-out.</Card>
+  <Card title="Checkpointing" icon="floppy-disk" href="/graph-workflows/checkpointing">Time travel and resume.</Card>
+  <Card title="Streaming" icon="signal" href="/graph-workflows/streaming">Per-mode event streams.</Card>
+</CardGroup>

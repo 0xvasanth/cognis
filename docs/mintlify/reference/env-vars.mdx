@@ -1,0 +1,102 @@
+---
+title: "Environment variables"
+description: "What Client::from_env() reads and which env vars Cognis honors at runtime."
+sidebarTitle: "Environment variables"
+---
+
+`Client::from_env()` reads a small set of environment variables to pick a provider, a key, and a default model. There are also a handful of runtime variables that affect behavior at a lower level. None are required if you build clients explicitly via `Client::builder()`.
+
+## Provider selection
+
+| Variable | Required | Notes |
+|---|---|---|
+| `COGNIS_PROVIDER` | yes (for `from_env`) | One of `openai`, `anthropic`, `google`, `ollama`, `azure`, `openrouter`. |
+
+## Per-provider credentials and defaults
+
+Substitute `<PROVIDER>` with `OPENAI`, `ANTHROPIC`, `GOOGLE`, `OLLAMA`, `AZURE`, or `OPENROUTER`.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `COGNIS_<PROVIDER>_API_KEY` | — | Provider key. Not needed for Ollama. |
+| `COGNIS_<PROVIDER>_MODEL` | provider default | Default model name. Override per call via `ChatOptions::model`. |
+| `COGNIS_<PROVIDER>_BASE_URL` | provider default | Override the API base. Useful for self-hosted or proxied backends. |
+
+Provider defaults vary; check the provider builder's source for the exact value if you don't override.
+
+### Azure-specific
+
+| Variable | Notes |
+|---|---|
+| `COGNIS_AZURE_API_KEY` | Azure OpenAI key. |
+| `COGNIS_AZURE_ENDPOINT` | E.g. `https://your-resource.openai.azure.com`. |
+| `COGNIS_AZURE_DEPLOYMENT` | The deployment name (your custom alias). |
+| `COGNIS_AZURE_API_VERSION` | E.g. `2024-08-06`. |
+| `COGNIS_AZURE_MODEL` | Optional model name (Azure typically uses deployment names). |
+
+## Langfuse (cognis-trace, feature `langfuse`)
+
+`LangfuseExporter::from_env()` and `LangfuseConfig::from_env()` read these. *Not* prefixed with `COGNIS_` to match Langfuse's conventions.
+
+| Variable | Required | Notes |
+|---|---|---|
+| `LANGFUSE_PUBLIC_KEY` | yes | `pk-lf-...` |
+| `LANGFUSE_SECRET_KEY` | yes | `sk-lf-...` |
+| `LANGFUSE_HOST` | optional | Defaults to `https://cloud.langfuse.com`. Override for self-hosted. |
+
+## Examples
+
+```bash
+# OpenAI:
+export COGNIS_PROVIDER=openai
+export COGNIS_OPENAI_API_KEY=sk-...
+export COGNIS_OPENAI_MODEL=gpt-4o-mini
+
+# Anthropic:
+export COGNIS_PROVIDER=anthropic
+export COGNIS_ANTHROPIC_API_KEY=sk-ant-...
+
+# Local Ollama:
+export COGNIS_PROVIDER=ollama
+export COGNIS_OLLAMA_MODEL=llama3.1
+# COGNIS_OLLAMA_BASE_URL defaults to http://localhost:11434
+
+# Azure:
+export COGNIS_PROVIDER=azure
+export COGNIS_AZURE_API_KEY=...
+export COGNIS_AZURE_ENDPOINT=https://your-resource.openai.azure.com
+export COGNIS_AZURE_DEPLOYMENT=gpt-4o-prod
+export COGNIS_AZURE_API_VERSION=2024-08-06
+
+# OpenRouter:
+export COGNIS_PROVIDER=openrouter
+export COGNIS_OPENROUTER_API_KEY=...
+export COGNIS_OPENROUTER_MODEL=anthropic/claude-sonnet-4
+```
+
+## Runtime variables
+
+Cognis honors the standard `tracing` env vars for log filtering:
+
+```bash
+export RUST_LOG=cognis=info,cognis_trace=debug
+```
+
+There is no global verbosity flag; control it through `tracing-subscriber`'s filter directives.
+
+## What about `.env` files?
+
+Cognis **does not read `.env` files**. Plain `.env` on disk is a security footgun (they ship to backups, logs, and screen-sharing surfaces). Recommended setup on macOS / Linux: `direnv` + `envchain` so the same shell-loaded vars are picked up automatically. See [Installation → Set credentials](/get-started/installation#set-credentials).
+
+For CI: set the same variables in your runner's secret store.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/get-started/installation">
+    The full credentials setup.
+  </Card>
+  <Card title="Models and providers" icon="plug" href="/building-agents/models">
+    Builder shapes when env vars aren't enough.
+  </Card>
+</CardGroup>

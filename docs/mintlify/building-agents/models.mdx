@@ -1,0 +1,183 @@
+---
+title: "Models and providers"
+description: "Pick a provider, configure a Client, and switch between OpenAI, Anthropic, Google, Ollama, Azure, and OpenRouter without changing your agent code."
+sidebarTitle: "Models"
+---
+
+Cognis abstracts LLMs behind a single trait — `LLMProvider` — and bundles concrete clients for the major vendors. Most code touches `Client`, the provider-agnostic wrapper. Everything below it (request shapes, auth, streaming, tool serialization) is provider-specific and feature-gated.
+
+## What it is
+
+`Client` is `Runnable<Vec<Message>, Message>` plus a few convenience methods. It wraps an `Arc<dyn LLMProvider>`, so swapping providers means changing one constructor call, not your chain.
+
+```rust
+use cognis::prelude::*;
+
+let client = Client::from_env()?;
+let reply: Message = client.invoke(vec![
+    Message::system("You are a careful assistant."),
+    Message::human("Summarize Rust ownership in one sentence."),
+]).await?;
+println!("{}", reply.content());
+```
+
+## Two ways to construct a Client
+
+Use **`Client::from_env`** when env vars decide the provider — by far the most common path.
+Use **provider builders** when you need provider-specific knobs (organization id, deployment name, custom headers).
+
+<Tabs>
+  <Tab title="From env (recommended)">
+    Reads `COGNIS_PROVIDER` plus matching `COGNIS_<PROVIDER>_*` variables.
+    ```rust
+    use cognis_llm::Client;
+    let client = Client::from_env()?;
+    ```
+    See [Installation → Set credentials](/get-started/installation#set-credentials) for the full env-var table.
+  </Tab>
+  <Tab title="Builder">
+    Fluent builder for fine-grained control.
+    ```rust
+    use cognis_llm::{Client, provider::Provider};
+    let client = Client::builder()
+        .provider(Provider::OpenAI)
+        .api_key(std::env::var("OPENAI_API_KEY")?)
+        .model("gpt-4o-mini")
+        .timeout_secs(60)
+        .build()?;
+    ```
+  </Tab>
+  <Tab title="Custom provider">
+    Wrap any `Arc<dyn LLMProvider>` — useful for tests, gateways, or self-hosted backends.
+    ```rust
+    use std::sync::Arc;
+    use cognis_llm::Client;
+
+    let client = Client::new(Arc::new(MyCustomProvider));
+    ```
+  </Tab>
+</Tabs>
+
+## Switching providers
+
+The same agent, six ways. Same code; different env or different provider builder.
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```rust
+    use cognis_llm::provider::openai::OpenAIBuilder;
+
+    let provider = OpenAIBuilder::default()
+        .api_key(std::env::var("OPENAI_API_KEY")?)
+        .model("gpt-4o-mini")
+        .organization("org-123")
+        .build()?;
+    let client = cognis_llm::Client::new(std::sync::Arc::new(provider));
+    ```
+  </Tab>
+  <Tab title="Anthropic">
+    ```rust
+    use cognis_llm::provider::anthropic::AnthropicBuilder;
+
+    let provider = AnthropicBuilder::default()
+        .api_key(std::env::var("ANTHROPIC_API_KEY")?)
+        .model("claude-sonnet-4")
+        .build()?;
+    ```
+  </Tab>
+  <Tab title="Google">
+    ```rust
+    use cognis_llm::provider::google::GoogleBuilder;
+
+    let provider = GoogleBuilder::default()
+        .api_key(std::env::var("GOOGLE_API_KEY")?)
+        .model("gemini-2.0-flash")
+        .build()?;
+    ```
+  </Tab>
+  <Tab title="Ollama">
+    No key needed. Uses your local Ollama daemon.
+    ```rust
+    use cognis_llm::provider::ollama::OllamaBuilder;
+
+    let provider = OllamaBuilder::default()
+        .base_url("http://localhost:11434")
+        .model("llama3.1")
+        .build()?;
+    ```
+  </Tab>
+  <Tab title="Azure OpenAI">
+    ```rust
+    use cognis_llm::provider::azure::AzureBuilder;
+
+    let provider = AzureBuilder::default()
+        .endpoint(std::env::var("AZURE_OPENAI_ENDPOINT")?)
+        .deployment("gpt-4o-prod")
+        .api_version("2024-08-06")
+        .api_key(std::env::var("AZURE_OPENAI_API_KEY")?)
+        .build()?;
+    ```
+  </Tab>
+  <Tab title="OpenRouter">
+    Adds attribution headers and supports any OpenAI-compatible model.
+    ```rust
+    use cognis_llm::provider::openrouter::OpenRouterBuilder;
+
+    let provider = OpenRouterBuilder::default()
+        .api_key(std::env::var("OPENROUTER_API_KEY")?)
+        .model("anthropic/claude-sonnet-4")
+        .extra_header("HTTP-Referer", "https://yourapp.com")
+        .extra_header("X-Title", "your-app")
+        .build()?;
+    ```
+  </Tab>
+</Tabs>
+
+## What you can do with a Client
+
+| Method | Returns | Use when |
+|---|---|---|
+| `invoke(messages)` | `Message` | One-shot chat — fastest. |
+| `stream(messages)` | `RunnableStream<StreamChunk>` | Token-by-token streaming. |
+| `chat(messages, ChatOptions)` | `ChatResponse` | Need `usage`, `finish_reason`, `model` in the result. |
+| `invoke_with_tools(messages, &[Arc<dyn Tool>])` | `Message` | One-shot with tools — but for full agentic loops, use [`AgentBuilder`](/core-ideas/agents). |
+
+## How it works
+
+- **`Client` doesn't know the provider's wire format.** `LLMProvider` does. `Client` packages messages into a generic request and lets the provider serialize.
+- **`Client` is a `Runnable`.** Wrap it with `with_max_retries`, `with_timeout`, `with_fallback` — same as anything else.
+- **Tool calls are normalized.** Whatever the provider returns (OpenAI's `tool_calls`, Anthropic's `tool_use` blocks, Gemini's `functionCall`s), Cognis flattens to `AiMessage.tool_calls: Vec<ToolCall>`.
+- **Streaming aggregates correctly.** A streamed reply that includes a tool call decides — at the chunk level — to enter tool-dispatch mode without breaking the consumer.
+
+## Resilience patterns
+
+Models fail. Cognis ships idiomatic recovery wrappers:
+
+```rust
+use std::time::Duration;
+use cognis::prelude::*;
+
+let resilient = Client::from_env()?
+    .with_max_retries(3)
+    .with_timeout(Duration::from_secs(30))
+    .with_fallback(another_client);
+```
+
+For richer policies (cost-based retry, exponential backoff with jitter), see [Production → Resilience](/production/resilience).
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Tools" icon="screwdriver-wrench" href="/building-agents/tools">
+    Give the model something to call.
+  </Card>
+  <Card title="Streaming" icon="signal" href="/building-agents/streaming">
+    Tokens, events, and structured streams.
+  </Card>
+  <Card title="Structured output" icon="brackets-curly" href="/building-agents/structured-output">
+    Get typed structs back from the model.
+  </Card>
+  <Card title="Reference → cognis-llm" icon="book" href="/reference/api/cognis-llm">
+    Full provider list and method signatures.
+  </Card>
+</CardGroup>

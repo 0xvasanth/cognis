@@ -1,0 +1,126 @@
+---
+title: "Human-in-the-loop"
+description: "Pause an agent before sensitive actions, show a human what's about to happen, and let them approve, edit, or reject."
+sidebarTitle: "Human-in-the-loop"
+---
+
+Some actions are too important to leave to the model alone — sending an email, executing a transaction, modifying production data. Human-in-the-loop (HITL) lets you mark those actions and require human approval before they run. Cognis offers two paths to HITL, depending on whether you're inside an agent loop or driving a graph directly.
+
+## Two paths
+
+| You're using… | Use |
+|---|---|
+| `AgentBuilder` | An `Approver` plus the `HumanInTheLoop` middleware. |
+| `Graph<S>` | Interrupts (`with_interrupt_before` / `with_interrupt_after`) plus `resume`. |
+
+The patterns are similar in spirit; the surface differs because graphs have richer state introspection.
+
+## Quick example — agent approver
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::AgentBuilder;
+use cognis::middleware::{HumanInTheLoop, ApprovalGate};
+
+let approver = Arc::new(MyApprover);                // your impl Approver
+
+let agent = AgentBuilder::new()
+    .with_llm(client)
+    .with_tools(tools)
+    .with_approver(approver.clone())
+    .middleware(HumanInTheLoop::new(approver))
+    .build()?;
+```
+
+Inside the loop, every tool call passes through the approver. Yours decides what gets gated:
+
+```rust
+use cognis::tools::{Approver, ApprovalDecision};
+
+struct MyApprover;
+
+#[async_trait::async_trait]
+impl Approver for MyApprover {
+    async fn approve(&self, tool: &str, args: &serde_json::Value)
+        -> cognis::Result<ApprovalDecision>
+    {
+        if tool == "send_email" {
+            // Surface to your UI; await the human's reply.
+            let decision = my_ui::ask_human(tool, args).await?;
+            Ok(decision)
+        } else {
+            Ok(ApprovalDecision::Approve)
+        }
+    }
+}
+```
+
+`ApprovalDecision` covers the common shapes — `Approve`, `Reject(reason)`, `Edit(new_args)` — so a human can either let it run, refuse, or modify the call before dispatch.
+
+## Quick example — graph interrupts
+
+For workflows where you want to pause *before* (or after) a specific node, regardless of what the model decided:
+
+```rust
+use cognis::prelude::*;
+use cognis_core::CognisError;
+
+let graph = builder
+    .compile()?
+    .with_checkpointer(cp.clone())
+    .with_interrupt_before(["execute_payment", "send_notification"]);
+
+let cfg = RunnableConfig::default();
+let run_id = cfg.run_id;
+
+match graph.invoke(state, cfg.clone()).await {
+    Err(CognisError::GraphInterrupted { kind, step, .. }) => {
+        // The graph paused. Pull the state, show it, decide.
+        let snapshot = graph.get_state(run_id).await?.unwrap_or_default();
+        // Optionally: graph.update_state(run_id, step, &edited).await?;
+        let resumed = graph.resume(run_id, step, snapshot, cfg).await?;
+    }
+    other => { let _ = other?; }
+}
+```
+
+Source: [`examples/graphs/graph_interrupts_demo.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_interrupts_demo.rs).
+
+## Approval policies
+
+Built-in policies you can compose with `HumanInTheLoop`:
+
+| Policy | Behavior |
+|---|---|
+| `AutoApproveAll` | Skip the human; always approve. Useful in dev. |
+| `AutoRejectAll` | Skip the human; always reject. Useful in tests. |
+| `AlwaysSkip` | Bypass the gate entirely (no approval, no rejection). |
+| `ApprovalGate` | Pluggable policy: the bouncer is your closure. |
+
+Wrap any of these into the agent the same way as a custom `Approver`.
+
+## How it works
+
+- **The agent loop is graph-shaped.** When a tool call is about to dispatch, control hits the approver before the dispatcher node runs.
+- **The graph engine treats interrupts as errors with structure.** `CognisError::GraphInterrupted` is *not* a failure — it's a pause. Your code matches it, decides, and calls `resume`.
+- **Checkpointers are required for `resume`.** The engine needs persisted state to restart from. See [Graph workflows → Checkpointing](/graph-workflows/checkpointing).
+- **Edits during pause are first-class.** `graph.update_state(run_id, step, &edited)` writes a new snapshot at the same step. Subsequent `resume` reads from it.
+
+## When to combine
+
+Many production agents use *both*: an `Approver` for tool-call-level gating, and graph interrupts for higher-level workflow checkpoints (e.g., "pause before generating the final report so a reviewer sees the draft"). They don't conflict; the approver runs inside the agent loop, the interrupt fires at the graph boundary you mark.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Patterns → HITL approval" icon="grid" href="/patterns/hitl-approval">
+    A complete approval flow with a CLI prompt.
+  </Card>
+  <Card title="Graph workflows → Checkpointing" icon="floppy-disk" href="/graph-workflows/checkpointing">
+    What `resume` reads from.
+  </Card>
+  <Card title="Middleware" icon="layer-group" href="/building-agents/middleware">
+    `HumanInTheLoop`, `ApprovalGate`, and friends.
+  </Card>
+</CardGroup>

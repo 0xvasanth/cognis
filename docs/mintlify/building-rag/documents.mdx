@@ -1,0 +1,148 @@
+---
+title: "Documents and splitters"
+description: "Turn raw inputs into Documents, then chunk them into pieces an embedder can fit in its context."
+sidebarTitle: "Documents"
+---
+
+RAG starts with documents — the unit of retrieval. A `Document` is text plus metadata. Before you can embed and store them, long documents need to be split into chunks small enough for the embedder's context window and small enough that retrieval surfaces *relevant* pieces, not whole files.
+
+## What a document is
+
+```rust
+use cognis_rag::Document;
+
+let doc = Document::new("Cognis is a Rust-native LLM framework.")
+    .with_id("intro")
+    .with_metadata("source", "readme")
+    .with_metadata("section", "intro");
+```
+
+| Field | Type | Purpose |
+|---|---|---|
+| `content` | `String` | The text. |
+| `id` | `Option<String>` | Stable identifier — set this for incremental indexing. |
+| `metadata` | `HashMap<String, Value>` | Arbitrary k/v pairs you control. Filter retrieval by these. |
+
+Document loaders produce them; splitters transform them.
+
+## Loading documents
+
+The `DocumentLoader` trait is one async method that returns a stream of `Document`. Built-in loaders are feature-gated:
+
+| Source | Feature flag |
+|---|---|
+| Plain text / files in a directory | always available |
+| CSV | `cognis-rag/csv-loader` |
+| HTML | `cognis-rag/html-loader` |
+| YAML | `cognis-rag/yaml-loader` |
+| TOML | `cognis-rag/toml-loader` |
+| Web fetch | `cognis-rag/web-loader` |
+| PDF | `cognis-rag/pdf-loader` |
+
+Implement `DocumentLoader` for sources that aren't in the box (databases, APIs, S3 buckets):
+
+```rust
+use async_trait::async_trait;
+use cognis_rag::loaders::{DocumentLoader, DocumentStream};
+use cognis_rag::Document;
+use futures::stream;
+
+struct MyLoader;
+
+#[async_trait]
+impl DocumentLoader for MyLoader {
+    async fn load(&self) -> cognis::Result<DocumentStream> {
+        let docs = vec![
+            Document::new("…").with_id("a"),
+            Document::new("…").with_id("b"),
+        ];
+        Ok(Box::pin(stream::iter(docs.into_iter().map(Ok))))
+    }
+}
+```
+
+## Splitters
+
+All splitters implement `TextSplitter`:
+
+```rust
+pub trait TextSplitter: Send + Sync {
+    fn split(&self, doc: &Document) -> Vec<Document>;
+    fn split_all(&self, docs: &[Document]) -> Vec<Document> { /* default */ }
+}
+```
+
+`split` returns chunks for one doc; `split_all` is a convenient wrapper for many.
+
+## Pick a splitter
+
+| Splitter | When to use |
+|---|---|
+| `RecursiveCharSplitter` | **Default.** Tries paragraph → line → sentence → char. Good for prose. |
+| `CharacterSplitter` | Simple split on a single separator. Predictable; fast. |
+| `TokenAwareSplitter` | Chunk by token count using a `Tokenizer`. Most accurate budgeting for embedders. |
+| `MarkdownSplitter` | Header-aware Markdown chunking — preserves H1/H2/H3 structure. |
+| `SentenceSplitter` | Sentence boundaries. Good for short-form text. |
+| `CodeSplitter` | Language-tuned separators (`fn`, `class`, etc.). |
+| `HtmlSplitter` | DOM-aware HTML chunking. |
+| `JsonSplitter` | Structured-data chunking. |
+
+```rust
+use cognis_rag::{RecursiveCharSplitter, TextSplitter};
+
+let splitter = RecursiveCharSplitter::new()
+    .with_chunk_size(1000)
+    .with_overlap(100);
+
+let chunks = splitter.split_all(&docs);
+```
+
+Builder knobs vary per splitter — most accept `chunk_size`, `overlap`, and a `separators` list.
+
+## How chunks land in retrieval
+
+Each chunk inherits its parent's metadata, plus a position-in-parent marker. So when you retrieve a chunk, you also know:
+
+- Which document it came from (via metadata, especially if you set `with_id`).
+- Roughly where in that document it sits.
+- Any custom metadata you attached.
+
+Retrievers can filter on metadata — see [Retrievers](/building-rag/retrievers).
+
+## Tuning chunk size
+
+Two competing forces:
+
+- **Smaller chunks** = sharper retrieval (the right idea, not surrounding noise) but less context for the LLM to reason from.
+- **Larger chunks** = more context but worse signal-to-noise — the embedding averages over a lot of unrelated text.
+
+Common starting points:
+
+| Use case | Chunk size | Overlap |
+|---|---|---|
+| Conversational FAQ | 200–500 chars | 50 |
+| Long-form prose | 800–1200 chars | 100–200 |
+| Source code | 500–1000 chars (line-aligned) | 50 |
+| Markdown docs | 1000–2000 chars (header-bounded) | 0 |
+
+Validate with retrieval evals on your own corpus — there's no universal right answer.
+
+## How it works
+
+- **Splitting is lossless.** No characters disappear; overlap means neighboring chunks share a window.
+- **Document `id` is preserved through splits.** Each chunk gets its own derived id (so you can de-duplicate later) but knows its parent.
+- **Splitters don't know about embedders.** That decoupling means you can switch embedders without re-splitting.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Embeddings and vector stores" icon="database" href="/building-rag/embeddings">
+    Turn chunks into vectors, store, search.
+  </Card>
+  <Card title="Indexing pipeline" icon="arrows-rotate" href="/building-rag/indexing">
+    Keep your store in sync with the source of truth.
+  </Card>
+  <Card title="Patterns → Code Q&A" icon="grid" href="/patterns/code-qa">
+    A worked end-to-end RAG over a Rust codebase.
+  </Card>
+</CardGroup>

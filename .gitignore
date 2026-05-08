@@ -4,6 +4,9 @@
 # Worktrees
 .worktrees/
 
+# Local doc review artifacts (screenshots, drafts)
+.docs-review/
+
 # IDE
 .idea/
 .vscode/

@@ -1,0 +1,152 @@
+---
+title: "Multi-agent orchestration"
+description: "When one agent isn't enough. Sequential, Supervisor, ParallelVote, RoundRobin, or your own handoff strategy."
+sidebarTitle: "Multi-agent"
+---
+
+Some problems are easier when you split them across specialized agents — a planner, a researcher, a writer, a critic. Cognis ships four orchestration strategies and a `HandoffStrategy` trait you can implement for your own. The orchestrator handles the boring parts (input routing, output capture, error propagation); you decide how the agents talk to each other.
+
+## What it is
+
+```rust
+let orch = MultiAgentOrchestrator::new(strategy)
+    .add("name1", agent1)
+    .add("name2", agent2);
+
+let resp: AgentResponse = orch.run(input).await?;
+```
+
+`strategy` is a value (not a string or enum), which means each strategy is its own type with its own configuration knobs.
+
+## Pick a strategy
+
+<Tabs>
+  <Tab title="Sequential">
+    Each agent receives the previous agent's output. Useful for pipelines where one specialist hands off to the next.
+
+    ```rust
+    use cognis::{AgentBuilder, MultiAgentOrchestrator, Sequential};
+    use cognis_llm::Client;
+
+    let planner = AgentBuilder::new().with_llm(Client::from_env()?)
+        .with_system_prompt("Break the request into 3 numbered steps.").build()?;
+
+    let executor = AgentBuilder::new().with_llm(Client::from_env()?)
+        .with_system_prompt("Receive a numbered plan; reply with one paragraph.").build()?;
+
+    let orch = MultiAgentOrchestrator::new(Sequential)
+        .add("planner", planner)
+        .add("executor", executor);
+
+    let resp = orch.run("Help me prep for a 5-min team standup.").await?;
+    ```
+    Source: [`examples/v2/08_ollama_multi_agent.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/v2/08_ollama_multi_agent.rs).
+  </Tab>
+  <Tab title="Supervisor">
+    The first agent acts as a router: its reply names the next worker and the prompt to send. The orchestrator keeps cycling until a worker terminates without naming another.
+
+    ```rust
+    use cognis::{MultiAgentOrchestrator, Supervisor};
+
+    let orch = MultiAgentOrchestrator::new(Supervisor::default())
+        .add("supervisor", supervisor_agent)   // first agent is the router
+        .add("researcher", researcher_agent)
+        .add("writer", writer_agent);
+    ```
+
+    Customize how the supervisor's reply is parsed:
+
+    ```rust
+    let orch = MultiAgentOrchestrator::new(
+        Supervisor::new().with_parser(|reply: &str| {
+            // return Some((agent_id, prompt_for_that_agent))
+            // or None to terminate.
+            todo!()
+        })
+    );
+    ```
+  </Tab>
+  <Tab title="ParallelVote">
+    All agents run on the same input concurrently. Outputs are aggregated by majority vote — the modal answer wins. The constructor takes a quorum (0.0–1.0); if no answer crosses it, the orchestrator returns the most-voted answer with a low-confidence flag.
+
+    ```rust
+    use cognis::{MultiAgentOrchestrator, ParallelVote};
+
+    let orch = MultiAgentOrchestrator::new(ParallelVote::new(0.5))
+        .add("a", a)
+        .add("b", b)
+        .add("c", c);
+    ```
+    Useful for high-stakes classifications, fact-check ensembles, or running the same prompt across multiple models.
+  </Tab>
+  <Tab title="RoundRobin">
+    Turn-taking. Each agent goes in order, gets the running transcript, replies, and the next agent gets the updated transcript. Loops for N rounds.
+
+    ```rust
+    use cognis::{MultiAgentOrchestrator, RoundRobin};
+
+    let orch = MultiAgentOrchestrator::new(RoundRobin::default())
+        .add("proposer", proposer)
+        .add("critic", critic);
+    ```
+    Useful for debate loops, propose-then-critique-then-revise patterns, multi-perspective brainstorming.
+  </Tab>
+</Tabs>
+
+## How it works
+
+- **Each strategy is a struct that implements `HandoffStrategy`.** That trait is two methods: pick the next step, and decide when to terminate.
+- **Agents inside the orchestrator are still `Agent`s.** Each runs its own loop with its own memory, tools, and middleware. The orchestrator only decides who runs next.
+- **Errors propagate.** If an agent inside the orchestrator returns `Err`, the orchestrator returns `Err`. Wrap a sub-agent's client with `with_fallback` if you want graceful degradation.
+- **The orchestrator returns an `AgentResponse`.** Same shape as a single agent — drop-in callers don't change.
+
+## Custom handoff
+
+Implement `HandoffStrategy` for full control:
+
+```rust
+use cognis::multi_agent::{HandoffStrategy, /* … */};
+
+struct EscalateOnUnsure;
+
+impl HandoffStrategy for EscalateOnUnsure {
+    fn name(&self) -> &str { "EscalateOnUnsure" }
+    // Two required methods: select next step + termination check.
+    // Full signature in the cognis::multi_agent module.
+    // …
+}
+```
+
+This is the right shape for domain-specific orchestrators — escalation chains, conditional handoffs, supervised exploration.
+
+## AgentBus and AgentEventBus
+
+For looser coupling than orchestration — broadcast / subscribe between agents — Cognis has two pub/sub primitives:
+
+- **`AgentBus`** — generic typed pub/sub. Any `T: Clone + Send + Sync + 'static` can be a topic value.
+- **`AgentEventBus`** — pre-typed for `AgentEvent`s emitted during the loop (request started, tool called, response produced, …).
+
+```rust
+use cognis::AgentBus;
+
+let bus = AgentBus::new();
+let mut sub = bus.subscribe::<MyEvent>("topic.events");
+bus.publish("topic.events", MyEvent { /* … */ }).await?;
+let ev = sub.recv().await?;
+```
+
+These don't replace the orchestrator — they complement it. Orchestrators are for tightly coupled handoffs; buses are for fan-out signalling.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Patterns → Multi-agent debate" icon="grid" href="/patterns/multi-agent-debate">
+    A worked propose-critique-revise loop.
+  </Card>
+  <Card title="Patterns → Research assistant" icon="grid" href="/patterns/research-assistant">
+    Sequential planner → researcher → writer.
+  </Card>
+  <Card title="Middleware" icon="layer-group" href="/building-agents/middleware">
+    `SubagentMiddleware` for inline subagent spawning from a single parent loop.
+  </Card>
+</CardGroup>

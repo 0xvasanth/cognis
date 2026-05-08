@@ -1,0 +1,237 @@
+---
+title: "Adding a new LLM provider"
+description: "A walkthrough for plugging a new vendor into cognis-llm."
+sidebarTitle: "Adding a provider"
+---
+
+Cognis supports six LLM providers out of the box (OpenAI, Anthropic, Google, Ollama, Azure, OpenRouter). Adding a seventh — your favorite vendor, an internal gateway, a self-hosted runtime — is a contained change. This page walks through the shape.
+
+## What you'll add
+
+- A new module under `crates/cognis-llm/src/provider/<name>.rs`.
+- A `<Name>Builder` and a struct implementing `LLMProvider`.
+- A `Provider::<Name>` enum variant for `ClientBuilder::provider(...)` to recognize.
+- A feature flag in `crates/cognis-llm/Cargo.toml`.
+- An entry in `Client::from_env()` that reads `COGNIS_<NAME>_*` variables.
+- Tests with mocked HTTP responses.
+- An example under `examples/models/`.
+- Documentation entries in [Models and providers](/building-agents/models) and [Feature flags](/reference/feature-flags).
+
+## Step 1 — Implement `LLMProvider`
+
+```rust
+// crates/cognis-llm/src/provider/myprovider.rs
+use async_trait::async_trait;
+use cognis_core::{Message, Result};
+use crate::{
+    chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, Usage},
+    provider::{LLMProvider, Provider},
+    tools::ToolDefinition,
+};
+
+pub struct MyProvider {
+    api_key: secrecy::SecretString,
+    base_url: String,
+    model: String,
+    http: reqwest::Client,
+}
+
+impl MyProvider {
+    pub fn builder() -> MyProviderBuilder { MyProviderBuilder::default() }
+}
+
+#[derive(Default)]
+pub struct MyProviderBuilder {
+    api_key: Option<String>,
+    base_url: Option<String>,
+    model: Option<String>,
+    timeout_secs: Option<u64>,
+}
+
+impl MyProviderBuilder {
+    pub fn api_key(mut self, k: impl Into<String>) -> Self { self.api_key = Some(k.into()); self }
+    pub fn base_url(mut self, u: impl Into<String>) -> Self { self.base_url = Some(u.into()); self }
+    pub fn model(mut self, m: impl Into<String>) -> Self { self.model = Some(m.into()); self }
+    pub fn timeout_secs(mut self, n: u64) -> Self { self.timeout_secs = Some(n); self }
+    pub fn build(self) -> Result<MyProvider> { /* … */ todo!() }
+}
+
+#[async_trait]
+impl LLMProvider for MyProvider {
+    fn name(&self) -> &str { "myprovider" }
+    fn provider_type(&self) -> Provider { Provider::MyProvider }
+    async fn chat_completion(&self, messages: Vec<Message>, opts: ChatOptions) -> Result<ChatResponse> { todo!() }
+    async fn chat_completion_stream(&self, messages: Vec<Message>, opts: ChatOptions) -> Result<cognis_core::RunnableStream<StreamChunk>> { todo!() }
+    async fn chat_completion_with_tools(&self, messages: Vec<Message>, tools: Vec<ToolDefinition>, opts: ChatOptions) -> Result<ChatResponse> { todo!() }
+    async fn health_check(&self) -> Result<HealthStatus> { todo!() }
+}
+```
+
+The four async methods are the minimum surface. Implement them by translating Cognis' generic shapes (`Vec<Message>`, `ChatOptions`, `ToolDefinition`) into the provider's wire format and back.
+
+Look at `crates/cognis-llm/src/provider/openai.rs` for a complete reference — it's the most heavily used provider and exercises every code path (streaming, tool calling, structured output, error mapping).
+
+## Step 2 — Add a feature flag
+
+```toml
+# crates/cognis-llm/Cargo.toml
+[features]
+myprovider = ["dep:reqwest", "dep:secrecy"]
+
+# Roll into all-providers:
+all-providers = ["openai", "ollama", "anthropic", "google", "azure", "myprovider"]
+```
+
+Mirror in `crates/cognis/Cargo.toml`:
+
+```toml
+[features]
+myprovider = ["cognis-llm/myprovider"]
+all-providers = ["openai", "ollama", "anthropic", "google", "azure", "voyage", "myprovider"]
+```
+
+## Step 3 — Wire into `Provider` enum and `from_env`
+
+```rust
+// crates/cognis-llm/src/provider/mod.rs
+pub enum Provider {
+    OpenAi,
+    Anthropic,
+    Google,
+    Ollama,
+    Azure,
+    OpenRouter,
+    #[cfg(feature = "myprovider")]
+    MyProvider,
+}
+```
+
+```rust
+// crates/cognis-llm/src/client.rs (rough sketch)
+pub fn from_env() -> Result<Self> {
+    let provider = std::env::var("COGNIS_PROVIDER").ok().unwrap_or_default();
+    match provider.as_str() {
+        "openai" => /* … */ todo!(),
+        // …
+        #[cfg(feature = "myprovider")]
+        "myprovider" => {
+            let api_key = std::env::var("COGNIS_MYPROVIDER_API_KEY").map_err(/* … */)?;
+            let model = std::env::var("COGNIS_MYPROVIDER_MODEL").ok();
+            let provider = MyProvider::builder()
+                .api_key(api_key)
+                .model(model.unwrap_or_else(|| "default-model".into()))
+                .build()?;
+            Ok(Client::new(std::sync::Arc::new(provider)))
+        }
+        _ => /* error */ todo!(),
+    }
+}
+```
+
+## Step 4 — Map errors
+
+Map provider HTTP errors and JSON shapes onto `CognisError`. The variants you'll mostly use:
+
+- `RateLimited { retry_after_ms }` for 429s — pull `retry-after` from the response headers.
+- `ProviderError { provider, message, status }` for other 4xx/5xx — preserve the provider name and the error body.
+- Map authentication failures to a clear `ProviderError` with status 401.
+
+Look at how `openai.rs` does this — it's the template.
+
+## Step 5 — Tests
+
+Mocked HTTP tests so CI doesn't need a real key:
+
+```rust
+// crates/cognis-llm/src/provider/myprovider.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::{matchers::*, Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn chat_completion_basic() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(/* … */))
+            .mount(&server).await;
+
+        let provider = MyProvider::builder()
+            .api_key("test")
+            .base_url(server.uri())
+            .model("test-model")
+            .build()
+            .unwrap();
+
+        let resp = provider.chat_completion(
+            vec![Message::human("hi")],
+            ChatOptions::default(),
+        ).await.unwrap();
+
+        assert_eq!(resp.model, "test-model");
+    }
+}
+```
+
+Live tests against a real key go behind `#[cfg(feature = "integration_tests")]` so they don't run in normal CI.
+
+## Step 6 — Add an example
+
+```rust
+// examples/models/myprovider_chat.rs
+use cognis::prelude::*;
+use cognis_llm::Client;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    if std::env::var("COGNIS_PROVIDER").is_err() {
+        std::env::set_var("COGNIS_PROVIDER", "myprovider");
+    }
+    let client = Client::from_env()?;
+    let reply = client.invoke(vec![Message::human("Say hi.")]).await?;
+    println!("{}", reply.content());
+    Ok(())
+}
+```
+
+Register it in `crates/examples/Cargo.toml`:
+
+```toml
+[[example]]
+name = "models_myprovider_chat"
+path = "../../examples/models/myprovider_chat.rs"
+```
+
+## Step 7 — Update docs
+
+Three pages to update:
+
+- [`/building-agents/models`](/building-agents/models) — add a tab for your provider.
+- [`/reference/feature-flags`](/reference/feature-flags) — add the feature row.
+- [`/reference/env-vars`](/reference/env-vars) — add the `COGNIS_MYPROVIDER_*` rows.
+
+## Step 8 — Open the PR
+
+Title: `feat(llm): add MyProvider`. Description should include:
+
+- A pointer to MyProvider's docs (you'll need them in review).
+- Feature flag name.
+- Tested capabilities (chat / streaming / tool calling / structured output).
+- Anything not yet supported (call it out so reviewers don't ask).
+
+See [PR guidelines](/contribute/pull-requests) for the rest.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Adding a vector store" icon="database" href="/contribute/adding-a-vector-store">
+    Same shape, different domain.
+  </Card>
+  <Card title="Adding a tool" icon="screwdriver-wrench" href="/contribute/adding-a-tool">
+    For tools, not providers.
+  </Card>
+  <Card title="cognis-llm reference" icon="book" href="/reference/api/cognis-llm">
+    Trait shapes you'll be implementing.
+  </Card>
+</CardGroup>

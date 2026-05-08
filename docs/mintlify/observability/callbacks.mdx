@@ -1,0 +1,151 @@
+---
+title: "Callbacks and observers"
+description: "How Cognis surfaces what's happening at runtime. Two interfaces, one event stream, infinite consumers."
+sidebarTitle: "Callbacks"
+---
+
+Every interesting thing a Runnable does — start, end, error, LLM token, tool call, checkpoint — flows through the same `Event` enum. You attach consumers in two flavors:
+
+- **`Observer`** — a sync, broad-spectrum trait. Best for things like "log to stdout," "push to a channel."
+- **`CallbackHandler`** — strongly-typed, per-event hook methods (`on_llm_start`, `on_tool_end`, …). Best for things like "translate to Langfuse spans."
+
+The two compose: every `CallbackHandler` is also usable as an `Observer` via `HandlerObserver`.
+
+## Observer
+
+```rust
+use cognis::prelude::*;
+
+pub trait Observer: Send + Sync {
+    fn on_event(&self, event: &Event);
+}
+```
+
+```rust
+struct Printer;
+impl Observer for Printer {
+    fn on_event(&self, e: &Event) {
+        match e {
+            Event::OnEnd { runnable, .. } => println!("done: {runnable}"),
+            Event::OnError { error, .. } => eprintln!("err: {error}"),
+            _ => {}
+        }
+    }
+}
+```
+
+Any `Fn(&Event) + Send + Sync` is also an `Observer` thanks to a blanket impl, so quick uses don't need a struct:
+
+```rust
+let printer = |e: &Event| {
+    if let Event::OnLlmToken { token, .. } = e { print!("{token}"); }
+};
+```
+
+## Attach to a run
+
+Observers travel with `RunnableConfig`. They can be attached on construction or pushed into the `observers` field:
+
+```rust
+use std::sync::Arc;
+
+let cfg = RunnableConfig::default()
+    .with_observer(Arc::new(Printer));
+
+chain.invoke(input, cfg).await?;
+```
+
+Multiple observers are fine — they fan out, each receiving every event.
+
+## CallbackHandler
+
+For richer integrations, implement `CallbackHandler`:
+
+```rust
+use cognis_core::CallbackHandler;
+
+#[async_trait::async_trait]
+trait CallbackHandler: Send + Sync {
+    fn name(&self) -> &str;
+    async fn on_chain_start(&self, /* … */) {}
+    async fn on_chain_end(&self, /* … */) {}
+    async fn on_llm_start(&self, /* … */) {}
+    async fn on_llm_token(&self, /* … */) {}
+    async fn on_llm_end(&self, /* … */) {}
+    async fn on_tool_start(&self, /* … */) {}
+    async fn on_tool_end(&self, /* … */) {}
+    async fn on_error(&self, /* … */) {}
+    async fn on_checkpoint(&self, /* … */) {}
+}
+```
+
+Each method has a default no-op, so you implement only what you care about. Wrap with `HandlerObserver(your_handler)` to attach to `RunnableConfig`.
+
+## Built-in observer
+
+`cognis::observers::TracingObserver` is a tiny stdout-printing observer good for local debugging:
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::observers::TracingObserver;
+
+let cfg = RunnableConfig::default()
+    .with_observer(Arc::new(TracingObserver::new()));
+```
+
+For production observability — token counts, USD cost, Langfuse export — see [Observability → Trace with Langfuse](/observability/langfuse).
+
+## Multiple consumers
+
+Bundle handlers with `CallbackManager` (a `HandlerBuilder` builds one). The manager fans events out to every handler:
+
+```rust
+use std::sync::Arc;
+use cognis_core::{HandlerBuilder, HandlerObserver};
+
+let manager = HandlerBuilder::new()
+    .push(Arc::new(my_handler_a))
+    .push(Arc::new(my_handler_b))
+    .build();
+
+let cfg = RunnableConfig::default()
+    .with_observer(Arc::new(HandlerObserver(manager)));
+```
+
+This is how you stack stdout + Langfuse + a custom audit log without writing your own multiplexer.
+
+## Event reference
+
+| Variant | When |
+|---|---|
+| `OnStart` / `OnEnd` | A Runnable started / finished. |
+| `OnError` | A Runnable returned `Err`. |
+| `OnNodeStart` / `OnNodeEnd` | A graph node started / finished. |
+| `OnLlmToken` | An LLM emitted a streaming token. |
+| `OnToolStart` / `OnToolEnd` | A tool call started / finished. |
+| `OnCheckpoint` | A graph engine persisted a snapshot. |
+| `Custom { kind, payload, run_id }` | A graph node emitted user-defined progress (`ctx.write_custom`). |
+
+`run_id` correlates events from the same invocation; nested chains use `parent_run_id` automatically.
+
+## How it works
+
+- **Observers are sync, fan-out, and best-effort.** A slow observer slows execution. Keep the work small or push to a channel.
+- **CallbackHandlers are async.** They can do real I/O without blocking the engine.
+- **Order is propagation order, not strict global order.** Two parallel branches emit events in their own threads; observers may see them interleaved.
+- **`run_id` is set by `RunnableConfig::default()`.** Reuse a `RunnableConfig::with_parent_run_id(parent)` to nest manually if needed.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Trace with Langfuse" icon="chart-line" href="/observability/langfuse">
+    Wire the standard production exporter.
+  </Card>
+  <Card title="Cost tracking" icon="dollar-sign" href="/observability/cost">
+    Token counts and USD cost on every LLM call.
+  </Card>
+  <Card title="Streaming" icon="signal" href="/building-agents/streaming">
+    Same events, returned as a stream instead.
+  </Card>
+</CardGroup>

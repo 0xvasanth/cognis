@@ -1,0 +1,164 @@
+---
+title: "Research assistant"
+description: "Build an agent that takes a topic, searches the web, and writes a sourced report. Sequential planner → researcher → writer."
+sidebarTitle: "Research assistant"
+---
+
+A research assistant is the canonical "more than one agent" use case — three specialists handing work down a pipeline. A planner breaks a question into steps, a researcher gathers evidence, a writer assembles a coherent report. We'll wire it up with `Sequential` orchestration and a search tool.
+
+## What you'll build
+
+A binary that, given a question, returns a one-page report with citations. About 80 lines of code; works against any provider; the same shape scales to longer reports if you add more agents.
+
+## How it works
+
+- **Planner** — receives the question, returns a numbered list of subquestions.
+- **Researcher** — receives the plan, calls a `search` tool for each subquestion, returns gathered evidence.
+- **Writer** — receives the plan + evidence, returns the final report.
+- **Sequential** orchestration passes each agent's output as the next agent's input.
+
+## Step 1 — A search tool
+
+Pick any search provider. For the example we'll use a stub; in production, plug in [Tavily](https://tavily.com), Brave, or your internal search.
+
+```rust
+use std::sync::Arc;
+use async_trait::async_trait;
+use cognis::prelude::*;
+use cognis_core::schemars::{self, JsonSchema};
+use cognis_llm::tools::{Tool, ToolInput, ToolOutput};
+use serde::Deserialize;
+use serde_json::json;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct SearchArgs {
+    /// The query to search for.
+    query: String,
+    /// Maximum number of results.
+    #[serde(default)]
+    max_results: Option<u32>,
+}
+
+struct SearchTool;
+
+#[async_trait]
+impl Tool for SearchTool {
+    fn name(&self) -> &str { "search" }
+    fn description(&self) -> &str {
+        "Search the web. Returns a list of results with title, url, snippet."
+    }
+    fn args_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::to_value(schemars::schema_for!(SearchArgs)).unwrap())
+    }
+    async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
+        let args: SearchArgs = serde_json::from_value(input.into_json())?;
+        // Plug your real provider here.
+        let results = vec![
+            json!({"title": "Example", "url": "https://example.com", "snippet": format!("Result for: {}", args.query)}),
+        ];
+        Ok(ToolOutput::Content(json!({"results": results})))
+    }
+}
+```
+
+## Step 2 — Three agents
+
+```rust
+use cognis::prelude::*;
+use cognis::{AgentBuilder, MultiAgentOrchestrator, Sequential};
+use cognis_llm::Client;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let new_client = || Client::from_env();
+
+    let planner = AgentBuilder::new()
+        .with_llm(new_client()?)
+        .with_system_prompt(
+            "You are a research planner. Given a question, return 3 to 5 \
+             numbered subquestions whose answers, taken together, would \
+             produce a thorough report. Output ONLY the numbered list.",
+        )
+        .with_max_iterations(2)
+        .build()?;
+
+    let researcher = AgentBuilder::new()
+        .with_llm(new_client()?)
+        .with_tool(Arc::new(SearchTool))
+        .with_system_prompt(
+            "You are a researcher. You receive a numbered plan. For each \
+             subquestion, call the `search` tool, then summarize the most \
+             relevant results in one short paragraph. Cite URLs inline.",
+        )
+        .with_max_iterations(8)
+        .build()?;
+
+    let writer = AgentBuilder::new()
+        .with_llm(new_client()?)
+        .with_system_prompt(
+            "You are a writer. You receive a research dossier with cited \
+             findings. Produce a one-page report: a 2-sentence summary, \
+             then a section per subtopic, then a list of sources. Keep \
+             citation links inline like (https://example.com).",
+        )
+        .with_max_iterations(2)
+        .build()?;
+
+    let orch = MultiAgentOrchestrator::new(Sequential)
+        .add("planner", planner)
+        .add("researcher", researcher)
+        .add("writer", writer);
+
+    let resp = orch.run("What changed between Rust 2021 and Rust 2024?").await?;
+    println!("{}", resp.content);
+    Ok(())
+}
+```
+
+Run it with:
+
+```bash
+COGNIS_PROVIDER=openai COGNIS_OPENAI_API_KEY=sk-... cargo run
+```
+
+Or any other provider — the agent code doesn't change.
+
+## How it works
+
+- **`Sequential`** runs agents in registration order; each receives the previous reply as its input. The final agent's reply is `resp.content`.
+- **The researcher loops over subquestions inside its own ReAct loop.** Each `search` call is one iteration; `with_max_iterations(8)` lets it cover a 5-step plan with a couple of retries.
+- **No shared state — just text passing between agents.** That's deliberate. Each agent has a single job, a single prompt, and a single tool surface.
+- **The writer never calls tools.** It only synthesizes. Keeping the writer toolless prevents it from re-doing research and keeps the final pass cheap.
+
+## Make it production-ready
+
+When you're ready to ship, layer on:
+
+| Concern | What to add |
+|---|---|
+| Real search | A Tavily / Brave / SerpAPI tool — see [Tools](/building-agents/tools). |
+| Cost control | `RateLimit::token_bucket(rate, burst)` and `ModelCallLimit` middleware on each agent. |
+| Tracing | Wire `cognis-trace` so each agent appears as a nested span in Langfuse. |
+| Caching | Cache search results with a `CachedRetriever`-style wrapper around the tool. |
+| Eval | Build an `EvaluationFramework` over a small set of known good questions, score with an LLM-as-judge. |
+| Streaming UI | `orch.stream_events(...)` and forward `OnLlmToken` to your frontend — see [Patterns → Streaming UI](/patterns/streaming-ui). |
+
+## Variations
+
+- **Add a critic.** Slot a fourth agent that reviews the writer's draft and returns suggestions; loop with `RoundRobin` for a couple of revision passes.
+- **Parallel research.** Replace the Sequential orchestrator with a custom `HandoffStrategy` that fan-outs subquestions to parallel researcher agents and folds their answers.
+- **Long context.** For deep research, swap the writer for a long-context model and have the researcher dump full search snippets — pair with [Long-context summarization](/patterns/long-context).
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Multi-agent orchestration" icon="people-arrows" href="/building-agents/multi-agent">
+    Strategies, custom handoffs.
+  </Card>
+  <Card title="Tools" icon="screwdriver-wrench" href="/building-agents/tools">
+    The tool the researcher calls.
+  </Card>
+  <Card title="Patterns → Multi-agent debate" icon="grid" href="/patterns/multi-agent-debate">
+    A different orchestration shape.
+  </Card>
+</CardGroup>

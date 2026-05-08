@@ -1,79 +1,104 @@
 ---
 title: "Cognis"
-description: "Rust-native LLM framework — typed Runnable, agent loop, graph state, RAG pipeline, observability."
-sidebarTitle: "Introduction"
+description: "The Rust-native way to build LLM agents, RAG pipelines, and stateful graph workflows."
+sidebarTitle: "Overview"
 ---
 
-Cognis translates the conceptual surface of LangChain, LangGraph, and DeepAgents into idiomatic Rust. It is not a line-by-line port; the goal is to keep the *intent* (Runnables, agents, graphs, RAG, traces) and discard the dynamism by leaning on Rust's type system.
+Cognis is the easiest way to build LLM-powered apps in Rust. If you've used LangChain, LangGraph, or DeepAgents in Python, you'll find the same shapes here — `Runnable`, agent loops, graph state, retrieval — translated into idiomatic Rust with type safety, ownership, and zero-cost composition.
 
-## What you get
+It's not a port. It's a rebuild that keeps the *intent* and discards the dynamism.
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::{AgentBuilder, Calculator};
+use cognis_llm::Client;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let mut agent = AgentBuilder::new()
+        .with_llm(Client::from_env()?)
+        .with_tool(Arc::new(Calculator::new()))
+        .with_system_prompt("Use the calculator for arithmetic.")
+        .build()?;
+
+    let resp = agent.run(Message::human("What is 23 * 17 + 4?")).await?;
+    println!("{}", resp.content);
+    Ok(())
+}
+```
+
+That's a real, working tool-calling agent. Swap `COGNIS_PROVIDER` between `openai`, `anthropic`, `google`, `ollama`, `azure`, or `openrouter` — same code.
+
+## What you can build
 
 <CardGroup cols={2}>
-  <Card title="Typed Runnable<I, O>" icon="code">
-    Every primitive is a `Runnable` generic over input and output. Pipe, branch, parallelize without losing types.
+  <Card title="Tool-calling agents" icon="robot">
+    A model with tools, memory, and a loop that knows when to stop. Add middleware for retry, fallback, rate limits, PII redaction, and human approval.
   </Card>
-  <Card title="LLM providers" icon="plug">
-    OpenAI, Anthropic, Google, Ollama, Azure, OpenRouter — feature-gated, behind one trait.
+  <Card title="Multi-agent systems" icon="people-arrows">
+    Sequential pipelines, supervisor routers, parallel-vote ensembles, round-robin debates. Or wire your own handoff strategy.
   </Card>
-  <Card title="Graph state" icon="diagram-project">
-    `Graph<S>` with reducers, channels, checkpoints, interrupts, time-travel, all 7 stream modes.
+  <Card title="RAG pipelines" icon="database">
+    Documents → splitters → embeddings → vector store → retriever → prompt. Six vector store backends, eight splitters, and an indexing pipeline that only re-embeds what changed.
   </Card>
-  <Card title="RAG building blocks" icon="database">
-    Embeddings, vector stores, retrievers, splitters, an indexing pipeline with a record manager.
+  <Card title="Stateful graphs" icon="diagram-project">
+    `Graph<S>` with typed state, reducers, conditional edges, checkpoints, time-travel, interrupts, and seven stream modes. Inspired by LangGraph; built around Rust's type system.
   </Card>
-  <Card title="Agents" icon="robot">
-    Single-agent and multi-agent orchestration, memory variants, tool registry, middleware.
+  <Card title="Production observability" icon="chart-line">
+    LLM-aware tracing into Langfuse out of the box. Token counts, USD cost, prompt versioning, and evaluation scores — opt in with one feature flag.
   </Card>
-  <Card title="Observability" icon="chart-line">
-    Bridge `CallbackHandler` events to Langfuse, LangSmith, or any OTLP backend.
+  <Card title="Local-first apps" icon="laptop">
+    Run entirely against Ollama with no API keys. Swap to a hosted provider later — the agent code doesn't change.
   </Card>
 </CardGroup>
 
-## Workspace at a glance
+## Why Rust
 
-| Crate | Responsibility |
+- **Compile-time guarantees.** Tool schemas, message types, and graph state transitions are checked before your code runs. No "unknown variant at runtime" surprises.
+- **Pay only for what you use.** Every external integration is feature-gated. Your binary doesn't include OpenAI code if you only use Anthropic.
+- **Async-native.** Built on `tokio` and `futures::Stream`. Streaming tokens, events, and graph state updates uses one consistent API.
+- **One umbrella, full stack.** `cognis` re-exports the foundation, LLM, RAG, and graph layers. Most apps need a single `use cognis::prelude::*;` and a few specific imports.
+
+## How Cognis is organized
+
+The workspace is six libraries — one foundation, four sibling capabilities, one umbrella — plus a proc-macro crate.
+
+| Crate | What's in it |
 |---|---|
-| `cognis-core` | `Runnable`, `Message`, prompts, output parsers, callbacks, compose. Zero internal deps. |
-| `cognis-llm` | Provider abstractions and impls (feature-gated). Tools, structured output, streaming. |
-| `cognis-rag` | Embeddings, vector stores, retrievers, splitters, loaders, indexing pipeline. |
-| `cognis-graph` | Stateful `Graph<S>`, Pregel engine, reducers, checkpointers, interrupts. |
-| `cognis-trace` | Pluggable observability — Langfuse first, LangSmith and OTel pluggable. |
+| `cognis-core` | The `Runnable` trait, messages, prompts, output parsers, callbacks, composition primitives. Zero internal dependencies. |
+| `cognis-llm` | LLM clients and providers (OpenAI, Anthropic, Google, Ollama, Azure, OpenRouter), tools, streaming. |
+| `cognis-rag` | Embeddings, vector stores, retrievers, splitters, document loaders, indexing pipeline. |
+| `cognis-graph` | Stateful `Graph<S>`, Pregel engine, channels, checkpointers, visualization. |
+| `cognis-trace` | LLM-aware observability — Langfuse first, OTel-compatible. |
 | `cognis-macros` | `#[tool]`, `#[derive(GraphState)]`. |
-| `cognis` | Umbrella + agent layer. Re-exports the four siblings. |
+| `cognis` | Umbrella + agent layer. The crate most apps depend on. |
 
-## Design principles
-
-<AccordionGroup>
-  <Accordion title="Generic Runnable, not Value-typed">
-    `Runnable<I, O>` is generic — never `Value`-typed at trait boundaries. Use `serde_json::Value` only at system edges (user input, persistence, wire serialization). Heterogeneous composition uses type-erased wrappers (`DynRunnable`).
-  </Accordion>
-  <Accordion title="Traits over class hierarchies">
-    Each capability is a trait with a small required surface and generous provided defaults. New `Memory` impls reuse the same `read`/`write`/`clear` shape. New `RateLimiter` impls reuse the `acquire(estimated_tokens)` signature.
-  </Accordion>
-  <Accordion title="Builders return Self">
-    `with_X(self, x) -> Self`. Constructors don't take optional args — promote them to builder methods.
-  </Accordion>
-  <Accordion title="Enums for closed sets">
-    Where Python uses union types or magic strings, Rust uses enums with exhaustive matching. `Message`, `ContentPart`, `ToolChoice`, `StreamMode`, `Goto`, `Durability`.
-  </Accordion>
-  <Accordion title="Errors are actionable">
-    Each crate defines its own `thiserror` enum. The caller can match on the variant and decide what to do — retry, fall back, surface to the user.
-  </Accordion>
-</AccordionGroup>
+You don't need to think about crate boundaries while building — `cognis` re-exports the things you reach for daily.
 
 ## Where to next
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" icon="bolt" href="/quickstart">
-    A 5-minute hello-world chain.
+  <Card title="Quickstart" icon="bolt" href="/get-started/quickstart">
+    A 5-minute tool-calling agent. The fastest path to "it works on my machine."
   </Card>
-  <Card title="Installation" icon="download" href="/installation">
-    Workspace setup and feature flags.
+  <Card title="Installation" icon="download" href="/get-started/installation">
+    Workspace setup, feature flags, secrets handling.
   </Card>
-  <Card title="Concepts" icon="book" href="/concepts/runnable">
-    Start with `Runnable`, then pick the crate that matches your task.
+  <Card title="Core ideas" icon="lightbulb" href="/core-ideas/runnables">
+    Mental models for `Runnable`, graphs, and the agent loop.
   </Card>
-  <Card title="Trace" icon="chart-line" href="/concepts/trace">
-    Wire a chain to Langfuse in three lines.
+  <Card title="Patterns" icon="grid" href="/patterns/research-assistant">
+    Real applications you can copy: research assistants, code Q&A, multi-agent debate, more.
+  </Card>
+  <Card title="API reference" icon="book" href="/reference/api/cognis">
+    Per-crate rustdoc-friendly summaries. Cross-linked to docs.rs.
+  </Card>
+  <Card title="Contribute" icon="code-merge" href="/contribute/ways-to-contribute">
+    Bugs, features, integrations, docs — every contribution lane.
   </Card>
 </CardGroup>
+
+<Note>
+Cognis is heavily inspired by [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), and [DeepAgents](https://github.com/langchain-ai/deepagents). Thanks to the LangChain team for pioneering the composable LLM framework paradigm.
+</Note>

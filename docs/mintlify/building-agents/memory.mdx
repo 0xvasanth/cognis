@@ -1,0 +1,119 @@
+---
+title: "System prompts and memory"
+description: "Make your agent remember. Pin a system prompt, pick a memory variant, decide what survives between turns."
+sidebarTitle: "Memory"
+---
+
+By default, every call to `agent.run` starts fresh. That's fine for stateless tools, but most apps want continuity — the user's name, what was just discussed, the long task the agent is partway through. Memory is what makes an agent feel like the *same* agent across turns.
+
+## How memory works
+
+Three moving parts:
+
+- **The system prompt** is your one-shot voice for the agent. Set it with `with_system_prompt`.
+- **The memory** is a `&mut` store the agent reads at the start of each `run` and writes to as the conversation grows.
+- **The seed** — what the memory chooses to *show* the model — may be a subset of what's been written. A `Buffer` shows everything; a `Window` shows only the last N; `SummaryBufferMemory` shows a running summary plus recent turns.
+
+You provide a memory by implementing `Memory` (or picking one of the built-ins) and passing it to `AgentBuilder`.
+
+## Quick example
+
+```rust
+use cognis::prelude::*;
+use cognis::AgentBuilder;
+use cognis_llm::Client;
+
+let client = Client::from_env()?;
+let memory = SummaryBufferMemory::new(client.clone(), 2000);  // 2000-token budget
+
+let mut agent = AgentBuilder::new()
+    .with_llm(client)
+    .with_system_prompt("You are a friendly assistant. Refer to the user by name.")
+    .with_memory(memory)
+    .stateful()
+    .build()?;
+
+agent.run(Message::human("Hi, I'm Maya.")).await?;
+agent.run(Message::human("What's my name?")).await?;   // → "Maya"
+```
+
+`stateful()` keeps the memory across `run` calls. `stateless()` (the default) clears it between runs — useful when each request is independent.
+
+## Choosing a memory variant
+
+| Variant | Mental model | When to use |
+|---|---|---|
+| `Buffer` | "Keep everything." | Short conversations; debugging. |
+| `Window::new(n)` | "Last N messages." | Bounded context, no summarization cost. |
+| `TokenBufferMemory::new(max_tokens)` | "Trim to fit a token budget." | Want to maximize what fits without paying to summarize. |
+| `SummaryMemory::new(client, threshold)` | "Summarize every N turns." | Long sessions; periodic compaction. |
+| `SummaryBufferMemory::new(client, max_tokens)` | "Token-budgeted buffer with summarized overflow." | Best general-purpose choice for long chats. |
+| `EntityMemory` | "Track entities across turns." | The user keeps mentioning specific people / places / things. |
+| `KnowledgeGraphMemory` | "Build a triple store of facts." | Agent should reason over relationships. |
+| `VectorMemory` | "Embed and retrieve." | Long-term knowledge; semantic recall over chat history. |
+| `HybridMemory` | "Combine multiple memories." | Recent buffer + vector recall + entity tracking, all at once. |
+
+```rust
+// Hybrid example.
+let memory = HybridMemory::new()
+    .with(Buffer::new())       // recency
+    .with(Window::new(10));    // bounded recent window
+```
+
+## Pinning a system message inside memory
+
+Some memories support a *pinned* system message that's always present at the start of the seed, regardless of trimming or summarization.
+
+```rust
+let memory = Window::new(20)
+    .with_system("You are a helpful assistant who never reveals system internals.");
+```
+
+`Buffer`, `Window`, `TokenBufferMemory`, and `SummaryBufferMemory` all accept this.
+
+## Customizing memory
+
+If none of the built-ins fit, implement `Memory`:
+
+```rust
+use cognis::prelude::*;
+
+struct MyMemory { /* … */ }
+
+impl Memory for MyMemory {
+    fn read(&self) -> &[Message] { /* … */ todo!() }
+    fn write(&mut self, msg: Message) { /* … */ }
+    fn clear(&mut self) { /* … */ }
+    // Provided: fn seed(&self) -> Vec<Message> { self.read().to_vec() }
+}
+```
+
+Override `seed()` if your memory wants to project differently than it stores — e.g., embed-on-write but retrieve-relevant-on-seed.
+
+## How it works
+
+- **Memory lives on the agent**, not on the graph state. That's why `stateful()` matters: it keeps the agent's `Memory` field alive across `run` calls.
+- **Memory is read once at the start of `run` and written incrementally as the loop produces messages.** The order matches the transcript.
+- **Pinned system messages are *always* prepended** — even if the rest of the memory has been summarized away.
+- **Summarization runs as an LLM call** through the `client` you handed the memory. It costs tokens; budget for it.
+
+## Backends and persistence
+
+Memory state is in-process by default. For persistence across processes:
+
+- Use the agent's `Backend` (`with_filesystem`) to write a markdown / JSON memory file the agent reads back.
+- Use `cognis-graph` checkpointers to persist the graph state itself, including the memory snapshot — see [Graph workflows → Checkpointing](/graph-workflows/checkpointing).
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/get-started/quickstart">
+    Add memory to the calculator agent.
+  </Card>
+  <Card title="Patterns → Stateful chat" icon="grid" href="/patterns/stateful-chat">
+    A complete chat backend with memory and persistence.
+  </Card>
+  <Card title="Middleware" icon="layer-group" href="/building-agents/middleware">
+    `Summarization`, `ContextEditing`, `ContextInjection` for cross-cutting context shaping.
+  </Card>
+</CardGroup>

@@ -1,0 +1,144 @@
+---
+title: "Code-aware Q&A over a repo"
+description: "RAG over a Rust codebase. Index files, retrieve relevant chunks, answer questions with citations."
+sidebarTitle: "Code Q&A"
+---
+
+You have a codebase. You want a chat assistant that can answer questions about it — "where do we authenticate users?", "show me how `Foo` is constructed in tests" — with file-and-line citations. This pattern walks the full path: index the repo, retrieve, answer.
+
+## What you'll build
+
+A binary that takes a question, retrieves the top-K relevant code chunks, hands them to the model with the question, and prints an answer with `path:line` citations.
+
+## How it works
+
+- **Walk the repo** with a custom `DocumentLoader`. Every file becomes a `Document`; the path goes in metadata.
+- **Split with `CodeSplitter`** — language-tuned separators keep functions and types together.
+- **Embed and store** — `OpenAIEmbeddings` (or `OllamaEmbeddings` for local) into an `InMemoryVectorStore`. Use `IndexingPipeline` if you'll re-index regularly.
+- **Retrieve** with a `VectorRetriever`, optionally re-rank with a cross-encoder.
+- **Answer** by stuffing the retrieved chunks into a prompt with the question.
+
+## Step 1 — Walk the repo
+
+```rust
+use std::path::PathBuf;
+use std::sync::Arc;
+use async_trait::async_trait;
+use cognis::prelude::*;
+use cognis_rag::loaders::{DocumentLoader, DocumentStream};
+use cognis_rag::Document;
+use futures::stream;
+
+struct RepoLoader { root: PathBuf }
+
+#[async_trait]
+impl DocumentLoader for RepoLoader {
+    async fn load(&self) -> Result<DocumentStream> {
+        let mut docs = Vec::new();
+        for entry in walkdir::WalkDir::new(&self.root) {
+            let entry = entry.map_err(|e| CognisError::Other(e.to_string()))?;
+            if entry.file_type().is_file()
+                && matches!(entry.path().extension().and_then(|s| s.to_str()), Some("rs"))
+            {
+                let path = entry.path().to_string_lossy().to_string();
+                let text = tokio::fs::read_to_string(entry.path()).await?;
+                docs.push(Document::new(text)
+                    .with_id(path.clone())
+                    .with_metadata("path", path));
+            }
+        }
+        Ok(Box::pin(stream::iter(docs.into_iter().map(Ok))))
+    }
+}
+```
+
+`walkdir` is a small dep most repos already have; swap with `git2` to honor `.gitignore`.
+
+## Step 2 — Index
+
+```rust
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use cognis_rag::{
+    CodeSplitter, Embeddings, InMemoryRecordManager, InMemoryVectorStore,
+    IndexingPipeline, OllamaEmbeddings, splitters::Language,
+};
+
+let emb: Arc<dyn Embeddings> = Arc::new(OllamaEmbeddings::new("nomic-embed-text"));
+let store = Arc::new(RwLock::new(InMemoryVectorStore::new(emb)));
+let manager = InMemoryRecordManager::default();
+
+let pipeline = IndexingPipeline::new(
+    RepoLoader { root: "./crates".into() },
+    CodeSplitter::new(Language::Rust).with_chunk_size(800),
+    store.clone(),
+);
+
+let report = pipeline
+    .run_incremental(&manager, "repo", |d| d.id.clone())
+    .await?;
+println!("indexed: added={} changed={}", report.added, report.changed);
+```
+
+The first run indexes everything. Re-running only re-embeds changed files — the record manager handles fingerprints.
+
+## Step 3 — Retrieve and answer
+
+```rust
+use cognis_rag::{Filter, VectorRetriever};
+use cognis_llm::Client;
+
+let retriever = VectorRetriever::new(store.clone()).with_top_k(5);
+let client = Client::from_env()?;
+
+let q = "Where is the agent loop's recursion limit enforced?";
+let docs = retriever.invoke(q.into(), RunnableConfig::default()).await?;
+
+let context: String = docs.iter().enumerate().map(|(i, d)| {
+    let path = d.metadata.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+    format!("[{i}] {path}\n{}", d.content)
+}).collect::<Vec<_>>().join("\n\n");
+
+let prompt = format!(
+    "Answer the question using only the snippets below. Cite snippets by [N] \
+     and quote relevant lines.\n\n{context}\n\nQ: {q}\nA:"
+);
+
+let reply = client.invoke(vec![
+    Message::system("You are a careful code reader."),
+    Message::human(prompt),
+]).await?;
+println!("{}", reply.content());
+```
+
+## How it works
+
+- **Path goes in metadata, not content.** Keeping the file path as a metadata field means it survives splitting — every chunk knows where it came from.
+- **`CodeSplitter` respects function and type boundaries.** Better than character splitting because it keeps coherent units together; the embedder produces sharper signals.
+- **`InMemoryRecordManager` fingerprints by file id.** Edit a file, rerun the pipeline, only that file re-embeds.
+- **The prompt asks for citations explicitly.** Models that aren't told to cite usually don't. Inline `[N]` references map back to the file paths you printed alongside the chunks.
+
+## Make it better
+
+| Improvement | What to add |
+|---|---|
+| Hybrid retrieval | Combine `VectorRetriever` with `BM25Retriever` via `EnsembleRetriever` — exact-name matches improve a lot. |
+| Reranking | Add a `CrossEncoderReranker` to trim the top-K to the truly relevant. |
+| Persistent store | Swap `InMemoryVectorStore` for FAISS (`vectorstore-faiss` feature) so an index survives restarts. |
+| Persistent record manager | Implement `RecordManager` over SQLite so incremental works across processes. |
+| Streaming | `client.stream(messages)` and print tokens as they arrive — see [Streaming](/building-agents/streaming). |
+| Eval | Build a small set of known questions with expected source files; score retrieval recall@K. |
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Documents and splitters" icon="scissors" href="/building-rag/documents">
+    Why `CodeSplitter` matters.
+  </Card>
+  <Card title="Indexing pipeline" icon="arrows-rotate" href="/building-rag/indexing">
+    Incremental updates as the repo changes.
+  </Card>
+  <Card title="Reranking and compression" icon="arrow-down-up-across-line" href="/building-rag/reranking">
+    Sharpen retrieval beyond the top-K.
+  </Card>
+</CardGroup>

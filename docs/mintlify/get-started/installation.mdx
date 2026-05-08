@@ -1,0 +1,124 @@
+---
+title: "Installation"
+description: "Add cognis to a Cargo project, pick the features you need, and configure credentials safely."
+sidebarTitle: "Installation"
+---
+
+## Prerequisites
+
+- Rust 1.75 or newer (workspace edition is 2021).
+- A `tokio` runtime — Cognis is async.
+
+## Pick an entry point
+
+Most apps want the umbrella crate. It re-exports the foundation, LLM, RAG, and graph layers, so you write `use cognis::prelude::*;` and reach for what you need.
+
+<Tabs>
+  <Tab title="Umbrella (recommended)">
+    ```toml
+    [dependencies]
+    cognis = { version = "0.3", features = ["openai", "anthropic"] }
+    tokio = { version = "1", features = ["full"] }
+    ```
+  </Tab>
+  <Tab title="Per-crate">
+    Useful if you want to slim the dependency graph — for example, a CLI that does retrieval but no agents.
+    ```toml
+    [dependencies]
+    cognis-core  = "0.3"
+    cognis-llm   = { version = "0.3", features = ["openai"] }
+    cognis-rag   = { version = "0.3", features = ["vectorstore-faiss", "openai"] }
+    cognis-graph = { version = "0.3", features = ["sqlite"] }
+    cognis-trace = { version = "0.3", features = ["langfuse"] }
+    ```
+    `cognis-core` has zero internal dependencies. The other capability crates depend only on `cognis-core`, not on each other.
+  </Tab>
+</Tabs>
+
+## Pick features
+
+External integrations are feature-gated so the core crates compile with no network code.
+
+| You want… | Feature |
+|---|---|
+| OpenAI chat + tools + embeddings | `openai` |
+| Anthropic | `anthropic` |
+| Google Gemini | `google` |
+| Local Ollama | `ollama` |
+| Azure OpenAI | `azure` |
+| OpenRouter (with attribution headers) | `openrouter` |
+| Voyage embeddings | `voyage` |
+| Everything provider-shaped | `all-providers` |
+| FAISS local vector store | `cognis-rag/vectorstore-faiss` |
+| Hosted vector stores | `cognis-rag/vectorstore-{chroma,qdrant,pinecone,weaviate}` |
+| PDF / YAML / TOML / CSV / HTML / web loaders | `cognis-rag/{pdf,yaml,toml,csv,html,web}-loader` |
+| SQLite-backed model cache | `cognis/cache-sqlite` |
+| HTTP request primitives for tools | `cognis/tools-http` |
+| Graph state in SQLite or Postgres | `cognis-graph/{sqlite,postgres}` |
+| Langfuse exporter | `cognis-trace/langfuse` |
+
+The full list lives in [Reference → Feature flags](/reference/feature-flags).
+
+## Set credentials
+
+<Note>
+Cognis never reads `.env` files. Plain `.env` files on disk are a security footgun. Use your shell, `direnv`, `envchain`, or your platform's secret manager.
+</Note>
+
+`Client::from_env()` reads:
+
+| Variable | Purpose |
+|---|---|
+| `COGNIS_PROVIDER` | One of `openai`, `anthropic`, `google`, `ollama`, `azure`, `openrouter`. |
+| `COGNIS_<PROVIDER>_API_KEY` | The provider's key (Ollama: not needed). |
+| `COGNIS_<PROVIDER>_MODEL` | Optional default model. |
+| `COGNIS_<PROVIDER>_BASE_URL` | Optional override for self-hosted backends. |
+| `COGNIS_AZURE_ENDPOINT`, `COGNIS_AZURE_DEPLOYMENT`, `COGNIS_AZURE_API_VERSION` | Azure-specific. |
+
+Recommended setup on macOS / Linux: `direnv` + `envchain`.
+
+```bash .envrc (commit this)
+if command -v envchain >/dev/null 2>&1; then
+  vars=$(envchain --list myapp 2>/dev/null | paste -sd '|' -)
+  if [ -n "$vars" ]; then
+    eval "$(envchain myapp env | grep -E "^(${vars})=" | sed 's/^/export /')"
+  fi
+fi
+```
+
+```bash one-time setup
+envchain --set myapp COGNIS_PROVIDER          # e.g. openai
+envchain --set myapp COGNIS_OPENAI_API_KEY
+direnv allow
+```
+
+For CI, set the same variables in your runner's secret store.
+
+## Verify
+
+```bash
+cargo check
+```
+
+If you set up the umbrella with `openai`, this should compile:
+
+```rust
+use cognis_llm::Client;
+
+fn check() {
+    let _ = Client::builder();
+}
+```
+
+## Workspace builds
+
+Contributing to Cognis itself? Build and test the whole workspace:
+
+```bash
+cargo build --workspace
+cargo build -p cognis --features all-providers
+cargo test --workspace
+cargo clippy --workspace --features all-providers -- -D warnings
+```
+
+See [Contribute → Development setup](/contribute/development-setup) for the full pre-push checklist.

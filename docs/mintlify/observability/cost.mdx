@@ -1,0 +1,122 @@
+---
+title: "Cost tracking"
+description: "Token usage and USD cost on every LLM call. Default pricing for the major providers, overridable per model."
+sidebarTitle: "Cost"
+---
+
+If you're shipping an LLM app to production, you need to know what it costs. Cognis computes USD cost on every model call using a `PriceTable`, attaches it to the corresponding span, and emits it as part of the trace. Defaults ship for the major providers; override per model when your contract differs.
+
+## What gets tracked
+
+Every LLM call ends with a `Usage` carrying:
+
+- `input_tokens` — what you sent.
+- `output_tokens` — what you got back.
+- `cache_read_tokens` — provider cache hits (Anthropic, etc.).
+- `cache_write_tokens` — bytes you wrote to the cache.
+
+Cost is computed from these and a `ModelPrice`:
+
+```rust
+pub struct ModelPrice {
+    pub input: f64,        // USD per 1M input tokens
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_write: f64,
+}
+```
+
+The handler attaches `cost: { input, output, cache_read, cache_write, total }` to each generation span. In Langfuse, this lands on the `costDetails` field.
+
+## Defaults
+
+`with_default_pricing()` loads a snapshot of public pricing for OpenAI, Anthropic, Google, Azure OpenAI, and OpenRouter as of 2026-05.
+
+```rust
+use cognis_trace::TracingHandler;
+
+let handler = TracingHandler::builder()
+    .with_exporter(my_exporter)
+    .with_default_pricing()
+    .build();
+```
+
+Defaults are a starting point. They're not a contract — review them against your invoices.
+
+## Custom pricing
+
+Override per model when your rate differs (negotiated discount, custom Azure deployment, on-prem):
+
+```rust
+use cognis_trace::{cost::ModelPrice, TracingHandler};
+
+let handler = TracingHandler::builder()
+    .with_exporter(my_exporter)
+    .with_default_pricing()
+    .override_price("gpt-4o", ModelPrice {
+        input: 2.50,
+        output: 10.00,
+        cache_read: 1.25,
+        cache_write: 0.0,
+    })
+    .build();
+```
+
+`override_price` adds to (or replaces) entries in the table. Use it for one-offs.
+
+For full control, supply your own `PriceTable`:
+
+```rust
+use cognis_trace::{PriceTable, TracingHandler};
+
+let mut prices = PriceTable::default();
+prices.insert("my-model", ModelPrice { /* … */ });
+prices.insert("my-model-mini", ModelPrice { /* … */ });
+
+let handler = TracingHandler::builder()
+    .with_exporter(my_exporter)
+    .with_pricing(prices)
+    .build();
+```
+
+## Reading cost from observers
+
+If you need cost in your own pipeline (custom alerting, budget enforcement) without going through Langfuse, observe `OnEnd` events on LLM Runnables and look at the attached `Usage`:
+
+```rust
+use cognis::prelude::*;
+
+struct CostBudget { limit_usd: f64, /* … */ }
+
+impl Observer for CostBudget {
+    fn on_event(&self, e: &Event) {
+        if let Event::OnEnd { output, .. } = e {
+            // The output JSON contains usage and computed cost when emitted by an LLM Runnable.
+            // Inspect and decide.
+        }
+    }
+}
+```
+
+For agent-level cost caps, the `ModelCallLimit` middleware bounds *count*; pair it with an observer that breaks on cost.
+
+## How it works
+
+- **Cost is computed at `on_llm_end` time, not at trace export time.** That means it's available to in-band observers, not just Langfuse.
+- **Cache reads are counted at their discounted rate.** A cached call is dramatically cheaper — pricing reflects that.
+- **Unknown models default to zero.** No model name match → no cost. Add overrides for your own/local models if you want them costed.
+- **Computation is exact, not estimated.** Token counts come from the provider response (or the streaming aggregator), not from a tokenizer running on your text.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Trace with Langfuse" icon="chart-line" href="/observability/langfuse">
+    Where cost lands by default.
+  </Card>
+  <Card title="Middleware" icon="layer-group" href="/building-agents/middleware">
+    `ModelCallLimit`, `RateLimit`, and other budget guards.
+  </Card>
+  <Card title="Production → Going to production" icon="rocket" href="/production/going-to-production">
+    Pricing and runtime tuning.
+  </Card>
+</CardGroup>

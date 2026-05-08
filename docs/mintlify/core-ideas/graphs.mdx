@@ -1,0 +1,170 @@
+---
+title: "Graphs and state"
+description: "Stateful workflows in Cognis — typed state, reducers, conditional control flow, and Pregel execution."
+sidebarTitle: "Graphs"
+---
+
+Linear chains break down once you need branching, loops, or human-in-the-loop. `Graph<S>` is Cognis' answer: a stateful workflow where each step is a node that reads typed state and decides what happens next. Inspired by LangGraph, built around a Pregel-style engine, generic over your state struct.
+
+## What it is
+
+A graph has three parts:
+
+- **State** — a struct of yours that travels between nodes. You implement `GraphState`, which says how an `Update` is applied to the state.
+- **Nodes** — async functions that read the state and emit `NodeOut { update, goto }`.
+- **A start node** — declared with `.start_at("name")`. The engine walks edges from there until a node returns `Goto::end()`.
+
+The compiled graph is itself a `Runnable<S, S>`, so it composes with everything else.
+
+## When to reach for a graph
+
+- You need a tool-calling loop with custom termination logic.
+- You want time travel — checkpoint after every step, rewind, branch.
+- You need human-in-the-loop pauses at specific points.
+- Branches need to run in parallel and rejoin.
+- You want to subgraph and namespace state.
+
+For a plain "model + tools + loop" agent, [`AgentBuilder`](/core-ideas/agents) is faster — it builds the graph for you. Drop down to graphs when the agent shape isn't enough.
+
+## Quick example
+
+A graph that increments a counter until it hits 5:
+
+```rust
+use cognis::prelude::*;
+
+#[derive(Default, Clone, Debug)]
+struct State { count: u32 }
+
+#[derive(Default, Clone)]
+struct Update { count: u32 }
+
+impl GraphState for State {
+    type Update = Update;
+    fn apply(&mut self, u: Update) { self.count += u.count; }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let tick = node_fn::<State, _, _>("tick", |s, _ctx| {
+        let cur = s.count;
+        async move {
+            if cur >= 5 {
+                Ok(NodeOut { update: Update { count: 0 }, goto: Goto::end() })
+            } else {
+                Ok(NodeOut { update: Update { count: 1 }, goto: Goto::node("tick") })
+            }
+        }
+    });
+
+    let graph = Graph::<State>::new()
+        .node("tick", tick)
+        .start_at("tick")
+        .compile()?;
+
+    let final_state = graph.invoke(State::default(), RunnableConfig::default()).await?;
+    println!("count: {}", final_state.count);
+    Ok(())
+}
+```
+
+`node_fn::<S, _, _>(name, async closure)` wraps an async closure into a `Node<S>`. The closure receives `(&S, &NodeCtx)` and returns `Result<NodeOut<S>>`.
+
+## State and reducers
+
+Two ways to define state.
+
+<Tabs>
+  <Tab title="Manual impl">
+    Spell out how updates apply. Most explicit; works everywhere.
+    ```rust
+    #[derive(Default, Clone, Debug)]
+    struct State {
+        messages: Vec<Message>,
+        counter: u32,
+    }
+    #[derive(Default, Clone)]
+    struct Update {
+        messages: Vec<Message>,
+        counter: u32,
+    }
+    impl GraphState for State {
+        type Update = Update;
+        fn apply(&mut self, u: Update) {
+            self.messages.extend(u.messages);
+            self.counter += u.counter;
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Derive macro">
+    `#[derive(GraphStateV2)]` emits the sibling `Update` struct and the impl. Per-field `#[reducer(...)]` picks how each field is combined.
+    ```rust
+    use cognis::prelude::*;
+
+    #[derive(Default, Clone, Debug, GraphStateV2)]
+    struct State {
+        #[reducer(append)]   messages: Vec<Message>,
+        #[reducer(add)]      counter: u32,
+        #[reducer(merge)]    metadata: serde_json::Value,
+        // unannotated fields default to last_value
+        pending: Option<ToolCall>,
+    }
+    ```
+    Reducers: `append`, `add`, `merge`, `last_value`.
+  </Tab>
+</Tabs>
+
+## Control flow
+
+Nodes pick the next step by returning a `Goto`:
+
+| Constructor | Effect |
+|---|---|
+| `Goto::node("name")` | Single successor. |
+| `Goto::end()` | Terminate. |
+| `Goto::halt()` | Pause without ending. |
+| `Goto::Multiple(vec!["a", "b"])` | Parallel fan-out. |
+| `Goto::Send(vec![("worker", payload)])` | Cross-graph dispatch. |
+
+You can also declare static edges and skip the routing logic in the node:
+
+```rust
+let g = Graph::<S>::new()
+    .node("plan", plan)
+    .node("execute", execute)
+    .node("review", review)
+    .edge("plan", "execute")
+    .edge("execute", "review")
+    .start_at("plan")
+    .compile()?;
+```
+
+## How it works
+
+- **Each `invoke` is a sequence of supersteps.** The engine runs all eligible nodes in a step, applies their updates atomically, then advances.
+- **`Goto::Multiple` triggers parallel fan-out.** All targets run in the same superstep.
+- **State is *applied*, not replaced.** Your `apply(&mut self, Update)` controls how. Reducers are just `apply` written for one field at a time.
+- **Compiled graphs are `Runnable<S, S>`.** Wrappers (`with_retry`, `with_timeout`) and observability work the same as anywhere else.
+
+## Beyond the basics
+
+- **Persist state across runs?** Add a checkpointer. See [Graph workflows → Checkpointing](/graph-workflows/checkpointing).
+- **Pause for a human?** Mark interrupts. See [Building agents → Human-in-the-loop](/building-agents/hitl).
+- **Inspect intermediate state?** `graph.get_state`, `get_state_history`, `update_state`. See [Graph workflows → Checkpointing](/graph-workflows/checkpointing).
+- **Stream node deltas in real time?** [Graph workflows → Streaming](/graph-workflows/streaming).
+- **Visualize?** `graph.to_dot()`, `to_mermaid()`, `to_ascii()`. See [Graph workflows → Visualization](/graph-workflows/visualization).
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Agents and the loop" icon="robot" href="/core-ideas/agents">
+    The shape `AgentBuilder` compiles into.
+  </Card>
+  <Card title="Control flow" icon="diagram-project" href="/graph-workflows/control-flow">
+    Fan-out, conditional edges, subgraphs.
+  </Card>
+  <Card title="Reference → cognis-graph" icon="book" href="/reference/api/cognis-graph">
+    Full API surface.
+  </Card>
+</CardGroup>

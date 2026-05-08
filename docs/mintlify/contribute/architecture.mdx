@@ -1,0 +1,123 @@
+---
+title: "Architecture and conventions"
+description: "Crate boundaries, design rules, what goes where, what NOT to port from Python."
+sidebarTitle: "Architecture"
+---
+
+This page is a contributor's map of Cognis. If you're adding a new feature, this is where you check that you're putting it in the right crate and following the existing shape.
+
+## Workspace map
+
+```
+crates/
+├── cognis-core    # Foundation. Zero internal-crate deps.
+├── cognis-llm     # LLM clients + providers (feature-gated).
+├── cognis-rag     # Embeddings, vector stores, retrievers, splitters.
+├── cognisgraph    # Stateful Graph<S>, Pregel engine, checkpointers.
+├── cognis-trace   # Pluggable observability (Langfuse first).
+├── cognis-macros  # Proc macros: #[tool], #[derive(GraphState)].
+├── cognis         # Umbrella + agent layer. Re-exports the four siblings.
+└── examples       # Non-publishable. Demo programs.
+```
+
+## Dependency rules (strict)
+
+These are enforced by the build:
+
+- `cognis-core` has **zero** internal-crate dependencies.
+- `cognis-llm`, `cognis-rag`, `cognisgraph`, `cognis-trace` each depend only on `cognis-core` (and `cognis-macros` where they use a derive). They do **not** depend on each other.
+- `cognis` is the only crate that depends on the four siblings together.
+- `cognis-macros` is proc-macro-only; consumed by everything that wants the derives.
+
+If a feature could plausibly live in two places, default to the smaller crate (closer to `cognis-core`).
+
+## Where new code goes
+
+| Concept | Crate |
+|---|---|
+| LLM client, provider, chat options, tool dispatch, structured output | `cognis-llm` |
+| Embeddings, vector stores, retrievers, splitters, loaders, indexing | `cognis-rag` |
+| `Graph<S>`, nodes, channels, reducers, checkpointers, viz | `cognisgraph` |
+| Tracing / observability adapter (Langfuse, OTel, …) | `cognis-trace` |
+| Agent loop, multi-agent, agent bus, middleware, built-in tools, memory | `cognis` |
+| Pure traits / types everyone needs (Runnable, prompts, output parsers, error, Message) | `cognis-core` |
+| Anything that does I/O against an external service | feature-gated, opt-in |
+
+Agent **orchestration** middleware (filesystem, memory, subagent, planning, skills, todo, prompt caching) belongs in `cognis`. Agent **policy** building blocks (retry, rate limiting, PII, redaction, model fallback) live in `cognis` too — they share the same `Middleware` trait.
+
+## Design patterns (mandatory)
+
+These shape every feature in the codebase. Follow them when adding new code.
+
+### Traits, not classes
+
+Each capability is a trait with a small required surface and generous provided defaults. New `Memory` impls implement `read`/`write`/`clear` and inherit `seed`. New `RateLimiter` impls implement `acquire(estimated_tokens)` and inherit the policy combinators.
+
+When adding a new variant of an existing trait, mirror the builder methods and naming of its siblings. A new `Memory` variant ships `with_system(...)` because the others do.
+
+### Builders return Self
+
+`with_X(self, x) -> Self`. Constructors don't take optional args — promote them to builder methods.
+
+```rust
+let bucket = TokenBucket::new(rate, burst);
+let parser = RetryParser::with_retries(inner, fixer, 5);
+```
+
+### Enums for closed sets
+
+Where Python uses union types or magic strings, Rust uses enums with exhaustive matching. Examples: `Message`, `ContentPart`, `ToolChoice`, `StreamMode`, `Goto`, `Durability`.
+
+### Generic Runnable, not Value-typed
+
+`Runnable<I, O>` is generic — never `Value`-typed at trait boundaries. Use `serde_json::Value` only at system edges (user input, persistence, wire serialization). Heterogeneous composition uses type-erased wrappers (`DynRunnable`).
+
+### Errors are actionable
+
+Each crate below the umbrella defines its own error type via `thiserror`. Cross-crate errors use `From` conversions — `cognis_graph::Error` wraps `cognis_core::CognisError`.
+
+The umbrella `cognis` crate does **not** depend on `thiserror` directly. When adding a new error type there, hand-roll `Display` and `Error`.
+
+### Async by default
+
+All I/O-bound trait methods are `async` via `#[async_trait]`. No sync compat layer; callers use `block_on` if they need to.
+
+### Feature flags for optional deps
+
+Every external integration is behind a feature flag. The core crates compile with no network deps. New providers, vector stores, and exporters all gain a feature.
+
+## Code quality rules
+
+- All public types, traits, and functions get `///` doc comments.
+- No `unwrap()` or `expect()` in library code — propagate errors with `?`.
+- No `println!` in library code — use `tracing` macros.
+- Clippy passes: `cargo clippy --workspace --features all-providers -- -D warnings`.
+- Format with `cargo fmt` before every commit.
+- New public API gets at least one unit test and one doc-test.
+
+## What NOT to port from Python
+
+| Python pattern | Rust approach |
+|---|---|
+| `Chain` base class (deprecated upstream) | Compose with `Runnable` and `pipe` instead. |
+| Pydantic runtime validation | `serde` for deserialization + custom validators at boundaries. |
+| `@classmethod` constructors | Associated functions or builder pattern. |
+| Mixin classes | Trait composition, no mixins. |
+| `**kwargs` pass-through | Explicit config structs or builder methods. |
+| Global callback manager | Thread-local or config-carried `CallbackManager`. |
+| `asyncio.to_thread()` for sync compat | Async-only API; callers use `block_on()` if needed. |
+| Dynamic attribute access (`getattr`) | Enum dispatch or trait objects. |
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Adding a provider" icon="plug" href="/contribute/adding-a-provider">
+    The walkthrough for a new LLM client.
+  </Card>
+  <Card title="PR guidelines" icon="code-merge" href="/contribute/pull-requests">
+    The PR checklist that maps to these rules.
+  </Card>
+  <Card title="Reference → cognis" icon="book" href="/reference/api/cognis">
+    The umbrella's re-export surface.
+  </Card>
+</CardGroup>

@@ -1,0 +1,141 @@
+---
+title: "cognis-core"
+description: "The foundation. Runnable, Message, prompts, output parsers, callbacks, composition. Zero internal dependencies."
+sidebarTitle: "cognis-core"
+---
+
+`cognis-core` is the smallest, most stable crate. Everything else depends on it; it depends on nothing internally. If you're building a primitive that the rest of the workspace should be able to compose, this is where the trait goes.
+
+## Crate metadata
+
+| Field | Value |
+|---|---|
+| Latest version | `0.3` |
+| docs.rs | [docs.rs/cognis-core](https://docs.rs/cognis-core) |
+| Repo path | [`crates/cognis-core`](https://github.com/0xvasanth/cognis/tree/main/crates/cognis-core) |
+| Default features | none |
+
+## Modules at a glance
+
+| Module | What |
+|---|---|
+| `runnable` | `Runnable<I, O>` trait, `RunnableConfig`. |
+| `runnable_ext` | `RunnableExt` — `pipe`, `with_max_retries`, `with_timeout`, `with_fallback`, `with_memory_cache`, `each`. |
+| `compose` | `Branch`, `Parallel`, `Each`, `Lambda`, `Passthrough`, `Pipe`. Plus the `lambda` and `pipe` helpers. |
+| `wrappers` | `Retry`, `RetryPolicy`, `Timeout`, `Fallback`, `Cache`, `MemoryCache`, `CacheBackend`, `Bind`, `Configurable`, `Assign`. |
+| `message` | `Message`, `HumanMessage`, `AiMessage`, `SystemMessage`, `ToolMessage`, `ToolCall`. |
+| `content` | `ContentPart`, `ImageSource`, `AudioSource`. |
+| `prompts` | `ChatPromptTemplate`, `PromptTemplate`, `FewShotTemplate`, `Role`. |
+| `output_parsers` | `OutputParser`, `StructuredOutputParser`, `OutputFixingParser`, `RetryParser`, `JsonParser`, `JsonExtractor`, `XmlParser`, `BooleanParser`, `NumberedListParser`, `CommaListParser`, `StringParser`. |
+| `callbacks` | `CallbackHandler`, `CallbackManager`, `HandlerObserver`, `BuiltHandler`, `HandlerBuilder`. |
+| `stream` | `Event`, `EventStream`, `Observer`, `RunnableStream`. |
+| `tools` | `BaseTool` (re-export of `Tool`). The trait shape lives in `cognis-llm`. |
+| `tokenizer` | `Tokenizer`, `CharTokenizer`, `FnTokenizer`. |
+| `loaders` | `Loader` trait — used by `cognis-rag`. |
+| `error` | `CognisError`, `Result`. |
+
+## Key types
+
+### Runnable
+
+```rust
+#[async_trait]
+pub trait Runnable<I, O>: Send + Sync
+where I: Send + 'static, O: Send + 'static
+{
+    async fn invoke(&self, input: I, config: RunnableConfig) -> Result<O>;
+    async fn batch(&self, inputs: Vec<I>, config: RunnableConfig) -> Result<Vec<O>> { /* default */ }
+    async fn stream(&self, input: I, config: RunnableConfig) -> Result<RunnableStream<O>> { /* default */ }
+    async fn stream_events(&self, input: I, config: RunnableConfig) -> Result<EventStream> { /* default */ }
+    fn name(&self) -> &str { /* type_name */ }
+    fn input_schema(&self) -> Option<serde_json::Value> { None }
+    fn output_schema(&self) -> Option<serde_json::Value> { None }
+}
+```
+
+### RunnableConfig
+
+```rust
+pub struct RunnableConfig {
+    pub recursion_limit: u32,
+    pub max_concurrency: usize,
+    pub tags: Vec<String>,
+    pub metadata: serde_json::Value,
+    pub observers: Vec<Arc<dyn Observer>>,
+    pub run_id: Uuid,
+    pub cancel_token: Option<tokio_util::sync::CancellationToken>,
+    pub deadline: Option<Instant>,
+    pub extras: Extensions,
+    pub parent_run_id: Option<Uuid>,
+}
+```
+
+Builder methods: `new`, `with_recursion_limit`, `with_max_concurrency`, `with_observer`, `with_tag`, `with_cancel_token`, `with_parent_run_id`. Plus `is_cancelled` and `emit`.
+
+### Event
+
+```rust
+pub enum Event {
+    OnStart { runnable, run_id, input },
+    OnNodeStart { node, step, run_id },
+    OnNodeEnd { node, step, output, run_id },
+    OnLlmToken { token, run_id },
+    OnToolStart { tool, args, run_id },
+    OnToolEnd { tool, result, run_id },
+    OnError { error, run_id },
+    OnEnd { runnable, run_id, output },
+    OnCheckpoint { step, run_id },
+    Custom { kind, payload, run_id },
+}
+```
+
+### Message
+
+```rust
+pub enum Message {
+    Human(HumanMessage),
+    Ai(AiMessage),
+    System(SystemMessage),
+    Tool(ToolMessage),
+}
+```
+
+Constructors: `Message::human`, `Message::ai`, `Message::system`, `Message::tool`, plus `*_with_parts` variants.
+
+### CognisError
+
+```rust
+pub enum CognisError {
+    ProviderError { provider, message, status },
+    RateLimited { retry_after_ms },
+    Tool { name, reason },
+    ToolValidationError(String),
+    OutputParse { raw, error },
+    GraphInterrupted { kind, step, .. },
+    RecursionLimit,
+    Cancelled,
+    DeadlineExceeded,
+    Other(String),
+    // …
+}
+```
+
+`Result<T> = std::result::Result<T, CognisError>`. Cross-crate errors wrap via `From`.
+
+## docs.rs
+
+Browse the full API at [docs.rs/cognis-core](https://docs.rs/cognis-core). Every public type, trait, and function has rustdoc.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Runnables" icon="code" href="/core-ideas/runnables">
+    The conceptual page on the trait.
+  </Card>
+  <Card title="Messages" icon="comment" href="/core-ideas/messages">
+    What flows through chat-shaped Runnables.
+  </Card>
+  <Card title="Structured output" icon="brackets-curly" href="/building-agents/structured-output">
+    `StructuredOutputParser`, `OutputFixingParser`, `RetryParser`.
+  </Card>
+</CardGroup>

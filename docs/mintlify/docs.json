@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Cognis",
+  "name": "cognis",
   "description": "Rust-native LLM framework. Type-safe Runnable, agent loop, graph state, RAG pipeline, and observability.",
   "colors": {
     "primary": "#D97706",
@@ -12,28 +12,98 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Documentation",
-        "icon": "book-open",
+        "tab": "Learn",
+        "icon": "graduation-cap",
         "groups": [
           {
             "group": "Get started",
             "icon": "rocket",
             "pages": [
               "introduction",
-              "quickstart",
-              "installation"
+              "get-started/quickstart",
+              "get-started/installation",
+              "get-started/comparison"
             ]
           },
           {
-            "group": "Concepts",
+            "group": "Core ideas",
             "icon": "lightbulb",
             "pages": [
-              "concepts/runnable",
-              "concepts/llm",
-              "concepts/rag",
-              "concepts/graph",
-              "concepts/agents",
-              "concepts/trace"
+              "core-ideas/runnables",
+              "core-ideas/messages",
+              "core-ideas/graphs",
+              "core-ideas/agents"
+            ]
+          },
+          {
+            "group": "Building agents",
+            "icon": "robot",
+            "pages": [
+              "building-agents/models",
+              "building-agents/tools",
+              "building-agents/memory",
+              "building-agents/multi-agent",
+              "building-agents/middleware",
+              "building-agents/hitl",
+              "building-agents/streaming",
+              "building-agents/structured-output"
+            ]
+          },
+          {
+            "group": "Building RAG",
+            "icon": "database",
+            "pages": [
+              "building-rag/documents",
+              "building-rag/embeddings",
+              "building-rag/retrievers",
+              "building-rag/indexing",
+              "building-rag/reranking"
+            ]
+          },
+          {
+            "group": "Graph workflows",
+            "icon": "diagram-project",
+            "pages": [
+              "graph-workflows/state",
+              "graph-workflows/control-flow",
+              "graph-workflows/checkpointing",
+              "graph-workflows/streaming",
+              "graph-workflows/visualization"
+            ]
+          },
+          {
+            "group": "Observability",
+            "icon": "chart-line",
+            "pages": [
+              "observability/callbacks",
+              "observability/langfuse",
+              "observability/cost",
+              "observability/prompts-scores",
+              "observability/evaluation"
+            ]
+          },
+          {
+            "group": "Patterns",
+            "icon": "grid",
+            "pages": [
+              "patterns/research-assistant",
+              "patterns/code-qa",
+              "patterns/multi-agent-debate",
+              "patterns/long-context",
+              "patterns/hitl-approval",
+              "patterns/stateful-chat",
+              "patterns/streaming-ui",
+              "patterns/local-ollama"
+            ]
+          },
+          {
+            "group": "Production",
+            "icon": "shield",
+            "pages": [
+              "production/resilience",
+              "production/caching",
+              "production/security",
+              "production/going-to-production"
             ]
           }
         ]
@@ -43,10 +113,69 @@
         "icon": "book",
         "groups": [
           {
-            "group": "Reference",
+            "group": "API per crate",
+            "icon": "cube",
             "pages": [
-              "reference/crates",
-              "reference/feature-flags"
+              "reference/api/cognis",
+              "reference/api/cognis-core",
+              "reference/api/cognis-llm",
+              "reference/api/cognis-rag",
+              "reference/api/cognis-graph",
+              "reference/api/cognis-trace",
+              "reference/api/cognis-macros"
+            ]
+          },
+          {
+            "group": "Reference",
+            "icon": "list",
+            "pages": [
+              "reference/feature-flags",
+              "reference/env-vars",
+              "reference/changelog"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "icon": "grid",
+        "groups": [
+          {
+            "group": "Examples",
+            "icon": "grid",
+            "pages": [
+              "examples/index",
+              "examples/quickstart",
+              "examples/chains",
+              "examples/agents",
+              "examples/memory",
+              "examples/models",
+              "examples/tools",
+              "examples/retrieval",
+              "examples/graphs",
+              "examples/observability",
+              "examples/resilience",
+              "examples/parsers"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Contribute",
+        "icon": "code-merge",
+        "groups": [
+          {
+            "group": "Contribute",
+            "icon": "hand-holding-heart",
+            "pages": [
+              "contribute/ways-to-contribute",
+              "contribute/development-setup",
+              "contribute/architecture",
+              "contribute/pull-requests",
+              "contribute/adding-a-provider",
+              "contribute/adding-a-vector-store",
+              "contribute/adding-a-tool",
+              "contribute/code-of-conduct"
             ]
           }
         ]

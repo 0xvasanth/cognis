@@ -1,0 +1,176 @@
+---
+title: "Adding a new vector store"
+description: "Plug a new backend into cognis-rag — local store or hosted service."
+sidebarTitle: "Adding a vector store"
+---
+
+Cognis ships six vector stores (in-memory, FAISS, Chroma, Qdrant, Pinecone, Weaviate). Adding a seventh is a self-contained task. This page covers the shape.
+
+## What you'll add
+
+- A new module under `crates/cognis-rag/src/vectorstore/<name>.rs` (or a directory for larger backends).
+- A struct implementing `VectorStore`, plus a `<Name>Builder` for hosted backends.
+- A feature flag in `crates/cognis-rag/Cargo.toml` (`vectorstore-<name>`).
+- Tests with mocked HTTP if hosted, or in-process if local.
+- An example under `examples/retrieval/`.
+- Documentation entries in [Embeddings and vector stores](/building-rag/embeddings) and [Feature flags](/reference/feature-flags).
+
+## The trait
+
+```rust
+#[async_trait]
+pub trait VectorStore: Send + Sync {
+    async fn add_texts(&mut self, texts: Vec<String>, ids: Option<Vec<String>>) -> Result<Vec<String>>;
+    async fn add_vectors(&mut self, vectors: Vec<(String, Vec<f32>, HashMap<String, Value>)>) -> Result<()>;
+    async fn similarity_search(&self, query: &str, k: usize) -> Result<Vec<SearchResult>>;
+    async fn similarity_search_by_vector(&self, vector: &[f32], k: usize) -> Result<Vec<SearchResult>>;
+    async fn similarity_search_with_filter(&self, query: &str, k: usize, filter: Filter) -> Result<Vec<SearchResult>>;
+    async fn delete(&mut self, ids: Vec<String>) -> Result<()>;
+}
+```
+
+`SearchResult` is `{ id, text, score, metadata }`.
+
+For backends that don't natively support a method (e.g. some don't take a metadata filter), provide a sensible fallback — fetch top K, then filter in-process — and document the difference.
+
+## Step 1 — Build the struct
+
+For a hosted backend:
+
+```rust
+// crates/cognis-rag/src/vectorstore/myvector.rs
+use std::sync::Arc;
+use async_trait::async_trait;
+use crate::{Document, Embeddings, SearchResult, VectorStore, Filter};
+
+pub struct MyVectorStore {
+    embeddings: Arc<dyn Embeddings>,
+    http: reqwest::Client,
+    base_url: String,
+    api_key: secrecy::SecretString,
+    collection: String,
+}
+
+pub struct MyVectorStoreBuilder { /* … */ }
+
+impl MyVectorStoreBuilder {
+    pub fn new() -> Self { /* … */ todo!() }
+    pub fn url(mut self, u: impl Into<String>) -> Self { /* … */ self }
+    pub fn api_key(mut self, k: impl Into<String>) -> Self { /* … */ self }
+    pub fn collection(mut self, c: impl Into<String>) -> Self { /* … */ self }
+    pub fn embeddings(mut self, e: Arc<dyn Embeddings>) -> Self { /* … */ self }
+    pub fn build(self) -> cognis_core::Result<MyVectorStore> { /* … */ todo!() }
+}
+
+#[async_trait]
+impl VectorStore for MyVectorStore {
+    // 6 methods. Map to your backend's REST / gRPC API.
+}
+```
+
+For local stores (FAISS-style), there's no HTTP — the struct holds the index and the embedder.
+
+## Step 2 — Feature flag
+
+```toml
+# crates/cognis-rag/Cargo.toml
+[features]
+vectorstore-myvector = ["dep:reqwest", "dep:secrecy"]
+
+# Update the all-vectorstores grouping:
+all-vectorstores = [
+    "vectorstore-chroma",
+    "vectorstore-qdrant",
+    "vectorstore-pinecone",
+    "vectorstore-weaviate",
+    "vectorstore-faiss",
+    "vectorstore-myvector",
+]
+```
+
+In `crates/cognis-rag/src/lib.rs`:
+
+```rust
+#[cfg(feature = "vectorstore-myvector")]
+pub use vectorstore::myvector::{MyVectorStore, MyVectorStoreBuilder};
+```
+
+The umbrella picks it up automatically through `pub use cognis_rag::*`.
+
+## Step 3 — Tests
+
+Mocked HTTP for hosted; in-process tests for local.
+
+```rust
+// crates/cognis-rag/src/vectorstore/myvector.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::FakeEmbeddings;
+
+    #[tokio::test]
+    async fn add_then_search() {
+        // Use `wiremock` for HTTP backends, or build the local index in-process.
+    }
+}
+```
+
+Make sure tests cover:
+
+- `add_texts` followed by `similarity_search` returns the right docs.
+- `delete` actually removes — a search after delete shouldn't find the deleted ids.
+- `similarity_search_with_filter` either filters or falls back gracefully (and the doc page says which).
+- Error paths — what happens when the service is down, returns 5xx, or the collection doesn't exist.
+
+## Step 4 — Add an example
+
+```rust
+// examples/retrieval/myvector_basics.rs
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis_rag::{Embeddings, FakeEmbeddings, MyVectorStoreBuilder, VectorStore};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let emb: Arc<dyn Embeddings> = Arc::new(FakeEmbeddings::new(8));
+    let mut store = MyVectorStoreBuilder::new()
+        .url(std::env::var("MYVECTOR_URL").unwrap_or_else(|_| "http://localhost:6334".into()))
+        .api_key(std::env::var("MYVECTOR_API_KEY").unwrap_or_default())
+        .collection("demo")
+        .embeddings(emb)
+        .build()?;
+
+    store.add_texts(vec!["hello".into(), "world".into()], None).await?;
+    let hits = store.similarity_search("greeting", 2).await?;
+    println!("{:#?}", hits);
+    Ok(())
+}
+```
+
+Register in `crates/examples/Cargo.toml` with a name like `retrieval_myvector_basics`.
+
+## Step 5 — Update docs
+
+- [`/building-rag/embeddings`](/building-rag/embeddings) — add a row in the vector-store table and a tab in the picker.
+- [`/reference/feature-flags`](/reference/feature-flags) — add the feature row.
+- [`/reference/api/cognis-rag`](/reference/api/cognis-rag) — add the type to the inventory.
+
+## Step 6 — PR
+
+Title: `feat(rag): add MyVectorStore`. Description should mention:
+
+- The backend's public docs.
+- Feature flag name.
+- Whether `similarity_search_with_filter` is native or an in-process fallback.
+- Anything not yet supported.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Adding a provider" icon="plug" href="/contribute/adding-a-provider">
+    Same shape, different domain.
+  </Card>
+  <Card title="cognis-rag reference" icon="book" href="/reference/api/cognis-rag">
+    Trait surface and existing implementations.
+  </Card>
+</CardGroup>

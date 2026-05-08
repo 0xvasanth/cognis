@@ -1,0 +1,55 @@
+---
+title: "Retrieval (RAG)"
+description: "Splitters, vector stores, retrievers, indexing pipeline, rerankers, document transformers."
+sidebarTitle: "Retrieval"
+---
+
+Retrieval examples cover every layer of RAG — chunking, storing, fetching, reranking, transforming. Sources under [`examples/retrieval/`](https://github.com/0xvasanth/cognis/tree/main/examples/retrieval).
+
+| Name | Topic | Source |
+|---|---|---|
+| `retrieval_text_splitters` | Splitter comparison | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/text_splitters.rs) |
+| `retrieval_text_splitting` | Splitting strategies in depth | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/text_splitting.rs) |
+| `retrieval_document_store` | `Docstore` for parent-document patterns | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/document_store.rs) |
+| `retrieval_vector_store` | In-memory vector store basics | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/vector_store.rs) |
+| `retrieval_vector_store_search` | Similarity-search shapes | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/vector_store_search.rs) |
+| `retrieval_rag_pipeline` | End-to-end RAG | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/rag_pipeline.rs) |
+| `retrieval_rag_with_vectorstore` | RAG against a hosted store | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/rag_with_vectorstore.rs) |
+| `retrieval_indexing_rag` | `IndexingPipeline` + `RecordManager` (incremental) | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/indexing_rag.rs) |
+| `retrieval_caching_retriever` | Hash-keyed retriever cache | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/caching_retriever.rs) |
+| `retrieval_document_compression` | `CompressorPipeline` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/document_compression.rs) |
+| `retrieval_cross_encoder` | `CrossEncoderReranker` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/cross_encoder.rs) |
+| `retrieval_reranking` | Reranking patterns | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/reranking_retriever.rs) |
+| `retrieval_document_transformers` | `LongContextReorder`, `MetadataTransformer` | [src](https://github.com/0xvasanth/cognis/blob/main/examples/retrieval/document_transformers.rs) |
+
+## How to run
+
+```bash
+# Offline (uses FakeEmbeddings):
+cargo run -p cognis-examples --example retrieval_vector_store
+cargo run -p cognis-examples --example retrieval_indexing_rag
+
+# Provider-backed:
+COGNIS_PROVIDER=ollama \
+  cargo run -p cognis-examples --example retrieval_rag_pipeline
+```
+
+## Pick a starting point
+
+- **First time touching RAG?** `retrieval_rag_pipeline` shows the full split → embed → store → retrieve → answer flow.
+- **Re-indexing a corpus?** `retrieval_indexing_rag` covers incremental updates.
+- **Improving retrieval quality?** `retrieval_cross_encoder` and `retrieval_document_transformers` are the post-processing layers.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Building RAG" icon="database" href="/building-rag/documents">
+    The user guide for every layer.
+  </Card>
+  <Card title="Patterns → Code Q&A" icon="grid" href="/patterns/code-qa">
+    A worked RAG over a Rust codebase.
+  </Card>
+  <Card title="Reranking & compression" icon="arrow-down-up-across-line" href="/building-rag/reranking">
+    Why reranking matters.
+  </Card>
+</CardGroup>

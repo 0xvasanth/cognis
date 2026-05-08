@@ -1,0 +1,143 @@
+---
+title: "Checkpointing and time travel"
+description: "Persist state, rewind, edit, resume. The foundation for human-in-the-loop, debugging, and durability."
+sidebarTitle: "Checkpointing"
+---
+
+A checkpointer turns a graph from a one-shot computation into something you can pause, inspect, edit, and resume. It's also the foundation for human-in-the-loop (which needs `resume`) and for production durability (you survive process restarts).
+
+## What a checkpointer is
+
+```rust
+pub trait Checkpointer<S: GraphState>: Send + Sync {
+    async fn save(&self, run_id: Uuid, step: u64, state: &S) -> Result<()>;
+    async fn load(&self, run_id: Uuid, step: Option<u64>) -> Result<Option<S>>;
+    async fn list(&self, run_id: Uuid) -> Result<Vec<u64>>;
+    async fn delete(&self, run_id: Uuid) -> Result<()>;
+}
+```
+
+Three implementations ship in the box; bring your own for anything else.
+
+| Checkpointer | Backed by | Feature flag |
+|---|---|---|
+| `InMemoryCheckpointer` | a process-local map | always |
+| `SqliteCheckpointer` | a SQLite file | `cognis-graph/sqlite` |
+| `PostgresCheckpointer` | a Postgres database | `cognis-graph/postgres` |
+
+## Quick example
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+
+let cp: Arc<dyn Checkpointer<State>> = Arc::new(InMemoryCheckpointer::<State>::new());
+
+let graph = Graph::<State>::new()
+    .node("tick", tick_node)
+    .start_at("tick")
+    .compile()?
+    .with_checkpointer(cp.clone());
+
+let cfg = RunnableConfig::default();
+let run_id = cfg.run_id;
+let final_state = graph.invoke(State::default(), cfg).await?;
+
+// Time travel: load each saved step.
+let steps = cp.list(run_id).await?;
+for s in &steps {
+    if let Some(snapshot) = cp.load(run_id, Some(*s)).await? {
+        println!("step {}: {:?}", s, snapshot);
+    }
+}
+```
+
+Source: [`examples/v2/05_checkpoint_resume.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/v2/05_checkpoint_resume.rs).
+
+## Inspecting state
+
+Compiled graphs expose the inspection surface directly:
+
+```rust
+let latest = graph.get_state(run_id).await?;                    // most recent
+let history = graph.get_state_history(run_id).await?;           // Vec<(step, S)>
+let at_step_3 = graph.get_state_at(run_id, 3).await?;           // a specific step
+```
+
+Use this for debug UIs, audit trails, and step-through replay.
+
+## Editing state
+
+Sometimes the human in the loop should *fix* the state before resuming — correct a typo, drop a tool result, change a counter. `update_state` writes a new snapshot at a given step:
+
+```rust
+graph.update_state(run_id, step, &edited_state).await?;
+```
+
+Subsequent `resume(run_id, step, state, cfg)` reads from this updated state, so the rewind is real.
+
+## Resume after an interrupt
+
+When a graph pauses (because of `with_interrupt_before` / `with_interrupt_after`), `invoke` returns `Err(CognisError::GraphInterrupted { kind, step, .. })`. That's not a failure — it's a pause. The shape:
+
+```rust
+use cognis_core::CognisError;
+
+match graph.invoke(state, cfg.clone()).await {
+    Err(CognisError::GraphInterrupted { kind, step, .. }) => {
+        let snapshot = graph.get_state(run_id).await?.unwrap_or_default();
+        // …show snapshot, edit, decide…
+        let resumed = graph.resume(run_id, step, snapshot, cfg).await?;
+    }
+    other => { let _ = other?; }
+}
+```
+
+The `kind` tells you whether you stopped before or after the named node. The `step` is what you pass back to `resume`.
+
+## Choosing a backend
+
+| Use case | Pick |
+|---|---|
+| Tests, ephemeral demos | `InMemoryCheckpointer` |
+| Single-process service, durable across restarts | `SqliteCheckpointer` |
+| Multi-process service, shared state | `PostgresCheckpointer` |
+| Anything custom (Redis, S3, your own DB) | implement `Checkpointer<S>` |
+
+A single graph holds *one* checkpointer — but you can attach different checkpointers to different runs by compiling per-request if you need per-tenant separation.
+
+## Subgraph isolation
+
+Subgraphs use `checkpoint_ns` to isolate their state from the parent. Nested graphs end up with namespaced run trees:
+
+```
+parent_run_id/
+  subgraph_a/
+    step 0
+    step 1
+  subgraph_b/
+    step 0
+```
+
+`get_state_history` on a subgraph only sees the sub-tree, so debugging is local.
+
+## How it works
+
+- **A checkpoint is taken after each superstep.** That's also when observers fire `OnCheckpoint`.
+- **Checkpointers serialize state.** `S: Serialize` is required for Sqlite / Postgres backends. The in-memory one clones.
+- **Resume is exact.** `resume(run_id, step, state, cfg)` continues from the same superstep with the seeded state, preserving observer and metadata propagation.
+- **`update_state` and `resume` are independent.** You can call `update_state` zero, one, or many times before `resume`.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Human-in-the-loop" icon="user-check" href="/building-agents/hitl">
+    Pause, approve, edit, resume.
+  </Card>
+  <Card title="Patterns → HITL approval" icon="grid" href="/patterns/hitl-approval">
+    A complete approval flow with checkpoints.
+  </Card>
+  <Card title="Production → Going to production" icon="rocket" href="/production/going-to-production">
+    Picking a checkpointer for your stack.
+  </Card>
+</CardGroup>

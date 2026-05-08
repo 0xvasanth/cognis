@@ -1,0 +1,146 @@
+---
+title: "cognis-llm"
+description: "LLM clients and providers, tool calling, structured output, streaming."
+sidebarTitle: "cognis-llm"
+---
+
+`cognis-llm` defines the `LLMProvider` trait and ships clients for the major vendors. It also defines the `Tool` trait that the agent layer dispatches.
+
+## Crate metadata
+
+| Field | Value |
+|---|---|
+| Latest version | `0.3` |
+| docs.rs | [docs.rs/cognis-llm](https://docs.rs/cognis-llm) |
+| Repo path | [`crates/cognis-llm`](https://github.com/0xvasanth/cognis/tree/main/crates/cognis-llm) |
+| Default features | `openai`, `ollama` |
+
+## Modules at a glance
+
+| Module | What |
+|---|---|
+| `client` | `Client`, `ClientBuilder`. The provider-agnostic surface. |
+| `provider` | `LLMProvider` trait, `Provider` enum, plus per-vendor builders (`openai::OpenAIBuilder`, `anthropic::AnthropicBuilder`, etc.). |
+| `chat` | `ChatOptions`, `ChatResponse`, `Usage`, `StreamChunk`, `HealthStatus`. |
+| `streaming` | `Aggregated`, `StreamAggregator`, `UsageTracker`. |
+| `tools` | `Tool` (alias `BaseTool`), `SchemaBasedTool`, `ToolDefinition`, `ToolInput`, `ToolOutput`, `ToolRegistry`. |
+
+## Key types
+
+### Client
+
+```rust
+pub struct Client { /* … */ }
+
+impl Client {
+    pub fn from_env() -> Result<Self>;
+    pub fn builder() -> ClientBuilder;
+    pub fn new(provider: Arc<dyn LLMProvider>) -> Self;
+
+    pub fn provider(&self) -> &dyn LLMProvider;
+
+    pub async fn invoke(&self, messages: Vec<Message>) -> Result<Message>;
+    pub async fn stream(&self, messages: Vec<Message>) -> Result<RunnableStream<StreamChunk>>;
+    pub async fn chat(&self, messages: Vec<Message>, opts: ChatOptions) -> Result<ChatResponse>;
+    pub async fn invoke_with_tools(&self, messages: Vec<Message>, tools: &[Arc<dyn Tool>]) -> Result<Message>;
+}
+```
+
+`Client` implements `Runnable<Vec<Message>, Message>` — wrap with `RunnableExt` methods for retry / timeout / fallback / cache.
+
+### ClientBuilder
+
+| Method | Purpose |
+|---|---|
+| `provider(Provider)` | One of `OpenAi`, `Anthropic`, `Google`, `Ollama`, `Azure`, `OpenRouter`. |
+| `api_key(String)` | Provider key. |
+| `base_url(String)` | Override the API base. |
+| `model(String)` | Default model name. |
+| `timeout_secs(u64)` | HTTP timeout. |
+| `organization(String)` | OpenAI org id. |
+| `azure_endpoint(String)` / `azure_deployment(String)` / `azure_api_version(String)` | Azure-specific. |
+| `build()` | `Result<Client>`. |
+
+### LLMProvider
+
+```rust
+#[async_trait]
+pub trait LLMProvider: Send + Sync {
+    fn name(&self) -> &str;
+    fn provider_type(&self) -> Provider;
+    async fn chat_completion(&self, messages: Vec<Message>, opts: ChatOptions) -> Result<ChatResponse>;
+    async fn chat_completion_stream(&self, messages: Vec<Message>, opts: ChatOptions) -> Result<RunnableStream<StreamChunk>>;
+    async fn chat_completion_with_tools(&self, messages: Vec<Message>, tools: Vec<ToolDefinition>, opts: ChatOptions) -> Result<ChatResponse>;
+    async fn health_check(&self) -> Result<HealthStatus>;
+}
+```
+
+Implement this for custom backends — internal gateways, mock providers in tests, self-hosted runtimes.
+
+### Provider builders
+
+Each lives under `cognis_llm::provider::*` and returns a value that's wrapped into a `Client` via `Client::new(Arc::new(provider))`.
+
+- `openai::OpenAIBuilder` — `api_key`, `base_url`, `model`, `timeout_secs`, `organization`.
+- `anthropic::AnthropicBuilder` — `api_key`, `base_url`, `model`, `timeout_secs`.
+- `google::GoogleBuilder` — `api_key`, `base_url`, `model`, `timeout_secs`.
+- `ollama::OllamaBuilder` — `base_url`, `model`, `timeout_secs`.
+- `azure::AzureBuilder` — `endpoint`, `deployment`, `api_version`, `api_key`, `timeout_secs`.
+- `openrouter::OpenRouterBuilder` — `api_key`, `model`, `extra_header(name, value)`.
+
+### Tool trait
+
+```rust
+#[async_trait]
+pub trait Tool: Send + Sync {
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
+    fn args_schema(&self) -> Option<serde_json::Value>;
+    fn return_direct(&self) -> bool { false }
+    async fn _run(&self, input: ToolInput) -> Result<ToolOutput>;
+}
+
+pub use Tool as BaseTool;
+```
+
+`SchemaBasedTool` is a convenience layer: declare `type Params: JsonSchema`, implement `execute_typed`, get a `Tool` impl free.
+
+### ToolRegistry
+
+```rust
+pub struct ToolRegistry { /* … */ }
+
+impl ToolRegistry {
+    pub fn new() -> Self;
+    pub fn register(&mut self, tool: Arc<dyn Tool>);
+    pub fn register_alias(&mut self, alias: impl Into<String>, name: &str);
+    pub fn get(&self, name: &str) -> Option<&Arc<dyn Tool>>;
+    pub fn definitions(&self) -> Vec<ToolDefinition>;
+    pub async fn execute(&self, name: &str, input: ToolInput) -> Result<ToolOutput>;
+    // …
+}
+```
+
+The agent's tool dispatcher uses a `ToolRegistry` internally; you usually don't construct one directly.
+
+## Feature flags
+
+| Feature | Pulls in |
+|---|---|
+| `openai` | `reqwest`, `secrecy`, OpenAI client (default). |
+| `anthropic` | Anthropic Messages client. |
+| `google` | Gemini client. |
+| `ollama` | Ollama client (default). |
+| `azure` | Azure OpenAI client. |
+| `all-providers` | All of the above. |
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Models and providers" icon="plug" href="/building-agents/models">
+    User-facing guide for Client and the provider builders.
+  </Card>
+  <Card title="Tools" icon="screwdriver-wrench" href="/building-agents/tools">
+    Defining tools with `Tool` and `SchemaBasedTool`.
+  </Card>
+</CardGroup>

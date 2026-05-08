@@ -1,0 +1,67 @@
+---
+title: "Examples"
+description: "100+ runnable demos covering every part of Cognis. Pick a category, run with one cargo command."
+sidebarTitle: "Overview"
+---
+
+Every example lives under [`examples/`](https://github.com/0xvasanth/cognis/tree/main/examples) in the repo. They're real, runnable programs — not snippets. Most work offline against fakes; a few need a provider key.
+
+## How to run
+
+```bash
+git clone https://github.com/0xvasanth/cognis.git
+cd cognis
+cargo run -p cognis-examples --example <NAME>
+```
+
+For provider-backed examples, set `COGNIS_PROVIDER` plus the matching key. The simplest way is local Ollama — no key needed:
+
+```bash
+ollama pull llama3.1
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example agents_react_agent
+```
+
+See [Environment variables](/reference/env-vars) for the full table of provider env names, and [Quickstart](/get-started/quickstart) for the smallest working agent.
+
+## Categories
+
+<CardGroup cols={2}>
+  <Card title="Quickstart V2" icon="bolt" href="/examples/quickstart">
+    8 numbered demos that walk the V2 surface end-to-end. The fastest way to learn the shape of every layer.
+  </Card>
+  <Card title="Chains" icon="link" href="/examples/chains">
+    10 examples on composition — `pipe`, branching, parsers, structured extraction, typed runnables.
+  </Card>
+  <Card title="Agents" icon="robot" href="/examples/agents">
+    15 examples on the agent loop — ReAct, multi-agent, planning, lifecycle hooks, plugins, AgentBus.
+  </Card>
+  <Card title="Memory" icon="brain" href="/examples/memory">
+    6 examples comparing memory variants — Buffer, Window, SummaryBuffer, Entity, KnowledgeGraph.
+  </Card>
+  <Card title="Models" icon="plug" href="/examples/models">
+    8 examples on LLM clients — streaming, embeddings, similarity, model routing, content blocks.
+  </Card>
+  <Card title="Tools" icon="screwdriver-wrench" href="/examples/tools">
+    9 examples on tool definition and dispatch — derive macro, schema-based, ToolOrchestrator DAG.
+  </Card>
+  <Card title="Retrieval" icon="magnifying-glass" href="/examples/retrieval">
+    13 examples on RAG — splitters, vector stores, retrievers, indexing pipeline, rerankers, transformers.
+  </Card>
+  <Card title="Graphs" icon="diagram-project" href="/examples/graphs">
+    18 examples on `Graph<S>` — state machines, checkpoints, interrupts, viz, routers, message graphs.
+  </Card>
+  <Card title="Observability" icon="chart-line" href="/examples/observability">
+    6 examples on callbacks, tracing, health checks, evaluation framework and pipeline.
+  </Card>
+  <Card title="Resilience" icon="shield" href="/examples/resilience">
+    7 examples on retries, fallbacks, rate limiters, SSRF protection, error recovery.
+  </Card>
+  <Card title="Parsers" icon="brackets-curly" href="/examples/parsers">
+    2 examples on output-fixing and retry parsers — making structured output robust.
+  </Card>
+</CardGroup>
+
+## Looking for something larger?
+
+Standalone examples show one feature at a time. For full applications that combine several layers, see [Patterns](/patterns/research-assistant) — research assistants, code Q&A, multi-agent debate, streaming UIs, and more.
