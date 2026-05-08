@@ -295,8 +295,8 @@ path = "../../examples/graphs/semantic_router.rs"
 name = "graphs_message_graph"
 path = "../../examples/graphs/message_graph.rs"
 [[example]]
-name = "graphs_langgraph_agent"
-path = "../../examples/graphs/langgraph_agent.rs"
+name = "graphs_agent_builder"
+path = "../../examples/graphs/agent_builder_graph.rs"
 
 # observability/
 [[example]]

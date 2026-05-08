@@ -10,10 +10,14 @@
 
 ## Crates Affected
 
-- [ ] `rustchain-core`
-- [ ] `rustchain`
-- [ ] `langgraph`
-- [ ] `deepagents`
+- [ ] `cognis-core`
+- [ ] `cognis-llm`
+- [ ] `cognis-rag`
+- [ ] `cognis-graph`
+- [ ] `cognis-trace`
+- [ ] `cognis-macros`
+- [ ] `cognis` (umbrella)
+- [ ] docs / examples only
 
 ## Type of Change
 

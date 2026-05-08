@@ -7,7 +7,7 @@
 //!
 //! - Continue using [`crate::Observer`] for cheap, generic event sinks.
 //! - Use [`CallbackHandler`] when you want strongly-named hook methods
-//!   (typical for ports of LangChain-style integrations).
+//!   (typical for observability adapters that map per-lifecycle-event).
 //!
 //! Bridge: every `CallbackHandler` is automatically usable as an
 //! `Observer` via [`HandlerObserver`], so the two systems compose. A

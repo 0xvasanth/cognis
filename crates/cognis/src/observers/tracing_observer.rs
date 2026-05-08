@@ -11,8 +11,8 @@
 //!     .with_observer(Arc::new(TracingObserver::new()));
 //! ```
 //!
-//! Wire any `tracing-subscriber` (OTel, JSON, ...) on top — that's the
-//! Rust-native equivalent of a "LangSmith tracer."
+//! Wire any `tracing-subscriber` (OTel, JSON, …) on top to ship the
+//! event stream to your backend of choice.
 
 use cognis_core::{Event, Observer};
 

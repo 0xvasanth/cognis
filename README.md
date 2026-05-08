@@ -14,7 +14,7 @@
 
 ---
 
-Cognis is a Rust-native framework for building LLM-powered applications — agents, RAG pipelines, and stateful graph workflows. If you've used LangChain / LangGraph / DeepAgents in Python, this is the same conceptual surface translated into idiomatic Rust: typed `Runnable<I, O>`, stateful `Graph<S>`, and a small agent loop you compose with builders rather than configure with strings.
+Cognis is a Rust-native framework for building LLM-powered applications — agents, RAG pipelines, and stateful graph workflows. Typed `Runnable<I, O>`, stateful `Graph<S>`, and a small agent loop you compose with builders rather than configure with strings.
 
 ## Why Cognis?
 
@@ -226,7 +226,7 @@ crates/
 ├── cognisgraph    # Crate name `cognis-graph`. Stateful Graph<S>,
 │                  # checkpointers, interrupts, time-travel, viz.
 ├── cognis-trace   # Pluggable observability adapters (Langfuse,
-│                  # LangSmith, OpenTelemetry).
+│                  # OpenTelemetry).
 ├── cognis-macros  # Proc macros: #[tool], #[derive(GraphState)].
 ├── cognis         # Umbrella + agent layer: AgentBuilder,
 │                  # MultiAgentOrchestrator, AgentBus, memory variants,
@@ -240,7 +240,7 @@ crates/
 | **LLM**          | `cognis-llm`    | `Client`, providers, `Tool` trait, streaming, structured output                                                               |
 | **RAG**          | `cognis-rag`    | Embeddings, vector stores (6), retrievers (9+), splitters, loaders, indexing, transformers                                    |
 | **Graph**        | `cognis-graph`  | `Graph<S>`, Pregel engine, reducers, channels, checkpointers (in-memory/SQLite/Postgres), 7 stream modes, viz (DOT/Mermaid)  |
-| **Tracing**      | `cognis-trace`  | Langfuse / LangSmith / OpenTelemetry exporters                                                                                |
+| **Tracing**      | `cognis-trace`  | Langfuse / OpenTelemetry exporters                                                                                            |
 | **Agent**        | `cognis`        | `AgentBuilder`, multi-agent (Sequential/Supervisor/ParallelVote/RoundRobin), `AgentBus`, 7 memory types, middleware, tools    |
 
 `cognis-core` has zero internal-crate dependencies. Sibling crates depend only on `cognis-core` (and macros where needed). `cognis` is the only crate that depends on the siblings together.
@@ -265,7 +265,7 @@ cognis-rag = { version = "0.2", features = ["faiss", "openai"] }
 | `cognis`       | `openai`, `anthropic`, `google`, `ollama`, `azure`, `openrouter`, `all-providers`; `pdf`, `yaml`, `toml-loader`; `cache-sqlite`; `tools-http` |
 | `cognis-graph` | `sqlite`, `postgres` (checkpointers)                                                             |
 | `cognis-rag`   | `openai`, `google`, `voyage`, `ollama` (embeddings); `faiss`, `chroma`, `qdrant`, `pinecone`, `weaviate` (vector stores) |
-| `cognis-trace` | `stdout` (default), `langfuse`, `langsmith`, `otel`                                              |
+| `cognis-trace` | `stdout` (default), `langfuse`, `otel`                                                           |
 
 ## Examples
 
@@ -312,10 +312,6 @@ cargo clippy --workspace --all-targets -- -D warnings
 ## Contributing
 
 See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines, project structure, and conventions. Workflow rules and design patterns are codified in [CLAUDE.md](CLAUDE.md).
-
-## Acknowledgments
-
-Cognis is heavily inspired by the [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), and [DeepAgents](https://github.com/langchain-ai/deepagents) Python ecosystem. Thanks to the LangChain team for pioneering the composable LLM framework paradigm — their abstractions and developer experience were the foundation that made the Rust port possible.
 
 ## License
 

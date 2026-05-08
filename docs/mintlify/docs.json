@@ -21,8 +21,7 @@
             "pages": [
               "introduction",
               "get-started/quickstart",
-              "get-started/installation",
-              "get-started/comparison"
+              "get-started/installation"
             ]
           },
           {

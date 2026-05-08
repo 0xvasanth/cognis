@@ -4,7 +4,7 @@ description: "Pluggable LLM-aware observability. Langfuse-first, OTel-friendly v
 sidebarTitle: "cognis-trace"
 ---
 
-`cognis-trace` translates Cognis runtime events into spans, generations, and scores, then ships them to one or more exporters. Langfuse is the supported production backend; stdout and mock exporters ship for local use; LangSmith and OpenTelemetry are on the roadmap.
+`cognis-trace` translates Cognis runtime events into spans, generations, and scores, then ships them to one or more exporters. Langfuse is the supported production backend; stdout and mock exporters ship for local use; OpenTelemetry support is on the roadmap.
 
 ## Crate metadata
 
@@ -84,7 +84,7 @@ pub trait TraceExporter: Send + Sync {
 }
 ```
 
-Implement for LangSmith, OTel, your own backend.
+Implement for OTel or any other backend.
 
 ### Cost
 

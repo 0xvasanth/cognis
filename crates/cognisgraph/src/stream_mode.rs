@@ -2,8 +2,7 @@
 //!
 //! Compared to the default [`cognis_core::Runnable::stream_events`] (which
 //! emits the full structured `Event` taxonomy), [`StreamMode`] gives callers
-//! a coarser, name-keyed control over what they observe — closer to
-//! Python LangGraph's `stream(...)` modes:
+//! a coarser, name-keyed control over what they observe:
 //!
 //! | Mode          | What's emitted                                                  |
 //! |---------------|-----------------------------------------------------------------|

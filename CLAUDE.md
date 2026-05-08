@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## Project
 
-Cognis is a Rust-native LLM framework. It translates the conceptual surface of LangChain / LangGraph / DeepAgents (Runnable, agent loop, graph state, RAG pipeline, observability) into idiomatic Rust — typed traits, ownership-aware APIs, compile-time guarantees. It is not a line-by-line port.
+Cognis is a Rust-native LLM framework. Typed `Runnable` pipelines, an agent loop with tools and memory, a stateful graph engine, RAG primitives, and pluggable observability — built on Rust's strengths (typed traits, ownership-aware APIs, compile-time guarantees). It is not a port.
 
 The workspace is organized as a foundation crate, four sibling capability crates, a proc-macro crate, an umbrella, and an examples crate.
 
@@ -37,7 +37,7 @@ crates/
 │                  # interrupts, time-travel, all 7 stream modes,
 │                  # viz (DOT/Mermaid/ASCII).
 ├── cognis-trace   # Pluggable observability: bridges CallbackHandler
-│                  # events to Langfuse, LangSmith, OpenTelemetry.
+│                  # events to Langfuse, OpenTelemetry.
 ├── cognis-macros  # Proc macros: #[tool], #[derive(GraphState)].
 ├── cognis         # Umbrella + agent layer. AgentBuilder,
 │                  # MultiAgentOrchestrator (Sequential / Supervisor /
@@ -259,7 +259,7 @@ For JSON Schema derivation, use `schemars` directly via the `cognis_core::schema
 | Global callback manager | Per-call `RunnableConfig.observers`. |
 | `asyncio.to_thread()` | Async-only API; callers `block_on()` if they need sync. |
 | Dynamic `getattr` dispatch | Enum variants or trait objects. |
-| `langchain_classic.chains` | Don't port. Build equivalents as `Runnable` compositions. |
+| Standalone `Chain` base class | Don't port. Build equivalents as `Runnable` compositions. |
 
 ---
 

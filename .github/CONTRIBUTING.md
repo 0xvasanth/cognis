@@ -1,88 +1,96 @@
-# Contributing to Rustchain
+# Contributing to Cognis
 
-Thanks for your interest in contributing to rustchain! This document provides guidelines and information for contributors.
+Thanks for your interest in contributing to Cognis! This document covers the basics. The full contributor docs live at the docs site under [Contribute](https://github.com/0xvasanth/cognis/tree/main/docs/mintlify/contribute).
 
-## Getting Started
+## Getting started
 
-1. **Fork the repository** and clone your fork
-2. **Install Rust** (stable, latest version recommended)
-3. **Build the workspace**: `cargo build --workspace`
-4. **Run tests**: `cargo test --workspace`
+1. **Fork the repository** and clone your fork.
+2. **Install Rust** (stable, 1.75+).
+3. **Build the workspace**: `cargo build --workspace`.
+4. **Run tests**: `cargo test --workspace`.
 
-## Project Structure
+## Project structure
 
 ```
-rustchain/
+cognis/
 ├── crates/
-│   ├── rustchain-core/     # Base traits & types (no workspace dependencies)
-│   ├── rustchain/          # Agent framework, chat models, tools, integrations
-│   ├── langgraph/          # State graphs, Pregel engine, checkpointing
-│   └── deepagents/         # High-level agent factory, middleware, backends
-├── examples/               # Example applications
-└── Cargo.toml              # Workspace root
+│   ├── cognis-core/    # Foundation. Zero internal-crate deps.
+│   ├── cognis-llm/     # LLM clients + providers (feature-gated).
+│   ├── cognis-rag/     # Embeddings, vector stores, retrievers, splitters.
+│   ├── cognisgraph/    # Stateful Graph<S>, Pregel engine, checkpointers.
+│   ├── cognis-trace/   # Pluggable observability.
+│   ├── cognis-macros/  # Proc macros: #[tool], #[derive(GraphState)].
+│   └── cognis/         # Umbrella + agent layer. Re-exports the four siblings.
+├── examples/           # Runnable demos under examples/<category>/
+├── docs/mintlify/      # The docs site.
+└── Cargo.toml          # Workspace root.
 ```
 
-## Development Workflow
+## Development workflow
 
-### Before You Start
+### Before you start
 
-- Check existing [issues](https://github.com/0xvasanth/rustchain/issues) and [discussions](https://github.com/0xvasanth/rustchain/discussions)
-- For large changes, open an issue or discussion first to align on approach
-- For new provider integrations, use the Provider Integration issue template
+- Check existing [issues](https://github.com/0xvasanth/cognis/issues) and [discussions](https://github.com/0xvasanth/cognis/discussions).
+- For large changes, open an issue or discussion first to align on approach.
 
-### Making Changes
+### Making changes
 
-1. Create a feature branch from `main`
-2. Make your changes
-3. Ensure all checks pass:
+1. Create a feature branch from `main`.
+2. Make your changes.
+3. Ensure the pre-push checklist passes:
 
-```bash
-cargo fmt --all              # Format code
-cargo clippy --workspace     # Lint
-cargo test --workspace       # Run tests
-```
+   ```bash
+   cargo fmt --all
+   cargo clippy --workspace --features all-providers -- -D warnings
+   cargo test --workspace
+   ```
 
-4. Write tests for new functionality
-5. Submit a pull request
+4. Write tests for new functionality.
+5. Submit a pull request.
 
-### Code Guidelines
+### Code guidelines
 
-- **Dependency boundaries**: `rustchain-core` must have zero dependencies on other workspace crates
-- **Feature flags**: Use feature flags for optional provider integrations
-- **Error handling**: Use `thiserror` for error types, return `Result<T, E>`
-- **Async**: Use `tokio` for all async functions
-- **Documentation**: Add `///` doc comments to all public APIs
-- **Testing**: Aim for comprehensive test coverage
+- **Dependency boundaries**: `cognis-core` must have zero internal-crate dependencies. The four sibling capability crates (`cognis-llm`, `cognis-rag`, `cognisgraph`, `cognis-trace`) depend only on `cognis-core` (and `cognis-macros` where they use a derive).
+- **Feature flags**: Use them for any external integration (providers, vector stores, exporters).
+- **Error handling**: `thiserror` per crate; cross-crate via `From` conversions. The umbrella `cognis` crate hand-rolls errors instead.
+- **Async**: All I/O traits via `#[async_trait]`.
+- **Documentation**: `///` doc comments on every public type, trait, and function.
+- **Testing**: Tests next to the code; integration tests behind `#[cfg(feature = "integration_tests")]`.
 
-### Commit Messages
+### Commit messages
 
-Use conventional commits:
-- `feat(crate): description` - New features
-- `fix(crate): description` - Bug fixes
-- `docs(crate): description` - Documentation
-- `refactor(crate): description` - Code refactoring
-- `test(crate): description` - Tests
-- `chore: description` - Maintenance tasks
+Conventional commits:
 
-### Provider Integrations
+- `feat(crate): description` — new features
+- `fix(crate): description` — bug fixes
+- `docs(crate): description` — documentation
+- `refactor(crate): description` — code refactoring
+- `test(crate): description` — tests
+- `chore: description` — maintenance
+
+For changes spanning multiple crates, drop the `(crate)` suffix.
+
+### Provider integrations
 
 Each LLM provider should:
-- Be gated behind a feature flag (e.g., `features = ["anthropic"]`)
-- Implement the `ChatModel` trait from `rustchain-core`
-- Include comprehensive tests with mock responses
-- Include an example in the `examples/` directory
 
-## Reporting Issues
+- Be gated behind a feature flag (e.g. `features = ["anthropic"]`).
+- Implement the `LLMProvider` trait from `cognis-llm`.
+- Include tests with mocked HTTP responses.
+- Include an example under `examples/models/`.
 
-- **Bugs**: Use the Bug Report template
-- **Features**: Use the Feature Request template
-- **Provider requests**: Use the Provider Integration template
-- **Questions**: Use [Discussions](https://github.com/0xvasanth/rustchain/discussions)
+The full step-by-step is in the docs: [Contribute → Adding a new provider](https://github.com/0xvasanth/cognis/blob/main/docs/mintlify/contribute/adding-a-provider.mdx).
 
-## Code of Conduct
+## Reporting issues
 
-Be respectful and constructive. We're building something together.
+- **Bugs**: Use the Bug Report template.
+- **Features**: Use the Feature Request template.
+- **Questions**: Use [Discussions](https://github.com/0xvasanth/cognis/discussions).
+
+## Code of conduct
+
+Be respectful and constructive. We're building something together. The full code of conduct is in [`docs/mintlify/contribute/code-of-conduct.mdx`](https://github.com/0xvasanth/cognis/blob/main/docs/mintlify/contribute/code-of-conduct.mdx).
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the same license as the project.
+By contributing, you agree that your contributions will be licensed under the same license as the project (MIT).

@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
     }
     let docs = vec![
         Document::new("Cognis is a Rust LLM framework."),
-        Document::new("cognisgraph offers a StateGraph engine inspired by LangGraph."),
+        Document::new("cognisgraph offers a Pregel-style stateful graph engine."),
         Document::new("cognis-rag bundles embeddings, vector stores, and retrievers."),
     ];
     let chunks = RecursiveCharSplitter::new()
