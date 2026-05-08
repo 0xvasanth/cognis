@@ -51,7 +51,10 @@ async fn main() -> cognis::prelude::Result<()> {
     sw.acquire(5).await;
     let t0 = Instant::now();
     sw.acquire(1).await;
-    println!("third acquire blocked for {:?} (window had to slide)", t0.elapsed());
+    println!(
+        "third acquire blocked for {:?} (window had to slide)",
+        t0.elapsed()
+    );
 
     // 2. Cost-based: bound the budget itself. Each `acquire(n)` debits
     //    n cost units; total spend caps at the configured ceiling.

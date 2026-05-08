@@ -31,9 +31,11 @@
 //!   first chunk (121 chars): # Why Rust matters in 2026 |  | Rust keeps showing up in the places we least expected: kernels, browsers, even web front
 //!
 //!   === MarkdownSplitter(headings) -> 3 chunks ===
-//!   first chunk (183 chars): Rust keeps showing up in the places we least expected: kernels, browsers, even web frontends. The reason is simple — it 
+//!   first chunk (183 chars): Rust keeps showing up in the places we least expected: kernels, browsers, even web frontends. The reason is simple — it
 
-use cognis_rag::{Document, MarkdownSplitter, RecursiveCharSplitter, SentenceSplitter, TextSplitter};
+use cognis_rag::{
+    Document, MarkdownSplitter, RecursiveCharSplitter, SentenceSplitter, TextSplitter,
+};
 
 const POST: &str = "\
 # Why Rust matters in 2026
@@ -70,7 +72,9 @@ fn main() {
     // Recursive char splitter: cuts on the longest separator that fits.
     // Use this for messy free-form text where no structural signal is
     // reliable.
-    let recursive = RecursiveCharSplitter::new().with_chunk_size(200).with_overlap(0);
+    let recursive = RecursiveCharSplitter::new()
+        .with_chunk_size(200)
+        .with_overlap(0);
     show("RecursiveCharSplitter(200)", recursive.split(&doc));
 
     // Sentence splitter: groups N sentences per chunk. Use this for

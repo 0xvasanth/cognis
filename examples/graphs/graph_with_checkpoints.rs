@@ -63,7 +63,12 @@ fn step(name: &'static str, next: Goto) -> impl Node<State> {
         let next = next.clone();
         async move {
             println!("[step] {name}");
-            Ok(NodeOut { update: Update { add: Some(name.into()) }, goto: next })
+            Ok(NodeOut {
+                update: Update {
+                    add: Some(name.into()),
+                },
+                goto: next,
+            })
         }
     })
 }
@@ -73,11 +78,11 @@ async fn main() -> Result<()> {
     let cp: Arc<dyn Checkpointer<State>> = Arc::new(InMemoryCheckpointer::<State>::new());
 
     let g = Graph::<State>::new()
-        .node("extract",   step("extract",   Goto::node("validate")))
-        .node("validate",  step("validate",  Goto::node("transform")))
+        .node("extract", step("extract", Goto::node("validate")))
+        .node("validate", step("validate", Goto::node("transform")))
         .node("transform", step("transform", Goto::node("load")))
-        .node("load",      step("load",      Goto::node("notify")))
-        .node("notify",    step("notify",    Goto::end()))
+        .node("load", step("load", Goto::node("notify")))
+        .node("notify", step("notify", Goto::end()))
         .start_at("extract")
         .compile()?
         .with_checkpointer(cp.clone());

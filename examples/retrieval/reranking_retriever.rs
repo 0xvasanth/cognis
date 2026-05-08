@@ -78,10 +78,12 @@ async fn main() -> Result<()> {
         let mut s = store.write().await;
         s.add_texts(
             vec![
-                "Use `with_max_concurrency` on ToolOrchestrator to fan out independent tool calls.".into(),
+                "Use `with_max_concurrency` on ToolOrchestrator to fan out independent tool calls."
+                    .into(),
                 "Cognis chains are typed; the compiler verifies stage I/O.".into(),
                 "Streaming mode reduces perceived latency for long replies.".into(),
-                "Caching retriever memoises identical queries — drops embed cost on re-asks.".into(),
+                "Caching retriever memoises identical queries — drops embed cost on re-asks."
+                    .into(),
                 "Window memory caps history at N turns; cheaper than Buffer.".into(),
                 "Pre-warm your provider with a health_check before traffic spikes.".into(),
                 "Rate-limit middleware prevents runaway LLM cost.".into(),
@@ -103,7 +105,10 @@ async fn main() -> Result<()> {
     let reranker = CrossEncoderReranker::new(recall, encoder, 3);
 
     let docs = reranker
-        .invoke("how do I make my Cognis chain run faster?".into(), Default::default())
+        .invoke(
+            "how do I make my Cognis chain run faster?".into(),
+            Default::default(),
+        )
         .await?;
 
     println!("=== top 3 reranked ===");

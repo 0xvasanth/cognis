@@ -46,9 +46,10 @@ async fn main() -> Result<()> {
     });
 
     // Stage 2: pretend to create an account.
-    let create_account = lambda(|age: u32| async move {
-        Ok::<_, CognisError>(format!("created account (age={age})"))
-    });
+    let create_account =
+        lambda(
+            |age: u32| async move { Ok::<_, CognisError>(format!("created account (age={age})")) },
+        );
 
     let signup = parse_age.pipe(create_account);
 

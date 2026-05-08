@@ -29,7 +29,7 @@
 //!     (Rust, is, a systems language)
 //!
 //!   Q: Who leads Project Atlas?
-//!   A: According to the knowledge base, Project Atlas is led by Maya. 
+//!   A: According to the knowledge base, Project Atlas is led by Maya.
 //!
 //!   Answer: Maya.
 

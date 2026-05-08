@@ -69,7 +69,11 @@ async fn main() -> Result<()> {
     let warm = t1.elapsed();
 
     println!("turn 1 (cold): {:?}  -> {} hits", cold, r1.len());
-    println!("turn 5 (warm): {:?}  -> {} hits  (returned from cache)", warm, r2.len());
+    println!(
+        "turn 5 (warm): {:?}  -> {} hits  (returned from cache)",
+        warm,
+        r2.len()
+    );
     if let Some(top) = r1.first() {
         println!("\ntop result: {}", top.content);
     }

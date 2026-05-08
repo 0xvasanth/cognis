@@ -69,7 +69,8 @@ impl HttpPool {
     /// Stub `POST` returning a fake translated payload. Increments a
     /// counter so the demo can prove the pool was reused.
     async fn post(&self, _path: &str, body: &str, target: &str) -> String {
-        self.calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         format!("[{target} via {}] (stubbed) {body}", self.base_url)
     }
 }
@@ -95,8 +96,12 @@ impl Translator {
 impl SchemaBasedTool for Translator {
     type Params = TranslateArgs;
     type Output = Value;
-    fn name(&self) -> &str { "translate" }
-    fn description(&self) -> &str { "Translate text into a target language." }
+    fn name(&self) -> &str {
+        "translate"
+    }
+    fn description(&self) -> &str {
+        "Translate text into a target language."
+    }
     async fn execute_typed(&self, args: TranslateArgs) -> Result<Value> {
         let target = args.target.unwrap_or_else(|| self.default_target.clone());
 
@@ -116,17 +121,28 @@ impl SchemaBasedTool for Translator {
 #[tokio::main]
 async fn main() -> Result<()> {
     let t = Translator::new("es");
-    println!("schema (what the LLM sees):\n{:#}\n", Tool::args_schema(&t).unwrap());
+    println!(
+        "schema (what the LLM sees):\n{:#}\n",
+        Tool::args_schema(&t).unwrap()
+    );
 
     // Three calls — same `Translator`, same pooled HTTP client.
     for text in ["hello", "where is the train station", "thanks!"] {
-        let out = t.execute_typed(TranslateArgs { text: text.into(), target: None }).await?;
+        let out = t
+            .execute_typed(TranslateArgs {
+                text: text.into(),
+                target: None,
+            })
+            .await?;
         println!("default-target -> {out}");
     }
 
     // One call with an override.
     let fr = t
-        .execute_typed(TranslateArgs { text: "good morning".into(), target: Some("fr".into()) })
+        .execute_typed(TranslateArgs {
+            text: "good morning".into(),
+            target: Some("fr".into()),
+        })
         .await?;
     println!("override (fr)  -> {fr}");
 

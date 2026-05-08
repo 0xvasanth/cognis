@@ -61,7 +61,8 @@ async fn main() -> Result<()> {
 
     // Round 1: three docs from scratch.
     let docs = Arc::new(Mutex::new(vec![
-        Document::new("Getting started with Cognis: install, build, run.").with_id("getting-started"),
+        Document::new("Getting started with Cognis: install, build, run.")
+            .with_id("getting-started"),
         Document::new("Cognis tools: Calculator, ShellTool, JsonQueryTool.").with_id("tools"),
         Document::new("Cognis memory: Buffer, Window, SummaryBufferMemory.").with_id("memory"),
     ]));
@@ -72,7 +73,9 @@ async fn main() -> Result<()> {
         store.clone(),
     );
 
-    let r1 = pipeline.run_incremental(&manager, "docs", |d| d.id.clone()).await?;
+    let r1 = pipeline
+        .run_incremental(&manager, "docs", |d| d.id.clone())
+        .await?;
     println!("=== round 1 (initial index) ===");
     println!(
         "added={} changed={} unchanged={} deleted={}",
@@ -90,7 +93,9 @@ async fn main() -> Result<()> {
         .with_id("tools");
     }
 
-    let r2 = pipeline.run_incremental(&manager, "docs", |d| d.id.clone()).await?;
+    let r2 = pipeline
+        .run_incremental(&manager, "docs", |d| d.id.clone())
+        .await?;
     println!("\n=== round 2 (after editing 'tools' page) ===");
     println!(
         "added={} changed={} unchanged={} deleted={}",

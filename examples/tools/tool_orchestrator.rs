@@ -49,9 +49,15 @@ struct VendorPrice {
 
 #[async_trait]
 impl Tool for VendorPrice {
-    fn name(&self) -> &str { self.vendor }
-    fn description(&self) -> &str { "Fetch the current price from a vendor." }
-    fn args_schema(&self) -> Option<serde_json::Value> { None }
+    fn name(&self) -> &str {
+        self.vendor
+    }
+    fn description(&self) -> &str {
+        "Fetch the current price from a vendor."
+    }
+    fn args_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
         tokio::time::sleep(std::time::Duration::from_millis(self.latency_ms)).await;
         Ok(ToolOutput::Content(json!({
@@ -69,9 +75,15 @@ struct PickCheapest;
 
 #[async_trait]
 impl Tool for PickCheapest {
-    fn name(&self) -> &str { "pick_cheapest" }
-    fn description(&self) -> &str { "Compare vendor prices and pick the lowest." }
-    fn args_schema(&self) -> Option<serde_json::Value> { None }
+    fn name(&self) -> &str {
+        "pick_cheapest"
+    }
+    fn description(&self) -> &str {
+        "Compare vendor prices and pick the lowest."
+    }
+    fn args_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
     async fn _run(&self, _input: ToolInput) -> Result<ToolOutput> {
         Ok(ToolOutput::Content(json!({"chosen_vendor": "acme"})))
     }
@@ -80,21 +92,46 @@ impl Tool for PickCheapest {
 #[tokio::main]
 async fn main() -> Result<()> {
     let orch = ToolOrchestrator::new()
-        .register(Arc::new(VendorPrice { vendor: "acme",     latency_ms: 100, price_cents: 1299 }))
-        .register(Arc::new(VendorPrice { vendor: "globex",   latency_ms: 100, price_cents: 1499 }))
-        .register(Arc::new(VendorPrice { vendor: "initech",  latency_ms: 100, price_cents: 1399 }))
+        .register(Arc::new(VendorPrice {
+            vendor: "acme",
+            latency_ms: 100,
+            price_cents: 1299,
+        }))
+        .register(Arc::new(VendorPrice {
+            vendor: "globex",
+            latency_ms: 100,
+            price_cents: 1499,
+        }))
+        .register(Arc::new(VendorPrice {
+            vendor: "initech",
+            latency_ms: 100,
+            price_cents: 1399,
+        }))
         .register(Arc::new(PickCheapest))
         .with_max_concurrency(4);
 
     // Declare the DAG: three independent fetches, then a join.
-    let plan = ExecutionPlan::new()
-        .step(ToolStep::new("p_acme",    "acme",          ToolInput::Text("SKU-42".into())))
-        .step(ToolStep::new("p_globex",  "globex",        ToolInput::Text("SKU-42".into())))
-        .step(ToolStep::new("p_initech", "initech",       ToolInput::Text("SKU-42".into())))
-        .step(
-            ToolStep::new("decide", "pick_cheapest", ToolInput::Text("compare".into()))
-                .after(["p_acme", "p_globex", "p_initech"]),
-        );
+    let plan =
+        ExecutionPlan::new()
+            .step(ToolStep::new(
+                "p_acme",
+                "acme",
+                ToolInput::Text("SKU-42".into()),
+            ))
+            .step(ToolStep::new(
+                "p_globex",
+                "globex",
+                ToolInput::Text("SKU-42".into()),
+            ))
+            .step(ToolStep::new(
+                "p_initech",
+                "initech",
+                ToolInput::Text("SKU-42".into()),
+            ))
+            .step(
+                ToolStep::new("decide", "pick_cheapest", ToolInput::Text("compare".into()))
+                    .after(["p_acme", "p_globex", "p_initech"]),
+            );
 
     let t0 = Instant::now();
     let result = orch.run(plan).await?;

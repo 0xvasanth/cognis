@@ -59,10 +59,7 @@ impl GraphState for State {
     }
 }
 
-fn build_graph(
-    cp: Arc<dyn Checkpointer<State>>,
-    interrupts: bool,
-) -> Result<CompiledGraph<State>> {
+fn build_graph(cp: Arc<dyn Checkpointer<State>>, interrupts: bool) -> Result<CompiledGraph<State>> {
     // Node 1: write a draft email. In real code this is an LLM call.
     let draft = node_fn::<State, _, _>("draft", |_, _| async {
         let body = "Hi Maya, your refund of $42.00 has been processed.";

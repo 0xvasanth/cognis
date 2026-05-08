@@ -50,7 +50,9 @@ struct WeatherTool;
 impl SchemaBasedTool for WeatherTool {
     type Params = WeatherArgs;
     type Output = Value;
-    fn name(&self) -> &str { "get_weather" }
+    fn name(&self) -> &str {
+        "get_weather"
+    }
     fn description(&self) -> &str {
         "Look up the current weather for a single city. Call once per city."
     }
@@ -81,7 +83,9 @@ async fn main() -> Result<()> {
         .with_max_iterations(6)
         .build()?;
 
-    let resp = agent.run(Message::human("What's the weather in Tokyo and Berlin?")).await?;
+    let resp = agent
+        .run(Message::human("What's the weather in Tokyo and Berlin?"))
+        .await?;
     println!("{}", resp.content);
     println!("(messages exchanged: {})", resp.messages.len());
     Ok(())

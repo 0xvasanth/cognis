@@ -44,7 +44,9 @@ async fn main() -> Result<()> {
     // The stream yields `StreamChunk`s — one per token (or sub-token,
     // depending on the provider). Flush after each so the terminal
     // shows them progressively rather than line-buffered.
-    let mut s = client.stream(vec![Message::human(prompt.to_string())]).await?;
+    let mut s = client
+        .stream(vec![Message::human(prompt.to_string())])
+        .await?;
     while let Some(chunk) = s.next().await {
         let chunk = chunk?;
         print!("{}", chunk.content);

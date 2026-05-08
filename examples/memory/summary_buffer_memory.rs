@@ -46,16 +46,37 @@ async fn main() -> Result<()> {
     // Ten turns of a real-feeling support thread. The order ID sits in
     // turn 1 — that's the fact we want preserved through compaction.
     let transcript = [
-        ("user",  "Hi, my order ORD-9117 hasn't arrived and it's been two weeks."),
-        ("agent", "I'm sorry to hear that — let me look into ORD-9117 right away."),
-        ("user",  "It was supposed to be the navy hiking boots, size 11."),
-        ("agent", "Got it, navy hiking boots size 11, marked for two-day shipping."),
-        ("user",  "The tracking page just says 'label created'."),
-        ("agent", "That usually means the carrier never picked it up."),
-        ("user",  "Can you reship to the same address?"),
-        ("agent", "Yes — I can dispatch a replacement today via expedited shipping."),
-        ("user",  "Will I be charged again?"),
-        ("agent", "No charge for the replacement; you'll get a tracking email by tonight."),
+        (
+            "user",
+            "Hi, my order ORD-9117 hasn't arrived and it's been two weeks.",
+        ),
+        (
+            "agent",
+            "I'm sorry to hear that — let me look into ORD-9117 right away.",
+        ),
+        (
+            "user",
+            "It was supposed to be the navy hiking boots, size 11.",
+        ),
+        (
+            "agent",
+            "Got it, navy hiking boots size 11, marked for two-day shipping.",
+        ),
+        ("user", "The tracking page just says 'label created'."),
+        (
+            "agent",
+            "That usually means the carrier never picked it up.",
+        ),
+        ("user", "Can you reship to the same address?"),
+        (
+            "agent",
+            "Yes — I can dispatch a replacement today via expedited shipping.",
+        ),
+        ("user", "Will I be charged again?"),
+        (
+            "agent",
+            "No charge for the replacement; you'll get a tracking email by tonight.",
+        ),
     ];
     for (role, content) in transcript {
         let m = match role {

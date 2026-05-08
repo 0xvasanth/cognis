@@ -42,9 +42,8 @@ async fn main() -> Result<()> {
 
     // Stage 1: trim and normalise the inbound ticket text. Pure Rust —
     // anything you'd do in a webhook before reaching the LLM.
-    let normalize = lambda(|raw: String| async move {
-        Ok::<_, CognisError>(raw.trim().replace('\n', " "))
-    });
+    let normalize =
+        lambda(|raw: String| async move { Ok::<_, CognisError>(raw.trim().replace('\n', " ")) });
 
     // Stage 2: ask the LLM for a single-word category. This is where
     // most real pipelines call out — classification, summarisation,
@@ -75,7 +74,11 @@ async fn main() -> Result<()> {
             "password_reset" => "auth-bot",
             _ => "human-triage",
         };
-        Ok::<_, CognisError>(Triaged { ticket, category, queue })
+        Ok::<_, CognisError>(Triaged {
+            ticket,
+            category,
+            queue,
+        })
     });
 
     let pipeline = normalize.pipe(categorize).pipe(route);

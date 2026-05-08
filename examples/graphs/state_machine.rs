@@ -46,8 +46,12 @@ impl GraphState for State {
     type Update = Update;
     fn apply(&mut self, u: Update) {
         self.attempts += u.attempts;
-        if let Some(f) = u.finished { self.finished = f; }
-        if let Some(g) = u.gave_up { self.gave_up = g; }
+        if let Some(f) = u.finished {
+            self.finished = f;
+        }
+        if let Some(g) = u.gave_up {
+            self.gave_up = g;
+        }
     }
 }
 
@@ -71,21 +75,33 @@ async fn main() -> Result<()> {
             if job_done(attempt) {
                 println!("[poll] job complete on attempt {attempt}");
                 return Ok(NodeOut {
-                    update: Update { attempts: 1, finished: Some(true), gave_up: None },
+                    update: Update {
+                        attempts: 1,
+                        finished: Some(true),
+                        gave_up: None,
+                    },
                     goto: Goto::end(),
                 });
             }
             if attempt >= MAX_ATTEMPTS {
                 println!("[poll] giving up after {attempt} attempts");
                 return Ok(NodeOut {
-                    update: Update { attempts: 1, finished: None, gave_up: Some(true) },
+                    update: Update {
+                        attempts: 1,
+                        finished: None,
+                        gave_up: Some(true),
+                    },
                     goto: Goto::end(),
                 });
             }
             // Otherwise: increment counter and loop. In real code this
             // is where you'd `tokio::time::sleep` for a backoff window.
             Ok(NodeOut {
-                update: Update { attempts: 1, finished: None, gave_up: None },
+                update: Update {
+                    attempts: 1,
+                    finished: None,
+                    gave_up: None,
+                },
                 goto: Goto::node("poll"),
             })
         }

@@ -52,7 +52,9 @@ impl Observer for TimedLogger {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let logger = Arc::new(TimedLogger { start: Instant::now() });
+    let logger = Arc::new(TimedLogger {
+        start: Instant::now(),
+    });
     let mut cfg = RunnableConfig::default();
     cfg.observers.push(logger);
 

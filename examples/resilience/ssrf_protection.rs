@@ -45,16 +45,28 @@ fn safe_to_fetch(ip: &IpAddr) -> std::result::Result<(), &'static str> {
 
 fn main() -> Result<()> {
     let candidates: &[(&str, IpAddr)] = &[
-        ("8.8.8.8 (Google DNS)",      IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))),
-        ("127.0.0.1 (localhost)",     IpAddr::V4(Ipv4Addr::LOCALHOST)),
-        ("10.0.0.5 (private LAN)",    IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5))),
-        ("192.168.1.1 (home router)", IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))),
-        ("169.254.169.254 (cloud metadata!)", IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254))),
-        ("::1 (IPv6 loopback)",       IpAddr::V6(Ipv6Addr::LOCALHOST)),
+        (
+            "8.8.8.8 (Google DNS)",
+            IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+        ),
+        ("127.0.0.1 (localhost)", IpAddr::V4(Ipv4Addr::LOCALHOST)),
+        (
+            "10.0.0.5 (private LAN)",
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)),
+        ),
+        (
+            "192.168.1.1 (home router)",
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
+        ),
+        (
+            "169.254.169.254 (cloud metadata!)",
+            IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254)),
+        ),
+        ("::1 (IPv6 loopback)", IpAddr::V6(Ipv6Addr::LOCALHOST)),
     ];
     for (label, ip) in candidates {
         match safe_to_fetch(ip) {
-            Ok(_)  => println!("ALLOW  {label:<38} {ip}"),
+            Ok(_) => println!("ALLOW  {label:<38} {ip}"),
             Err(e) => println!("BLOCK  {label:<38} {ip}  -- {e}"),
         }
     }

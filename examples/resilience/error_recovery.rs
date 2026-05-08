@@ -65,12 +65,18 @@ async fn main() -> Result<()> {
 
     let t0 = Instant::now();
     let short = resilient
-        .invoke("https://example.com/very/long/path".into(), Default::default())
+        .invoke(
+            "https://example.com/very/long/path".into(),
+            Default::default(),
+        )
         .await?;
     let elapsed = t0.elapsed();
 
     println!("shortened: {short}");
     println!("elapsed:   {elapsed:?}");
-    println!("attempts:  {} (the user only ever saw success)", attempts.load(Ordering::Relaxed));
+    println!(
+        "attempts:  {} (the user only ever saw success)",
+        attempts.load(Ordering::Relaxed)
+    );
     Ok(())
 }

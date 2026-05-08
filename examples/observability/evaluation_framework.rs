@@ -49,11 +49,26 @@ async fn main() -> Result<()> {
     // Known good answers — substring check is forgiving but enough
     // to catch outright regressions.
     let cases = [
-        Case { q: "What's the capital of France?",         expect_substr: "Paris" },
-        Case { q: "What's 2 + 2?",                         expect_substr: "4" },
-        Case { q: "Which planet is known as the Red Planet?", expect_substr: "Mars" },
-        Case { q: "What language compiles to native code with the borrow checker?", expect_substr: "Rust" },
-        Case { q: "Who wrote 'Pride and Prejudice'?",      expect_substr: "Austen" },
+        Case {
+            q: "What's the capital of France?",
+            expect_substr: "Paris",
+        },
+        Case {
+            q: "What's 2 + 2?",
+            expect_substr: "4",
+        },
+        Case {
+            q: "Which planet is known as the Red Planet?",
+            expect_substr: "Mars",
+        },
+        Case {
+            q: "What language compiles to native code with the borrow checker?",
+            expect_substr: "Rust",
+        },
+        Case {
+            q: "Who wrote 'Pride and Prejudice'?",
+            expect_substr: "Austen",
+        },
     ];
 
     let mut pass = 0;

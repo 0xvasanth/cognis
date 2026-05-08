@@ -69,7 +69,11 @@ impl Runnable<UserQuery, Embedded> for EmbedStage {
         for (i, c) in q.text.chars().enumerate() {
             vector[i % 8] += c as u32 as f32;
         }
-        Ok(Embedded { text: q.text, user_id: q.user_id, vector })
+        Ok(Embedded {
+            text: q.text,
+            user_id: q.user_id,
+            vector,
+        })
     }
 }
 
@@ -90,16 +94,29 @@ impl Runnable<Embedded, RankedResult> for RankStage {
             })
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
             .unwrap();
-        Ok(RankedResult { user_id: e.user_id, matched_doc, score })
+        Ok(RankedResult {
+            user_id: e.user_id,
+            matched_doc,
+            score,
+        })
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let corpus = vec![
-        ("How to reset password".into(), [10.0, 5.0, 3.0, 8.0, 2.0, 1.0, 4.0, 6.0]),
-        ("Refund my last invoice".into(), [3.0, 8.0, 9.0, 2.0, 5.0, 7.0, 1.0, 4.0]),
-        ("Enable dark mode".into(), [1.0, 2.0, 4.0, 6.0, 9.0, 3.0, 7.0, 5.0]),
+        (
+            "How to reset password".into(),
+            [10.0, 5.0, 3.0, 8.0, 2.0, 1.0, 4.0, 6.0],
+        ),
+        (
+            "Refund my last invoice".into(),
+            [3.0, 8.0, 9.0, 2.0, 5.0, 7.0, 1.0, 4.0],
+        ),
+        (
+            "Enable dark mode".into(),
+            [1.0, 2.0, 4.0, 6.0, 9.0, 3.0, 7.0, 5.0],
+        ),
     ];
 
     // Compile-time check: EmbedStage produces Embedded, RankStage
@@ -107,7 +124,13 @@ async fn main() -> Result<()> {
     let pipeline = EmbedStage.pipe(RankStage { corpus });
 
     let result = pipeline
-        .invoke(UserQuery { text: "reset my password please".into(), user_id: 42 }, Default::default())
+        .invoke(
+            UserQuery {
+                text: "reset my password please".into(),
+                user_id: 42,
+            },
+            Default::default(),
+        )
         .await?;
     println!("{result:#?}");
     Ok(())
