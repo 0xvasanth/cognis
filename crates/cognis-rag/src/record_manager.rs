@@ -87,28 +87,27 @@ impl RecordManager for InMemoryRecordManager {
     }
 }
 
-/// Stable content fingerprint — BLAKE3 keyed via xxh3-128 truncated to
-/// 128 bits via the standard library's `DefaultHasher` (currently
-/// SipHash-1-3) repeated under a second seed. Result: a 32-hex-char
-/// string with ~2^-128 collision odds. Stays in-tree (no extra deps);
-/// strong enough to use as a change-detection key for incremental
-/// indexing of millions of docs.
+/// Stable content fingerprint — FNV-1a 128-bit. Result is a 32-hex-char
+/// string with ~2^-64 collision odds for non-adversarial inputs (well
+/// inside the safe range for change-detection over millions of docs).
+///
+/// The algorithm is fixed (FNV-1a, the published 128-bit constants), so
+/// fingerprints stored to disk stay valid across Rust toolchain
+/// upgrades. Stays in-tree — no hash crate dependency.
 ///
 /// Two docs with identical content always produce the same fingerprint;
-/// changing any byte changes it with overwhelming probability.
+/// changing any byte changes it.
 pub fn fingerprint(content: &str) -> String {
-    use std::hash::Hasher;
-    // Two deterministic SipHash-1-3 streams under fixed domain-separation
-    // seeds. The 128-bit concatenation drops collision odds well below
-    // 2^-64 (which DJB2 effectively delivered for billions-of-doc corpora)
-    // — sufficient for change-detection without taking on a hash dep.
-    let mut h1 = std::collections::hash_map::DefaultHasher::new();
-    let mut h2 = std::collections::hash_map::DefaultHasher::new();
-    h1.write(b"cognis::fingerprint::v1::a");
-    h2.write(b"cognis::fingerprint::v1::b");
-    h1.write(content.as_bytes());
-    h2.write(content.as_bytes());
-    format!("{:016x}{:016x}", h1.finish(), h2.finish())
+    // FNV-1a 128-bit constants (published, public-domain).
+    // See http://www.isthe.com/chongo/tech/comp/fnv/
+    const FNV_OFFSET_BASIS: u128 = 0x6c62272e07bb014262b821756295c58d;
+    const FNV_PRIME: u128 = 0x0000000001000000000000000000013b;
+    let mut h: u128 = FNV_OFFSET_BASIS;
+    for b in content.as_bytes() {
+        h ^= u128::from(*b);
+        h = h.wrapping_mul(FNV_PRIME);
+    }
+    format!("{h:032x}")
 }
 
 #[cfg(test)]
@@ -119,6 +118,35 @@ mod tests {
     async fn fingerprint_is_deterministic() {
         assert_eq!(fingerprint("hello"), fingerprint("hello"));
         assert_ne!(fingerprint("hello"), fingerprint("world"));
+    }
+
+    #[test]
+    fn fingerprint_is_stable_across_releases() {
+        // Locked-in reference values. These are the FNV-1a 128-bit
+        // outputs of the current implementation; if any change makes
+        // this test fail, it means stored fingerprints in production
+        // record managers will be invalidated — the algorithm change
+        // must go through a versioned format migration, not a silent
+        // bump.
+        assert_eq!(
+            fingerprint(""),
+            "6c62272e07bb014262b821756295c58d",
+            "empty input must equal the FNV-1a 128 offset basis"
+        );
+        assert_eq!(fingerprint("hello"), "e3e1efd54283d94f7081314b599d31b3");
+        assert_eq!(
+            fingerprint("the quick brown fox jumps over the lazy dog"),
+            "577ea59947cc87c26ffa73dd35a3f550"
+        );
+    }
+
+    #[test]
+    fn fingerprint_is_32_hex_chars() {
+        for s in ["", "a", "longer content with whitespace and digits 12345"] {
+            let fp = fingerprint(s);
+            assert_eq!(fp.len(), 32, "fp = {fp}");
+            assert!(fp.chars().all(|c| c.is_ascii_hexdigit()));
+        }
     }
 
     #[tokio::test]
