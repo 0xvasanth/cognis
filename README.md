@@ -4,11 +4,14 @@
 
 **Build LLM apps in Rust. Fast, type-safe, composable.**
 
+[![Docs](https://img.shields.io/badge/docs-cognis.vasanth.xyz-D97706?logo=mdbook&logoColor=white)](https://cognis.vasanth.xyz)
 [![crates.io](https://img.shields.io/crates/v/cognis.svg)](https://crates.io/crates/cognis)
 [![docs.rs](https://docs.rs/cognis/badge.svg)](https://docs.rs/cognis)
 [![CI](https://img.shields.io/github/actions/workflow/status/0xvasanth/cognis/ci.yml?branch=main)](https://github.com/0xvasanth/cognis/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
+
+[**Website**](https://cognis.vasanth.xyz) · [Quickstart](https://cognis.vasanth.xyz/get-started/quickstart) · [Patterns](https://cognis.vasanth.xyz/patterns/research-assistant) · [API reference](https://cognis.vasanth.xyz/reference/api/cognis) · [Contribute](https://cognis.vasanth.xyz/contribute/ways-to-contribute)
 
 </div>
 
@@ -307,7 +310,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ## Documentation
-- API docs: [docs.rs/cognis](https://docs.rs/cognis), per-crate.
+
+- **Guides + Patterns + Examples + Reference**: [cognis.vasanth.xyz](https://cognis.vasanth.xyz)
+- **API docs**: [docs.rs/cognis](https://docs.rs/cognis), per-crate
 
 ## Contributing
 
