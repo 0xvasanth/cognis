@@ -195,7 +195,7 @@ impl PluginRegistry {
     /// or references to unknown plugins.
     fn topo_order(&self) -> Result<Vec<String>> {
         let mut indeg: HashMap<String, usize> =
-            self.plugins.iter().map(|(n, _)| (n.clone(), 0)).collect();
+            self.plugins.keys().map(|n| (n.clone(), 0)).collect();
         let mut rev: HashMap<String, Vec<String>> = HashMap::new();
         for (name, p) in &self.plugins {
             for d in p.deps() {
