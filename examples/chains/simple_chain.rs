@@ -18,8 +18,12 @@ struct EchoProvider(&'static str);
 
 #[async_trait]
 impl LLMProvider for EchoProvider {
-    fn name(&self) -> &str { "echo" }
-    fn provider_type(&self) -> Provider { Provider::Ollama }
+    fn name(&self) -> &str {
+        "echo"
+    }
+    fn provider_type(&self) -> Provider {
+        Provider::Ollama
+    }
     async fn chat_completion(&self, _: Vec<Message>, _: ChatOptions) -> Result<ChatResponse> {
         Ok(ChatResponse {
             message: Message::ai(self.0),
@@ -28,7 +32,11 @@ impl LLMProvider for EchoProvider {
             model: "echo".into(),
         })
     }
-    async fn chat_completion_stream(&self, _: Vec<Message>, _: ChatOptions) -> Result<RunnableStream<StreamChunk>> {
+    async fn chat_completion_stream(
+        &self,
+        _: Vec<Message>,
+        _: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
         unimplemented!()
     }
     async fn health_check(&self) -> Result<HealthStatus> {
@@ -46,14 +54,23 @@ async fn main() -> Result<()> {
     let client = if std::env::var("COGNIS_PROVIDER").is_ok() {
         Client::from_env()?
     } else {
-        Client::new(Arc::new(EchoProvider("Why don't scientists trust atoms? They make up everything.")))
+        Client::new(Arc::new(EchoProvider(
+            "Why don't scientists trust atoms? They make up everything.",
+        )))
     };
 
-    let rendered = prompt.invoke(serde_json::json!({"topic": "ice cream"}), Default::default()).await?;
+    let rendered = prompt
+        .invoke(
+            serde_json::json!({"topic": "ice cream"}),
+            Default::default(),
+        )
+        .await?;
     let reply = client.invoke(vec![Message::human(rendered)]).await?;
 
     let parser = StringParser::new();
-    let final_text = parser.invoke(reply.content().to_string(), Default::default()).await?;
+    let final_text = parser
+        .invoke(reply.content().to_string(), Default::default())
+        .await?;
 
     println!("{final_text}");
     Ok(())

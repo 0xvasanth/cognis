@@ -13,13 +13,22 @@ impl GraphState for S {
 #[tokio::main]
 async fn main() -> Result<()> {
     let plan = node_fn::<S, _, _>("plan", |_, _| async {
-        Ok(NodeOut { update: (), goto: Goto::node("execute") })
+        Ok(NodeOut {
+            update: (),
+            goto: Goto::node("execute"),
+        })
     });
     let execute = node_fn::<S, _, _>("execute", |_, _| async {
-        Ok(NodeOut { update: (), goto: Goto::node("review") })
+        Ok(NodeOut {
+            update: (),
+            goto: Goto::node("review"),
+        })
     });
     let review = node_fn::<S, _, _>("review", |_, _| async {
-        Ok(NodeOut { update: (), goto: Goto::end() })
+        Ok(NodeOut {
+            update: (),
+            goto: Goto::end(),
+        })
     });
 
     let g = Graph::<S>::new()

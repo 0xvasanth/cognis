@@ -6,7 +6,9 @@ use cognis::KnowledgeGraphMemory;
 
 fn main() {
     let mut mem = KnowledgeGraphMemory::new();
-    mem.write(Message::human("Cognis is a Rust framework. Tokio is async."));
+    mem.write(Message::human(
+        "Cognis is a Rust framework. Tokio is async.",
+    ));
     mem.write(Message::human("cognis-rag has embeddings."));
     mem.write(Message::human("Cognis is a Rust framework.")); // dup → no-op
 

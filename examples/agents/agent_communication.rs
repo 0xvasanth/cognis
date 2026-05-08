@@ -45,7 +45,13 @@ async fn main() -> Result<()> {
 
     let resp = orch.run("Tell me about Mars").await?;
     println!("final: {}", resp.content);
-    println!("\nbus traffic for researcher inbox: {:?}", bus.drain("researcher").await?.len());
-    println!("bus traffic for writer inbox:     {:?}", bus.drain("writer").await?.len());
+    println!(
+        "\nbus traffic for researcher inbox: {:?}",
+        bus.drain("researcher").await?.len()
+    );
+    println!(
+        "bus traffic for writer inbox:     {:?}",
+        bus.drain("writer").await?.len()
+    );
     Ok(())
 }

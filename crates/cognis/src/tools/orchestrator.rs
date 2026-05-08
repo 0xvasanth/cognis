@@ -159,8 +159,11 @@ impl ToolOrchestrator {
             .iter()
             .map(|s| (s.id.clone(), s.depends_on.len()))
             .collect();
-        let mut by_id: HashMap<String, ToolStep> =
-            plan.steps.iter().map(|s| (s.id.clone(), s.clone())).collect();
+        let mut by_id: HashMap<String, ToolStep> = plan
+            .steps
+            .iter()
+            .map(|s| (s.id.clone(), s.clone()))
+            .collect();
         // reverse adjacency: dep_id -> list of step ids that depend on dep_id
         let mut rev: HashMap<String, Vec<String>> = HashMap::new();
         for s in &plan.steps {
@@ -448,8 +451,7 @@ mod tests {
     #[tokio::test]
     async fn unknown_tool_is_rejected() {
         let orch = ToolOrchestrator::new();
-        let plan =
-            ExecutionPlan::new().step(ToolStep::new("s1", "ghost", args("x")));
+        let plan = ExecutionPlan::new().step(ToolStep::new("s1", "ghost", args("x")));
         let err = orch.run(plan).await.unwrap_err();
         assert!(err.to_string().contains("unregistered"), "got: {err}");
     }

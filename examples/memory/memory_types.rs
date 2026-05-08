@@ -15,7 +15,16 @@ fn main() {
         window.write(Message::human(s.to_string()));
         tokens.write(Message::human(s.to_string()));
     }
-    println!("Buffer:                {} messages (unbounded)", buffer.seed().len());
-    println!("Window(3):             {} messages (last 3)", window.seed().len());
-    println!("TokenBufferMemory(20): {} messages (≤20 chars)", tokens.seed().len());
+    println!(
+        "Buffer:                {} messages (unbounded)",
+        buffer.seed().len()
+    );
+    println!(
+        "Window(3):             {} messages (last 3)",
+        window.seed().len()
+    );
+    println!(
+        "TokenBufferMemory(20): {} messages (≤20 chars)",
+        tokens.seed().len()
+    );
 }

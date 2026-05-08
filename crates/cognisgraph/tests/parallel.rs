@@ -4,9 +4,7 @@
 use std::sync::Arc;
 
 use cognis_core::{CognisError, Event, InterruptKind, Runnable, RunnableConfig};
-use cognis_graph::{
-    node_fn, Checkpointer, Goto, Graph, GraphState, InMemoryCheckpointer, NodeOut,
-};
+use cognis_graph::{node_fn, Checkpointer, Goto, Graph, GraphState, InMemoryCheckpointer, NodeOut};
 use futures::StreamExt;
 
 #[derive(Default, Clone, Debug, PartialEq, serde::Serialize)]

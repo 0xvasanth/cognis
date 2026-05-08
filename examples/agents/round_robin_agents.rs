@@ -13,8 +13,12 @@ use cognis_llm::provider::{LLMProvider, Provider};
 struct Tagged(&'static str);
 #[async_trait]
 impl LLMProvider for Tagged {
-    fn name(&self) -> &str { self.0 }
-    fn provider_type(&self) -> Provider { Provider::Ollama }
+    fn name(&self) -> &str {
+        self.0
+    }
+    fn provider_type(&self) -> Provider {
+        Provider::Ollama
+    }
     async fn chat_completion(&self, _: Vec<Message>, _: ChatOptions) -> Result<ChatResponse> {
         Ok(ChatResponse {
             message: Message::ai(format!("from-{}", self.0)),
@@ -23,8 +27,16 @@ impl LLMProvider for Tagged {
             model: self.0.into(),
         })
     }
-    async fn chat_completion_stream(&self, _: Vec<Message>, _: ChatOptions) -> Result<RunnableStream<StreamChunk>> { unimplemented!() }
-    async fn health_check(&self) -> Result<HealthStatus> { Ok(HealthStatus::Healthy { latency_ms: 0 }) }
+    async fn chat_completion_stream(
+        &self,
+        _: Vec<Message>,
+        _: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        unimplemented!()
+    }
+    async fn health_check(&self) -> Result<HealthStatus> {
+        Ok(HealthStatus::Healthy { latency_ms: 0 })
+    }
 }
 
 fn agent(tag: &'static str) -> Result<cognis::Agent> {

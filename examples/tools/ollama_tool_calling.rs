@@ -20,7 +20,9 @@ async fn main() -> Result<()> {
         .with_max_iterations(4)
         .build()?;
 
-    let resp = agent.run(Message::human("compute 12 * 8 and explain.")).await?;
+    let resp = agent
+        .run(Message::human("compute 12 * 8 and explain."))
+        .await?;
     println!("{}", resp.content);
     println!("(messages: {})", resp.messages.len());
     Ok(())

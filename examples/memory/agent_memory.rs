@@ -16,9 +16,13 @@ async fn main() -> Result<()> {
         .stateful()
         .build()?;
 
-    let r1 = agent.run(Message::human("My favorite number is 7.")).await?;
+    let r1 = agent
+        .run(Message::human("My favorite number is 7."))
+        .await?;
     println!("turn 1: {}", r1.content);
-    let r2 = agent.run(Message::human("What's my favorite number times 3?")).await?;
+    let r2 = agent
+        .run(Message::human("What's my favorite number times 3?"))
+        .await?;
     println!("turn 2: {}", r2.content);
     Ok(())
 }

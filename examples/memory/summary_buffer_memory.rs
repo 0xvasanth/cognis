@@ -12,8 +12,7 @@ async fn main() -> Result<()> {
         std::env::set_var("COGNIS_PROVIDER", "ollama");
     }
     let client = Client::from_env()?;
-    let mut mem = SummaryBufferMemory::new(client, 50)
-        .with_system("Be terse.");
+    let mut mem = SummaryBufferMemory::new(client, 50).with_system("Be terse.");
 
     for s in [
         "Tell me a long fact about water.",

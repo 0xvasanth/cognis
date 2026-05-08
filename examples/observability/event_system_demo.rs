@@ -9,7 +9,9 @@ use cognis_core::Observer;
 
 struct Count(AtomicUsize);
 impl Observer for Count {
-    fn on_event(&self, _: &Event) { self.0.fetch_add(1, Ordering::Relaxed); }
+    fn on_event(&self, _: &Event) {
+        self.0.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 #[tokio::main]

@@ -19,8 +19,12 @@ struct SearchKb;
 impl SchemaBasedTool for SearchKb {
     type Params = SearchArgs;
     type Output = Value;
-    fn name(&self) -> &str { "search_kb" }
-    fn description(&self) -> &str { "Search a mock knowledge base." }
+    fn name(&self) -> &str {
+        "search_kb"
+    }
+    fn description(&self) -> &str {
+        "Search a mock knowledge base."
+    }
     async fn execute_typed(&self, args: SearchArgs) -> Result<Value> {
         let limit = args.limit.unwrap_or(3).min(50);
         let items: Vec<_> = (1..=limit)
@@ -34,7 +38,12 @@ impl SchemaBasedTool for SearchKb {
 async fn main() -> Result<()> {
     let t = SearchKb;
     println!("schema:\n{:#}", Tool::args_schema(&t).unwrap());
-    let out = t.execute_typed(SearchArgs { query: "rust async".into(), limit: Some(2) }).await?;
+    let out = t
+        .execute_typed(SearchArgs {
+            query: "rust async".into(),
+            limit: Some(2),
+        })
+        .await?;
     println!("output: {out}");
     Ok(())
 }

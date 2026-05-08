@@ -27,9 +27,7 @@ async fn main() -> Result<()> {
     if std::env::var("COGNIS_PROVIDER").is_err() {
         std::env::set_var("COGNIS_PROVIDER", "ollama");
     }
-    let mut agent = AgentBuilder::new()
-        .with_llm(Client::from_env()?)
-        .build()?;
+    let mut agent = AgentBuilder::new().with_llm(Client::from_env()?).build()?;
 
     // Observers attach via RunnableConfig, not AgentBuilder. We surface
     // them by streaming events instead.
@@ -37,7 +35,6 @@ async fn main() -> Result<()> {
     let mut s = agent.stream(Message::human("Say hello.")).await?;
     let obs = Arc::new(LogObserver);
     while let Some(ev) = s.next().await {
-        
         obs.on_event(&ev);
     }
     Ok(())

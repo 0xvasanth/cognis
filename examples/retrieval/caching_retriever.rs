@@ -15,7 +15,8 @@ async fn main() -> Result<()> {
     let store = Arc::new(RwLock::new(InMemoryVectorStore::new(emb)));
     {
         let mut s = store.write().await;
-        s.add_texts(vec!["alpha".into(), "beta".into(), "gamma".into()], None).await?;
+        s.add_texts(vec!["alpha".into(), "beta".into(), "gamma".into()], None)
+            .await?;
     }
     let inner: Arc<dyn Runnable<String, Vec<Document>>> = Arc::new(VectorRetriever::new(store, 2));
     let cached = CachingRetriever::new(inner);

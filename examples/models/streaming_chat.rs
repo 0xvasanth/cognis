@@ -10,7 +10,9 @@ async fn main() -> Result<()> {
         std::env::set_var("COGNIS_PROVIDER", "ollama");
     }
     let client = Client::from_env()?;
-    let mut s = client.stream(vec![Message::human("Tell me a one-line joke.")]).await?;
+    let mut s = client
+        .stream(vec![Message::human("Tell me a one-line joke.")])
+        .await?;
     while let Some(c) = s.next().await {
         let c = c?;
         print!("{}", c.content);

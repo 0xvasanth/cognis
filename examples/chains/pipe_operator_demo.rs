@@ -40,7 +40,12 @@ async fn main() -> Result<()> {
     println!("output schema: {}", wrapped.output_schema().unwrap());
 
     let out = wrapped
-        .invoke(Q { topic: "rust".into() }, Default::default())
+        .invoke(
+            Q {
+                topic: "rust".into(),
+            },
+            Default::default(),
+        )
         .await?;
     println!("\nresult: {}", out.answer);
     Ok(())

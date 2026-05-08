@@ -18,7 +18,10 @@ async fn main() -> cognis::prelude::Result<()> {
     sw.acquire(5).await;
     let t0 = Instant::now();
     sw.acquire(1).await;
-    println!("third acquire blocked for {:?} (window had to slide)", t0.elapsed());
+    println!(
+        "third acquire blocked for {:?} (window had to slide)",
+        t0.elapsed()
+    );
 
     // Cost-based: ≤ 100 cost units total; refund/reset to release.
     println!("\n=== CostBasedLimiter ===");

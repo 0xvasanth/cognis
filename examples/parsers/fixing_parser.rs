@@ -42,6 +42,10 @@ async fn main() -> Result<()> {
 
     // The async path repairs and re-parses.
     let r = parser.parse_with_fix(bad).await?;
-    println!("repaired → {} with {} ingredients", r.title, r.ingredients.len());
+    println!(
+        "repaired → {} with {} ingredients",
+        r.title,
+        r.ingredients.len()
+    );
     Ok(())
 }

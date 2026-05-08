@@ -29,7 +29,9 @@ async fn main() -> Result<()> {
 
     let retried = Retry::new(
         flaky,
-        RetryPolicy::new(5).with_initial_delay(Duration::from_millis(5)).with_backoff(2.0),
+        RetryPolicy::new(5)
+            .with_initial_delay(Duration::from_millis(5))
+            .with_backoff(2.0),
     );
     let out = retried.invoke((), Default::default()).await?;
     println!("{out} (total attempts: {})", n.load(Ordering::Relaxed));

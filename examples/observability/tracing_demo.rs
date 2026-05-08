@@ -10,9 +10,13 @@ struct Printer;
 impl Observer for Printer {
     fn on_event(&self, e: &Event) {
         match e {
-            Event::OnStart { runnable, run_id, .. } => println!("[start] {runnable} ({run_id})"),
-            Event::OnEnd { runnable, run_id, .. }   => println!("[end]   {runnable} ({run_id})"),
-            Event::OnError { error, run_id }       => println!("[err]   ({run_id}): {error}"),
+            Event::OnStart {
+                runnable, run_id, ..
+            } => println!("[start] {runnable} ({run_id})"),
+            Event::OnEnd {
+                runnable, run_id, ..
+            } => println!("[end]   {runnable} ({run_id})"),
+            Event::OnError { error, run_id } => println!("[err]   ({run_id}): {error}"),
             _ => {}
         }
     }

@@ -14,14 +14,20 @@ struct TranslateArgs {
     target: Option<String>,
 }
 
-struct Translator { default_target: String }
+struct Translator {
+    default_target: String,
+}
 
 #[async_trait]
 impl SchemaBasedTool for Translator {
     type Params = TranslateArgs;
     type Output = Value;
-    fn name(&self) -> &str { "translate" }
-    fn description(&self) -> &str { "Translate text into a target language." }
+    fn name(&self) -> &str {
+        "translate"
+    }
+    fn description(&self) -> &str {
+        "Translate text into a target language."
+    }
     async fn execute_typed(&self, args: TranslateArgs) -> Result<Value> {
         let target = args.target.unwrap_or_else(|| self.default_target.clone());
         Ok(json!({
@@ -34,13 +40,25 @@ impl SchemaBasedTool for Translator {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let t = Translator { default_target: "fr".into() };
+    let t = Translator {
+        default_target: "fr".into(),
+    };
     println!("schema:\n{:#}", Tool::args_schema(&t).unwrap());
 
-    let out = t.execute_typed(TranslateArgs { text: "hello".into(), target: None }).await?;
+    let out = t
+        .execute_typed(TranslateArgs {
+            text: "hello".into(),
+            target: None,
+        })
+        .await?;
     println!("default → {out}");
 
-    let out = t.execute_typed(TranslateArgs { text: "hello".into(), target: Some("es".into()) }).await?;
+    let out = t
+        .execute_typed(TranslateArgs {
+            text: "hello".into(),
+            target: Some("es".into()),
+        })
+        .await?;
     println!("override → {out}");
     Ok(())
 }

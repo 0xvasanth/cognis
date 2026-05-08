@@ -17,7 +17,11 @@ async fn main() -> Result<()> {
         .build(raw);
 
     let resp = pipe
-        .invoke(vec![Message::human("Outline how to bake bread.")], Vec::new(), Default::default())
+        .invoke(
+            vec![Message::human("Outline how to bake bread.")],
+            Vec::new(),
+            Default::default(),
+        )
         .await?;
     println!("{}", resp.message.content());
     Ok(())

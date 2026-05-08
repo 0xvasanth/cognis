@@ -13,10 +13,17 @@ use cognis_llm::Client;
 struct CannedProvider;
 #[async_trait]
 impl LLMProvider for CannedProvider {
-    fn name(&self) -> &str { "canned" }
-    fn provider_type(&self) -> Provider { Provider::Ollama }
+    fn name(&self) -> &str {
+        "canned"
+    }
+    fn provider_type(&self) -> Provider {
+        Provider::Ollama
+    }
     async fn chat_completion(&self, msgs: Vec<Message>, _: ChatOptions) -> Result<ChatResponse> {
-        let q = msgs.last().map(|m| m.content().to_string()).unwrap_or_default();
+        let q = msgs
+            .last()
+            .map(|m| m.content().to_string())
+            .unwrap_or_default();
         Ok(ChatResponse {
             message: Message::ai(format!(
                 "Based on the provided documents, the answer to: {q}"
@@ -26,8 +33,16 @@ impl LLMProvider for CannedProvider {
             model: "canned".into(),
         })
     }
-    async fn chat_completion_stream(&self, _: Vec<Message>, _: ChatOptions) -> Result<RunnableStream<StreamChunk>> { unimplemented!() }
-    async fn health_check(&self) -> Result<HealthStatus> { Ok(HealthStatus::Healthy { latency_ms: 0 }) }
+    async fn chat_completion_stream(
+        &self,
+        _: Vec<Message>,
+        _: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        unimplemented!()
+    }
+    async fn health_check(&self) -> Result<HealthStatus> {
+        Ok(HealthStatus::Healthy { latency_ms: 0 })
+    }
 }
 
 #[tokio::main]

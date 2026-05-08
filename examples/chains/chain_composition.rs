@@ -12,10 +12,15 @@ async fn main() -> Result<()> {
     println!("=== V2 Composition Patterns ===\n");
 
     // Sequential: pipe two lambdas. `.pipe()` is V2's LCEL `|`.
-    let upper = lambda(|s: String| async move { Ok::<_, cognis_core::CognisError>(s.to_uppercase()) });
-    let exclaim = lambda(|s: String| async move { Ok::<_, cognis_core::CognisError>(format!("{s}!")) });
+    let upper =
+        lambda(|s: String| async move { Ok::<_, cognis_core::CognisError>(s.to_uppercase()) });
+    let exclaim =
+        lambda(|s: String| async move { Ok::<_, cognis_core::CognisError>(format!("{s}!")) });
     let seq = upper.pipe(exclaim);
-    println!("sequential: {}", seq.invoke("hello".into(), Default::default()).await?);
+    println!(
+        "sequential: {}",
+        seq.invoke("hello".into(), Default::default()).await?
+    );
 
     // Parallel: fan input out to named branches.
     let len = Arc::new(lambda(|s: String| async move {
@@ -27,7 +32,9 @@ async fn main() -> Result<()> {
     let par = Parallel::<String, usize>::new()
         .branch("len", len)
         .branch("words", words);
-    let out = par.invoke("hello there world".into(), Default::default()).await?;
+    let out = par
+        .invoke("hello there world".into(), Default::default())
+        .await?;
     println!("parallel: {:?}", out);
 
     Ok(())

@@ -10,7 +10,10 @@ use cognis_core::output_parsers::{JsonParser, RetryParser};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-struct Person { name: String, age: u32 }
+struct Person {
+    name: String,
+    age: u32,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {

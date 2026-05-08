@@ -23,16 +23,21 @@ async fn main() -> Result<()> {
                 "Python asyncio is comparable".into(),
             ],
             None,
-        ).await?;
+        )
+        .await?;
     }
     let recall: Arc<dyn Runnable<String, Vec<Document>>> = Arc::new(VectorRetriever::new(store, 4));
     let encoder: Arc<dyn CrossEncoder> = Arc::new(FnCrossEncoder {
         f: |q: &str, d: &Document| {
-            q.split_whitespace().filter(|w| d.content.contains(w)).count() as f32
+            q.split_whitespace()
+                .filter(|w| d.content.contains(w))
+                .count() as f32
         },
     });
     let reranker = CrossEncoderReranker::new(recall, encoder, 2);
-    let docs = reranker.invoke("rust async tokio".into(), Default::default()).await?;
+    let docs = reranker
+        .invoke("rust async tokio".into(), Default::default())
+        .await?;
     for d in docs {
         println!("- {}", d.content);
     }

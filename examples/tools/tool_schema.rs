@@ -24,8 +24,12 @@ struct WeatherTool;
 impl SchemaBasedTool for WeatherTool {
     type Params = WeatherArgs;
     type Output = Value;
-    fn name(&self) -> &str { "get_weather" }
-    fn description(&self) -> &str { "Fetches current weather for a city." }
+    fn name(&self) -> &str {
+        "get_weather"
+    }
+    fn description(&self) -> &str {
+        "Fetches current weather for a city."
+    }
     async fn execute_typed(&self, args: WeatherArgs) -> Result<Value> {
         let unit = args.unit.unwrap_or_else(|| "c".into());
         Ok(json!({"city": args.city, "temp": 21, "unit": unit}))
@@ -37,7 +41,12 @@ async fn main() -> Result<()> {
     let tool = WeatherTool;
     println!("name: {}", Tool::name(&tool));
     println!("schema:\n{:#}", Tool::args_schema(&tool).unwrap());
-    let out = tool.execute_typed(WeatherArgs { city: "Paris".into(), unit: Some("c".into()) }).await?;
+    let out = tool
+        .execute_typed(WeatherArgs {
+            city: "Paris".into(),
+            unit: Some("c".into()),
+        })
+        .await?;
     println!("output: {out}");
     Ok(())
 }

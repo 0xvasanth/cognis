@@ -32,14 +32,14 @@ impl<S: GraphState> CompiledGraph<S> {
             let id = node_id(name);
             let label = escape(name);
             if Some(*name) == self.graph.start.as_ref() {
-                out.push_str(&format!(
-                    "    {id} [label=\"{label}\", penwidth=2.0];\n"
-                ));
+                out.push_str(&format!("    {id} [label=\"{label}\", penwidth=2.0];\n"));
             } else {
                 out.push_str(&format!("    {id} [label=\"{label}\"];\n"));
             }
         }
-        out.push_str("    __END__ [label=\"END\", shape=oval, style=filled, fillcolor=\"#eeeeee\"];\n");
+        out.push_str(
+            "    __END__ [label=\"END\", shape=oval, style=filled, fillcolor=\"#eeeeee\"];\n",
+        );
 
         // Static edges.
         for e in extract_edges(self) {
@@ -121,7 +121,10 @@ mod tests {
         let g = build();
         let d = g.to_dot();
         assert!(d.starts_with("digraph G {\n"));
-        assert!(d.contains("a [label=\"a\", penwidth=2.0];"), "start node bold:\n{d}");
+        assert!(
+            d.contains("a [label=\"a\", penwidth=2.0];"),
+            "start node bold:\n{d}"
+        );
         assert!(d.contains("b [label=\"b\"];"));
         assert!(d.contains("a -> b;"));
         assert!(d.contains("__END__"));

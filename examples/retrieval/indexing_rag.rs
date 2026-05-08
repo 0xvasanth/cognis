@@ -38,17 +38,25 @@ async fn main() -> Result<()> {
         store.clone(),
     );
 
-    let r1 = pipeline.run_incremental(&manager, "g1", |d| d.id.clone()).await?;
-    println!("first run : added={} changed={} unchanged={} deleted={}",
-        r1.added, r1.changed, r1.unchanged, r1.deleted);
+    let r1 = pipeline
+        .run_incremental(&manager, "g1", |d| d.id.clone())
+        .await?;
+    println!(
+        "first run : added={} changed={} unchanged={} deleted={}",
+        r1.added, r1.changed, r1.unchanged, r1.deleted
+    );
 
     *docs.lock().unwrap() = vec![
         Document::new("doc one v1").with_id("a"),
         Document::new("doc two v2 changed").with_id("b"),
         Document::new("doc three new").with_id("c"),
     ];
-    let r2 = pipeline.run_incremental(&manager, "g1", |d| d.id.clone()).await?;
-    println!("second run: added={} changed={} unchanged={} deleted={}",
-        r2.added, r2.changed, r2.unchanged, r2.deleted);
+    let r2 = pipeline
+        .run_incremental(&manager, "g1", |d| d.id.clone())
+        .await?;
+    println!(
+        "second run: added={} changed={} unchanged={} deleted={}",
+        r2.added, r2.changed, r2.unchanged, r2.deleted
+    );
     Ok(())
 }

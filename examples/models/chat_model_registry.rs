@@ -13,7 +13,11 @@ async fn main() -> Result<()> {
     // Resolve a provider by id (no API call, just construction).
     if reg.ids().iter().any(|id| id == "ollama") {
         let provider = reg.build("ollama:llama3.2:1b", ProviderSpec::default())?;
-        println!("built provider: {} ({:?})", provider.name(), provider.provider_type());
+        println!(
+            "built provider: {} ({:?})",
+            provider.name(),
+            provider.provider_type()
+        );
     }
     Ok(())
 }

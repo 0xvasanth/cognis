@@ -16,9 +16,15 @@ use serde_json::json;
 struct Slow(&'static str, u64);
 #[async_trait]
 impl Tool for Slow {
-    fn name(&self) -> &str { self.0 }
-    fn description(&self) -> &str { "slow stub tool" }
-    fn args_schema(&self) -> Option<serde_json::Value> { None }
+    fn name(&self) -> &str {
+        self.0
+    }
+    fn description(&self) -> &str {
+        "slow stub tool"
+    }
+    fn args_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
         tokio::time::sleep(std::time::Duration::from_millis(self.1)).await;
         Ok(ToolOutput::Content(json!({
@@ -37,8 +43,16 @@ async fn main() -> Result<()> {
         .with_max_concurrency(4);
 
     let plan = ExecutionPlan::new()
-        .step(ToolStep::new("a", "fetch_a", ToolInput::Text("doc-1".into())))
-        .step(ToolStep::new("b", "fetch_b", ToolInput::Text("doc-2".into())))
+        .step(ToolStep::new(
+            "a",
+            "fetch_a",
+            ToolInput::Text("doc-1".into()),
+        ))
+        .step(ToolStep::new(
+            "b",
+            "fetch_b",
+            ToolInput::Text("doc-2".into()),
+        ))
         .step(
             ToolStep::new("m", "merge", ToolInput::Text("combine results".into()))
                 .after(["a", "b"]),

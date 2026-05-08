@@ -72,6 +72,7 @@ pub use agent::{
     ToolDispatchNode, Triple, TripleExtractor, VectorMemory, Window, Workflow, WorkflowState,
     WorkflowStateUpdate,
 };
+pub use agent_bus::{AgentBus, SubscribeError, Subscription};
 pub use backend::{
     Backend, Blob, GrepHit, InMemoryStateBackend, InMemoryStorageBackend, LocalFsStorageBackend,
     MemoryBackend, SandboxedFsBackend, StateBackend, StorageBackend,
@@ -95,7 +96,6 @@ pub use middleware::{
     ToolDenyList, ToolEmulator, ToolFilter, ToolRetry, ToolRetryClassifier, ToolSelection,
     WorkspaceLister,
 };
-pub use agent_bus::{AgentBus, SubscribeError, Subscription};
 pub use multi_agent::{
     AgentMessage, HandoffStrategy, InMemoryMessageBus, MessageBus, MultiAgentOrchestrator,
     ParallelVote, RoundRobin, Sequential, Supervisor,

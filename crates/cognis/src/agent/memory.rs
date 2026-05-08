@@ -798,17 +798,14 @@ impl Memory for EntityMemory {
 fn default_entity_extractor(text: &str) -> Vec<EntityFact> {
     // Common capitalized stopwords that lead sentences but aren't entities.
     const STOPWORDS: &[&str] = &[
-        "The", "A", "An", "This", "That", "These", "Those", "It", "Its", "Their",
-        "There", "Here", "What", "Who", "Which", "When", "Where", "Why", "How",
-        "And", "But", "Or", "If", "Then",
+        "The", "A", "An", "This", "That", "These", "Those", "It", "Its", "Their", "There", "Here",
+        "What", "Who", "Which", "When", "Where", "Why", "How", "And", "But", "Or", "If", "Then",
     ];
     let mut out = Vec::new();
     for sentence in split_sentences(text) {
         for tok in sentence.split_whitespace() {
             // Strip surrounding punctuation (keeps internal apostrophes).
-            let trimmed: String = tok
-                .trim_matches(|c: char| !c.is_alphanumeric())
-                .to_string();
+            let trimmed: String = tok.trim_matches(|c: char| !c.is_alphanumeric()).to_string();
             if trimmed.len() >= 2
                 && trimmed.chars().next().is_some_and(|c| c.is_uppercase())
                 && !STOPWORDS.contains(&trimmed.as_str())
@@ -944,10 +941,14 @@ fn default_triple_extractor(text: &str) -> Vec<Triple> {
             if let Some(idx) = sentence.find(predicate) {
                 let s = sentence[..idx].trim();
                 let o_raw = sentence[idx + predicate.len()..]
-                    .trim_end_matches(|c: char| matches!(c, '.' | '!' | '?'))
+                    .trim_end_matches(['.', '!', '?'])
                     .trim();
                 if !s.is_empty() && !o_raw.is_empty() {
-                    out.push((s.to_string(), predicate.trim().to_string(), o_raw.to_string()));
+                    out.push((
+                        s.to_string(),
+                        predicate.trim().to_string(),
+                        o_raw.to_string(),
+                    ));
                     break; // one triple per sentence
                 }
             }
@@ -963,11 +964,13 @@ mod tests_entity_kg {
     #[test]
     fn entity_memory_extracts_default() {
         let mut m = EntityMemory::new();
-        m.write(Message::human(
-            "Ada writes Rust. Bob reviews Ada's PRs.",
-        ));
+        m.write(Message::human("Ada writes Rust. Bob reviews Ada's PRs."));
         let ents = m.entities();
-        assert!(ents.contains_key("Ada"), "got: {:?}", ents.keys().collect::<Vec<_>>());
+        assert!(
+            ents.contains_key("Ada"),
+            "got: {:?}",
+            ents.keys().collect::<Vec<_>>()
+        );
         assert!(ents.contains_key("Rust"));
         assert!(ents.contains_key("Bob"));
     }
@@ -985,9 +988,8 @@ mod tests_entity_kg {
 
     #[test]
     fn entity_memory_with_custom_extractor() {
-        let mut m = EntityMemory::new().with_extractor(|_text: &str| {
-            vec![("forced".into(), "via custom extractor".into())]
-        });
+        let mut m = EntityMemory::new()
+            .with_extractor(|_text: &str| vec![("forced".into(), "via custom extractor".into())]);
         m.write(Message::human("ignored"));
         assert!(m.entities().contains_key("forced"));
     }
@@ -1032,9 +1034,8 @@ mod tests_entity_kg {
 
     #[test]
     fn kg_memory_with_custom_extractor() {
-        let mut m = KnowledgeGraphMemory::new().with_extractor(|_text: &str| {
-            vec![("X".into(), "rel".into(), "Y".into())]
-        });
+        let mut m = KnowledgeGraphMemory::new()
+            .with_extractor(|_text: &str| vec![("X".into(), "rel".into(), "Y".into())]);
         m.write(Message::human("ignored"));
         assert_eq!(m.triples(), &[("X".into(), "rel".into(), "Y".into())]);
     }

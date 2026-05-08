@@ -7,7 +7,9 @@ fn main() {
     let msg = Message::human_with_parts(
         "Describe this image briefly.",
         vec![
-            ContentPart::Text { text: "(small caption attached)".into() },
+            ContentPart::Text {
+                text: "(small caption attached)".into(),
+            },
             ContentPart::Image {
                 source: ImageSource::url("https://example.com/cat.jpg"),
                 mime: "image/jpeg".into(),
@@ -18,8 +20,12 @@ fn main() {
     for (i, part) in msg.parts().iter().enumerate() {
         match part {
             ContentPart::Text { text } => println!("part {i} (text): {text}"),
-            ContentPart::Image { source, mime } => println!("part {i} (image): {source:?} mime={mime}"),
-            ContentPart::Audio { source, mime } => println!("part {i} (audio): {source:?} mime={mime}"),
+            ContentPart::Image { source, mime } => {
+                println!("part {i} (image): {source:?} mime={mime}")
+            }
+            ContentPart::Audio { source, mime } => {
+                println!("part {i} (audio): {source:?} mime={mime}")
+            }
         }
     }
 }

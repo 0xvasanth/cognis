@@ -33,6 +33,9 @@ async fn main() -> Result<()> {
     println!("Extracted: {action:?}");
 
     // Show the schema-aware prompt fragment users would embed.
-    println!("\n--- format hint to feed to the LLM ---\n{}", OutputParser::format_instructions(&parser).unwrap_or_default());
+    println!(
+        "\n--- format hint to feed to the LLM ---\n{}",
+        OutputParser::format_instructions(&parser).unwrap_or_default()
+    );
     Ok(())
 }

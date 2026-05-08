@@ -16,9 +16,7 @@ async fn main() -> Result<()> {
     ];
 
     // 1. Dedup by trimmed content.
-    let after_dedup = Dedup::new()
-        .invoke(raw.clone(), Default::default())
-        .await?;
+    let after_dedup = Dedup::new().invoke(raw.clone(), Default::default()).await?;
     println!("--- after Dedup ---");
     for d in &after_dedup {
         println!("  - {}", d.content);

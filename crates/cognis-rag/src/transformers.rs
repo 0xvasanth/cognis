@@ -120,12 +120,15 @@ impl Runnable<Vec<Document>, Vec<Document>> for Dedup {
     }
 }
 
+/// Per-document mutator used by [`Enrichment`].
+pub type EnrichmentFn = Arc<dyn Fn(&mut Document) -> Result<()> + Send + Sync>;
+
 /// Apply a per-document transform — e.g. tag, summarize, redact.
 /// The closure mutates the document in place; documents that fail can
 /// be filtered by returning an `Err` (the transform aborts on first
 /// error).
 pub struct Enrichment {
-    f: Arc<dyn Fn(&mut Document) -> Result<()> + Send + Sync>,
+    f: EnrichmentFn,
     name: &'static str,
 }
 
@@ -309,7 +312,7 @@ mod tests {
             .unwrap();
         assert_eq!(out[0].content, "HI");
         assert_eq!(out[1].content, "HO");
-        assert!(out[0].metadata.get("seen").is_some());
+        assert!(out[0].metadata.contains_key("seen"));
     }
 
     #[test]
@@ -319,8 +322,14 @@ mod tests {
             Document::new("d2"),
         ];
         let out = MetadataTransformer::new().set("source", "new").apply(docs);
-        assert_eq!(out[0].metadata.get("source").unwrap(), &serde_json::json!("new"));
-        assert_eq!(out[1].metadata.get("source").unwrap(), &serde_json::json!("new"));
+        assert_eq!(
+            out[0].metadata.get("source").unwrap(),
+            &serde_json::json!("new")
+        );
+        assert_eq!(
+            out[1].metadata.get("source").unwrap(),
+            &serde_json::json!("new")
+        );
     }
 
     #[test]
@@ -333,7 +342,13 @@ mod tests {
             .set("source", "new")
             .merge_only_missing()
             .apply(docs);
-        assert_eq!(out[0].metadata.get("source").unwrap(), &serde_json::json!("old"));
-        assert_eq!(out[1].metadata.get("source").unwrap(), &serde_json::json!("new"));
+        assert_eq!(
+            out[0].metadata.get("source").unwrap(),
+            &serde_json::json!("old")
+        );
+        assert_eq!(
+            out[1].metadata.get("source").unwrap(),
+            &serde_json::json!("new")
+        );
     }
 }

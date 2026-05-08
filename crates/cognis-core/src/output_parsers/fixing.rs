@@ -56,10 +56,7 @@ where
                      Return a corrected version. Output ONLY the corrected content — no \
                      explanations, no markdown fences."
                 );
-                let fixed = self
-                    .fixer
-                    .invoke(prompt, RunnableConfig::default())
-                    .await?;
+                let fixed = self.fixer.invoke(prompt, RunnableConfig::default()).await?;
                 self.inner.parse(&fixed)
             }
         }
@@ -152,10 +149,7 @@ where
                          Return a corrected version. Output ONLY the corrected content.",
                         last_err.as_ref().unwrap()
                     );
-                    current = self
-                        .fixer
-                        .invoke(prompt, RunnableConfig::default())
-                        .await?;
+                    current = self.fixer.invoke(prompt, RunnableConfig::default()).await?;
                 }
             }
         }
@@ -223,7 +217,13 @@ mod tests {
         );
         let bad = r#"{name: Ada, age: 36"#; // malformed
         let p = parser.parse_with_fix(bad).await.unwrap();
-        assert_eq!(p, Person { name: "Ada".into(), age: 36 });
+        assert_eq!(
+            p,
+            Person {
+                name: "Ada".into(),
+                age: 36
+            }
+        );
     }
 
     #[tokio::test]
@@ -240,8 +240,18 @@ mod tests {
         let parser = OutputFixingParser::new(JsonParser::<Person>::new(), fixer);
         let good = r#"{"name":"Bob","age":42}"#;
         let p = parser.parse_with_fix(good).await.unwrap();
-        assert_eq!(p, Person { name: "Bob".into(), age: 42 });
-        assert_eq!(calls.load(Ordering::Relaxed), 0, "fixer must not be called for valid input");
+        assert_eq!(
+            p,
+            Person {
+                name: "Bob".into(),
+                age: 42
+            }
+        );
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            0,
+            "fixer must not be called for valid input"
+        );
     }
 
     #[tokio::test]
@@ -259,18 +269,22 @@ mod tests {
                 })
             }
         }));
-        let parser =
-            RetryParser::with_retries(JsonParser::<Person>::new(), fixer, 5);
+        let parser = RetryParser::with_retries(JsonParser::<Person>::new(), fixer, 5);
         let p = parser.parse_with_retries("garbage").await.unwrap();
-        assert_eq!(p, Person { name: "Eve".into(), age: 29 });
+        assert_eq!(
+            p,
+            Person {
+                name: "Eve".into(),
+                age: 29
+            }
+        );
         assert_eq!(attempts.load(Ordering::Relaxed), 3);
     }
 
     #[tokio::test]
     async fn retry_parser_returns_last_error_after_exhaustion() {
         let fixer = fixer_returns("still bad");
-        let parser =
-            RetryParser::with_retries(JsonParser::<Person>::new(), fixer, 2);
+        let parser = RetryParser::with_retries(JsonParser::<Person>::new(), fixer, 2);
         let err = parser.parse_with_retries("garbage").await.unwrap_err();
         // Should surface a parse error, not "exhausted retries".
         assert!(

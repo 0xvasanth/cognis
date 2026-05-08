@@ -22,8 +22,12 @@ struct SearchTool;
 
 #[async_trait]
 impl Tool for SearchTool {
-    fn name(&self) -> &str { "search" }
-    fn description(&self) -> &str { "Searches a mock knowledge base." }
+    fn name(&self) -> &str {
+        "search"
+    }
+    fn description(&self) -> &str {
+        "Searches a mock knowledge base."
+    }
     fn args_schema(&self) -> Option<serde_json::Value> {
         Some(serde_json::to_value(schema_for!(SearchArgs)).unwrap())
     }

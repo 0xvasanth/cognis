@@ -51,7 +51,10 @@ async fn main() -> Result<()> {
     let pipeline = embed.pipe(rank);
     let out = pipeline
         .invoke(
-            UserQuery { text: "hello".into(), user_id: 42 },
+            UserQuery {
+                text: "hello".into(),
+                user_id: 42,
+            },
             Default::default(),
         )
         .await?;

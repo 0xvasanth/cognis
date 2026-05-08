@@ -353,10 +353,7 @@ impl HandoffStrategy for RoundRobin {
                 "RoundRobin: no agents registered".into(),
             ));
         }
-        let idx = self
-            .next
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            % agents.len();
+        let idx = self.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % agents.len();
         let (id, agent) = &agents[idx];
         bus.publish(AgentMessage {
             from: "user".into(),
@@ -562,8 +559,8 @@ mod tests {
 
     #[tokio::test]
     async fn round_robin_publishes_routing_metadata() {
-        let orch = MultiAgentOrchestrator::new(RoundRobin::new())
-            .add("only", agent_with_response("ok"));
+        let orch =
+            MultiAgentOrchestrator::new(RoundRobin::new()).add("only", agent_with_response("ok"));
         orch.run("input").await.unwrap();
         let inbox = orch.bus().drain("only").await.unwrap();
         assert_eq!(inbox.len(), 1);

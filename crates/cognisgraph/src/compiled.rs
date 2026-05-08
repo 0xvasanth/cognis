@@ -265,9 +265,9 @@ where
             let _ = engine::run(&this, input, cfg).await;
         });
 
-        Ok(cognis_core::EventStream::new(
-            UnboundedReceiverStream::new(rx),
-        ))
+        Ok(cognis_core::EventStream::new(UnboundedReceiverStream::new(
+            rx,
+        )))
     }
 }
 

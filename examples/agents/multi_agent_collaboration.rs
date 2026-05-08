@@ -20,8 +20,14 @@ async fn main() -> Result<()> {
 
     println!("--- Sequential ---");
     let orch = MultiAgentOrchestrator::new(Sequential)
-        .add("brainstormer", make_agent("Generate 3 ideas for a kids' birthday party.")?)
-        .add("editor", make_agent("Pick the best idea and explain why in one sentence.")?);
+        .add(
+            "brainstormer",
+            make_agent("Generate 3 ideas for a kids' birthday party.")?,
+        )
+        .add(
+            "editor",
+            make_agent("Pick the best idea and explain why in one sentence.")?,
+        );
     println!("{}\n", orch.run("Plan a kids' party.").await?.content);
 
     println!("--- ParallelVote ---");
@@ -29,6 +35,9 @@ async fn main() -> Result<()> {
         .add("a", make_agent("Reply with the single word: yes.")?)
         .add("b", make_agent("Reply with the single word: yes.")?)
         .add("c", make_agent("Reply with the single word: no.")?);
-    println!("majority answer: {}", orch2.run("Pick yes or no.").await?.content);
+    println!(
+        "majority answer: {}",
+        orch2.run("Pick yes or no.").await?.content
+    );
     Ok(())
 }

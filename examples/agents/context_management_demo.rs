@@ -10,7 +10,12 @@ async fn main() -> Result<()> {
         .with_system("You are a helpful assistant.")
         .with_strategy(TrimStrategy::First);
 
-    for s in ["hi", "what's the weather", "tell me a long story please", "no actually shorter"] {
+    for s in [
+        "hi",
+        "what's the weather",
+        "tell me a long story please",
+        "no actually shorter",
+    ] {
         mem.write(Message::human(s.to_string()));
     }
     let seed = mem.seed();

@@ -18,7 +18,10 @@ async fn main() -> Result<()> {
         async move {
             let attempt = n.fetch_add(1, Ordering::Relaxed) + 1;
             if attempt < 3 {
-                Err(CognisError::Network { status_code: Some(503), message: "transient".into() })
+                Err(CognisError::Network {
+                    status_code: Some(503),
+                    message: "transient".into(),
+                })
             } else {
                 Ok::<_, CognisError>("done")
             }

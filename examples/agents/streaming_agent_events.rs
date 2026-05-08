@@ -15,7 +15,9 @@ async fn main() -> Result<()> {
         .with_system_prompt("Answer in one sentence.")
         .build()?;
 
-    let mut s = agent.stream(Message::human("What is the capital of France?")).await?;
+    let mut s = agent
+        .stream(Message::human("What is the capital of France?"))
+        .await?;
     while let Some(ev) = s.next().await {
         match ev {
             Event::OnNodeStart { node, step, .. } => println!("[start] step={step} node={node}"),

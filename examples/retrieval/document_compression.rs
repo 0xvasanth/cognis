@@ -11,6 +11,12 @@ fn main() {
         Document::new("least relevant"),
     ];
     let reordered = LongContextReorder::reorder(docs.clone());
-    println!("original  : {:?}", docs.iter().map(|d| &d.content).collect::<Vec<_>>());
-    println!("reordered : {:?}", reordered.iter().map(|d| &d.content).collect::<Vec<_>>());
+    println!(
+        "original  : {:?}",
+        docs.iter().map(|d| &d.content).collect::<Vec<_>>()
+    );
+    println!(
+        "reordered : {:?}",
+        reordered.iter().map(|d| &d.content).collect::<Vec<_>>()
+    );
 }

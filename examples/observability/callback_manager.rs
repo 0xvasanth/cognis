@@ -10,10 +10,12 @@ use cognis_core::Observer;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let make = || HandlerBuilder::new()
-        .on_chain_start(|name, _, run| println!("[start] {name} run_id={run}"))
-        .on_chain_end(|name, _, run| println!("[end]   {name} run_id={run}"))
-        .build();
+    let make = || {
+        HandlerBuilder::new()
+            .on_chain_start(|name, _, run| println!("[start] {name} run_id={run}"))
+            .on_chain_end(|name, _, run| println!("[end]   {name} run_id={run}"))
+            .build()
+    };
     let mgr = CallbackManager::new().push(Arc::new(make()));
     println!("handlers registered: {}", mgr.len());
 
