@@ -26,3 +26,6 @@ pub mod parent;
 
 pub mod batch;
 pub use batch::{Batcher, BatcherConfig, BatcherStats};
+
+pub mod exporter;
+pub use exporter::TraceExporter;
