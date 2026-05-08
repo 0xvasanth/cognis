@@ -10,3 +10,8 @@
 
 pub mod error;
 pub use error::TraceError;
+
+pub mod span;
+pub use span::{
+    CostDetails, Generation, ObservationLevel, ScoreRecord, ScoreValue, Span, SpanKind, TokenUsage,
+};
