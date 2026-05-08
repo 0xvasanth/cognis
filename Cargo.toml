@@ -7,6 +7,7 @@ members = [
     "crates/cognis-macros",
     "crates/cognis-llm",
     "crates/cognis-rag",
+    "crates/cognis-trace",
     "crates/examples",
 ]
 
@@ -31,6 +32,8 @@ tracing = "0.1"
 schemars = "0.8"
 
 
+cognis-trace = { path = "crates/cognis-trace", version = "0.2.1" }
+dashmap = "6"
 cognis = { path = "crates/cognis", version = "0.2.1" }
 cognis-core = { path = "crates/cognis-core", version = "0.2.1" }
 cognis-macros = { path = "crates/cognis-macros", version = "0.2.1" }
