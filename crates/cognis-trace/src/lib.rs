@@ -29,3 +29,6 @@ pub use batch::{Batcher, BatcherConfig, BatcherStats};
 
 pub mod exporter;
 pub use exporter::TraceExporter;
+
+pub mod handler;
+pub use handler::{TracingHandler, TracingHandlerBuilder};
