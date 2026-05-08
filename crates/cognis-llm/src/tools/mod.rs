@@ -307,15 +307,35 @@ impl ToolRegistry {
     }
 
     /// Like [`ToolRegistry::execute`] but also enforces the permission
-    /// predicate against `agent_id`. Errors with a permission error if
-    /// the predicate returns false.
+    /// predicate against `agent_id`.
+    ///
+    /// Error precedence (so the message is honest about the real reason):
+    /// 1. tool not registered  → `"not registered"`
+    /// 2. tool disabled        → `"disabled"`
+    /// 3. agent not allowed    → `"not allowed for agent ..."`
+    /// 4. dispatch errors from the tool itself
     pub async fn execute_for(
         &self,
         name: &str,
         agent_id: &str,
         input: ToolInput,
     ) -> Result<ToolOutput> {
-        if !self.is_allowed(name, agent_id) {
+        let entry = self.entries.get(name).ok_or_else(|| CognisError::Tool {
+            name: name.to_string(),
+            reason: "not registered".into(),
+        })?;
+        if !entry.enabled {
+            return Err(CognisError::Tool {
+                name: name.to_string(),
+                reason: "disabled".into(),
+            });
+        }
+        let allowed = entry
+            .permission
+            .as_ref()
+            .map(|p| p(agent_id))
+            .unwrap_or(true);
+        if !allowed {
             return Err(CognisError::Tool {
                 name: name.to_string(),
                 reason: format!("not allowed for agent `{agent_id}`"),
@@ -451,6 +471,33 @@ mod tests {
             .await
             .unwrap_err();
         assert!(denied.to_string().contains("not allowed"), "got: {denied}");
+    }
+
+    #[tokio::test]
+    async fn execute_for_reports_not_registered_before_permission() {
+        let reg = ToolRegistry::new();
+        let err = reg
+            .execute_for("ghost", "writer", ToolInput::Text("x".into()))
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("not registered"),
+            "wrong error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_for_reports_disabled_before_permission() {
+        let mut reg = ToolRegistry::new();
+        reg.register(Arc::new(Echo));
+        reg.disable("echo");
+        // Permission set to deny — but the disabled state should win.
+        reg.set_permission("echo", |_| false);
+        let err = reg
+            .execute_for("echo", "writer", ToolInput::Text("x".into()))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("disabled"), "wrong error: {err}");
     }
 
     #[tokio::test]
