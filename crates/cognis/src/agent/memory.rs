@@ -690,3 +690,352 @@ mod tests {
         assert!(m.seed().is_empty());
     }
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// EntityMemory — extracts entities + facts from messages, surfaces them
+// back into the seed as a system message.
+// ────────────────────────────────────────────────────────────────────────
+
+/// Extracted entity / fact pair. The fact is a free-form snippet —
+/// typically the sentence the entity appeared in.
+pub type EntityFact = (String, String);
+
+/// Closure-based extractor: text in, `(entity, fact)` pairs out.
+pub type EntityExtractor = Arc<dyn Fn(&str) -> Vec<EntityFact> + Send + Sync>;
+
+/// Buffers messages and maintains a per-entity fact ledger. Each `write`
+/// runs the extractor over the message content; the seed surfaces the
+/// ledger as a system-message preamble so the model can reference prior
+/// observations across turns.
+///
+/// Default extractor = capitalized-word heuristic: any token starting
+/// with an uppercase letter becomes an entity, paired with the sentence
+/// it appeared in. Plug in [`with_extractor`](EntityMemory::with_extractor)
+/// for an LLM-driven version.
+pub struct EntityMemory {
+    buf: Vec<Message>,
+    entities: std::collections::HashMap<String, Vec<String>>,
+    extractor: EntityExtractor,
+    system_pinned: Option<Message>,
+}
+
+impl EntityMemory {
+    /// Empty memory with the default capitalized-word extractor.
+    pub fn new() -> Self {
+        Self {
+            buf: Vec::new(),
+            entities: std::collections::HashMap::new(),
+            extractor: Arc::new(default_entity_extractor),
+            system_pinned: None,
+        }
+    }
+
+    /// Plug in a custom extractor (e.g. an LLM-backed NER).
+    pub fn with_extractor<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&str) -> Vec<EntityFact> + Send + Sync + 'static,
+    {
+        self.extractor = Arc::new(f);
+        self
+    }
+
+    /// Pin a system prompt at the head of the seed.
+    pub fn with_system(mut self, prompt: impl Into<String>) -> Self {
+        self.system_pinned = Some(Message::system(prompt));
+        self
+    }
+
+    /// Inspect the current entity ledger.
+    pub fn entities(&self) -> &std::collections::HashMap<String, Vec<String>> {
+        &self.entities
+    }
+}
+
+impl Default for EntityMemory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Memory for EntityMemory {
+    fn read(&self) -> &[Message] {
+        &self.buf
+    }
+    fn write(&mut self, msg: Message) {
+        for (entity, fact) in (self.extractor)(msg.content()) {
+            self.entities.entry(entity).or_default().push(fact);
+        }
+        self.buf.push(msg);
+    }
+    fn clear(&mut self) {
+        self.buf.clear();
+        self.entities.clear();
+    }
+    fn seed(&self) -> Vec<Message> {
+        let mut out = Vec::with_capacity(self.buf.len() + 2);
+        if let Some(s) = &self.system_pinned {
+            out.push(s.clone());
+        }
+        if !self.entities.is_empty() {
+            let mut keys: Vec<&String> = self.entities.keys().collect();
+            keys.sort();
+            let body = keys
+                .into_iter()
+                .map(|k| {
+                    let facts = self.entities.get(k).unwrap();
+                    let joined = facts.join("; ");
+                    format!("- {k}: {joined}")
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            out.push(Message::system(format!("Known entities:\n{body}")));
+        }
+        out.extend(self.buf.iter().cloned());
+        out
+    }
+}
+
+fn default_entity_extractor(text: &str) -> Vec<EntityFact> {
+    // Common capitalized stopwords that lead sentences but aren't entities.
+    const STOPWORDS: &[&str] = &[
+        "The", "A", "An", "This", "That", "These", "Those", "It", "Its", "Their",
+        "There", "Here", "What", "Who", "Which", "When", "Where", "Why", "How",
+        "And", "But", "Or", "If", "Then",
+    ];
+    let mut out = Vec::new();
+    for sentence in split_sentences(text) {
+        for tok in sentence.split_whitespace() {
+            // Strip surrounding punctuation (keeps internal apostrophes).
+            let trimmed: String = tok
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_string();
+            if trimmed.len() >= 2
+                && trimmed.chars().next().is_some_and(|c| c.is_uppercase())
+                && !STOPWORDS.contains(&trimmed.as_str())
+            {
+                out.push((trimmed, sentence.trim().to_string()));
+            }
+        }
+    }
+    out
+}
+
+fn split_sentences(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    for (i, c) in text.char_indices() {
+        if matches!(c, '.' | '!' | '?') {
+            let end = i + c.len_utf8();
+            let s = text[start..end].trim();
+            if !s.is_empty() {
+                out.push(s);
+            }
+            start = end;
+        }
+    }
+    let tail = text[start..].trim();
+    if !tail.is_empty() {
+        out.push(tail);
+    }
+    out
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// KnowledgeGraphMemory — buffers messages and extracts (S, P, O) triples,
+// surfaces them as a system-message KB.
+// ────────────────────────────────────────────────────────────────────────
+
+/// Subject-predicate-object triple.
+pub type Triple = (String, String, String);
+
+/// Closure-based triple extractor.
+pub type TripleExtractor = Arc<dyn Fn(&str) -> Vec<Triple> + Send + Sync>;
+
+/// Buffers messages and a triple store. Each `write` extracts
+/// triples; the seed prefixes a `Knowledge:` system message listing
+/// every triple. Plug in an LLM extractor for production use; the
+/// default handles "X is Y" / "X has Y" / "X are Y" patterns.
+pub struct KnowledgeGraphMemory {
+    buf: Vec<Message>,
+    triples: Vec<Triple>,
+    extractor: TripleExtractor,
+    system_pinned: Option<Message>,
+}
+
+impl KnowledgeGraphMemory {
+    /// Empty memory with the default regex extractor.
+    pub fn new() -> Self {
+        Self {
+            buf: Vec::new(),
+            triples: Vec::new(),
+            extractor: Arc::new(default_triple_extractor),
+            system_pinned: None,
+        }
+    }
+
+    /// Plug in a custom extractor.
+    pub fn with_extractor<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&str) -> Vec<Triple> + Send + Sync + 'static,
+    {
+        self.extractor = Arc::new(f);
+        self
+    }
+
+    /// Pin a system prompt at the head of the seed.
+    pub fn with_system(mut self, prompt: impl Into<String>) -> Self {
+        self.system_pinned = Some(Message::system(prompt));
+        self
+    }
+
+    /// Inspect the triple store.
+    pub fn triples(&self) -> &[Triple] {
+        &self.triples
+    }
+}
+
+impl Default for KnowledgeGraphMemory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Memory for KnowledgeGraphMemory {
+    fn read(&self) -> &[Message] {
+        &self.buf
+    }
+    fn write(&mut self, msg: Message) {
+        for t in (self.extractor)(msg.content()) {
+            // Dedupe — the same fact restated stays one triple.
+            if !self.triples.contains(&t) {
+                self.triples.push(t);
+            }
+        }
+        self.buf.push(msg);
+    }
+    fn clear(&mut self) {
+        self.buf.clear();
+        self.triples.clear();
+    }
+    fn seed(&self) -> Vec<Message> {
+        let mut out = Vec::with_capacity(self.buf.len() + 2);
+        if let Some(s) = &self.system_pinned {
+            out.push(s.clone());
+        }
+        if !self.triples.is_empty() {
+            let body = self
+                .triples
+                .iter()
+                .map(|(s, p, o)| format!("- ({s}, {p}, {o})"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            out.push(Message::system(format!("Knowledge:\n{body}")));
+        }
+        out.extend(self.buf.iter().cloned());
+        out
+    }
+}
+
+fn default_triple_extractor(text: &str) -> Vec<Triple> {
+    let mut out = Vec::new();
+    for sentence in split_sentences(text) {
+        // Find linking verbs.
+        for predicate in [" is ", " are ", " has ", " have ", " was ", " were "] {
+            if let Some(idx) = sentence.find(predicate) {
+                let s = sentence[..idx].trim();
+                let o_raw = sentence[idx + predicate.len()..]
+                    .trim_end_matches(|c: char| matches!(c, '.' | '!' | '?'))
+                    .trim();
+                if !s.is_empty() && !o_raw.is_empty() {
+                    out.push((s.to_string(), predicate.trim().to_string(), o_raw.to_string()));
+                    break; // one triple per sentence
+                }
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests_entity_kg {
+    use super::*;
+
+    #[test]
+    fn entity_memory_extracts_default() {
+        let mut m = EntityMemory::new();
+        m.write(Message::human(
+            "Ada writes Rust. Bob reviews Ada's PRs.",
+        ));
+        let ents = m.entities();
+        assert!(ents.contains_key("Ada"), "got: {:?}", ents.keys().collect::<Vec<_>>());
+        assert!(ents.contains_key("Rust"));
+        assert!(ents.contains_key("Bob"));
+    }
+
+    #[test]
+    fn entity_memory_seed_includes_summary() {
+        let mut m = EntityMemory::new();
+        m.write(Message::human("Cognis is fast."));
+        let seed = m.seed();
+        // Expect: [system "Known entities:..."] + the original human message.
+        assert_eq!(seed.len(), 2);
+        assert!(matches!(seed[0], Message::System(_)));
+        assert!(seed[0].content().contains("Cognis"));
+    }
+
+    #[test]
+    fn entity_memory_with_custom_extractor() {
+        let mut m = EntityMemory::new().with_extractor(|_text: &str| {
+            vec![("forced".into(), "via custom extractor".into())]
+        });
+        m.write(Message::human("ignored"));
+        assert!(m.entities().contains_key("forced"));
+    }
+
+    #[test]
+    fn entity_memory_clear_drops_everything() {
+        let mut m = EntityMemory::new();
+        m.write(Message::human("Rust ships."));
+        m.clear();
+        assert!(m.entities().is_empty());
+        assert!(m.read().is_empty());
+    }
+
+    #[test]
+    fn kg_memory_extracts_is_pattern() {
+        let mut m = KnowledgeGraphMemory::new();
+        m.write(Message::human(
+            "Cognis is a Rust framework. Tokio is async.",
+        ));
+        let ts = m.triples();
+        assert!(ts.contains(&("Cognis".into(), "is".into(), "a Rust framework".into())));
+        assert!(ts.contains(&("Tokio".into(), "is".into(), "async".into())));
+    }
+
+    #[test]
+    fn kg_memory_dedupes_repeated_triples() {
+        let mut m = KnowledgeGraphMemory::new();
+        m.write(Message::human("Rust is fast."));
+        m.write(Message::human("Rust is fast."));
+        assert_eq!(m.triples().len(), 1);
+    }
+
+    #[test]
+    fn kg_memory_seed_includes_kb() {
+        let mut m = KnowledgeGraphMemory::new();
+        m.write(Message::human("Cognis is fast."));
+        let seed = m.seed();
+        assert_eq!(seed.len(), 2);
+        assert!(matches!(seed[0], Message::System(_)));
+        assert!(seed[0].content().contains("(Cognis, is, fast)"));
+    }
+
+    #[test]
+    fn kg_memory_with_custom_extractor() {
+        let mut m = KnowledgeGraphMemory::new().with_extractor(|_text: &str| {
+            vec![("X".into(), "rel".into(), "Y".into())]
+        });
+        m.write(Message::human("ignored"));
+        assert_eq!(m.triples(), &[("X".into(), "rel".into(), "Y".into())]);
+    }
+}
