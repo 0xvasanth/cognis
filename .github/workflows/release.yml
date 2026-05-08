@@ -7,37 +7,141 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
 
 jobs:
-  test:
-    name: Full test suite
+  # ────────────────────────────────────────────────────────────────────
+  # 1. Verify the tag matches workspace.package.version, then run the
+  #    full test suite + clippy + fmt against the tagged commit.
+  # ────────────────────────────────────────────────────────────────────
+  verify:
+    name: Verify tag and test
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse tag
+        id: parse
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          TAG="${REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          # Allow only the digits-and-dots-and-pre-release-suffix shape
+          # we actually use. Refuses tag names that could be smuggled
+          # into a shell command later.
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+            echo "::error::tag '$TAG' is not a valid semver release tag"
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG version=$VERSION"
+
+      - name: Check workspace.package.version matches the tag
+        env:
+          EXPECTED: ${{ steps.parse.outputs.version }}
+        run: |
+          WORKSPACE_VERSION=$(awk '/^\[workspace\.package\]/{f=1} f && /^version/ {print $3; exit}' Cargo.toml | tr -d '"')
+          if [ "$WORKSPACE_VERSION" != "$EXPECTED" ]; then
+            echo "::error::tag v$EXPECTED != workspace.package.version $WORKSPACE_VERSION"
+            exit 1
+          fi
+          echo "tag matches workspace.package.version: $WORKSPACE_VERSION"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --features all-providers --tests -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace --features all-providers
+
+  # ────────────────────────────────────────────────────────────────────
+  # 2. Publish all crates to crates.io in strict dependency order.
+  #    Each step is idempotent: if a crate at the tagged version
+  #    already exists on crates.io (e.g. from a prior partial run),
+  #    the helper detects that and skips rather than failing.
+  # ────────────────────────────────────────────────────────────────────
+  publish:
+    name: Publish to crates.io
+    needs: verify
+    runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      VERSION: ${{ needs.verify.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --features all-providers
 
-  # publish:
-  #   name: Publish to crates.io
-  #   needs: test
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - name: Publish rustchain-core
-  #       run: cargo publish -p rustchain-core
-  #       env:
-  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-  #     - name: Publish rustchain
-  #       run: cargo publish -p rustchain
-  #       env:
-  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-  #     - name: Publish langgraph
-  #       run: cargo publish -p langgraph
-  #       env:
-  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-  #     - name: Publish deepagents
-  #       run: cargo publish -p deepagents
-  #       env:
-  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Sanity-check CARGO_REGISTRY_TOKEN
+        run: |
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret is not set on this repo"
+            exit 1
+          fi
+
+      # Strict dep order. cognis-macros and cognis-core have no internal
+      # deps and could be parallelized, but sequential is simpler and
+      # the publish wait dominates anyway.
+      - name: Publish cognis-macros
+        run: .github/scripts/publish-if-new.sh cognis-macros "$VERSION"
+
+      - name: Publish cognis-core
+        run: .github/scripts/publish-if-new.sh cognis-core "$VERSION"
+
+      - name: Publish cognis-llm
+        run: .github/scripts/publish-if-new.sh cognis-llm "$VERSION"
+
+      - name: Publish cognis-rag
+        run: .github/scripts/publish-if-new.sh cognis-rag "$VERSION"
+
+      - name: Publish cognis-graph
+        run: .github/scripts/publish-if-new.sh cognis-graph "$VERSION"
+
+      - name: Publish cognis-trace
+        run: .github/scripts/publish-if-new.sh cognis-trace "$VERSION"
+
+      - name: Publish cognis (umbrella)
+        run: .github/scripts/publish-if-new.sh cognis "$VERSION"
+
+  # ────────────────────────────────────────────────────────────────────
+  # 3. Create a GitHub Release with auto-generated notes.
+  #    Runs only after publish succeeds so a failed publish doesn't
+  #    leave a dangling release.
+  # ────────────────────────────────────────────────────────────────────
+  release:
+    name: GitHub Release
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create release
+        run: |
+          TAG="v$VERSION"
+          # Idempotent: skip if a release for this tag already exists.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists; skipping"
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "Cognis $TAG" \
+            --generate-notes \
+            --verify-tag
