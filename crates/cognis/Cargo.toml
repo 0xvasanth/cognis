@@ -28,8 +28,24 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 
 [features]
 default = ["openai", "ollama"]
+
+# LLM providers — re-exported from cognis-llm (and cognis-rag for the
+# embedding-bearing ones).
 openai = ["cognis-rag/openai", "cognis-llm/openai"]
 ollama = ["cognis-rag/ollama", "cognis-llm/ollama"]
+anthropic = ["cognis-llm/anthropic"]
+google = ["cognis-rag/google", "cognis-llm/google"]
+azure = ["cognis-llm/azure"]
+voyage = ["cognis-rag/voyage"]
+all-providers = [
+    "openai",
+    "ollama",
+    "anthropic",
+    "google",
+    "azure",
+    "voyage",
+]
+
 tools-http = ["dep:reqwest"]
 cache-sqlite = ["dep:sqlx"]
 

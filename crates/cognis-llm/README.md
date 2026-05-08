@@ -16,7 +16,7 @@ A unified client for Large Language Models (LLMs) with built-in support for tool
 Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-cognis-llm = "0.1.0"
+cognis-llm = "0.3"
 ```
 
 ### Basic Example: Simple Chat
