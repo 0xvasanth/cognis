@@ -1,119 +1,111 @@
 ---
 title: "Evaluation"
-description: "Run datasets through your agent, score the outputs, ship results to Langfuse."
+description: "Run datasets through any Runnable, score the outputs, ship results to your trace backend."
 sidebarTitle: "Evaluation"
 ---
 
-Evaluation closes the loop: you ran traces, you tracked cost, now you need to know *how good* the answers are. Cognis ships an evaluation framework under `cognis::eval` for offline runs over a dataset — pair it with [scores](/observability/prompts-scores) to push results into Langfuse.
+Evaluation closes the loop: you ran traces, you tracked cost, now you need to know *how good* the answers are. Cognis ships a small evaluation harness under `cognis::eval` for offline runs over a dataset — pair it with [scores](/observability/prompts-scores) to push results into Langfuse.
 
 ## Mental model
 
-An eval has four parts:
+Three moving parts:
 
-- **A dataset** — a list of `(input, expected)` pairs.
-- **A target** — the thing under test, usually an `Agent` or a `Runnable`.
-- **Scorers** — one or more functions that compare actual vs expected and return a `ScoreValue`.
-- **A reporter** — what you do with the results (print, write JSON, push to Langfuse).
+- **Cases** — `(input, expected)` pairs of type `EvalCase<I, O>`.
+- **A runnable under test** — anything `Runnable<I, O>`. An agent, a chain, or a custom impl.
+- **An evaluator** — `Evaluator<O>` produces a score in `[0.0, 1.0]` for an actual `O` against a reference `O`.
+
+`EvalRunner` invokes every case through the runnable, scores each output, and produces an `EvalReport`.
 
 ## Quick example
 
 ```rust
+use std::sync::Arc;
+use cognis::eval::{EvalCase, EvalRunner, ExactMatch};
 use cognis::prelude::*;
-use cognis::eval::{EvalCase, EvaluationFramework, /* … */};
 
 let cases = vec![
-    EvalCase::new("greeting", "Hi there", "Hello! How can I help?"),
-    EvalCase::new("math", "What is 2 + 2?", "4"),
-    // …
+    EvalCase::new("greeting".to_string(), "hello".to_string()).with_name("greet"),
+    EvalCase::new("math".to_string(), "4".to_string()).with_name("two-plus-two"),
 ];
 
-let mut framework = EvaluationFramework::new()
-    .with_target(my_agent)              // anything Runnable<Message, AgentResponse>
-    .with_scorer(/* exact-match scorer */)
-    .with_scorer(/* llm-as-judge scorer */);
+let runner = EvalRunner::new(
+    Arc::new(my_runnable),       // anything Runnable<String, String>
+    Arc::new(ExactMatch),        // built-in evaluator
+    cases,
+)
+.with_concurrency(8);
 
-let report = framework.run(cases).await?;
-println!("{:#?}", report);
+let report = runner.run().await?;
+println!("mean score: {:.2}", report.mean());
+println!("pass rate (>= 0.8): {:.2}", report.pass_rate(0.8));
 ```
 
-The `EvaluationFramework` runs each case (concurrent up to `max_concurrency`), collects results, and produces a report you can serialize, print, or feed to a CI gate.
+`EvalReport<O>` exposes `mean()`, `pass_rate(threshold)`, `passing(threshold)`, `best()`, `worst()`, plus the raw `rows: Vec<EvalRow<O>>`.
 
 Source: [`examples/observability/evaluation_framework.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/observability/evaluation_framework.rs).
 
-## Pipelines
+## Built-in evaluators
 
-For larger eval workloads — multiple datasets, sliced reporting, regressions vs a baseline — use `EvaluationPipeline`. It composes scorers, datasets, and outputs into a reproducible flow.
+| Evaluator | Score |
+|---|---|
+| `ExactMatch` | `1.0` iff `actual == expected`, else `0.0` |
+| `Contains` | `1.0` iff the actual string contains the expected substring |
+| `LlmJudge` | Asks a `Client` to score the actual against the expected — useful when "exact match" isn't appropriate |
 
-```rust
-use cognis::eval::EvaluationPipeline;
+`LlmJudge` takes a `Client` plus a rubric prompt; see [`crates/cognis/src/eval/evaluators.rs`](https://github.com/0xvasanth/cognis/blob/main/crates/cognis/src/eval/evaluators.rs).
 
-let pipeline = EvaluationPipeline::new()
-    .with_target(my_agent)
-    .add_dataset("greeting", greeting_cases)
-    .add_dataset("math", math_cases)
-    .with_scorer(scorer_a)
-    .with_scorer(scorer_b)
-    .with_baseline(prior_report)        // optional: fail the run if regressions
-    .build();
+## Custom evaluators
 
-let summary = pipeline.run().await?;
-```
-
-Source: [`examples/observability/evaluation_pipeline.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/observability/evaluation_pipeline.rs).
-
-## Scorers
-
-A scorer is a function (or struct with state) that returns a `ScoreValue`:
+The trait is one async method:
 
 ```rust
-use cognis::eval::{Scorer, ScoreContext};
-use cognis_trace::ScoreValue;
+use async_trait::async_trait;
+use cognis::eval::Evaluator;
+use cognis::Result;
 
-struct ExactMatch;
+struct LengthSimilar;
 
-#[async_trait::async_trait]
-impl Scorer for ExactMatch {
-    fn name(&self) -> &str { "exact_match" }
-    async fn score(&self, ctx: &ScoreContext<'_>) -> cognis::Result<ScoreValue> {
-        let ok = ctx.actual.trim() == ctx.expected.trim();
-        Ok(ScoreValue::Boolean(ok))
+#[async_trait]
+impl Evaluator<String> for LengthSimilar {
+    async fn score(&self, actual: &String, expected: &String) -> Result<f32> {
+        let diff = (actual.len() as f32 - expected.len() as f32).abs();
+        let scale = expected.len().max(1) as f32;
+        Ok((1.0 - diff / scale).max(0.0))
     }
 }
 ```
 
-Stack scorers — most evals run a fast deterministic scorer (exact match, length check) plus an LLM-as-judge scorer for nuanced quality.
+Stack evaluators by running multiple `EvalRunner`s over the same cases — most evals run a fast deterministic evaluator (exact match, length check) plus an `LlmJudge` for nuanced quality.
 
 ## Pushing scores to Langfuse
 
-Combine the eval framework with `LangfuseScorer` (see [Prompts and scores](/observability/prompts-scores)) to push every `ScoreRecord` produced by an eval into Langfuse, tied to the trace of that case.
+Combine the eval report with `LangfuseScorer` (see [Prompts and scores](/observability/prompts-scores)) to push every score record into Langfuse, tied to the trace of each case.
 
 ```rust
-let report = framework.run(cases).await?;
-for record in report.score_records() {
-    langfuse_scorer.submit(record).await?;
+use cognis_trace::{ScoreRecord, ScoreValue};
+use cognis_trace::exporters::langfuse::{LangfuseConfig, LangfuseScorer};
+
+let scorer = LangfuseScorer::new(LangfuseConfig::from_env()?)?;
+for row in &report.rows {
+    scorer.submit(ScoreRecord {
+        run_id: /* trace run_id from when the case was invoked */,
+        trace_id: None,
+        session_id: None,
+        name: "exact_match".into(),
+        value: ScoreValue::Numeric(row.score as f64),
+        comment: row.name.clone(),
+    }).await?;
 }
 ```
 
-Now Langfuse dashboards reflect eval outcomes alongside production runs.
-
-## Datasets
-
-`EvalCase` is the smallest unit — `(input, expected)` plus optional metadata. Build datasets in code, load from JSON, or pull from your own data store.
-
-```rust
-EvalCase::new("id", "input text", "expected output")
-    .with_metadata("category", "math")
-    .with_tag("regression-set");
-```
-
-Filter cases at run time with `framework.filter(|c| c.has_tag("regression-set"))`.
+Run cases under a tracing observer to get the `run_id` per case; see [Trace with Langfuse](/observability/langfuse) for the wiring.
 
 ## How it works
 
-- **Each case is its own run.** `run_id` per case correlates traces, metrics, and scores.
-- **Scoring runs after the target.** A failing target produces a record with the error in `actual`, which a scorer can flag.
-- **Concurrency follows `RunnableConfig::max_concurrency`.** For LLM-as-judge scorers, this is also where you bound the eval's own model calls.
-- **Reports are serializable.** Snapshot them, diff against baselines, gate CI on regressions.
+- **Two passes per run:** the runner invokes every case under a concurrency cap, then scores actuals against expecteds.
+- **Concurrency follows `with_concurrency(n)`** — defaults to 4. Tune for your provider's quota when the runnable is a `Client`-backed chain.
+- **Errors per case** propagate from `runner.run().await?`. Wrap your runnable with `with_max_retries` if you want transient errors absorbed.
+- **Reports are serializable** with `Serialize` impls; snapshot them in tests, diff against baselines, gate CI on regressions.
 
 ## See also
 

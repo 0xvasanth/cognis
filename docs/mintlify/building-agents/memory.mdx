@@ -93,7 +93,8 @@ Override `seed()` if your memory wants to project differently than it stores —
 ## How it works
 
 - **Memory lives on the agent**, not on the graph state. That's why `stateful()` matters: it keeps the agent's `Memory` field alive across `run` calls.
-- **Memory is read once at the start of `run` and written incrementally as the loop produces messages.** The order matches the transcript.
+- **Memory is read at the start of each `run`** (when stateful) to seed the conversation; the agent appends the run's transcript to memory **after `run` completes**, in one batch. Memory is not updated during the loop.
+- **In stateless mode, memory is not written** — every `run` is independent.
 - **Pinned system messages are *always* prepended** — even if the rest of the memory has been summarized away.
 - **Summarization runs as an LLM call** through the `client` you handed the memory. It costs tokens; budget for it.
 
@@ -102,7 +103,7 @@ Override `seed()` if your memory wants to project differently than it stores —
 Memory state is in-process by default. For persistence across processes:
 
 - Use the agent's `Backend` (`with_filesystem`) to write a markdown / JSON memory file the agent reads back.
-- Use `cognis-graph` checkpointers to persist the graph state itself, including the memory snapshot — see [Graph workflows → Checkpointing](/graph-workflows/checkpointing).
+- Use `cognis-graph` checkpointers to persist the agent's *graph state* across processes — see [Graph workflows → Checkpointing](/graph-workflows/checkpointing). Note that checkpointers persist what's in the graph state struct, not the agent's `Memory` backend internals; if your `Memory` keeps state outside the graph (e.g. in a `SummaryBufferMemory`'s running summary), persist that separately or hydrate it from a store of your choice on startup.
 
 ## See also
 

@@ -134,14 +134,14 @@ impl LangfusePromptClient {
 
 ```rust
 pub enum ScoreValue {
-    Numeric(f32),
+    Numeric(f64),
     Categorical(String),
     Boolean(bool),
 }
 
 pub struct ScoreRecord {
     pub run_id: Uuid,
-    pub trace_id: Option<String>,
+    pub trace_id: Option<Uuid>,
     pub session_id: Option<String>,
     pub name: String,
     pub value: ScoreValue,

@@ -88,6 +88,7 @@ Add `axum`, `tokio`, `serde`, and `serde_json` to your `Cargo.toml`.
 ```js
 const res = await fetch("/chat", {
   method: "POST",
+  headers: { "Content-Type": "application/json" },   // Axum's Json extractor checks this
   body: JSON.stringify({ message: input.value }),
 });
 
@@ -100,13 +101,18 @@ while (true) {
   const { value, done } = await reader.read();
   if (done) break;
   buf += decoder.decode(value, { stream: true });
-  // Parse `event: …\ndata: …\n\n` frames.
+  // Parse `event: …\ndata: …\n\n` frames. SSE allows multiple data: lines per
+  // frame; concatenate them with \n.
   const frames = buf.split("\n\n");
   buf = frames.pop();
   for (const frame of frames) {
-    const [eventLine, dataLine] = frame.split("\n");
-    const eventType = eventLine.replace("event: ", "");
-    const data = dataLine.replace("data: ", "");
+    let eventType = "message";
+    const dataLines = [];
+    for (const line of frame.split("\n")) {
+      if (line.startsWith("event: ")) eventType = line.slice(7);
+      else if (line.startsWith("data: ")) dataLines.push(line.slice(6));
+    }
+    const data = dataLines.join("\n");
     if (eventType === "token") output.append(data);
     else if (eventType === "tool_start") sidebar.add(JSON.parse(data));
     // …

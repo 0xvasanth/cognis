@@ -18,20 +18,41 @@ Cognis ships six vector stores (in-memory, FAISS, Chroma, Qdrant, Pinecone, Weav
 ## The trait
 
 ```rust
+use std::collections::HashMap;
+use serde_json::Value;
+
 #[async_trait]
 pub trait VectorStore: Send + Sync {
-    async fn add_texts(&mut self, texts: Vec<String>, ids: Option<Vec<String>>) -> Result<Vec<String>>;
-    async fn add_vectors(&mut self, vectors: Vec<(String, Vec<f32>, HashMap<String, Value>)>) -> Result<()>;
+    async fn add_texts(
+        &mut self,
+        texts: Vec<String>,
+        metadata: Option<Vec<HashMap<String, Value>>>,
+    ) -> Result<Vec<String>>;
+
+    async fn add_vectors(
+        &mut self,
+        vectors: Vec<Vec<f32>>,
+        texts: Vec<String>,
+        metadata: Option<Vec<HashMap<String, Value>>>,
+    ) -> Result<Vec<String>>;
+
     async fn similarity_search(&self, query: &str, k: usize) -> Result<Vec<SearchResult>>;
-    async fn similarity_search_by_vector(&self, vector: &[f32], k: usize) -> Result<Vec<SearchResult>>;
-    async fn similarity_search_with_filter(&self, query: &str, k: usize, filter: Filter) -> Result<Vec<SearchResult>>;
+    async fn similarity_search_by_vector(&self, query_vector: Vec<f32>, k: usize) -> Result<Vec<SearchResult>>;
+
+    /// Default fallback: searches top `k * 4`, then filters in-process. Override
+    /// when your backend supports native metadata filters (Qdrant, Pinecone, …).
+    async fn similarity_search_with_filter(&self, query: &str, k: usize, filter: &Filter) -> Result<Vec<SearchResult>>;
+
     async fn delete(&mut self, ids: Vec<String>) -> Result<()>;
+
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool { self.len() == 0 }
 }
 ```
 
-`SearchResult` is `{ id, text, score, metadata }`.
+`SearchResult` is `{ id, text, score, metadata }`. `add_texts` returns the IDs the store assigned; `add_vectors` is the lower-level entry when the caller has already paid the embedding cost.
 
-For backends that don't natively support a method (e.g. some don't take a metadata filter), provide a sensible fallback — fetch top K, then filter in-process — and document the difference.
+For backends that don't natively support a method, provide a sensible fallback (`similarity_search_with_filter` has one already) and document the difference.
 
 ## Step 1 — Build the struct
 
@@ -95,7 +116,7 @@ In `crates/cognis-rag/src/lib.rs`:
 pub use vectorstore::myvector::{MyVectorStore, MyVectorStoreBuilder};
 ```
 
-The umbrella picks it up automatically through `pub use cognis_rag::*`.
+The `cognis` umbrella **does not** auto-glob from `cognis_rag` — it explicitly lists the types it re-exports at the top level. Add your types to the relevant `pub use cognis_rag::{...}` block in `crates/cognis/src/lib.rs` so users get `cognis::MyVectorStore` without an extra import. Existing entries there (e.g. `InMemoryVectorStore`, `Filter`) are the template.
 
 ## Step 3 — Tests
 

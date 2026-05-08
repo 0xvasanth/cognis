@@ -98,7 +98,7 @@ Pair this with retrieval: rank summaries by relevance to a question, reorder, th
 | Concern | Add |
 |---|---|
 | Retries on transient errors | Wrap the client with `with_max_retries(3)`. |
-| Cost cap | `RateLimit::token_bucket(...)` middleware; or precompute token counts and refuse oversized inputs. |
+| Cost cap | `RateLimit::new(Arc::new(TokenBucket::new(rate, burst)))` in a `MiddlewarePipeline`; or precompute token counts and refuse oversized inputs. |
 | Caching | Hash chunks; skip the map call when the chunk has been seen. |
 | Monitoring | Wire `cognis-trace` so each map call is its own generation span — see [Trace with Langfuse](/observability/langfuse). |
 | Determinism | Set `temperature=0` (via `Client::builder().temperature(...)` or `ChatOptions`) for reproducible summaries in tests. |

@@ -6,57 +6,72 @@ sidebarTitle: "Human-in-the-loop"
 
 Some actions are too important to leave to the model alone — sending an email, executing a transaction, modifying production data. Human-in-the-loop (HITL) lets you mark those actions and require human approval before they run. Cognis offers two paths to HITL, depending on whether you're inside an agent loop or driving a graph directly.
 
-## Two paths
+## Two layers
 
-| You're using… | Use |
-|---|---|
-| `AgentBuilder` | An `Approver` plus the `HumanInTheLoop` middleware. |
-| `Graph<S>` | Interrupts (`with_interrupt_before` / `with_interrupt_after`) plus `resume`. |
+Cognis ships two distinct HITL surfaces — they pause at different points and answer different questions.
 
-The patterns are similar in spirit; the surface differs because graphs have richer state introspection.
+| Layer | Purpose | API |
+|---|---|---|
+| **Tool approval** | Gate a tool call before dispatch. The most common HITL pattern. | `Approver` trait + `AgentBuilder::with_approver(...)` |
+| **Transcript-level pause** | Pause every (or some) LLM call to consult a human — inject context, override the reply, or skip. | `HumanInTheLoop` middleware + `HumanResponder` trait |
+| **Graph interrupts** | Pause a `Graph<S>` before/after named nodes; pull saved state, edit, resume. Useful for staged approvals at workflow boundaries. | `with_interrupt_before` / `with_interrupt_after` + `resume` |
 
-## Quick example — agent approver
+For "ask before running tool X" — almost always the right answer — use **tool approval**. For "let a reviewer steer the model on every reply" — rare — use the middleware. For workflow checkpoints, use graph interrupts.
+
+## Quick example — tool approval
+
+`AgentBuilder::with_approver` wraps every registered tool in an `ApprovalGatedTool`. The approver decides per call.
 
 ```rust
 use std::sync::Arc;
 use cognis::prelude::*;
 use cognis::AgentBuilder;
-use cognis::middleware::{HumanInTheLoop, ApprovalGate};
 
-let approver = Arc::new(MyApprover);                // your impl Approver
+let approver = Arc::new(MyApprover);   // your impl Approver
 
 let agent = AgentBuilder::new()
     .with_llm(client)
-    .with_tools(tools)
-    .with_approver(approver.clone())
-    .middleware(HumanInTheLoop::new(approver))
+    .with_tools(tools)         // register tools first
+    .with_approver(approver)   // then wrap with the approver — order matters
     .build()?;
 ```
 
-Inside the loop, every tool call passes through the approver. Yours decides what gets gated:
+<Note>
+Tools registered *after* `.with_approver(...)` are NOT auto-wrapped. Call `with_approver` last.
+</Note>
+
+The trait:
 
 ```rust
-use cognis::tools::{Approver, ApprovalDecision};
+use async_trait::async_trait;
+use cognis::tools::{Approver, Decision};
+use cognis::Result;
 
 struct MyApprover;
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Approver for MyApprover {
-    async fn approve(&self, tool: &str, args: &serde_json::Value)
-        -> cognis::Result<ApprovalDecision>
+    async fn approve(&self, tool_name: &str, args: &serde_json::Value)
+        -> Result<Decision>
     {
-        if tool == "send_email" {
+        if tool_name == "send_email" {
             // Surface to your UI; await the human's reply.
-            let decision = my_ui::ask_human(tool, args).await?;
+            let decision = my_ui::ask_human(tool_name, args).await?;
             Ok(decision)
         } else {
-            Ok(ApprovalDecision::Approve)
+            Ok(Decision::Approve)
         }
     }
 }
 ```
 
-`ApprovalDecision` covers the common shapes — `Approve`, `Reject(reason)`, `Edit(new_args)` — so a human can either let it run, refuse, or modify the call before dispatch.
+`Decision` covers the common shapes:
+
+- `Decision::Approve` — let the call run as-is.
+- `Decision::Reject { reason }` — refuse; the model sees `reason` as the tool's output and can apologize or try something else. Use `Decision::reject("nope")` as a shortcut.
+- `Decision::Edit { args }` — approve, but rewrite the args (e.g., cap a transfer amount).
+
+Built-in approvers under `cognis::tools`: `AutoApprove`, `RejectAll`, `AllowList` — handy for tests or as a base to compose your own.
 
 ## Quick example — graph interrupts
 
@@ -87,18 +102,32 @@ match graph.invoke(state, cfg.clone()).await {
 
 Source: [`examples/graphs/graph_interrupts_demo.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_interrupts_demo.rs).
 
-## Approval policies
+## Transcript-level pause
 
-Built-in policies you can compose with `HumanInTheLoop`:
+For the rarer case where you want a human to potentially intervene on *every* model call (or a subset gated by a predicate), wrap the LLM client with the `HumanInTheLoop` middleware. It pauses before each call, asks a `HumanResponder`, and acts on a `HumanDecision`.
 
-| Policy | Behavior |
-|---|---|
-| `AutoApproveAll` | Skip the human; always approve. Useful in dev. |
-| `AutoRejectAll` | Skip the human; always reject. Useful in tests. |
-| `AlwaysSkip` | Bypass the gate entirely (no approval, no rejection). |
-| `ApprovalGate` | Pluggable policy: the bouncer is your closure. |
+```rust
+use std::sync::Arc;
+use cognis::middleware::{HumanInTheLoop, HumanDecision, MiddlewarePipeline};
+use cognis_llm::Client;
 
-Wrap any of these into the agent the same way as a custom `Approver`.
+let primary = Client::from_env()?;
+
+let hitl = HumanInTheLoop::new(|ctx| async move {
+    // Inspect ctx.messages, ctx.opts; return HumanDecision::Skip,
+    // ::InjectSystem(text), or ::Override(text).
+    Ok(HumanDecision::Skip)
+})
+.with_gate(|ctx| ctx.messages.last().map_or(false, |m| m.content().contains("CONFIRM")));
+
+let pipelined = MiddlewarePipeline::new().push(hitl).build(primary);
+
+let agent = AgentBuilder::new()
+    .with_llm(pipelined.into_client())
+    .build()?;
+```
+
+Built-in `HumanResponder` impls under `cognis::middleware`: `AlwaysSkip` (no-op for testing). Closures that return `HumanDecision` work too via a blanket impl.
 
 ## How it works
 

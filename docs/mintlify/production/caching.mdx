@@ -52,16 +52,14 @@ The cache survives restarts and is shared across processes that point at the sam
 Anthropic and some others support marking the *start* of a prompt as cacheable on the provider side. You pay full price the first time, a fraction on subsequent calls. Use the `PromptCaching` middleware:
 
 ```rust
-use cognis::middleware::PromptCaching;
+use cognis::middleware::{PromptCaching, MiddlewarePipeline};
 
-let agent = AgentBuilder::new()
-    .with_llm(client)
-    .middleware(PromptCaching::default())
-    // …
-    .build()?;
+let pipelined = MiddlewarePipeline::new()
+    .push(PromptCaching::new())
+    .build(client);
 ```
 
-The middleware adds the right markers; the provider does the deduplication. Particularly powerful for agents with long, stable system prompts and tool definitions — those rarely change between turns.
+The middleware adds the right markers; the provider does the deduplication. Particularly powerful for agents with long, stable system prompts and tool definitions — those rarely change between turns. To wire this inside an `AgentBuilder` agent, see [Middleware → Wiring middleware into an agent](/building-agents/middleware#wiring-middleware-into-an-agent).
 
 ## How it composes
 
@@ -70,21 +68,21 @@ A typical stack:
 ```rust
 use std::time::Duration;
 use cognis::prelude::*;
-use cognis::middleware::{PromptCaching, ModelRetry};
+use cognis::middleware::{PromptCaching, ModelRetry, MiddlewarePipeline};
+use cognis_llm::Client;
 
-let resilient = Client::from_env()?
+let client = Client::from_env()?
     .with_memory_cache(|m: &Vec<Message>| /* key */ "todo".to_string())
     .with_max_retries(3)
     .with_timeout(Duration::from_secs(30));
 
-let agent = AgentBuilder::new()
-    .with_llm(resilient)
-    .middleware(PromptCaching::default())
-    .middleware(ModelRetry::exponential(3))   // outer retry — handles cache failures too
-    .build()?;
+let pipelined = MiddlewarePipeline::new()
+    .push(ModelRetry::new(3))                 // innermost: retry transient errors
+    .push(PromptCaching::new())               // outermost: mark cacheable
+    .build(client);
 ```
 
-Read top-to-bottom: serve from in-memory cache when possible, retry on failure, time out on hangs. Inside the agent, mark cacheable prompts and retry on transient errors.
+Read inside-out: serve from the in-memory cache when possible, mark cacheable prompts for the provider, retry on transient errors, time out on hangs.
 
 ## Embedder cache
 

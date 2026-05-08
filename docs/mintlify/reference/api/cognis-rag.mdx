@@ -79,12 +79,14 @@ All implement `VectorStore`:
 
 ```rust
 pub trait VectorStore: Send + Sync {
-    async fn add_texts(&mut self, texts: Vec<String>, ids: Option<Vec<String>>) -> Result<Vec<String>>;
-    async fn add_vectors(&mut self, vectors: Vec<(String, Vec<f32>, Metadata)>) -> Result<()>;
+    async fn add_texts(&mut self, texts: Vec<String>, metadata: Option<Vec<HashMap<String, Value>>>) -> Result<Vec<String>>;
+    async fn add_vectors(&mut self, vectors: Vec<Vec<f32>>, texts: Vec<String>, metadata: Option<Vec<HashMap<String, Value>>>) -> Result<Vec<String>>;
     async fn similarity_search(&self, query: &str, k: usize) -> Result<Vec<SearchResult>>;
-    async fn similarity_search_by_vector(&self, vector: &[f32], k: usize) -> Result<Vec<SearchResult>>;
-    async fn similarity_search_with_filter(&self, query: &str, k: usize, filter: Filter) -> Result<Vec<SearchResult>>;
+    async fn similarity_search_by_vector(&self, query_vector: Vec<f32>, k: usize) -> Result<Vec<SearchResult>>;
+    async fn similarity_search_with_filter(&self, query: &str, k: usize, filter: &Filter) -> Result<Vec<SearchResult>>;
     async fn delete(&mut self, ids: Vec<String>) -> Result<()>;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool { self.len() == 0 }
 }
 ```
 
