@@ -144,6 +144,7 @@ impl AgentEventBus {
             to: self.topic.clone(),
             content: Message::system("agent-event"),
             metadata: serde_json::json!({ "event": payload }),
+            ..Default::default()
         };
         self.inner.publish(&self.topic, envelope).await
     }

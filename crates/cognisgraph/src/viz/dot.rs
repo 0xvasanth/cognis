@@ -21,21 +21,30 @@ impl<S: GraphState> CompiledGraph<S> {
     /// node) is **not** captured — only what the builder declared statically.
     pub fn to_dot(&self) -> String {
         let mut out = String::from("digraph G {\n");
+        if let Some(v) = self.version() {
+            out.push_str(&format!("    label=\"version: {}\";\n", escape(v)));
+            out.push_str("    labelloc=t;\n");
+        }
         out.push_str("    rankdir=TB;\n");
         out.push_str("    node [shape=box, style=rounded];\n");
 
         let mut names: Vec<&String> = self.graph.nodes.keys().collect();
         names.sort();
 
-        // Node declarations.
+        // Node declarations. Annotations surface as a `tooltip` attribute,
+        // which dot-rendered SVG shows on hover.
         for name in &names {
             let id = node_id(name);
             let label = escape(name);
+            let tooltip = render_annotations(self.annotations(name));
+            let mut attrs = format!("label=\"{label}\"");
             if Some(*name) == self.graph.start.as_ref() {
-                out.push_str(&format!("    {id} [label=\"{label}\", penwidth=2.0];\n"));
-            } else {
-                out.push_str(&format!("    {id} [label=\"{label}\"];\n"));
+                attrs.push_str(", penwidth=2.0");
             }
+            if !tooltip.is_empty() {
+                attrs.push_str(&format!(", tooltip=\"{}\"", escape(&tooltip)));
+            }
+            out.push_str(&format!("    {id} [{attrs}];\n"));
         }
         out.push_str(
             "    __END__ [label=\"END\", shape=oval, style=filled, fillcolor=\"#eeeeee\"];\n",
@@ -53,6 +62,18 @@ impl<S: GraphState> CompiledGraph<S> {
         out.push_str("}\n");
         out
     }
+}
+
+fn render_annotations(map: &std::collections::HashMap<String, serde_json::Value>) -> String {
+    if map.is_empty() {
+        return String::new();
+    }
+    let mut keys: Vec<&String> = map.keys().collect();
+    keys.sort();
+    keys.into_iter()
+        .map(|k| format!("{k}: {}", map[k]))
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 fn node_id(name: &str) -> String {
@@ -149,5 +170,71 @@ mod tests {
         let d = g.to_dot();
         // ID is sanitized, label is preserved.
         assert!(d.contains("node_with_hyphen [label=\"node-with-hyphen\""));
+    }
+
+    #[test]
+    fn version_renders_as_label_when_set() {
+        let g = Graph::<S>::new()
+            .node(
+                "a",
+                node_fn::<S, _, _>("a", |_, _| async move {
+                    Ok(NodeOut {
+                        update: SU,
+                        goto: Goto::end(),
+                    })
+                }),
+            )
+            .start_at("a")
+            .with_version("v1.2.3")
+            .compile()
+            .unwrap();
+        let d = g.to_dot();
+        assert!(d.contains("label=\"version: v1.2.3\""), "got:\n{d}");
+        assert!(d.contains("labelloc=t"));
+    }
+
+    #[test]
+    fn annotation_renders_as_tooltip() {
+        let g = Graph::<S>::new()
+            .node(
+                "embed",
+                node_fn::<S, _, _>("embed", |_, _| async move {
+                    Ok(NodeOut {
+                        update: SU,
+                        goto: Goto::end(),
+                    })
+                }),
+            )
+            .annotate("embed", "owner", "rag-team")
+            .annotate("embed", "slo_ms", 5000)
+            .start_at("embed")
+            .compile()
+            .unwrap();
+        let d = g.to_dot();
+        // Tooltip combines both annotations alphabetically by key.
+        assert!(
+            d.contains("tooltip=\"owner: \\\"rag-team\\\" | slo_ms: 5000\""),
+            "got:\n{d}"
+        );
+    }
+
+    #[test]
+    fn annotate_unknown_node_is_silent_noop() {
+        let g = Graph::<S>::new()
+            .node(
+                "a",
+                node_fn::<S, _, _>("a", |_, _| async move {
+                    Ok(NodeOut {
+                        update: SU,
+                        goto: Goto::end(),
+                    })
+                }),
+            )
+            .annotate("ghost", "x", "y")
+            .start_at("a")
+            .compile()
+            .unwrap();
+        let d = g.to_dot();
+        assert!(!d.contains("tooltip"));
     }
 }

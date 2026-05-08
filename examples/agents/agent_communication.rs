@@ -40,6 +40,7 @@ async fn main() -> Result<()> {
             to: "researcher".into(),
             content: Message::human("kickoff"),
             metadata: serde_json::Value::Null,
+            ..Default::default()
         })
         .await;
 

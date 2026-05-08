@@ -43,7 +43,10 @@ pub use command::Command;
 pub use compiled::CompiledGraph;
 pub use durability::{Durability, DurabilityDecision, DurabilityHook};
 pub use goto::Goto;
-pub use metrics::{GraphMetrics, MetricsObserver, NodeTiming, ProfilingObserver};
+pub use metrics::{
+    GraphMetrics, MetricsObserver, NodeTiming, ProfilingObserver, ThresholdCallback,
+    ThresholdProfiler,
+};
 pub use node::{node_fn, Node, NodeCtx, NodeFn, NodeOut, NodeRetryPolicy};
 pub use reducer::{Add, Append, Custom, LastValue, Merge, Reducer};
 pub use snapshot::GraphSnapshot;

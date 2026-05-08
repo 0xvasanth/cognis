@@ -70,6 +70,33 @@ impl<S: GraphState> CompiledGraph<S> {
     pub fn node_names(&self) -> Vec<&str> {
         self.graph.nodes.keys().map(|s| s.as_str()).collect()
     }
+
+    /// Optional graph version tag (set via [`crate::builder::Graph::with_version`]).
+    pub fn version(&self) -> Option<&str> {
+        self.graph.version.as_deref()
+    }
+
+    /// All annotations attached to `node_name`, or an empty map if the
+    /// node has no annotations / isn't registered.
+    pub fn annotations(
+        &self,
+        node_name: &str,
+    ) -> &std::collections::HashMap<String, serde_json::Value> {
+        static EMPTY: std::sync::OnceLock<std::collections::HashMap<String, serde_json::Value>> =
+            std::sync::OnceLock::new();
+        self.graph
+            .annotations
+            .get(node_name)
+            .unwrap_or_else(|| EMPTY.get_or_init(std::collections::HashMap::new))
+    }
+
+    /// Look up a single annotation value by `(node_name, key)`.
+    pub fn annotation(&self, node_name: &str, key: &str) -> Option<&serde_json::Value> {
+        self.graph
+            .annotations
+            .get(node_name)
+            .and_then(|m| m.get(key))
+    }
 }
 
 impl<S: GraphState + Clone + Send + 'static> CompiledGraph<S> {

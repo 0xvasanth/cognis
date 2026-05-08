@@ -17,6 +17,9 @@ pub struct Graph<S: GraphState> {
     pub(crate) start: Option<String>,
     /// Optional version tag, stamped on snapshots and checkpoints.
     pub(crate) version: Option<String>,
+    /// Per-node free-form annotations: `node_name → (key → value)`.
+    /// Surface in viz / analysis output for diagnostics or doc gen.
+    pub(crate) annotations: HashMap<String, HashMap<String, serde_json::Value>>,
 }
 
 impl<S: GraphState> Default for Graph<S> {
@@ -33,7 +36,32 @@ impl<S: GraphState> Graph<S> {
             edges: HashMap::new(),
             start: None,
             version: None,
+            annotations: HashMap::new(),
         }
+    }
+
+    /// Attach a key/value annotation to `node_name`. Annotations are
+    /// arbitrary metadata for diagnostics, doc generation, or external
+    /// tooling — they don't affect execution. Multiple annotations per
+    /// node are supported; the same key replaces.
+    ///
+    /// No-op (silently) if `node_name` isn't registered yet — call
+    /// `.node(...)` before `.annotate(...)` to keep things tidy.
+    pub fn annotate(
+        mut self,
+        node_name: impl Into<String>,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
+        let node = node_name.into();
+        if !self.nodes.contains_key(&node) {
+            return self;
+        }
+        self.annotations
+            .entry(node)
+            .or_default()
+            .insert(key.into(), value.into());
+        self
     }
 
     /// Stamp a version tag. Echoed in snapshots and (when `version_check`

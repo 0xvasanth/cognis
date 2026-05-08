@@ -207,3 +207,214 @@ mod tests {
         assert!(t.total_ns > 0);
     }
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// ThresholdProfiler — same timing logic as ProfilingObserver, plus
+// per-node duration thresholds that trigger a callback when breached.
+// Use to wire SLO-style alerts ("if any 'embed' invocation runs longer
+// than 5s, log/page/notify").
+// ────────────────────────────────────────────────────────────────────────
+
+/// Callback fired when a node's invocation exceeds its configured
+/// threshold. Receives the node name and the actual elapsed nanoseconds.
+pub type ThresholdCallback = std::sync::Arc<dyn Fn(&str, u128) + Send + Sync>;
+
+/// ProfilingObserver variant that also fires alerts on per-node duration
+/// thresholds. Same timing snapshot via `snapshot()`; thresholds are
+/// configured per node via `with_threshold(node, max_ns)`. On an
+/// `OnNodeEnd` whose elapsed > the configured cap, every registered
+/// callback runs (synchronously, on the observer's thread).
+///
+/// Callbacks should be cheap and non-blocking — they run inline on the
+/// graph engine's thread.
+pub struct ThresholdProfiler {
+    pending: Mutex<HashMap<(Uuid, u64, String), Instant>>,
+    totals: Mutex<HashMap<String, NodeTiming>>,
+    thresholds: Mutex<HashMap<String, u128>>,
+    callbacks: Mutex<Vec<ThresholdCallback>>,
+}
+
+impl Default for ThresholdProfiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ThresholdProfiler {
+    /// Empty profiler with no thresholds and no callbacks.
+    pub fn new() -> Self {
+        Self {
+            pending: Mutex::new(HashMap::new()),
+            totals: Mutex::new(HashMap::new()),
+            thresholds: Mutex::new(HashMap::new()),
+            callbacks: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Snapshot of per-node timings (same shape as `ProfilingObserver`).
+    pub fn snapshot(&self) -> HashMap<String, NodeTiming> {
+        self.totals.lock().map(|m| m.clone()).unwrap_or_default()
+    }
+
+    /// Register a duration cap (in nanoseconds) for `node`. Subsequent
+    /// invocations that exceed `max_ns` will fire every registered
+    /// callback. Replaces any prior threshold for the node.
+    pub fn with_threshold(self, node: impl Into<String>, max_ns: u128) -> Self {
+        if let Ok(mut t) = self.thresholds.lock() {
+            t.insert(node.into(), max_ns);
+        }
+        self
+    }
+
+    /// Add an alert callback. Multiple callbacks are supported and all
+    /// fire (in registration order) on each breach. Builder-style.
+    pub fn on_threshold_breached<F>(self, cb: F) -> Self
+    where
+        F: Fn(&str, u128) + Send + Sync + 'static,
+    {
+        if let Ok(mut c) = self.callbacks.lock() {
+            c.push(std::sync::Arc::new(cb));
+        }
+        self
+    }
+}
+
+impl Observer for ThresholdProfiler {
+    fn on_event(&self, event: &Event) {
+        match event {
+            Event::OnNodeStart { node, step, run_id } => {
+                if let Ok(mut p) = self.pending.lock() {
+                    p.insert((*run_id, *step, node.clone()), Instant::now());
+                }
+            }
+            Event::OnNodeEnd {
+                node, step, run_id, ..
+            } => {
+                let mut p = match self.pending.lock() {
+                    Ok(p) => p,
+                    Err(_) => return,
+                };
+                let key = (*run_id, *step, node.clone());
+                let started = match p.remove(&key) {
+                    Some(t) => t,
+                    None => return,
+                };
+                let elapsed_ns = started.elapsed().as_nanos();
+                drop(p);
+                if let Ok(mut t) = self.totals.lock() {
+                    let e = t.entry(node.clone()).or_insert_with(|| NodeTiming {
+                        min_ns: u128::MAX,
+                        ..Default::default()
+                    });
+                    e.count += 1;
+                    e.total_ns += elapsed_ns;
+                    e.max_ns = e.max_ns.max(elapsed_ns);
+                    e.min_ns = e.min_ns.min(elapsed_ns);
+                }
+                let breached = self
+                    .thresholds
+                    .lock()
+                    .ok()
+                    .and_then(|m| m.get(node).copied())
+                    .map(|cap| elapsed_ns > cap)
+                    .unwrap_or(false);
+                if breached {
+                    if let Ok(cbs) = self.callbacks.lock() {
+                        for cb in cbs.iter() {
+                            cb(node, elapsed_ns);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod threshold_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    fn end(node: &str, run: Uuid) -> Event {
+        Event::OnNodeEnd {
+            node: node.into(),
+            step: 0,
+            run_id: run,
+            output: serde_json::Value::Null,
+        }
+    }
+    fn start(node: &str, run: Uuid) -> Event {
+        Event::OnNodeStart {
+            node: node.into(),
+            step: 0,
+            run_id: run,
+        }
+    }
+
+    #[test]
+    fn fires_callback_on_breach() {
+        let breaches = Arc::new(AtomicUsize::new(0));
+        let b2 = breaches.clone();
+        // 1ns threshold so any real elapsed time breaches.
+        let p = ThresholdProfiler::new()
+            .with_threshold("slow", 1)
+            .on_threshold_breached(move |_node, _elapsed| {
+                b2.fetch_add(1, Ordering::Relaxed);
+            });
+        let run = Uuid::nil();
+        p.on_event(&start("slow", run));
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        p.on_event(&end("slow", run));
+        assert_eq!(breaches.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn does_not_fire_below_threshold() {
+        let breaches = Arc::new(AtomicUsize::new(0));
+        let b2 = breaches.clone();
+        // Huge threshold — no real invocation will breach.
+        let p = ThresholdProfiler::new()
+            .with_threshold("fast", u128::MAX)
+            .on_threshold_breached(move |_, _| {
+                b2.fetch_add(1, Ordering::Relaxed);
+            });
+        let run = Uuid::nil();
+        p.on_event(&start("fast", run));
+        p.on_event(&end("fast", run));
+        assert_eq!(breaches.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn snapshot_shape_matches_profiling_observer() {
+        let p = ThresholdProfiler::new();
+        let run = Uuid::nil();
+        p.on_event(&start("n", run));
+        p.on_event(&end("n", run));
+        let snap = p.snapshot();
+        let t = snap.get("n").unwrap();
+        assert_eq!(t.count, 1);
+    }
+
+    #[test]
+    fn multiple_callbacks_all_fire() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let c1 = count.clone();
+        let c2 = count.clone();
+        let p = ThresholdProfiler::new()
+            .with_threshold("n", 1)
+            .on_threshold_breached(move |_, _| {
+                c1.fetch_add(1, Ordering::Relaxed);
+            })
+            .on_threshold_breached(move |_, _| {
+                c2.fetch_add(10, Ordering::Relaxed);
+            });
+        let run = Uuid::nil();
+        p.on_event(&start("n", run));
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        p.on_event(&end("n", run));
+        assert_eq!(count.load(Ordering::Relaxed), 11);
+    }
+}

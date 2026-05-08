@@ -53,6 +53,7 @@ pub mod agent_events;
 pub mod backend;
 #[cfg(feature = "cache-sqlite")]
 pub mod cache_sqlite;
+pub mod conversation;
 pub mod eval;
 pub mod history;
 pub mod middleware;
@@ -79,6 +80,7 @@ pub use backend::{
     Backend, Blob, GrepHit, InMemoryStateBackend, InMemoryStorageBackend, LocalFsStorageBackend,
     MemoryBackend, SandboxedFsBackend, StateBackend, StorageBackend,
 };
+pub use conversation::{summarize, turns_from_messages, ConversationSummary, ConversationTurn};
 pub use eval::{
     Contains, EvalCase, EvalReport, EvalRow, EvalRunner, Evaluator, ExactMatch, LlmJudge,
 };
@@ -99,8 +101,8 @@ pub use middleware::{
     WorkspaceLister,
 };
 pub use multi_agent::{
-    AgentMessage, Consensus, HandoffStrategy, Hierarchical, InMemoryMessageBus, MessageBus,
-    MultiAgentOrchestrator, ParallelVote, RoundRobin, Sequential, Supervisor,
+    sort_by_priority, AgentMessage, Consensus, HandoffStrategy, Hierarchical, InMemoryMessageBus,
+    MessageBus, MultiAgentOrchestrator, ParallelVote, Priority, RoundRobin, Sequential, Supervisor,
 };
 pub use observers::TracingObserver;
 pub use retrievers::{
