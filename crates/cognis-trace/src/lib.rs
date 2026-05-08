@@ -32,3 +32,8 @@ pub use exporter::TraceExporter;
 
 pub mod handler;
 pub use handler::{TracingHandler, TracingHandlerBuilder};
+
+pub mod exporters;
+
+#[cfg(feature = "stdout")]
+pub use exporters::stdout::StdoutExporter;
