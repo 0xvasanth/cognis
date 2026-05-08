@@ -32,14 +32,22 @@ impl DocumentLoader for TomlLoader {
         let raw = tokio::fs::read_to_string(&self.path).await.map_err(|e| {
             CognisError::Configuration(format!("TomlLoader: read `{}`: {e}", self.path.display()))
         })?;
-        // Validate by round-tripping; surface parse errors clearly.
-        let _table: toml::Value = raw.parse().map_err(|e| {
+        // Parse + re-emit so embeddings see a canonical form: comments
+        // stripped, whitespace normalized, key order stable. Two TOML
+        // files that mean the same thing now produce the same Document.
+        let table: toml::Value = raw.parse().map_err(|e| {
             CognisError::Serialization(format!(
                 "TomlLoader: `{}` is not valid TOML: {e}",
                 self.path.display()
             ))
         })?;
-        let doc = Document::new(raw)
+        let canonical = toml::to_string(&table).map_err(|e| {
+            CognisError::Serialization(format!(
+                "TomlLoader: re-emit `{}`: {e}",
+                self.path.display()
+            ))
+        })?;
+        let doc = Document::new(canonical)
             .with_metadata("source", self.path.display().to_string())
             .with_metadata("format", "toml");
         Ok(Box::pin(stream::iter(vec![Ok(doc)])))

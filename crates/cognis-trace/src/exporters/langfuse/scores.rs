@@ -118,7 +118,10 @@ mod tests {
         let b = LangfuseScorer::body(&r).unwrap();
         assert!(b.trace_id.is_some());
         assert!(b.observation_id.is_some());
-        assert!(b.session_id.is_none(), "session must not co-exist with trace linkage");
+        assert!(
+            b.session_id.is_none(),
+            "session must not co-exist with trace linkage"
+        );
     }
 
     #[test]

@@ -57,11 +57,22 @@ impl TextSplitter for JsonSplitter {
             other => vec![serde_json::to_string(&other).unwrap_or_default()],
         };
 
-        // Pack pieces into chunks up to chunk_size.
+        // Pack pieces into chunks up to chunk_size. A single element
+        // larger than chunk_size still gets its own chunk (we'd rather
+        // emit one oversized chunk than mangle the JSON to hit the cap).
         let mut chunks: Vec<String> = Vec::new();
         let mut buf = String::new();
         for p in pieces {
-            if !buf.is_empty() && buf.chars().count() + p.chars().count() + 1 > self.chunk_size {
+            let plen = p.chars().count();
+            // Oversized element on its own: flush buf, emit p alone.
+            if plen > self.chunk_size {
+                if !buf.is_empty() {
+                    chunks.push(std::mem::take(&mut buf));
+                }
+                chunks.push(p);
+                continue;
+            }
+            if !buf.is_empty() && buf.chars().count() + plen + 1 > self.chunk_size {
                 chunks.push(std::mem::take(&mut buf));
             }
             if !buf.is_empty() {
