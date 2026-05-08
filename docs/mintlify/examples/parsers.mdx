@@ -9,7 +9,7 @@ Parser examples enact what happens when the LLM gets the JSON contract slightly 
 | Name | Scenario | Source |
 |---|---|---|
 | `parsers_fixing` | LLM emits malformed JSON — `OutputFixingParser` re-prompts with the parse error, the model usually fixes it on the second try. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/parsers/fixing_parser.rs) |
-| `parsers_retry` | When the prompt itself needs revision — `RetryParser` re-runs the entire prompt N times with stricter guidance. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/parsers/retry_parser.rs) |
+| `parsers_retry` | When one fix isn't enough — `RetryParser` loops the fixer + parse cycle up to N times until parsing succeeds, surfacing the last error if all attempts fail. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/parsers/retry_parser.rs) |
 
 ## How to run
 
@@ -21,7 +21,7 @@ cargo run -p cognis-examples --example parsers_retry
 ## When to use which
 
 - **`OutputFixingParser`** — model is *capable* of valid JSON but slipped this time. Cheaper: one repair attempt with the parse error in the prompt.
-- **`RetryParser`** — original prompt is the problem and the fix needs the original context. More expensive but more robust.
+- **`RetryParser`** — one repair pass isn't enough; loop fixer + parse up to N times. More expensive but more robust against models that produce different-but-still-broken JSON each attempt.
 
 In production, layer them: `RetryParser::with_retries(OutputFixingParser::new(inner, fixer), 3)`.
 

@@ -18,15 +18,6 @@
 //!   cargo run -p cognis-examples --example chains_structured_parsing
 //!
 //! Sample output (against ollama / llama3.1):
-//!   warning: fields `label` and `confidence` are never read
-//!     --> crates/examples/../../examples/chains/structured_parsing_demo.rs:30:5
-//!      |
-//!   29 | struct Sentiment {
-//!      |        --------- fields in this struct
-//!   30 |     label: String,
-//!      |     ^^^^^
-//!   31 |     confidence: f32,
-//!   ...
 //!   ok: Sentiment { label: "positive", confidence: 0.92 }
 //!   ok: Sentiment { label: "negative", confidence: 0.7 }
 //!   ok: Sentiment { label: "neutral", confidence: 0.55 }
@@ -37,6 +28,7 @@ use cognis_core::schemars::{self, JsonSchema};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[allow(dead_code)] // the printout uses the Debug impl; explicit reads aren't needed.
 struct Sentiment {
     label: String,
     confidence: f32,

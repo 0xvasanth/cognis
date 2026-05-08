@@ -31,8 +31,12 @@ use cognis_core::runnable_ext::RunnableExt;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Stage 1: validate. Returns a typed `Validation` error so the
-    // caller can match on it.
+    // Stage 1: validate. We use `CognisError::Internal` here for
+    // brevity — production code would define its own validation
+    // variant or wrap a domain error. The point is that the same
+    // `CognisError` enum surfaces through `.pipe()` regardless of
+    // which stage failed, so a single match arm at the top covers all
+    // signup-flow failures.
     let parse_age = lambda(|raw: String| async move {
         match raw.trim().parse::<i32>() {
             Ok(n) if n > 0 => Ok::<_, CognisError>(n as u32),
