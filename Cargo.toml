@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 license = "MIT"
 authors = ["Vasanth <itsparser@gmail.com>"]
@@ -35,10 +35,10 @@ schemars = "0.8"
 
 
 dashmap = "6"
-cognis = { path = "crates/cognis", version = "0.3.0" }
-cognis-core = { path = "crates/cognis-core", version = "0.3.0" }
-cognis-graph = { path = "crates/cognisgraph", version = "0.3.0" }
-cognis-llm = { path = "crates/cognis-llm", version = "0.3.0" }
-cognis-rag = { path = "crates/cognis-rag", version = "0.3.0" }
-cognis-macros = { path = "crates/cognis-macros", version = "0.3.0" }
-cognis-trace = { path = "crates/cognis-trace", version = "0.3.0" }
+cognis = { path = "crates/cognis", version = "0.3.1" }
+cognis-core = { path = "crates/cognis-core", version = "0.3.1" }
+cognis-graph = { path = "crates/cognisgraph", version = "0.3.1" }
+cognis-llm = { path = "crates/cognis-llm", version = "0.3.1" }
+cognis-rag = { path = "crates/cognis-rag", version = "0.3.1" }
+cognis-macros = { path = "crates/cognis-macros", version = "0.3.1" }
+cognis-trace = { path = "crates/cognis-trace", version = "0.3.1" }
