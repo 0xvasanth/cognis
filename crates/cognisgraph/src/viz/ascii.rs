@@ -21,9 +21,11 @@ impl<S: GraphState> CompiledGraph<S> {
     /// ```
     pub fn to_ascii(&self) -> String {
         let mut out = String::new();
-        match &self.graph.start {
-            Some(s) => out.push_str(&format!("Graph (start: {s})\n")),
-            None => out.push_str("Graph (start: <unset>)\n"),
+        match (&self.graph.start, self.version()) {
+            (Some(s), Some(v)) => out.push_str(&format!("Graph (start: {s}, version: {v})\n")),
+            (Some(s), None) => out.push_str(&format!("Graph (start: {s})\n")),
+            (None, Some(v)) => out.push_str(&format!("Graph (start: <unset>, version: {v})\n")),
+            (None, None) => out.push_str("Graph (start: <unset>)\n"),
         }
 
         let mut names: Vec<&String> = self.graph.nodes.keys().collect();

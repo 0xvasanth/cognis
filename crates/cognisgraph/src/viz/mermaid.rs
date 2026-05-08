@@ -18,6 +18,9 @@ impl<S: GraphState> CompiledGraph<S> {
     ///   inferred from the static graph).
     pub fn to_mermaid(&self) -> String {
         let mut out = String::from("flowchart TD\n");
+        if let Some(v) = self.version() {
+            out.push_str(&format!("    %% version: {v}\n"));
+        }
 
         let mut names: Vec<&String> = self.graph.nodes.keys().collect();
         names.sort();
