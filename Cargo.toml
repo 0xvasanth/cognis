@@ -12,8 +12,10 @@ members = [
 ]
 
 [workspace.package]
+version = "0.2.1"
 edition = "2021"
 license = "MIT"
+authors = ["Vasanth <itsparser@gmail.com>"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -32,10 +34,11 @@ tracing = "0.1"
 schemars = "0.8"
 
 
-cognis-trace = { path = "crates/cognis-trace", version = "0.2.1" }
 dashmap = "6"
 cognis = { path = "crates/cognis", version = "0.2.1" }
 cognis-core = { path = "crates/cognis-core", version = "0.2.1" }
+cognis-graph = { path = "crates/cognisgraph", version = "0.2.1" }
+cognis-llm = { path = "crates/cognis-llm", version = "0.2.1" }
+cognis-rag = { path = "crates/cognis-rag", version = "0.2.1" }
 cognis-macros = { path = "crates/cognis-macros", version = "0.2.1" }
-cognisgraph = { path = "crates/cognisgraph", version = "0.2.1" }
-cognisagent = { path = "crates/cognisagent", version = "0.2.1" }
+cognis-trace = { path = "crates/cognis-trace", version = "0.2.1" }

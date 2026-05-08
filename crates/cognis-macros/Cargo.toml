@@ -1,9 +1,10 @@
 [package]
 name = "cognis-macros"
-version = "0.2.1"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Standalone derive macros for generating OpenAPI-compatible JSON schemas from Rust structs"
+authors.workspace = true
+description = "Procedural macros for Cognis: #[tool] attribute for tool definitions and #[derive(GraphState)] for graph state with per-field reducers."
 
 [lib]
 proc-macro = true

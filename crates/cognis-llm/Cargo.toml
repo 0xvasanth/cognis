@@ -1,13 +1,14 @@
 [package]
 name = "cognis-llm"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "v2-beta LLM client: providers, Client, 5-tier Tool ergonomics"
+authors.workspace = true
+description = "LLM client and provider abstractions for Cognis: Client, LLMProvider trait, chat options, tool definitions, and streaming. Provider implementations (OpenAI, Anthropic, Google, Ollama, Azure) are feature-gated."
 repository = "https://github.com/0xvasanth/cognis"
 
 [dependencies]
-cognis-core = { path = "../cognis-core", version = "0.1.0" }
+cognis-core.workspace = true
 cognis-macros.workspace = true
 serde.workspace = true
 serde_json.workspace = true

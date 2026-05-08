@@ -1,13 +1,14 @@
 [package]
 name = "cognis-graph"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "v2-beta graph engine: typed Graph<S>, Pregel superstep executor, channels, reducers, checkpointers"
+authors.workspace = true
+description = "Stateful graph engine for Cognis: typed Graph<S>, Pregel-style superstep executor, per-field reducers, interrupts, time-travel via checkpointers (in-memory, SQLite, Postgres), and streaming."
 repository = "https://github.com/0xvasanth/cognis"
 
 [dependencies]
-cognis-core = { path = "../cognis-core", version = "0.1.0" }
+cognis-core.workspace = true
 cognis-macros.workspace = true
 serde.workspace = true
 serde_json.workspace = true

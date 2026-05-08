@@ -1,16 +1,17 @@
 [package]
 name = "cognis"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "v2-beta umbrella + thin agent layer"
+authors.workspace = true
+description = "Cognis umbrella crate: agent builder, multi-agent orchestration, memory, middleware (rate limit, retry, PII, prompt caching), built-in tools, and re-exports of cognis-core, cognis-graph, cognis-llm, and cognis-rag."
 repository = "https://github.com/0xvasanth/cognis"
 
 [dependencies]
-cognis-core = { path = "../cognis-core", version = "0.1.0" }
-cognis-graph = { path = "../cognisgraph", version = "0.1.0" }
-cognis-llm = { path = "../cognis-llm", version = "0.1.0" }
-cognis-rag = { path = "../cognis-rag", version = "0.1.0" }
+cognis-core.workspace = true
+cognis-graph.workspace = true
+cognis-llm.workspace = true
+cognis-rag.workspace = true
 cognis-macros.workspace = true
 serde.workspace = true
 serde_json.workspace = true

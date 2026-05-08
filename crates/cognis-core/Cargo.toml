@@ -1,9 +1,10 @@
 [package]
 name = "cognis-core"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "v2-beta foundation crate: typed Runnable<I, O> trait, Message, errors, streaming, Extensions"
+authors.workspace = true
+description = "Foundation traits and types for Cognis: typed Runnable<I, O>, Message, errors, streaming, prompts, output parsers, callbacks. Zero external integrations."
 repository = "https://github.com/0xvasanth/cognis"
 
 [dependencies]
