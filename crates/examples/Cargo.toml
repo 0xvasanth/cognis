@@ -3,15 +3,16 @@ name = "cognis-examples"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 publish = false
-description = "V2 examples for the Cognis workspace"
+description = "Runnable examples for the Cognis workspace, organized by category (chains, agents, memory, models, tools, retrieval, graphs, observability, resilience)."
 
 [dependencies]
-cognis-core = { path = "../cognis-core" }
-cognis = { path = "../cognis", features = ["openai", "ollama"] }
-cognis-graph = { path = "../cognisgraph" }
-cognis-llm = { path = "../cognis-llm", features = ["ollama", "openai"] }
-cognis-rag = { path = "../cognis-rag", features = ["ollama", "openai"] }
+cognis-core.workspace = true
+cognis = { workspace = true, features = ["openai", "ollama"] }
+cognis-graph.workspace = true
+cognis-llm = { workspace = true, features = ["ollama", "openai"] }
+cognis-rag = { workspace = true, features = ["ollama", "openai"] }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
@@ -136,3 +137,203 @@ path = "../../examples/agents/plan_and_execute.rs"
 [[example]]
 name = "agents_plugin_system"
 path = "../../examples/agents/plugin_system.rs"
+
+# memory/
+[[example]]
+name = "memory_agent"
+path = "../../examples/memory/agent_memory.rs"
+[[example]]
+name = "memory_conversation"
+path = "../../examples/memory/conversation_memory.rs"
+[[example]]
+name = "memory_types"
+path = "../../examples/memory/memory_types.rs"
+[[example]]
+name = "memory_summary_buffer"
+path = "../../examples/memory/summary_buffer_memory.rs"
+[[example]]
+name = "memory_knowledge_graph"
+path = "../../examples/memory/knowledge_graph_memory.rs"
+
+# models/
+[[example]]
+name = "models_streaming_chat"
+path = "../../examples/models/streaming_chat.rs"
+[[example]]
+name = "models_streaming"
+path = "../../examples/models/streaming.rs"
+[[example]]
+name = "models_streaming_demo"
+path = "../../examples/models/streaming_demo.rs"
+[[example]]
+name = "models_embedding"
+path = "../../examples/models/embedding_models.rs"
+[[example]]
+name = "models_embedding_similarity"
+path = "../../examples/models/embedding_similarity.rs"
+[[example]]
+name = "models_routing"
+path = "../../examples/models/model_routing.rs"
+[[example]]
+name = "models_registry"
+path = "../../examples/models/chat_model_registry.rs"
+[[example]]
+name = "models_content_blocks"
+path = "../../examples/models/content_blocks.rs"
+
+# tools/
+[[example]]
+name = "tools_derive"
+path = "../../examples/tools/derive_tool.rs"
+[[example]]
+name = "tools_schema"
+path = "../../examples/tools/tool_schema.rs"
+[[example]]
+name = "tools_file"
+path = "../../examples/tools/file_tools.rs"
+[[example]]
+name = "tools_agent"
+path = "../../examples/tools/tool_agent.rs"
+[[example]]
+name = "tools_calling_agent"
+path = "../../examples/tools/tool_calling_agent.rs"
+[[example]]
+name = "tools_typed_search"
+path = "../../examples/tools/typed_search.rs"
+[[example]]
+name = "tools_stateful_http"
+path = "../../examples/tools/stateful_http.rs"
+[[example]]
+name = "tools_ollama_calling"
+path = "../../examples/tools/ollama_tool_calling.rs"
+
+# retrieval/
+[[example]]
+name = "retrieval_text_splitters"
+path = "../../examples/retrieval/text_splitters.rs"
+[[example]]
+name = "retrieval_text_splitting"
+path = "../../examples/retrieval/text_splitting.rs"
+[[example]]
+name = "retrieval_document_store"
+path = "../../examples/retrieval/document_store.rs"
+[[example]]
+name = "retrieval_vector_store"
+path = "../../examples/retrieval/vector_store.rs"
+[[example]]
+name = "retrieval_vector_store_search"
+path = "../../examples/retrieval/vector_store_search.rs"
+[[example]]
+name = "retrieval_rag_pipeline"
+path = "../../examples/retrieval/rag_pipeline.rs"
+[[example]]
+name = "retrieval_rag_with_vectorstore"
+path = "../../examples/retrieval/rag_with_vectorstore.rs"
+[[example]]
+name = "retrieval_indexing_rag"
+path = "../../examples/retrieval/indexing_rag.rs"
+[[example]]
+name = "retrieval_caching_retriever"
+path = "../../examples/retrieval/caching_retriever.rs"
+[[example]]
+name = "retrieval_document_compression"
+path = "../../examples/retrieval/document_compression.rs"
+[[example]]
+name = "retrieval_cross_encoder"
+path = "../../examples/retrieval/cross_encoder.rs"
+[[example]]
+name = "retrieval_reranking"
+path = "../../examples/retrieval/reranking_retriever.rs"
+
+# graphs/
+[[example]]
+name = "graphs_state_machine"
+path = "../../examples/graphs/state_machine.rs"
+[[example]]
+name = "graphs_state_management"
+path = "../../examples/graphs/graph_state_management.rs"
+[[example]]
+name = "graphs_runtime"
+path = "../../examples/graphs/graph_runtime.rs"
+[[example]]
+name = "graphs_with_checkpoints"
+path = "../../examples/graphs/graph_with_checkpoints.rs"
+[[example]]
+name = "graphs_checkpoint_persistence"
+path = "../../examples/graphs/checkpoint_persistence.rs"
+[[example]]
+name = "graphs_state_snapshot"
+path = "../../examples/graphs/state_snapshot.rs"
+[[example]]
+name = "graphs_interrupts"
+path = "../../examples/graphs/graph_interrupts_demo.rs"
+[[example]]
+name = "graphs_validation"
+path = "../../examples/graphs/graph_validation_demo.rs"
+[[example]]
+name = "graphs_visualization"
+path = "../../examples/graphs/graph_visualization.rs"
+[[example]]
+name = "graphs_analysis"
+path = "../../examples/graphs/graph_analysis.rs"
+[[example]]
+name = "graphs_metrics"
+path = "../../examples/graphs/graph_metrics.rs"
+[[example]]
+name = "graphs_debug"
+path = "../../examples/graphs/graph_debug_demo.rs"
+[[example]]
+name = "graphs_node_scheduler"
+path = "../../examples/graphs/node_scheduler.rs"
+[[example]]
+name = "graphs_topic_channels"
+path = "../../examples/graphs/topic_channels.rs"
+[[example]]
+name = "graphs_semantic_router"
+path = "../../examples/graphs/semantic_router.rs"
+[[example]]
+name = "graphs_message_graph"
+path = "../../examples/graphs/message_graph.rs"
+[[example]]
+name = "graphs_langgraph_agent"
+path = "../../examples/graphs/langgraph_agent.rs"
+
+# observability/
+[[example]]
+name = "obs_event_system"
+path = "../../examples/observability/event_system_demo.rs"
+[[example]]
+name = "obs_callback_manager"
+path = "../../examples/observability/callback_manager.rs"
+[[example]]
+name = "obs_tracing"
+path = "../../examples/observability/tracing_demo.rs"
+[[example]]
+name = "obs_health_monitoring"
+path = "../../examples/observability/health_monitoring.rs"
+[[example]]
+name = "obs_evaluation_framework"
+path = "../../examples/observability/evaluation_framework.rs"
+[[example]]
+name = "obs_evaluation_pipeline"
+path = "../../examples/observability/evaluation_pipeline.rs"
+
+# resilience/
+[[example]]
+name = "resilience_error_handling"
+path = "../../examples/resilience/error_handling.rs"
+[[example]]
+name = "resilience_error_recovery"
+path = "../../examples/resilience/error_recovery.rs"
+[[example]]
+name = "resilience_caching"
+path = "../../examples/resilience/caching_demo.rs"
+[[example]]
+name = "resilience_rate_limiter"
+path = "../../examples/resilience/rate_limiter.rs"
+[[example]]
+name = "resilience_ssrf_protection"
+path = "../../examples/resilience/ssrf_protection.rs"
+[[example]]
+name = "resilience_demo"
+path = "../../examples/resilience/resilience_demo.rs"

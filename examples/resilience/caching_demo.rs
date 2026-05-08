@@ -1,111 +1,29 @@
-//! Caching Demo
-//!
-//! Shows how to cache LLM responses using `InMemoryCache` to avoid
-//! redundant API calls. Demonstrates cache misses, hits, and stats.
-//!
-//! Run with: `cargo run -p cognis-examples --example caching_demo`
+//! Cache wrapper — memoize a Runnable's outputs by a derived key.
 
-#[path = "../shared.rs"]
-mod shared;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
-use cognis::caching::{CacheEntry, CacheKey, CacheStats, CacheStore, InMemoryCache};
-use cognis_core::messages::Message;
-use serde_json::json;
+use cognis::prelude::*;
+use cognis_core::compose::lambda;
+use cognis_core::wrappers::{Cache, MemoryCache};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== LLM Response Caching Demo ===\n");
-
-    let model = shared::get_chat_model(vec![
-        "Rust uses ownership and borrowing to guarantee memory safety at compile time.".into(),
-        "Rust uses ownership and borrowing to guarantee memory safety at compile time.".into(),
-    ]);
-
-    let mut cache = InMemoryCache::new(100);
-    let mut stats = CacheStats::new();
-
-    let prompt = "Explain Rust ownership in one sentence.";
-    let cache_key = CacheKey::from_parts(
-        "demo_model",
-        &[json!({"role": "user", "content": prompt})],
-        Some(0.3),
-        None,
-    );
-
-    // --- First call: expect a cache miss, so we call the LLM ---
-    println!("Query: \"{}\"\n", prompt);
-
-    let response_text = match cache.get(&cache_key) {
-        Some(entry) => {
-            entry.record_hit();
-            stats.record_hit();
-            println!("[CACHE HIT]");
-            entry.response.as_str().unwrap_or_default().to_string()
+async fn main() -> Result<()> {
+    let calls = Arc::new(AtomicU32::new(0));
+    let c = calls.clone();
+    let inner = lambda(move |s: String| {
+        let c = c.clone();
+        async move {
+            c.fetch_add(1, Ordering::Relaxed);
+            Ok::<_, CognisError>(s.to_uppercase())
         }
-        None => {
-            stats.record_miss();
-            println!("[CACHE MISS] Calling LLM...");
-            let messages = vec![Message::human(prompt)];
-            let result = model._generate(&messages, None).await?;
-            let text = result.generations[0].message.content().text();
+    });
+    let backend = Arc::new(MemoryCache::<String, String>::new());
+    let cached = Cache::new(inner, backend, |s: &String| s.clone());
 
-            let entry = CacheEntry::new(json!(text), "demo_model").with_ttl_secs(600);
-            cache.put(cache_key.clone(), entry);
-            stats.record_insertion();
-
-            text
-        }
-    };
-    println!("Response: {}\n", response_text);
-
-    // --- Second call: same query, should be a cache hit ---
-    let response_text = match cache.get(&cache_key) {
-        Some(entry) => {
-            entry.record_hit();
-            stats.record_hit();
-            println!("[CACHE HIT] No LLM call needed.");
-            entry.response.as_str().unwrap_or_default().to_string()
-        }
-        None => {
-            stats.record_miss();
-            println!("[CACHE MISS] Calling LLM...");
-            let messages = vec![Message::human(prompt)];
-            let result = model._generate(&messages, None).await?;
-            let text = result.generations[0].message.content().text();
-
-            let entry = CacheEntry::new(json!(text), "demo_model").with_ttl_secs(600);
-            cache.put(cache_key.clone(), entry);
-            stats.record_insertion();
-
-            text
-        }
-    };
-    println!("Response: {}\n", response_text);
-
-    // --- A different query: expect another miss ---
-    let other_prompt = "What is borrowing in Rust?";
-    let other_key = CacheKey::from_parts(
-        "demo_model",
-        &[json!({"role": "user", "content": other_prompt})],
-        Some(0.3),
-        None,
-    );
-
-    match cache.get(&other_key) {
-        Some(_) => println!("[CACHE HIT] for \"{}\"", other_prompt),
-        None => {
-            stats.record_miss();
-            println!("[CACHE MISS] for \"{}\" (different query)", other_prompt);
-        }
-    }
-
-    // --- Summary ---
-    println!("\n--- Cache Statistics ---");
-    println!("  Hits:    {}", stats.total_hits());
-    println!("  Misses:  {}", stats.total_misses());
-    println!("  Hit rate: {:.0}%", stats.hit_rate() * 100.0);
-    println!("  Entries: {}", cache.len());
-
-    println!("\n=== Done ===");
+    let _ = cached.invoke("hello".into(), Default::default()).await?;
+    let _ = cached.invoke("hello".into(), Default::default()).await?; // hit
+    let _ = cached.invoke("world".into(), Default::default()).await?;
+    println!("inner invocations: {}", calls.load(Ordering::Relaxed));
     Ok(())
 }

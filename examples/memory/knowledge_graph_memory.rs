@@ -1,107 +1,42 @@
-//! Knowledge Graph Memory Example
-//!
-//! Demonstrates knowledge graph memory: manual triples, regex extraction,
-//! querying, merging, and KnowledgeGraphMemory with conversations.
-//!
-//! Run with: `cargo run -p cognis-examples --example knowledge_graph_memory`
+//! V2 doesn't ship a built-in KnowledgeGraphMemory. The Memory trait
+//! is the extension point: implement it with whatever graph / DB you
+//! want. Below is a tiny in-memory triple store wrapped as `Memory`.
 
-#[path = "../shared.rs"]
-mod shared;
-use cognis::memory::knowledge_graph::{
-    KnowledgeGraph, KnowledgeGraphMemory, KnowledgeTriple, RegexTripleExtractor, TripleExtractor,
-};
-use cognis::memory::BaseMemory;
-use cognis_core::messages::Message;
+use cognis::prelude::*;
+use cognis::Memory;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Build a knowledge graph manually
-    let mut graph = KnowledgeGraph::new();
-    graph.add_triple(KnowledgeTriple::new("Alice", "works at", "Acme Corp"));
-    graph.add_triple(KnowledgeTriple::new("Bob", "works at", "TechStart"));
-    graph.add_triple(KnowledgeTriple::new("Alice", "knows", "Bob"));
-    graph.add_triple(KnowledgeTriple::new("Alice", "lives in", "San Francisco"));
-    graph.add_triple(KnowledgeTriple::new("Bob", "manages", "Project Alpha").with_confidence(0.9));
+#[derive(Default)]
+struct TripleMemory {
+    triples: Vec<(String, String, String)>, // (subject, predicate, object)
+    history: Vec<Message>,
+}
 
-    println!("Graph: {} triples", graph.len());
-    println!("{}", graph.to_natural_language());
-
-    // Query by entity
-    let alice_triples = graph.get_triples_for_entity("Alice");
-    println!("Alice triples: {}", alice_triples.len());
-
-    let related = graph.get_related_entities("Alice");
-    println!("Related to Alice: {:?}", related);
-
-    // Regex triple extraction
-    let extractor = RegexTripleExtractor::new();
-    let text = "Alice is a software engineer. Bob works at Google. Charlie lives in New York.";
-    let extracted = extractor.extract_triples(text);
-    println!("Extracted {} triples from text", extracted.len());
-    for triple in &extracted {
-        println!(
-            "  {} --[{}]--> {}",
-            triple.subject, triple.predicate, triple.object
-        );
+impl TripleMemory {
+    fn record_fact(&mut self, s: &str, p: &str, o: &str) {
+        self.triples.push((s.into(), p.into(), o.into()));
     }
-
-    // Graph merging with deduplication
-    let mut graph_a = KnowledgeGraph::new();
-    graph_a.add_triple(KnowledgeTriple::new("Alice", "works at", "Acme Corp"));
-    graph_a.add_triple(KnowledgeTriple::new("Bob", "lives in", "Berlin"));
-
-    let mut graph_b = KnowledgeGraph::new();
-    graph_b.add_triple(KnowledgeTriple::new("Alice", "works at", "Acme Corp"));
-    graph_b.add_triple(KnowledgeTriple::new("Charlie", "teaches", "Rust"));
-
-    graph_a.merge(&graph_b);
-    println!("Merged: {} triples (deduplicated)", graph_a.len());
-
-    // KnowledgeGraphMemory with conversation
-    let memory = KnowledgeGraphMemory::builder()
-        .memory_key("chat_history")
-        .knowledge_key("knowledge_context")
-        .initial_triples(vec![KnowledgeTriple::new(
-            "Cognis",
-            "is",
-            "an LLM framework",
-        )])
-        .build();
-
-    memory
-        .save_context(
-            &Message::human("Alice works at Google and she lives in London."),
-            &Message::ai("Interesting!"),
-        )
-        .await?;
-
-    memory
-        .save_context(
-            &Message::human("Bob knows Alice and he created a new startup."),
-            &Message::ai("Great to hear!"),
-        )
-        .await?;
-
-    println!(
-        "After conversation: {} triples",
-        memory.triple_count().await
-    );
-    println!(
-        "Alice: {}",
-        memory.get_knowledge_for(&["Alice".to_string()]).await
-    );
-
-    // LLM demo
-    let model = shared::get_chat_model(vec![
-        "Triples:\n- (Elon Musk, founded, SpaceX)\n- (SpaceX, is, aerospace company)\n- (SpaceX, headquartered in, Hawthorne California)".into(),
-    ]);
-    let messages = vec![Message::human(
-        "Extract knowledge triples from: 'Elon Musk founded SpaceX, an aerospace company headquartered in Hawthorne, California.'",
-    )];
-    let result = model._generate(&messages, None).await?;
-    if let Some(gen) = result.generations.first() {
-        println!("LLM: {}", gen.message.content().text());
+    fn facts(&self) -> Vec<String> {
+        self.triples.iter().map(|(s, p, o)| format!("{s} {p} {o}.")).collect()
     }
+}
 
-    Ok(())
+impl Memory for TripleMemory {
+    fn read(&self) -> &[Message] { &self.history }
+    fn write(&mut self, msg: Message) { self.history.push(msg); }
+    fn clear(&mut self) { self.history.clear(); self.triples.clear(); }
+    fn seed(&self) -> Vec<Message> {
+        let kb = format!("Known facts:\n{}", self.facts().join("\n"));
+        let mut out = vec![Message::system(kb)];
+        out.extend(self.history.iter().cloned());
+        out
+    }
+}
+
+fn main() {
+    let mut m = TripleMemory::default();
+    m.record_fact("Rust", "released_in", "2010");
+    m.record_fact("Rust", "creator", "Mozilla");
+    m.write(Message::human("Tell me about Rust."));
+    let seed = m.seed();
+    println!("seed has {} messages; first one is the synthesized KB:\n{}", seed.len(), seed[0].content());
 }
