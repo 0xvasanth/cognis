@@ -178,6 +178,71 @@ pub struct ScoreRecord {
     pub comment: Option<String>,
 }
 
+/// In-flight span being assembled between `on_*_start` and `on_*_end`.
+/// Pure data; no behavior — `TracingHandler` drives it.
+#[derive(Debug, Clone)]
+pub struct SpanBuilder {
+    /// The span being assembled. `ended_at`, `output`, `level`, `status_message`,
+    /// and (for Generation) `generation` are filled at close time.
+    pub span: Span,
+}
+
+impl SpanBuilder {
+    /// Open a new span at `now`.
+    pub fn open(
+        run_id: Uuid,
+        parent_run_id: Option<Uuid>,
+        trace_id: Uuid,
+        kind: SpanKind,
+        name: impl Into<String>,
+        input: Option<serde_json::Value>,
+        now: SystemTime,
+    ) -> Self {
+        Self {
+            span: Span {
+                run_id,
+                parent_run_id,
+                trace_id,
+                kind,
+                name: name.into(),
+                started_at: now,
+                ended_at: None,
+                level: ObservationLevel::Default,
+                status_message: None,
+                input,
+                output: None,
+                session_id: None,
+                user_id: None,
+                tags: Vec::new(),
+                metadata: HashMap::new(),
+                generation: None,
+            },
+        }
+    }
+
+    /// Mark the span ended successfully and stamp the output.
+    pub fn finish_ok(mut self, output: Option<serde_json::Value>, now: SystemTime) -> Span {
+        self.span.ended_at = Some(now);
+        self.span.output = output;
+        self.span
+    }
+
+    /// Mark the span ended with an error.
+    pub fn finish_error(mut self, message: impl Into<String>, now: SystemTime) -> Span {
+        self.span.ended_at = Some(now);
+        self.span.level = ObservationLevel::Error;
+        self.span.status_message = Some(message.into());
+        self.span
+    }
+
+    /// Attach a populated `Generation` payload (used on `on_llm_end`).
+    pub fn with_generation(mut self, gen: Generation) -> Self {
+        self.span.kind = SpanKind::Generation;
+        self.span.generation = Some(gen);
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,5 +279,48 @@ mod tests {
     fn score_value_categorical_serializes_as_string() {
         let v = ScoreValue::Categorical("good".into());
         assert_eq!(serde_json::to_string(&v).unwrap(), "\"good\"");
+    }
+
+    #[test]
+    fn span_builder_opens_with_default_level() {
+        let id = Uuid::new_v4();
+        let now = SystemTime::now();
+        let b = SpanBuilder::open(id, None, id, SpanKind::Chain, "x", None, now);
+        assert_eq!(b.span.level, ObservationLevel::Default);
+        assert!(b.span.ended_at.is_none());
+    }
+
+    #[test]
+    fn span_builder_finish_ok_sets_end_and_output() {
+        let id = Uuid::new_v4();
+        let now = SystemTime::now();
+        let b = SpanBuilder::open(id, None, id, SpanKind::Chain, "x", None, now);
+        let span = b.finish_ok(Some(serde_json::json!({"k": "v"})), now);
+        assert!(span.ended_at.is_some());
+        assert_eq!(span.level, ObservationLevel::Default);
+        assert_eq!(span.output, Some(serde_json::json!({"k": "v"})));
+    }
+
+    #[test]
+    fn span_builder_finish_error_sets_level_and_message() {
+        let id = Uuid::new_v4();
+        let now = SystemTime::now();
+        let b = SpanBuilder::open(id, None, id, SpanKind::Tool, "t", None, now);
+        let span = b.finish_error("boom", now);
+        assert_eq!(span.level, ObservationLevel::Error);
+        assert_eq!(span.status_message.as_deref(), Some("boom"));
+    }
+
+    #[test]
+    fn span_builder_with_generation_flips_kind() {
+        let id = Uuid::new_v4();
+        let b = SpanBuilder::open(id, None, id, SpanKind::Span, "g", None, SystemTime::now())
+            .with_generation(Generation {
+                model: "gpt-4o".into(),
+                provider: "openai".into(),
+                ..Default::default()
+            });
+        assert_eq!(b.span.kind, SpanKind::Generation);
+        assert!(b.span.generation.is_some());
     }
 }
