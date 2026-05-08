@@ -14,233 +14,311 @@
 
 ---
 
-Cognis is a Rust-native framework for building LLM-powered applications — chains, agents, RAG pipelines, and stateful workflows. If you've used LangChain in Python, this is the same mental model with Rust's performance and compile-time guarantees.
+Cognis is a Rust-native framework for building LLM-powered applications — agents, RAG pipelines, and stateful graph workflows. If you've used LangChain / LangGraph / DeepAgents in Python, this is the same conceptual surface translated into idiomatic Rust: typed `Runnable<I, O>`, stateful `Graph<S>`, and a small agent loop you compose with builders rather than configure with strings.
 
 ## Why Cognis?
 
-- **Compile-time safety** — Tool schemas, message types, and state transitions are checked before your code runs. No more runtime surprises.
-- **Pay only for what you use** — LLM providers are behind feature flags. Your binary doesn't include OpenAI code if you only use Anthropic.
-- **Async-native streaming** — Built on `tokio` with `futures::Stream`. Stream tokens from any provider with the same API.
-- **Production patterns included** — Circuit breakers, retry with backoff, rate limiting, PII redaction, and human-in-the-loop are built into the middleware pipeline.
-- **One workspace, full stack** — Chains, agents, RAG, graph workflows, and high-level agent orchestration all live together with strict dependency boundaries.
+- **Compile-time type safety.** `Runnable<I, O>` carries types end-to-end — tool schemas, message variants, graph state transitions all checked at compile time. No runtime surprises.
+- **Pay only for what you use.** Every external integration (providers, vector stores, checkpoint backends, observability exporters) is feature-gated. Your binary doesn't include OpenAI code if you only use Anthropic.
+- **Async-native streaming.** Built on `tokio` and `futures::Stream`. Stream tokens, events, or graph state updates with a single API.
+- **Production patterns built in.** Retry with backoff, circuit breakers, sliding-window / cost-based / token-bucket rate limiters, PII redaction, prompt caching, summarization, planning, and human-in-the-loop ship as composable middleware.
+- **Stateful graph engine.** `cognis-graph` provides Pregel-style supersteps, per-field reducers, all 7 stream modes, interrupts, and time-travel via SQLite/Postgres checkpointers.
+- **One umbrella, full stack.** `cognis` re-exports the foundation, LLM, RAG, and graph layers. Most apps need a single `use cognis::prelude::*;` and a few specific imports.
 
-## Quick Start
-
-Add to your `Cargo.toml`:
+## Quick start
 
 ```toml
 [dependencies]
-cognis = { version = "0.1", features = ["openai"] }
-cognis-core = "0.1"
+cognis = { version = "0.2", features = ["ollama"] }   # or openai / anthropic / google / azure / all-providers
 tokio = { version = "1", features = ["full"] }
-serde_json = "1"
 ```
 
-### Chain: Prompt → Model → Parser
+### A 5-line agent
 
 ```rust
 use std::sync::Arc;
-use serde_json::json;
-use cognis_core::chain;
-use cognis_core::language_models::{ChatModelRunnable, FakeListChatModel};
-use cognis_core::output_parsers::StrOutputParser;
-use cognis_core::prompts::ChatPromptTemplate;
-use cognis_core::runnables::Runnable;
+use cognis::prelude::*;
+use cognis::{AgentBuilder, Calculator};
+use cognis_llm::Client;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let prompt = ChatPromptTemplate::from_messages(vec![
-        ("system", "You are a helpful assistant."),
-        ("human", "Explain {topic} in one sentence."),
-    ])?;
+async fn main() -> Result<()> {
+    // Reads COGNIS_PROVIDER + COGNIS_*_MODEL / API_KEY from env.
+    let client = Client::from_env()?;
 
-    let model = FakeListChatModel::new(vec![
-        "Rust is a systems language focused on safety and speed.".into(),
-    ]);
+    let mut agent = AgentBuilder::new()
+        .with_llm(client)
+        .with_tool(Arc::new(Calculator::new()))
+        .with_system_prompt("Use the calculator for any arithmetic. Always state the final answer.")
+        .with_max_iterations(4)
+        .build()?;
 
-    let chain = chain!(
-        prompt,
-        ChatModelRunnable::new(Arc::new(model)),
-        StrOutputParser
-    )?;
-
-    let result = chain.invoke(json!({"topic": "Rust"}), None).await?;
-    println!("{}", result.as_str().unwrap());
+    let resp = agent.run(Message::human("What is 47 * 23?")).await?;
+    println!("{}", resp.content);
     Ok(())
 }
 ```
 
-> Swap `FakeListChatModel` for `ChatOpenAI`, `ChatAnthropic`, `ChatGoogleGenAI`, or `ChatOllama` for real LLM calls.
+```bash
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.2:1b cargo run
+```
 
-### Stateful Graph Workflow
-
-Build multi-step workflows with conditional branching, checkpointing, and human-in-the-loop:
+### Stateful graph workflow
 
 ```rust
-use std::sync::Arc;
-use serde_json::{json, Value};
-use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
+use cognis::prelude::*;
+
+#[derive(Default, Clone, Debug)]
+struct State { count: u32 }
+
+#[derive(Default, Clone)]
+struct Update { count: u32 }
+
+impl GraphState for State {
+    type Update = Update;
+    fn apply(&mut self, u: Update) { self.count += u.count; }
+}
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let classify: AsyncNodeAction = Arc::new(|state: Value| {
-        Box::pin(async move {
-            let input = state["input"].as_str().unwrap_or("");
-            let category = if input.contains("error") { "issue" } else { "general" };
-            Ok(json!({ "category": category }))
-        })
+async fn main() -> Result<()> {
+    let tick = node_fn::<State, _, _>("tick", |s, _| {
+        let cur = s.count;
+        async move {
+            if cur >= 5 {
+                Ok(NodeOut { update: Update { count: 0 }, goto: Goto::end() })
+            } else {
+                Ok(NodeOut { update: Update { count: 1 }, goto: Goto::node("tick") })
+            }
+        }
     });
 
-    let respond: AsyncNodeAction = Arc::new(|state: Value| {
-        Box::pin(async move {
-            let cat = state["category"].as_str().unwrap_or("unknown");
-            Ok(json!({ "response": format!("Handling as: {cat}") }))
-        })
-    });
-
-    let graph = StateGraph::new()
-        .add_node("classify", classify)
-        .add_node("respond", respond)
-        .add_edge("__start__", "classify")
-        .add_edge("classify", "respond")
-        .add_edge("respond", "__end__")
+    let graph = Graph::<State>::new()
+        .node("tick", tick)
+        .start_at("tick")
         .compile()?;
 
-    let result = graph.invoke(json!({ "input": "There is an error" })).await?;
-    println!("{}", result);
+    let final_state = graph.invoke(State::default(), Default::default()).await?;
+    println!("final count: {}", final_state.count);
     Ok(())
 }
 ```
 
-### RAG in 10 Lines
+Add a `Checkpointer` to get time-travel and interrupt-resume for free; see [`examples/graphs/graph_with_checkpoints.rs`](examples/graphs/graph_with_checkpoints.rs).
+
+### RAG pipeline
 
 ```rust
-use cognis::text_splitter::{RecursiveCharacterTextSplitter, TextSplitter};
-use cognis::document_loaders::text::TextLoader;
-use cognis_core::document_loaders::BaseLoader;
-use cognis_core::vectorstores::{in_memory::InMemoryVectorStore, base::VectorStore};
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis_llm::Client;
+use cognis_rag::{
+    Document, Embeddings, FakeEmbeddings, InMemoryVectorStore, RecursiveCharSplitter,
+    TextSplitter, VectorStore,
+};
 
-let docs = TextLoader::new("data.txt").load().await?;
+#[tokio::main]
+async fn main() -> Result<()> {
+    let docs = vec![
+        Document::new("Cognis is a Rust LLM framework."),
+        Document::new("cognis-graph offers a stateful graph engine."),
+        Document::new("cognis-rag bundles embeddings, vector stores, and retrievers."),
+    ];
+    let chunks = RecursiveCharSplitter::new().with_chunk_size(120).split_all(&docs);
 
-let splitter = RecursiveCharacterTextSplitter::new()
-    .with_chunk_size(500)
-    .with_chunk_overlap(50);
-let chunks = splitter.split_documents(&docs);
+    let emb: Arc<dyn Embeddings> = Arc::new(FakeEmbeddings::new(32));
+    let mut store = InMemoryVectorStore::new(emb);
+    store.add_texts(chunks.iter().map(|c| c.content.clone()).collect(), None).await?;
 
-let store = InMemoryVectorStore::new(embedding_model);
-store.add_documents(chunks, None).await?;
+    let hits = store.similarity_search("What does cognis-rag include?", 2).await?;
+    let context = hits.iter().map(|h| format!("- {}", h.text)).collect::<Vec<_>>().join("\n");
 
-let results = store.similarity_search("your question", 3).await?;
+    let client = Client::from_env()?;
+    let prompt = format!("Answer using only:\n{context}\n\nQ: What does cognis-rag include?\nA:");
+    let resp = client.invoke(vec![Message::human(prompt)]).await?;
+    println!("{}", resp.content());
+    Ok(())
+}
 ```
+
+Swap `FakeEmbeddings` for `OpenAIEmbeddings`, `OllamaEmbeddings`, `GoogleEmbeddings`, or `VoyageEmbeddings`. Swap `InMemoryVectorStore` for FAISS, Chroma, Qdrant, Pinecone, or Weaviate (each behind a feature flag).
 
 ### Streaming
 
 ```rust
+use cognis::prelude::*;
+use cognis_llm::Client;
 use futures::StreamExt;
-use cognis_core::language_models::chat_model::BaseChatModel;
-use cognis_core::messages::{HumanMessage, Message};
 
-let messages = vec![Message::Human(HumanMessage::new("Tell me a story"))];
-let mut stream = model._stream(&messages, None).await?;
-
-while let Some(chunk) = stream.next().await {
-    print!("{}", chunk?.message.base.content.text());
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = Client::from_env()?;
+    let mut s = client.stream(vec![Message::human("Tell me a one-line joke.")]).await?;
+    while let Some(chunk) = s.next().await {
+        print!("{}", chunk?.content);
+    }
+    println!();
+    Ok(())
 }
 ```
 
-### Building an Agent
-
-Chains answer questions. *Agents* loop over a model, call tools, and decide what to do next. Don't hand-roll the loop — `AgentExecutor` drives it for you:
+### Multi-agent orchestration
 
 ```rust
-use std::sync::Arc;
-use cognis::agents::AgentExecutor;
-use cognis_core::messages::Message;
-use cognis_core::tools::base::BaseTool;
-use cognis_core::tools::simple::SimpleTool;
+use cognis::{AgentBuilder, MultiAgentOrchestrator, Sequential};
+use cognis::prelude::*;
+use cognis_llm::Client;
 
-let search = SimpleTool::new(
-    "search",
-    "Search for information about a topic",
-    |query: &str| Ok(format!("Results for '{query}': ...")),
-);
+#[tokio::main]
+async fn main() -> Result<()> {
+    let planner = AgentBuilder::new()
+        .with_llm(Client::from_env()?)
+        .with_system_prompt("Break the request into 3 numbered steps. No explanations.")
+        .build()?;
+    let executor = AgentBuilder::new()
+        .with_llm(Client::from_env()?)
+        .with_system_prompt("Receive a numbered plan; reply with one paragraph on how you'd carry it out.")
+        .build()?;
 
-let executor = AgentExecutor::builder()
-    .model(model)
-    .tool(Arc::new(search) as Arc<dyn BaseTool>)
-    .max_iterations(10)
-    .handle_parsing_errors(true)
-    .build();
+    let orch = MultiAgentOrchestrator::new(Sequential)
+        .add("planner", planner)
+        .add("executor", executor);
 
-let result = executor.run(&[Message::human("What is Rust?")]).await?;
-println!("{}", result.output);
+    let resp = orch.run("Help me prepare for a 5-minute team standup.").await?;
+    println!("{}", resp.content);
+    Ok(())
+}
 ```
 
-No JSON parser, no scratchpad formatting, no per-provider tool-call handling. The executor appends `ToolMessage`s with correct `tool_call_id`s, stops on `max_iterations`, and supports callbacks for streaming intermediate steps.
+Other strategies: `Supervisor`, `ParallelVote`, `RoundRobin`. Plug in a custom `HandoffStrategy` for full control. For pub/sub broadcast across agents, see `cognis::AgentBus`.
 
-For the full walk-through — `SimpleTool` vs `StructuredTool` vs custom `BaseTool`, `with_structured_output`, `OutputFixingParser`, `CallbackHandler`, and the graph-based `create_react_agent` — see **[docs/building-an-agent.md](docs/building-an-agent.md)**.
+### Tool orchestration with dependencies
 
-## What's Included
+```rust
+use cognis::{ExecutionPlan, ToolOrchestrator, ToolStep};
+use cognis_llm::tools::ToolInput;
 
-| Layer              | Crate         | What it does                                                                                                               |
-| ------------------ | ------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| **Foundation**     | `cognis-core` | Base traits (`ChatModel`, `Tool`, `Runnable`, `VectorStore`), message types, prompt templates, output parsers, callbacks   |
-| **Implementation** | `cognis`      | 5 LLM providers, 19 chain types, 14 retrievers, 11 memory types, 6 vector stores, document loaders, text splitters, tools  |
-| **Orchestration**  | `cognisgraph` | State graphs, Pregel execution engine, checkpointing (SQLite/Postgres), streaming, human-in-the-loop, subgraph composition |
-| **Application**    | `cognisagent` | Zero-boilerplate agent factory, middleware pipeline, sandboxed execution, planning, plugins, workflow engine               |
+let orch = ToolOrchestrator::new()
+    .register(fetch_a)
+    .register(fetch_b)
+    .register(merge)
+    .with_max_concurrency(4);
 
-## Providers
+let plan = ExecutionPlan::new()
+    .step(ToolStep::new("a", "fetch_a", ToolInput::Text("doc-1".into())))
+    .step(ToolStep::new("b", "fetch_b", ToolInput::Text("doc-2".into())))
+    .step(ToolStep::new("m", "merge", ToolInput::Text("combine".into())).after(["a", "b"]));
 
-Enable only what you need via feature flags:
+let result = orch.run(plan).await?;
+```
+
+The orchestrator topo-sorts the DAG, runs independent steps concurrently, and skips downstream steps whose ancestors errored.
+
+## Workspace layout
+
+```
+crates/
+├── cognis-core    # Foundation: Runnable<I,O>, Message, prompts, output
+│                  # parsers, callbacks/Observer/Event, wrappers, compose.
+├── cognis-llm     # LLM client + providers (OpenAI/Anthropic/Google/
+│                  # Ollama/Azure/OpenRouter), Tool trait, streaming.
+├── cognis-rag     # Embeddings, vector stores, retrievers, splitters,
+│                  # loaders, IndexingPipeline, document transformers.
+├── cognisgraph    # Crate name `cognis-graph`. Stateful Graph<S>,
+│                  # checkpointers, interrupts, time-travel, viz.
+├── cognis-trace   # Pluggable observability adapters (Langfuse,
+│                  # LangSmith, OpenTelemetry).
+├── cognis-macros  # Proc macros: #[tool], #[derive(GraphState)].
+├── cognis         # Umbrella + agent layer: AgentBuilder,
+│                  # MultiAgentOrchestrator, AgentBus, memory variants,
+│                  # middleware, built-in tools, ToolOrchestrator.
+└── examples       # 100+ runnable demos under examples/<category>/.
+```
+
+| Layer            | Crate           | What it provides                                                                                                              |
+| ---------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Foundation**   | `cognis-core`   | `Runnable<I, O>`, `Message`, `ContentPart`, prompts, output parsers (incl. `OutputFixingParser` / `RetryParser`), callbacks   |
+| **LLM**          | `cognis-llm`    | `Client`, providers, `Tool` trait, streaming, structured output                                                               |
+| **RAG**          | `cognis-rag`    | Embeddings, vector stores (6), retrievers (9+), splitters, loaders, indexing, transformers                                    |
+| **Graph**        | `cognis-graph`  | `Graph<S>`, Pregel engine, reducers, channels, checkpointers (in-memory/SQLite/Postgres), 7 stream modes, viz (DOT/Mermaid)  |
+| **Tracing**      | `cognis-trace`  | Langfuse / LangSmith / OpenTelemetry exporters                                                                                |
+| **Agent**        | `cognis`        | `AgentBuilder`, multi-agent (Sequential/Supervisor/ParallelVote/RoundRobin), `AgentBus`, 7 memory types, middleware, tools    |
+
+`cognis-core` has zero internal-crate dependencies. Sibling crates depend only on `cognis-core` (and macros where needed). `cognis` is the only crate that depends on the siblings together.
+
+## Feature flags
 
 ```toml
-# Pick your providers
-cognis = { version = "0.1", features = ["anthropic", "openai"] }
-
-# Or enable everything
-cognis = { version = "0.1", features = ["all-providers"] }
+# Pick providers
+cognis = { version = "0.2", features = ["openai", "anthropic"] }
+# Or take everything
+cognis = { version = "0.2", features = ["all-providers"] }
 
 # Graph workflows with persistence
-cognisgraph = { version = "0.1", features = ["sqlite"] }
+cognis-graph = { version = "0.2", features = ["sqlite"] }   # or "postgres"
+
+# Vector stores (each opt-in)
+cognis-rag = { version = "0.2", features = ["faiss", "openai"] }
 ```
 
-| Flag                                                    | Provider                             |
-| ------------------------------------------------------- | ------------------------------------ |
-| `openai`                                                | OpenAI GPT models + embeddings       |
-| `anthropic`                                             | Anthropic Claude models + embeddings |
-| `google`                                                | Google Gemini models + embeddings    |
-| `ollama`                                                | Ollama local models + embeddings     |
-| `azure`                                                 | Azure OpenAI                         |
-| `qdrant` / `pinecone` / `weaviate` / `chroma` / `faiss` | Vector store backends                |
-| `sqlite` / `postgres`                                   | Checkpoint persistence (cognisgraph) |
+| Crate          | Flags                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------ |
+| `cognis`       | `openai`, `anthropic`, `google`, `ollama`, `azure`, `openrouter`, `all-providers`; `pdf`, `yaml`, `toml-loader`; `cache-sqlite`; `tools-http` |
+| `cognis-graph` | `sqlite`, `postgres` (checkpointers)                                                             |
+| `cognis-rag`   | `openai`, `google`, `voyage`, `ollama` (embeddings); `faiss`, `chroma`, `qdrant`, `pinecone`, `weaviate` (vector stores) |
+| `cognis-trace` | `stdout` (default), `langfuse`, `langsmith`, `otel`                                              |
 
 ## Examples
-
-All examples work without API keys using mock models:
 
 ```bash
 git clone https://github.com/0xvasanth/cognis.git
 cd cognis
 
-cargo run --example simple_chain           # Basic chain composition
-cargo run --example tool_agent             # Agent with tool calling
-cargo run --example rag_pipeline           # Full RAG pipeline
-cargo run --example cognisgraph_agent        # Stateful graph agent
-cargo run --example streaming              # Token streaming
-cargo run --example graph_with_checkpoints # Persistent graph workflows
-cargo run --example memory_types           # Conversation memory
-cargo run --example plan_and_execute       # Planning agent
+# Offline demos (no API keys needed)
+cargo run -p cognis-examples --example chains_pipe_operator
+cargo run -p cognis-examples --example tools_orchestrator
+cargo run -p cognis-examples --example agents_round_robin
+cargo run -p cognis-examples --example agents_bus_pubsub
+cargo run -p cognis-examples --example memory_entity
+cargo run -p cognis-examples --example memory_knowledge_graph
+cargo run -p cognis-examples --example retrieval_document_transformers
+cargo run -p cognis-examples --example graphs_state_machine
+cargo run -p cognis-examples --example graphs_dot_export
+cargo run -p cognis-examples --example resilience_advanced_rate_limiters
+cargo run -p cognis-examples --example parsers_fixing
+cargo run -p cognis-examples --example parsers_retry
+
+# Provider-backed demos (need a running LLM)
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.2:1b \
+  cargo run -p cognis-examples --example agents_react_agent
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.2:1b \
+  cargo run -p cognis-examples --example retrieval_rag_pipeline
 ```
 
-See the [`examples/`](examples/) directory for 35+ runnable demos.
+The full demo set lives under [`examples/`](examples/) — organized by `chains/`, `agents/`, `memory/`, `models/`, `tools/`, `retrieval/`, `graphs/`, `observability/`, `resilience/`, and `parsers/`. Every example is registered in [`crates/examples/Cargo.toml`](crates/examples/Cargo.toml).
+
+## Build & test
+
+```bash
+cargo build --workspace
+cargo build -p cognis --features all-providers
+cargo test --workspace
+cargo test -p cognis --lib agent::memory          # one module
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+## Documentation
+
+- **[CLAUDE.md](CLAUDE.md)** — design rules, conventions, and known gotchas (the contributor's reference).
+- [docs/building-an-agent.md](docs/building-an-agent.md) — full agent walk-through.
+- API docs: [docs.rs/cognis](https://docs.rs/cognis), per-crate.
 
 ## Contributing
 
-See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines, project structure, and conventions.
+See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines, project structure, and conventions. Workflow rules and design patterns are codified in [CLAUDE.md](CLAUDE.md).
 
 ## Acknowledgments
 
-Cognis is heavily inspired by the [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), and [DeepAgents](https://github.com/langchain-ai/deepagents) Python ecosystem. Huge thanks to the LangChain team for pioneering the composable LLM framework paradigm — their design patterns, abstractions, and developer experience were the foundation that made this Rust port possible.
+Cognis is heavily inspired by the [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), and [DeepAgents](https://github.com/langchain-ai/deepagents) Python ecosystem. Thanks to the LangChain team for pioneering the composable LLM framework paradigm — their abstractions and developer experience were the foundation that made the Rust port possible.
 
 ## License
 
