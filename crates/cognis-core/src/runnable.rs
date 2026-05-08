@@ -33,6 +33,10 @@ pub struct RunnableConfig {
     pub deadline: Option<Instant>,
     /// Plugin-supplied typed payloads.
     pub extras: Extensions,
+    /// Parent observation id for trace nesting. Set by composition sites
+    /// (Pipe, batch, graph engine) when invoking a sub-runnable. Defaults
+    /// to `None` for top-level invocations.
+    pub parent_run_id: Option<Uuid>,
 }
 
 impl Default for RunnableConfig {
@@ -47,6 +51,7 @@ impl Default for RunnableConfig {
             cancel_token: None,
             deadline: None,
             extras: Extensions::new(),
+            parent_run_id: None,
         }
     }
 }
@@ -84,6 +89,13 @@ impl RunnableConfig {
     /// Set the cancellation token (builder-style).
     pub fn with_cancel_token(mut self, t: tokio_util::sync::CancellationToken) -> Self {
         self.cancel_token = Some(t);
+        self
+    }
+
+    /// Set the parent run id (builder-style). Used by composition sites
+    /// to thread trace nesting down to children.
+    pub fn with_parent_run_id(mut self, id: Uuid) -> Self {
+        self.parent_run_id = Some(id);
         self
     }
 
@@ -147,6 +159,27 @@ mod tests {
         assert_eq!(cloned.tags, vec!["test"]);
         // Per the Extensions::clone contract (Plan #2), extras don't deep-clone.
         assert!(cloned.extras.is_empty());
+    }
+
+    #[test]
+    fn parent_run_id_default_is_none() {
+        assert!(RunnableConfig::default().parent_run_id.is_none());
+    }
+
+    #[test]
+    fn clone_for_subcall_sets_parent_run_id_to_self() {
+        use std::sync::Arc;
+        let parent = Arc::new(RunnableConfig::default());
+        let child = RunnableConfig::clone_for_subcall(&parent);
+        assert_eq!(child.parent_run_id, Some(parent.run_id));
+        assert_ne!(child.run_id, parent.run_id);
+    }
+
+    #[test]
+    fn with_parent_run_id_builder() {
+        let id = Uuid::new_v4();
+        let cfg = RunnableConfig::default().with_parent_run_id(id);
+        assert_eq!(cfg.parent_run_id, Some(id));
     }
 }
 
@@ -265,6 +298,7 @@ impl RunnableConfig {
             metadata: parent.metadata.clone(),
             observers: parent.observers.clone(),
             run_id: Uuid::new_v4(),
+            parent_run_id: Some(parent.run_id),
             cancel_token: parent.cancel_token.clone(),
             deadline: parent.deadline,
             extras: Extensions::new(),
