@@ -23,7 +23,7 @@ pub use default_graph::{default_react_graph, default_react_graph_with_limits};
 pub use health::AgentHealth;
 pub use lifecycle::{AgentLifecycle, OnStart};
 pub use memory::{
-    Buffer, EntityExtractor, EntityFact, EntityMemory, KnowledgeGraphMemory, Memory,
+    Buffer, EntityExtractor, EntityFact, EntityMemory, HybridMemory, KnowledgeGraphMemory, Memory,
     SummaryBufferMemory, SummaryMemory, TokenBufferMemory, Triple, TripleExtractor, VectorMemory,
     Window,
 };

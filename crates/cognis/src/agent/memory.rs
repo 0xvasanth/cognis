@@ -1040,3 +1040,135 @@ mod tests_entity_kg {
         assert_eq!(m.triples(), &[("X".into(), "rel".into(), "Y".into())]);
     }
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// HybridMemory — combine N member memories. Writes fan out to every
+// member; seed() concatenates each member's contribution in registration
+// order. Use to compose specialized memories (e.g. recent buffer +
+// long-term summary + entity ledger + semantic vector recall).
+// ────────────────────────────────────────────────────────────────────────
+
+/// A memory composed of several member memories. Each `write` is
+/// broadcast to every member; `seed` concatenates each member's
+/// contribution in registration order.
+///
+/// Use to compose specialized memories — e.g. a `Window` for recent
+/// turns plus a `SummaryMemory` for older context plus an `EntityMemory`
+/// to surface known entities. Each member can do its own thing on write
+/// (the Window will trim, the SummaryMemory will compact, etc.); the
+/// agent sees a unified seed.
+pub struct HybridMemory {
+    members: Vec<Box<dyn Memory>>,
+    /// Tracks the raw write history so `read()` can return a `&[Message]`
+    /// without materializing across members. Members own their own
+    /// (possibly-transformed) buffers.
+    buf: Vec<Message>,
+}
+
+impl Default for HybridMemory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HybridMemory {
+    /// Empty hybrid with no members. Add members via [`HybridMemory::with`].
+    pub fn new() -> Self {
+        Self {
+            members: Vec::new(),
+            buf: Vec::new(),
+        }
+    }
+
+    /// Append a member memory. Builder-style.
+    pub fn with(mut self, member: impl Memory + 'static) -> Self {
+        self.members.push(Box::new(member));
+        self
+    }
+
+    /// Number of members.
+    pub fn member_count(&self) -> usize {
+        self.members.len()
+    }
+}
+
+impl Memory for HybridMemory {
+    fn read(&self) -> &[Message] {
+        &self.buf
+    }
+    fn write(&mut self, msg: Message) {
+        for m in &mut self.members {
+            m.write(msg.clone());
+        }
+        self.buf.push(msg);
+    }
+    fn clear(&mut self) {
+        for m in &mut self.members {
+            m.clear();
+        }
+        self.buf.clear();
+    }
+    fn seed(&self) -> Vec<Message> {
+        let mut out: Vec<Message> = Vec::new();
+        for m in &self.members {
+            out.extend(m.seed());
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod tests_hybrid {
+    use super::*;
+
+    #[test]
+    fn write_fans_out_to_every_member() {
+        let mut h = HybridMemory::new()
+            .with(Buffer::new())
+            .with(Window::new(10));
+        h.write(Message::human("a"));
+        h.write(Message::human("b"));
+        assert_eq!(h.read().len(), 2);
+        // Both members should have seen both writes.
+        let seed = h.seed();
+        // Buffer contributes 2 + Window contributes 2 = 4 (no dedup).
+        assert_eq!(seed.len(), 4);
+    }
+
+    #[test]
+    fn clear_empties_every_member() {
+        let mut h = HybridMemory::new()
+            .with(Buffer::new())
+            .with(Window::new(10));
+        h.write(Message::human("a"));
+        h.clear();
+        assert!(h.read().is_empty());
+        assert!(h.seed().is_empty());
+    }
+
+    #[test]
+    fn seed_concatenates_in_member_order() {
+        let mut h = HybridMemory::new()
+            .with(Buffer::new().with_system("recent context"))
+            .with(EntityMemory::new());
+        h.write(Message::human("Cognis is fast."));
+        let seed = h.seed();
+        // Buffer: system pin + 1 human msg → 2
+        // EntityMemory: synthesized "Known entities" system + 1 human → 2
+        assert_eq!(seed.len(), 4);
+        // First member's contribution comes first.
+        assert!(matches!(seed[0], Message::System(_)));
+        assert_eq!(seed[0].content(), "recent context");
+    }
+
+    #[test]
+    fn empty_hybrid_round_trips() {
+        let mut h = HybridMemory::new();
+        h.write(Message::human("a"));
+        // No members → seed is empty (only members contribute).
+        assert!(h.seed().is_empty());
+        // But read() reflects the canonical write-buffer.
+        assert_eq!(h.read().len(), 1);
+        assert_eq!(h.member_count(), 0);
+    }
+}
