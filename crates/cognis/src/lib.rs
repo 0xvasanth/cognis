@@ -48,6 +48,7 @@ pub use cognis_rag::{
 
 // New stage-5 modules.
 pub mod agent;
+pub mod agent_bus;
 pub mod backend;
 #[cfg(feature = "cache-sqlite")]
 pub mod cache_sqlite;
@@ -93,6 +94,7 @@ pub use middleware::{
     ToolDenyList, ToolEmulator, ToolFilter, ToolRetry, ToolRetryClassifier, ToolSelection,
     WorkspaceLister,
 };
+pub use agent_bus::{AgentBus, SubscribeError, Subscription};
 pub use multi_agent::{
     AgentMessage, HandoffStrategy, InMemoryMessageBus, MessageBus, MultiAgentOrchestrator,
     ParallelVote, RoundRobin, Sequential, Supervisor,
