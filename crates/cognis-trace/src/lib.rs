@@ -45,3 +45,6 @@ pub use prompts::{ChatMessageTemplate, Prompt, PromptBody, PromptStore};
 
 pub mod scores;
 pub use scores::ScoreSink;
+
+#[cfg(feature = "langfuse")]
+pub use exporters::langfuse::{LangfuseConfig, LangfuseExporter};
