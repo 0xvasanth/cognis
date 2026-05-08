@@ -1,6 +1,6 @@
 //! Langfuse exporter — native batch ingestion API + prompts + scores.
 
-// mod client;     // Task 20
+mod client;
 // mod exporter;   // Task 21
 // mod prompts;    // Task 23
 // mod scores;     // Task 24
