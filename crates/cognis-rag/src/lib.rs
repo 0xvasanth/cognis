@@ -76,7 +76,7 @@ pub use splitters::{
     JsonSplitter, MarkdownSplitter, RecursiveCharSplitter, SentenceSplitter, TextSplitter,
     TokenAwareSplitter, Tokenizer,
 };
-pub use transformers::LongContextReorder;
+pub use transformers::{Dedup, Enrichment, LongContextReorder, MetadataTransformer};
 #[cfg(feature = "vectorstore-chroma")]
 pub use vectorstore::{ChromaBuilder, ChromaProvider};
 #[cfg(feature = "vectorstore-faiss")]
