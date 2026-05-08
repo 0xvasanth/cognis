@@ -47,5 +47,6 @@ fn msg(from: &str, body: &str) -> AgentMessage {
         to: "broadcast".into(),
         content: Message::human(body),
         metadata: serde_json::Value::Null,
+        ..Default::default()
     }
 }

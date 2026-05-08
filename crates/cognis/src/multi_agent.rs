@@ -29,9 +29,27 @@ use cognis_core::{CognisError, Message, Result};
 
 use crate::agent::{Agent, AgentResponse};
 
+/// Per-message priority. Higher priorities sort first when an inbox is
+/// drained or a subscriber processes a backlog. The default is `Normal`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Priority {
+    /// Background work; processed last.
+    Low,
+    /// Standard priority. Default.
+    #[default]
+    Normal,
+    /// Time-sensitive but not critical.
+    High,
+    /// Drop everything else and handle this first.
+    Critical,
+}
+
 /// Envelope for inter-agent messages.
 #[derive(Debug, Clone)]
 pub struct AgentMessage {
+    /// Stable id assigned at construction. Used by `reply_to` to
+    /// correlate request/reply pairs.
+    pub id: uuid::Uuid,
     /// Source agent id (or `"user"` / `"system"` for non-agent senders).
     pub from: String,
     /// Destination agent id.
@@ -40,6 +58,77 @@ pub struct AgentMessage {
     pub content: Message,
     /// Free-form metadata bag for custom routing decisions.
     pub metadata: serde_json::Value,
+    /// If this message replies to a prior one, the prior message's `id`.
+    /// Lets receivers correlate request/reply over a broadcast bus.
+    pub reply_to: Option<uuid::Uuid>,
+    /// Priority — used by ordering helpers. Default `Normal`.
+    pub priority: Priority,
+}
+
+impl Default for AgentMessage {
+    fn default() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            from: String::new(),
+            to: String::new(),
+            content: Message::system(""),
+            metadata: serde_json::Value::Null,
+            reply_to: None,
+            priority: Priority::Normal,
+        }
+    }
+}
+
+impl AgentMessage {
+    /// Build a fresh message with a new `id`, `Normal` priority, and no
+    /// reply correlation. Mutate the builder fields directly to set
+    /// `reply_to` / `priority` / `metadata`.
+    pub fn new(from: impl Into<String>, to: impl Into<String>, content: Message) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            from: from.into(),
+            to: to.into(),
+            content,
+            metadata: serde_json::Value::Null,
+            reply_to: None,
+            priority: Priority::Normal,
+        }
+    }
+
+    /// Construct a reply to `request`: copies the request's id into
+    /// `reply_to`, swaps from/to, and inherits priority. Caller still
+    /// supplies the new content.
+    pub fn reply(request: &AgentMessage, from: impl Into<String>, content: Message) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            from: from.into(),
+            to: request.from.clone(),
+            content,
+            metadata: serde_json::Value::Null,
+            reply_to: Some(request.id),
+            priority: request.priority,
+        }
+    }
+
+    /// Builder: set the priority.
+    pub fn with_priority(mut self, p: Priority) -> Self {
+        self.priority = p;
+        self
+    }
+
+    /// Builder: attach metadata.
+    pub fn with_metadata(mut self, m: serde_json::Value) -> Self {
+        self.metadata = m;
+        self
+    }
+}
+
+/// Sort a slice of messages so higher-priority entries come first; ties
+/// preserve insertion order. Useful when draining a backlog where a
+/// `Critical` reply should jump ahead of any older `Normal` traffic.
+pub fn sort_by_priority(msgs: &mut [AgentMessage]) {
+    // Negate the key (Reverse) so Critical (highest variant) sorts first.
+    msgs.sort_by_key(|m| std::cmp::Reverse(m.priority));
 }
 
 /// Pluggable inter-agent transport. Stock impl: [`InMemoryMessageBus`].
@@ -136,6 +225,7 @@ impl HandoffStrategy for Sequential {
                 to: id.clone(),
                 content: current_input.clone(),
                 metadata: serde_json::Value::Null,
+                ..Default::default()
             })
             .await?;
             current_input = Message::human(resp.content.clone());
@@ -222,6 +312,7 @@ impl HandoffStrategy for Supervisor {
             to: supervisor_id.clone(),
             content: input,
             metadata: serde_json::Value::Null,
+            ..Default::default()
         })
         .await?;
 
@@ -243,6 +334,7 @@ impl HandoffStrategy for Supervisor {
             to: target_id.clone(),
             content: Message::human(instruction.clone()),
             metadata: serde_json::Value::Null,
+            ..Default::default()
         })
         .await?;
 
@@ -360,6 +452,7 @@ impl HandoffStrategy for RoundRobin {
             to: id.clone(),
             content: input.clone(),
             metadata: serde_json::json!({"strategy": "round_robin", "index": idx}),
+            ..Default::default()
         })
         .await?;
         let mut a = agent.lock().await;
@@ -447,6 +540,7 @@ impl HandoffStrategy for Hierarchical {
                 to: current_id.clone(),
                 content: current_input.clone(),
                 metadata: serde_json::json!({"strategy": "hierarchical", "hop": hop}),
+                ..Default::default()
             })
             .await?;
             let response = {
@@ -789,6 +883,7 @@ mod tests {
             to: "alice".into(),
             content: Message::human("hi"),
             metadata: serde_json::Value::Null,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -797,6 +892,7 @@ mod tests {
             to: "bob".into(),
             content: Message::human("hi"),
             metadata: serde_json::Value::Null,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -870,5 +966,41 @@ mod tests {
             .add("c", agent_with_response("Y"));
         let resp = orch.run("q").await.unwrap();
         assert_eq!(resp.content, "X");
+    }
+
+    #[test]
+    fn agent_message_new_assigns_unique_ids() {
+        let a = AgentMessage::new("u", "t", Message::human("a"));
+        let b = AgentMessage::new("u", "t", Message::human("a"));
+        assert_ne!(a.id, b.id);
+        assert_eq!(a.priority, Priority::Normal);
+        assert!(a.reply_to.is_none());
+    }
+
+    #[test]
+    fn agent_message_reply_correlates() {
+        let req =
+            AgentMessage::new("user", "writer", Message::human("hi")).with_priority(Priority::High);
+        let resp = AgentMessage::reply(&req, "writer", Message::ai("hello"));
+        assert_eq!(resp.from, "writer");
+        assert_eq!(resp.to, "user");
+        assert_eq!(resp.reply_to, Some(req.id));
+        assert_eq!(resp.priority, Priority::High, "priority inherited");
+    }
+
+    #[test]
+    fn priority_sort_critical_first() {
+        let mut msgs = vec![
+            AgentMessage::new("u", "t", Message::human("low")).with_priority(Priority::Low),
+            AgentMessage::new("u", "t", Message::human("crit")).with_priority(Priority::Critical),
+            AgentMessage::new("u", "t", Message::human("normal")),
+            AgentMessage::new("u", "t", Message::human("high")).with_priority(Priority::High),
+        ];
+        sort_by_priority(&mut msgs);
+        let order: Vec<_> = msgs
+            .iter()
+            .map(|m| m.content.content().to_string())
+            .collect();
+        assert_eq!(order, vec!["crit", "high", "normal", "low"]);
     }
 }

@@ -180,6 +180,7 @@ mod tests {
             to: "broadcast".into(),
             content: Message::human(text),
             metadata: serde_json::Value::Null,
+            ..Default::default()
         }
     }
 

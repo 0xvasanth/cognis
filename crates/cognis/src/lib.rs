@@ -99,8 +99,8 @@ pub use middleware::{
     WorkspaceLister,
 };
 pub use multi_agent::{
-    AgentMessage, Consensus, HandoffStrategy, Hierarchical, InMemoryMessageBus, MessageBus,
-    MultiAgentOrchestrator, ParallelVote, RoundRobin, Sequential, Supervisor,
+    sort_by_priority, AgentMessage, Consensus, HandoffStrategy, Hierarchical, InMemoryMessageBus,
+    MessageBus, MultiAgentOrchestrator, ParallelVote, Priority, RoundRobin, Sequential, Supervisor,
 };
 pub use observers::TracingObserver;
 pub use retrievers::{
