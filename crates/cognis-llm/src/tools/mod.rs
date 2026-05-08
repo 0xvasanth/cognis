@@ -69,11 +69,45 @@ impl ToolDefinition {
     }
 }
 
+/// Per-tool runtime state — enabled/disabled flag + call counter.
+#[derive(Default)]
+struct ToolEntry {
+    tool: Option<Arc<dyn Tool>>,
+    enabled: bool,
+    /// Total successful + failed calls served via [`ToolRegistry::execute`].
+    calls: std::sync::atomic::AtomicUsize,
+    /// Optional permission predicate: `agent_id → allowed?`.
+    #[allow(clippy::type_complexity)]
+    permission: Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>,
+}
+
+impl Clone for ToolEntry {
+    fn clone(&self) -> Self {
+        Self {
+            tool: self.tool.clone(),
+            enabled: self.enabled,
+            calls: std::sync::atomic::AtomicUsize::new(
+                self.calls.load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            permission: self.permission.clone(),
+        }
+    }
+}
+
 /// HashMap-backed tool registry. The agent layer uses this to dispatch
 /// tool calls returned by the LLM.
-#[derive(Default)]
+///
+/// Per-tool controls (added in V2):
+/// - [`ToolRegistry::enable`] / [`ToolRegistry::disable`] toggle
+///   availability without unregistering.
+/// - [`ToolRegistry::set_permission`] attaches an `agent_id → allowed`
+///   predicate. [`ToolRegistry::is_allowed`] checks; [`ToolRegistry::execute_for`]
+///   enforces.
+/// - [`ToolRegistry::call_count`] returns the cumulative dispatch count
+///   for any tool (incremented on every `execute*` call).
+#[derive(Default, Clone)]
 pub struct ToolRegistry {
-    tools: HashMap<String, Arc<dyn Tool>>,
+    entries: HashMap<String, ToolEntry>,
 }
 
 impl ToolRegistry {
@@ -82,22 +116,41 @@ impl ToolRegistry {
         Self::default()
     }
 
-    /// Register a tool. Replaces any existing tool with the same name.
+    /// Register a tool. Replaces any existing tool with the same name
+    /// (preserving its enabled flag and call counter? no — replaces
+    /// wholesale; the new tool starts enabled with count = 0).
     pub fn register(&mut self, tool: Arc<dyn Tool>) {
-        self.tools.insert(tool.name().to_string(), tool);
+        let name = tool.name().to_string();
+        self.entries.insert(
+            name,
+            ToolEntry {
+                tool: Some(tool),
+                enabled: true,
+                calls: std::sync::atomic::AtomicUsize::new(0),
+                permission: None,
+            },
+        );
     }
 
     /// Register `alias` to point at the same tool as `name`. No-op when
     /// `name` is not registered.
     pub fn register_alias(&mut self, alias: impl Into<String>, name: &str) {
-        if let Some(t) = self.tools.get(name).cloned() {
-            self.tools.insert(alias.into(), t);
+        if let Some(t) = self.entries.get(name).and_then(|e| e.tool.clone()) {
+            self.entries.insert(
+                alias.into(),
+                ToolEntry {
+                    tool: Some(t),
+                    enabled: true,
+                    calls: std::sync::atomic::AtomicUsize::new(0),
+                    permission: None,
+                },
+            );
         }
     }
 
     /// Remove a tool by name. Returns `true` if it was present.
     pub fn unregister(&mut self, name: &str) -> bool {
-        self.tools.remove(name).is_some()
+        self.entries.remove(name).is_some()
     }
 
     /// Filter the registry: keep only tools whose name passes `predicate`.
@@ -107,7 +160,7 @@ impl ToolRegistry {
         F: FnMut(&str) -> bool,
     {
         let mut removed = Vec::new();
-        self.tools.retain(|k, _| {
+        self.entries.retain(|k, _| {
             let keep = predicate(k);
             if !keep {
                 removed.push(k.clone());
@@ -117,46 +170,168 @@ impl ToolRegistry {
         removed
     }
 
-    /// Get a tool by name.
+    /// Get a tool by name. Returns the inner `Arc` only if the tool is
+    /// **enabled** — disabled tools are invisible to dispatch.
     pub fn get(&self, name: &str) -> Option<&Arc<dyn Tool>> {
-        self.tools.get(name)
+        let e = self.entries.get(name)?;
+        if !e.enabled {
+            return None;
+        }
+        e.tool.as_ref()
     }
 
-    /// True if a tool with this name is registered.
+    /// True if a tool with this name is registered (regardless of enabled state).
     pub fn contains(&self, name: &str) -> bool {
-        self.tools.contains_key(name)
+        self.entries.contains_key(name)
     }
 
-    /// All registered tool names.
+    /// True if a tool with this name is registered AND enabled.
+    pub fn is_enabled(&self, name: &str) -> bool {
+        self.entries.get(name).is_some_and(|e| e.enabled)
+    }
+
+    /// Disable a tool without unregistering it. Disabled tools are
+    /// hidden from `get` / `tool_names` / `definitions` / `execute`,
+    /// but their call counters and permissions persist for when they're
+    /// re-enabled. No-op if the tool isn't registered.
+    pub fn disable(&mut self, name: &str) -> bool {
+        match self.entries.get_mut(name) {
+            Some(e) => {
+                e.enabled = false;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Re-enable a previously-disabled tool. No-op if not registered.
+    pub fn enable(&mut self, name: &str) -> bool {
+        match self.entries.get_mut(name) {
+            Some(e) => {
+                e.enabled = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Attach a permission predicate `agent_id → allowed`. Replace by
+    /// calling again. Pass [`ToolRegistry::clear_permission`] to remove.
+    pub fn set_permission<F>(&mut self, name: &str, predicate: F) -> bool
+    where
+        F: Fn(&str) -> bool + Send + Sync + 'static,
+    {
+        match self.entries.get_mut(name) {
+            Some(e) => {
+                e.permission = Some(Arc::new(predicate));
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Drop the permission predicate. The tool reverts to "any agent allowed".
+    pub fn clear_permission(&mut self, name: &str) {
+        if let Some(e) = self.entries.get_mut(name) {
+            e.permission = None;
+        }
+    }
+
+    /// True if the tool exists, is enabled, and `agent_id` passes the
+    /// permission predicate (or no predicate is set). Disabled tools
+    /// always return false.
+    pub fn is_allowed(&self, name: &str, agent_id: &str) -> bool {
+        let Some(e) = self.entries.get(name) else {
+            return false;
+        };
+        if !e.enabled {
+            return false;
+        }
+        match &e.permission {
+            Some(p) => p(agent_id),
+            None => true,
+        }
+    }
+
+    /// Number of times the tool was dispatched via `execute` /
+    /// `execute_for` (across all agents, including failed dispatches).
+    /// Returns 0 if the tool isn't registered.
+    pub fn call_count(&self, name: &str) -> usize {
+        self.entries
+            .get(name)
+            .map(|e| e.calls.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(0)
+    }
+
+    /// All registered + enabled tool names.
     pub fn tool_names(&self) -> Vec<&str> {
-        self.tools.keys().map(|s| s.as_str()).collect()
+        self.entries
+            .iter()
+            .filter(|(_, e)| e.enabled)
+            .map(|(k, _)| k.as_str())
+            .collect()
     }
 
-    /// Build `ToolDefinition`s for every registered tool.
+    /// Build `ToolDefinition`s for every registered + enabled tool.
     pub fn definitions(&self) -> Vec<ToolDefinition> {
-        self.tools
+        self.entries
             .values()
+            .filter(|e| e.enabled)
+            .filter_map(|e| e.tool.as_ref())
             .map(|t| ToolDefinition::from_tool(t.as_ref()))
             .collect()
     }
 
-    /// Execute a tool by name with the given input.
+    /// Execute a tool by name with the given input. Increments the
+    /// per-tool call counter regardless of success/failure. Errors if
+    /// the tool isn't registered or is disabled.
     pub async fn execute(&self, name: &str, input: ToolInput) -> Result<ToolOutput> {
-        let t = self.get(name).ok_or_else(|| CognisError::Tool {
+        let entry = self.entries.get(name).ok_or_else(|| CognisError::Tool {
             name: name.to_string(),
             reason: "not registered".into(),
         })?;
+        if !entry.enabled {
+            return Err(CognisError::Tool {
+                name: name.to_string(),
+                reason: "disabled".into(),
+            });
+        }
+        let t = entry.tool.as_ref().ok_or_else(|| CognisError::Tool {
+            name: name.to_string(),
+            reason: "no implementation".into(),
+        })?;
+        entry
+            .calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         t._run(input).await
     }
 
-    /// Number of registered tools.
+    /// Like [`ToolRegistry::execute`] but also enforces the permission
+    /// predicate against `agent_id`. Errors with a permission error if
+    /// the predicate returns false.
+    pub async fn execute_for(
+        &self,
+        name: &str,
+        agent_id: &str,
+        input: ToolInput,
+    ) -> Result<ToolOutput> {
+        if !self.is_allowed(name, agent_id) {
+            return Err(CognisError::Tool {
+                name: name.to_string(),
+                reason: format!("not allowed for agent `{agent_id}`"),
+            });
+        }
+        self.execute(name, input).await
+    }
+
+    /// Number of registered tools (including disabled ones).
     pub fn len(&self) -> usize {
-        self.tools.len()
+        self.entries.len()
     }
 
     /// True if no tools are registered.
     pub fn is_empty(&self) -> bool {
-        self.tools.is_empty()
+        self.entries.is_empty()
     }
 }
 
@@ -215,5 +390,76 @@ mod tests {
         assert_eq!(d.name, "echo");
         assert_eq!(d.description, "echoes input");
         assert!(d.parameters.is_some());
+    }
+
+    #[tokio::test]
+    async fn disable_hides_from_dispatch_and_listing() {
+        let mut reg = ToolRegistry::new();
+        reg.register(Arc::new(Echo));
+        assert!(reg.disable("echo"));
+        assert!(reg.contains("echo"), "still registered");
+        assert!(!reg.is_enabled("echo"));
+        assert!(reg.tool_names().is_empty());
+        assert!(reg.definitions().is_empty());
+        let err = reg
+            .execute("echo", ToolInput::Text("x".into()))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("disabled"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn enable_restores() {
+        let mut reg = ToolRegistry::new();
+        reg.register(Arc::new(Echo));
+        reg.disable("echo");
+        reg.enable("echo");
+        assert!(reg.is_enabled("echo"));
+        assert!(reg
+            .execute("echo", ToolInput::Text("x".into()))
+            .await
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn call_count_increments_on_execute() {
+        let mut reg = ToolRegistry::new();
+        reg.register(Arc::new(Echo));
+        assert_eq!(reg.call_count("echo"), 0);
+        for _ in 0..3 {
+            reg.execute("echo", ToolInput::Text("hi".into()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(reg.call_count("echo"), 3);
+        assert_eq!(reg.call_count("missing"), 0);
+    }
+
+    #[tokio::test]
+    async fn permission_predicate_blocks_disallowed_agents() {
+        let mut reg = ToolRegistry::new();
+        reg.register(Arc::new(Echo));
+        reg.set_permission("echo", |agent_id: &str| agent_id == "writer");
+        assert!(reg.is_allowed("echo", "writer"));
+        assert!(!reg.is_allowed("echo", "intruder"));
+        let ok = reg
+            .execute_for("echo", "writer", ToolInput::Text("hi".into()))
+            .await;
+        assert!(ok.is_ok());
+        let denied = reg
+            .execute_for("echo", "intruder", ToolInput::Text("hi".into()))
+            .await
+            .unwrap_err();
+        assert!(denied.to_string().contains("not allowed"), "got: {denied}");
+    }
+
+    #[tokio::test]
+    async fn clear_permission_reopens_dispatch() {
+        let mut reg = ToolRegistry::new();
+        reg.register(Arc::new(Echo));
+        reg.set_permission("echo", |_: &str| false);
+        assert!(!reg.is_allowed("echo", "anyone"));
+        reg.clear_permission("echo");
+        assert!(reg.is_allowed("echo", "anyone"));
     }
 }
