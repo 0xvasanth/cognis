@@ -1,0 +1,130 @@
+---
+title: "Feature flags"
+description: "Every feature flag in the workspace, what it pulls in, and where it lives."
+sidebarTitle: "Feature flags"
+---
+
+Cognis is feature-light by default — every external integration (HTTP providers, database backends, vector store clients) is feature-gated so the core crates compile with no network deps.
+
+## cognis (umbrella)
+
+| Feature | Pulls in |
+|---|---|
+| `openai` | `cognis-llm/openai` — OpenAI chat + tools + structured output |
+| `anthropic` | `cognis-llm/anthropic` — Anthropic Messages API |
+| `google` | `cognis-llm/google` — Gemini |
+| `ollama` | `cognis-llm/ollama` — local Ollama |
+| `azure` | `cognis-llm/azure` — Azure OpenAI |
+| `openrouter` | `cognis-llm/openrouter` — attribution headers + extra-headers helpers |
+| `all-providers` | every provider above |
+| `pdf` | `cognis-rag/pdf` — PDF document loader |
+| `yaml` | `cognis-rag/yaml` — YAML loader |
+| `toml-loader` | `cognis-rag/toml-loader` — TOML loader |
+| `cache-sqlite` | SQLite-backed model cache |
+| `tools-http` | HTTP request primitives for tools |
+
+```bash
+cargo add cognis --features openai,anthropic,pdf
+cargo add cognis --features all-providers,cache-sqlite
+```
+
+## cognis-llm
+
+| Feature | Effect |
+|---|---|
+| `openai` | `reqwest` + OpenAI client |
+| `anthropic` | `reqwest` + Anthropic client |
+| `google` | `reqwest` + Gemini client |
+| `ollama` | `reqwest` + Ollama client (no key) |
+| `azure` | `reqwest` + Azure OpenAI client |
+| `openrouter` | OpenAI-compatible client targeted at OpenRouter |
+| `all-providers` | every provider above |
+
+Default: no provider features; the trait surface compiles offline.
+
+## cognis-rag
+
+### Vector stores
+
+| Feature | Backend |
+|---|---|
+| `faiss` | local FAISS index |
+| `chroma` | Chroma server |
+| `qdrant` | Qdrant server |
+| `pinecone` | Pinecone (managed) |
+| `weaviate` | Weaviate server |
+
+### Embeddings
+
+| Feature | Provider |
+|---|---|
+| `openai` | OpenAI text-embedding-3-* |
+| `voyage` | Voyage AI |
+| `google` | Google text-embedding-004, gemini-embedding |
+
+### Loaders
+
+| Feature | Loader |
+|---|---|
+| `pdf` | PDF |
+| `yaml` | YAML |
+| `toml-loader` | TOML |
+
+`cognis-rag` ships with `InMemoryVectorStore`, `FakeEmbeddings`, `CachedEmbeddings`, `BatchedEmbeddings`, and the indexing pipeline always available.
+
+## cognis-graph
+
+| Feature | Pulls in |
+|---|---|
+| `sqlite` | `sqlx/sqlite` — SQLite checkpointer |
+| `postgres` | `sqlx/postgres` — Postgres checkpointer |
+
+`MemoryCheckpointer` and the engine itself are always available.
+
+## cognis-trace
+
+| Feature | Pulls in |
+|---|---|
+| `stdout` | `StdoutExporter` (default) |
+| `langfuse` | `reqwest` + Langfuse exporter, prompt client, scorer |
+| `all` | every backend above |
+| `integration_tests` | enables tests that hit real services (off by default) |
+
+```toml
+cognis-trace = { version = "0.2", features = ["langfuse"] }
+```
+
+`MockExporter` is always built — useful in tests.
+
+## cognis-core, cognis-macros
+
+These crates compile with **no** network features ever. Anything that does I/O lives in a sibling crate.
+
+## Picking the minimum set
+
+<Tabs>
+  <Tab title="Local Ollama only">
+    ```toml
+    cognis = { version = "0.2", features = ["ollama"] }
+    ```
+  </Tab>
+  <Tab title="OpenAI + RAG with FAISS">
+    ```toml
+    cognis = { version = "0.2", features = ["openai"] }
+    cognis-rag = { version = "0.2", features = ["faiss", "openai"] }
+    ```
+  </Tab>
+  <Tab title="Multi-provider with traces">
+    ```toml
+    cognis = { version = "0.2", features = ["all-providers", "cache-sqlite"] }
+    cognis-trace = { version = "0.2", features = ["langfuse"] }
+    ```
+  </Tab>
+  <Tab title="Stateful agents on Postgres">
+    ```toml
+    cognis = { version = "0.2", features = ["openai"] }
+    cognis-graph = { version = "0.2", features = ["postgres"] }
+    cognis-trace = { version = "0.2", features = ["langfuse"] }
+    ```
+  </Tab>
+</Tabs>

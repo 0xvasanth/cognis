@@ -1,0 +1,75 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Cognis",
+  "description": "Rust-native LLM framework. Type-safe Runnable, agent loop, graph state, RAG pipeline, and observability.",
+  "colors": {
+    "primary": "#D97706",
+    "light": "#F59E0B",
+    "dark": "#92400E"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Get started",
+            "icon": "rocket",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "icon": "lightbulb",
+            "pages": [
+              "concepts/runnable",
+              "concepts/llm",
+              "concepts/rag",
+              "concepts/graph",
+              "concepts/agents",
+              "concepts/trace"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "icon": "book",
+        "groups": [
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/crates",
+              "reference/feature-flags"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "icon": "github",
+          "href": "https://github.com/0xvasanth/cognis"
+        },
+        {
+          "anchor": "crates.io",
+          "icon": "box",
+          "href": "https://crates.io/crates/cognis"
+        }
+      ]
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/0xvasanth/cognis"
+    }
+  }
+}

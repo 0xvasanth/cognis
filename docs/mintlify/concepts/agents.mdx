@@ -1,0 +1,176 @@
+---
+title: "Agents"
+description: "Single-agent loops, multi-agent orchestration, memory, tools, and middleware."
+sidebarTitle: "Agents"
+---
+
+The `cognis` umbrella adds the agent layer on top of `core`, `llm`, `rag`, and `graph`. Agents are graphs in disguise — `AgentBuilder` wires the loop for you.
+
+## A tool-using agent
+
+```rust
+use cognis::agent::AgentBuilder;
+use cognis::llm::providers::openai::ChatOpenAI;
+use cognis::tools::tool;
+use serde::Deserialize;
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct Search { query: String }
+
+#[tool]
+async fn search(args: Search) -> anyhow::Result<String> {
+    Ok(format!("results for: {}", args.query))
+}
+
+let agent = AgentBuilder::new()
+    .model(ChatOpenAI::builder().model("gpt-4o-mini").build()?)
+    .tools(vec![search()])
+    .system("You are a research assistant. Use tools when needed.")
+    .build()?;
+
+let result = agent
+    .invoke("What's new in WebGPU?".to_string(), cfg)
+    .await?;
+```
+
+The builder produces a graph with `agent` and `tools` nodes wired into a loop. Stop conditions: no more tool calls, hit `recursion_limit`, or the model returns a stop reason.
+
+## Memory
+
+`Memory` is a trait — `read(thread_id)`, `write(thread_id, msgs)`, `clear(thread_id)`. Variants ship out of the box:
+
+| Variant | Behavior |
+|---|---|
+| `BufferMemory` | Keep all messages. |
+| `WindowMemory` | Last N messages. |
+| `TokenBufferMemory` | Trim to a token budget. |
+| `SummaryBufferMemory` | Summarize older turns into a running summary. |
+| `VectorMemory` | Embed and retrieve from a vector store. |
+| `EntityMemory` | Track entities mentioned across the conversation. |
+| `KnowledgeGraphMemory` | Triple store of subject-predicate-object facts. |
+
+```rust
+use cognis::agent::memory::{SummaryBufferMemory, MemoryBackend};
+
+let memory = SummaryBufferMemory::builder()
+    .summarizer(model.clone())
+    .max_token_limit(2000)
+    .build();
+
+let agent = AgentBuilder::new()
+    .model(model)
+    .memory(memory)
+    .build()?;
+```
+
+## Multi-agent orchestration
+
+`MultiAgentOrchestrator` runs multiple agents under a strategy.
+
+<Tabs>
+  <Tab title="Sequential">
+    Run agents in order; each receives the previous output.
+    ```rust
+    use cognis::agent::orchestrator::{MultiAgentOrchestrator, Strategy};
+
+    let orch = MultiAgentOrchestrator::new()
+        .with_strategy(Strategy::Sequential)
+        .add_agent("researcher", researcher_agent)
+        .add_agent("writer", writer_agent);
+    ```
+  </Tab>
+  <Tab title="Supervisor">
+    A supervisor LLM picks which sub-agent runs next.
+    ```rust
+    let orch = MultiAgentOrchestrator::new()
+        .with_strategy(Strategy::Supervisor(supervisor_model))
+        .add_agent("researcher", researcher_agent)
+        .add_agent("writer", writer_agent);
+    ```
+  </Tab>
+  <Tab title="ParallelVote">
+    Agents run in parallel; outputs are aggregated by a vote.
+    ```rust
+    let orch = MultiAgentOrchestrator::new()
+        .with_strategy(Strategy::ParallelVote)
+        .add_agent("a", a)
+        .add_agent("b", b)
+        .add_agent("c", c);
+    ```
+  </Tab>
+  <Tab title="RoundRobin">
+    Simple turn-taking — useful for debate/critique loops.
+    ```rust
+    let orch = MultiAgentOrchestrator::new()
+        .with_strategy(Strategy::RoundRobin { rounds: 3 })
+        .add_agent("proposer", proposer)
+        .add_agent("critic", critic);
+    ```
+  </Tab>
+</Tabs>
+
+## AgentBus
+
+Topic-based pub-sub for inter-agent broadcast — useful when agents emit events that other agents subscribe to.
+
+```rust
+use cognis::agent::bus::AgentBus;
+
+let bus = AgentBus::new();
+let mut sub = bus.subscribe::<MyEvent>("topic.events");
+bus.publish("topic.events", MyEvent { ... }).await?;
+let ev = sub.recv().await?;
+```
+
+## Middleware
+
+Cross-cutting policy that wraps every model call inside an agent.
+
+| Middleware | Effect |
+|---|---|
+| `RateLimiterMiddleware` | TokenBucket / SlidingWindow / CostBased / Composite. |
+| `ModelRetryMiddleware` | Retry on rate limits and transient errors. |
+| `ModelFallbackMiddleware` | Fallback to a cheaper model on failure. |
+| `PiiRedactionMiddleware` | Mask PII before sending to the provider. |
+| `PromptCachingMiddleware` | Reuse prompt-cache tokens (Anthropic, etc.). |
+| `PlanningMiddleware` | Inject a planning step before tool selection. |
+| `SummarizationMiddleware` | Summarize when context grows. |
+| `TodoMiddleware` | Maintain an internal task list. |
+
+```rust
+let agent = AgentBuilder::new()
+    .model(model)
+    .middleware(RateLimiterMiddleware::token_bucket(rate, burst))
+    .middleware(ModelRetryMiddleware::exponential(3))
+    .middleware(PromptCachingMiddleware::default())
+    .build()?;
+```
+
+## ToolOrchestrator
+
+For workflows that call several tools in a known DAG (no agent loop), use `ToolOrchestrator` directly.
+
+```rust
+use cognis::tools::orchestrator::{ToolOrchestrator, ExecutionPlan, ToolStep};
+
+let plan = ExecutionPlan::new()
+    .step(ToolStep::new("a", "fetch_user", json!({"id": 1})))
+    .step(ToolStep::new("b", "fetch_orders", json!({}))
+        .after(["a"]));
+
+let orch = ToolOrchestrator::new(registry);
+let outputs = orch.execute(plan).await?;
+```
+
+Dependencies declared via `.after([...])` schedule tools to run as soon as inputs are ready.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Graph" icon="diagram-project" href="/concepts/graph">
+    The mechanism behind the agent loop.
+  </Card>
+  <Card title="Trace" icon="chart-line" href="/concepts/trace">
+    Multi-agent traces nest cleanly in Langfuse.
+  </Card>
+</CardGroup>

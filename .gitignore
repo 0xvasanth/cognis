@@ -17,3 +17,8 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Docs — global ignore covers docs/, but track the Mintlify site.
+!docs/
+docs/*
+!docs/mintlify/

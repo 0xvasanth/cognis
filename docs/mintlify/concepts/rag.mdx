@@ -1,0 +1,173 @@
+---
+title: "RAG"
+description: "Embeddings, vector stores, retrievers, splitters, and the indexing pipeline."
+sidebarTitle: "RAG"
+---
+
+`cognis-rag` provides the building blocks for retrieval-augmented generation: turning documents into embeddings, storing them, retrieving relevant chunks at query time, and composing the result into a prompt.
+
+## Documents
+
+A `Document` is the unit of indexing — text plus metadata.
+
+```rust
+use cognis::rag::document::Document;
+
+let doc = Document::new("Cognis is a Rust-native LLM framework.")
+    .with_metadata("source", "readme")
+    .with_metadata("section", "intro");
+```
+
+## Splitters
+
+Long inputs need to be chunked before embedding.
+
+```rust
+use cognis::rag::splitter::RecursiveCharacterTextSplitter;
+
+let splitter = RecursiveCharacterTextSplitter::new(1000, 100); // chunk_size, overlap
+let chunks: Vec<Document> = splitter.split_documents(vec![doc]).await?;
+```
+
+Other splitters: `CharacterTextSplitter`, `MarkdownHeaderTextSplitter`, `TokenTextSplitter`.
+
+## Embeddings
+
+`Embeddings` is a trait — implement once, use everywhere. Built-in implementations:
+
+| Type | Use case |
+|---|---|
+| `OpenAIEmbeddings` | text-embedding-3-small / -large |
+| `GoogleEmbeddings` | text-embedding-004, gemini-embedding |
+| `OllamaEmbeddings` | local embeddings via Ollama |
+| `VoyageEmbeddings` | Voyage AI |
+| `FakeEmbeddings` | deterministic fakes for tests |
+| `CachedEmbeddings` | wraps any embeddings with a hash-keyed cache |
+| `BatchedEmbeddings` | batches calls to honor provider rate limits |
+| `RouterEmbeddings` | dispatches by document metadata |
+
+```rust
+use cognis::rag::embeddings::OpenAIEmbeddings;
+
+let embed = OpenAIEmbeddings::builder()
+    .model("text-embedding-3-small")
+    .api_key_from_env("OPENAI_API_KEY")?
+    .build()?;
+```
+
+## Vector stores
+
+`VectorStore` is the trait. Implementations are feature-gated.
+
+<Tabs>
+  <Tab title="In-memory">
+    ```rust
+    use cognis::rag::vectorstore::InMemoryVectorStore;
+
+    let store = InMemoryVectorStore::new(embed.clone());
+    store.add_documents(chunks).await?;
+    let hits = store.similarity_search("rust llm", 5).await?;
+    ```
+  </Tab>
+  <Tab title="FAISS">
+    ```rust
+    use cognis::rag::vectorstore::FaissVectorStore;
+
+    let store = FaissVectorStore::open("./index.faiss", embed.clone())?;
+    store.add_documents(chunks).await?;
+    ```
+    Requires the `faiss` feature.
+  </Tab>
+  <Tab title="Qdrant / Chroma / Pinecone / Weaviate">
+    Hosted backends share the same interface; configure with the corresponding builder.
+    ```rust
+    use cognis::rag::vectorstore::QdrantVectorStore;
+
+    let store = QdrantVectorStore::builder()
+        .url("https://qdrant.example.com")
+        .api_key_from_env("QDRANT_API_KEY")?
+        .collection("my_docs")
+        .embeddings(embed.clone())
+        .build()?;
+    ```
+  </Tab>
+</Tabs>
+
+## Retrievers
+
+A `Retriever` implements `Runnable<String, Vec<Document>>`. Use one directly or compose retrievers.
+
+```rust
+use cognis::rag::retriever::VectorStoreRetriever;
+
+let retriever = VectorStoreRetriever::new(store.clone()).top_k(5);
+let docs = retriever.invoke("how does the bridge work?".into(), cfg).await?;
+```
+
+Other retrievers: `MultiQueryRetriever`, `EnsembleRetriever`, `ContextualCompressionRetriever`, `MMRRetriever`.
+
+## Indexing pipeline
+
+`IndexingPipeline` keeps a `VectorStore` in sync with a source. A `RecordManager` tracks which documents have been seen so re-indexing is incremental.
+
+```rust
+use cognis::rag::indexing::{IndexingPipeline, RecordManager, IndexingMode};
+
+let manager = RecordManager::sqlite("./record.db")?;
+let pipeline = IndexingPipeline::new(store.clone(), manager)
+    .with_splitter(splitter)
+    .with_mode(IndexingMode::Incremental);
+
+pipeline.index(loader).await?;
+```
+
+`IndexingMode::Incremental` only re-embeds new or changed documents. `Full` rebuilds the index from scratch.
+
+## Transformers
+
+Operate on retrieved documents before they reach the model.
+
+| Transformer | Effect |
+|---|---|
+| `Dedup` | drop near-duplicate chunks |
+| `Enrichment` | attach extra metadata via a side query |
+| `MetadataTransformer` | rewrite or filter on metadata |
+| `LongContextReorder` | move most-relevant chunks to the prompt edges |
+
+```rust
+use cognis::rag::transformers::{Dedup, LongContextReorder};
+
+let pipeline = retriever
+    .pipe(Dedup::default())
+    .pipe(LongContextReorder::default());
+```
+
+## End-to-end RAG chain
+
+```rust
+let format_docs = lambda(|docs: Vec<Document>| {
+    docs.iter().map(|d| d.page_content.clone()).collect::<Vec<_>>().join("\n\n")
+});
+
+let prompt = ChatPromptTemplate::new()
+    .system("Answer the question using only the context.\n\nContext:\n{context}")
+    .human("{question}");
+
+let rag = parallel!{
+    "context" => retriever.pipe(format_docs),
+    "question" => passthrough(),
+}.pipe(prompt).pipe(model).pipe(StrOutputParser);
+
+let answer: String = rag.invoke("how does the bridge work?".into(), cfg).await?;
+```
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Agents" icon="robot" href="/concepts/agents">
+    Hand the retriever to an agent as a tool.
+  </Card>
+  <Card title="Trace" icon="chart-line" href="/concepts/trace">
+    Retriever calls show up as `Retriever` spans in Langfuse.
+  </Card>
+</CardGroup>

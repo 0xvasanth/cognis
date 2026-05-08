@@ -1,0 +1,190 @@
+---
+title: "LLM"
+description: "Chat models, providers, tool calling, structured output, streaming."
+sidebarTitle: "LLM"
+---
+
+`cognis-llm` defines the provider abstraction and ships concrete clients for the major vendors. Every chat model implements `Runnable<Vec<Message>, AiMessage>` (and `ChatModel` for richer features).
+
+## Providers
+
+All providers are feature-gated. Enable only what you ship.
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```rust
+    use cognis::llm::providers::openai::ChatOpenAI;
+
+    let model = ChatOpenAI::builder()
+        .model("gpt-4o")
+        .temperature(0.7)
+        .api_key_from_env("OPENAI_API_KEY")?
+        .build()?;
+    ```
+  </Tab>
+  <Tab title="Anthropic">
+    ```rust
+    use cognis::llm::providers::anthropic::ChatAnthropic;
+
+    let model = ChatAnthropic::builder()
+        .model("claude-sonnet-4")
+        .api_key_from_env("ANTHROPIC_API_KEY")?
+        .build()?;
+    ```
+  </Tab>
+  <Tab title="Google">
+    ```rust
+    use cognis::llm::providers::google::ChatGoogle;
+
+    let model = ChatGoogle::builder()
+        .model("gemini-2.0-flash")
+        .api_key_from_env("GOOGLE_API_KEY")?
+        .build()?;
+    ```
+  </Tab>
+  <Tab title="Ollama">
+    ```rust
+    use cognis::llm::providers::ollama::ChatOllama;
+
+    // local — no key
+    let model = ChatOllama::builder()
+        .model("llama3.2:1b")
+        .base_url("http://localhost:11434")
+        .build()?;
+    ```
+  </Tab>
+  <Tab title="Azure">
+    ```rust
+    use cognis::llm::providers::azure::ChatAzureOpenAI;
+
+    let model = ChatAzureOpenAI::builder()
+        .deployment("gpt-4o-prod")
+        .api_version("2024-08-06")
+        .endpoint(env::var("AZURE_OPENAI_ENDPOINT")?)
+        .api_key_from_env("AZURE_OPENAI_API_KEY")?
+        .build()?;
+    ```
+  </Tab>
+  <Tab title="OpenRouter">
+    ```rust
+    use cognis::llm::providers::openai::ChatOpenAI;
+
+    // OpenRouter is OpenAI-compatible
+    let model = ChatOpenAI::builder()
+        .model("anthropic/claude-sonnet-4")
+        .base_url("https://openrouter.ai/api/v1")
+        .api_key_from_env("OPENROUTER_API_KEY")?
+        .with_extra_header("HTTP-Referer", "https://yourapp.com")
+        .build()?;
+    ```
+  </Tab>
+</Tabs>
+
+## Messages and content parts
+
+```rust
+use cognis::core::message::{Message, ContentPart};
+
+let messages = vec![
+    Message::system("You are a careful assistant."),
+    Message::human("Summarize this image:"),
+    Message::human_with_parts(vec![
+        ContentPart::Text("Describe the chart.".into()),
+        ContentPart::ImageUrl { url: image_url, detail: None },
+    ]),
+];
+```
+
+`Message` is an enum — `Human`, `Ai`, `System`, `Tool`. `ContentPart` covers text, images, and files.
+
+## Tool calling
+
+Define a tool with the `#[tool]` macro. Tools are also Runnables.
+
+```rust
+use cognis::tools::tool;
+use serde::Deserialize;
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct GetWeather {
+    /// City name, e.g. "Tokyo".
+    city: String,
+}
+
+#[tool]
+async fn get_weather(args: GetWeather) -> anyhow::Result<String> {
+    Ok(format!("It's 22°C and clear in {}.", args.city))
+}
+
+let bound = model.bind_tools(vec![get_weather()]);
+let resp: AiMessage = bound.invoke(messages, cfg).await?;
+for call in resp.tool_calls {
+    let result = registry.call(&call.name, call.arguments).await?;
+}
+```
+
+Or run a full agent loop with [`AgentBuilder`](/concepts/agents).
+
+## Structured output
+
+Two paths — pick based on whether the provider supports JSON Schema natively.
+
+<CodeGroup>
+
+```rust StructuredOutputParser
+use cognis::core::output_parsers::StructuredOutputParser;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct Recipe { name: String, steps: Vec<String> }
+
+let parser = StructuredOutputParser::<Recipe>::new();
+let chain = prompt.pipe(model).pipe(parser);
+let r: Recipe = chain.invoke(query, cfg).await?;
+```
+
+```rust with_structured_output
+let typed = model.with_structured_output::<Recipe>()?;
+let r: Recipe = typed.invoke(messages, cfg).await?;
+```
+
+</CodeGroup>
+
+`with_structured_output` uses the provider's JSON-mode / response-format API. `StructuredOutputParser` works with any provider by injecting schema instructions into the prompt — slower but provider-agnostic.
+
+## Streaming
+
+Use `stream` for token-level streaming.
+
+```rust
+let mut s = model.stream(messages, cfg).await?;
+while let Some(chunk) = s.next().await {
+    print!("{}", chunk?.content_text());
+    std::io::stdout().flush()?;
+}
+```
+
+For richer event-level streaming (start/token/end events), use `stream_events`.
+
+## Caching, retries, fallbacks
+
+Wrap any model with `cognis::core::wrappers`. Examples:
+
+```rust
+let model = ChatOpenAI::builder().model("gpt-4o").build()?
+    .with_cache(SqliteCache::new("./cache.db")?)
+    .with_retry(RetryConfig::exponential(3))
+    .with_fallback(ChatAnthropic::builder().model("claude-haiku-4").build()?);
+```
+
+See [Runnable](/concepts/runnable#wrappers) for the full list.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Agents" icon="robot" href="/concepts/agents">
+    Build a tool-calling loop with memory.
+  </Card>
+  <Card title="Trace" icon="chart-line" href="/concepts/trace">
+    Token usage, cost, and latency in Langfuse out of the box.
+  </Card>
+</CardGroup>
