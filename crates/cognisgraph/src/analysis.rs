@@ -91,10 +91,9 @@ impl<S: GraphState> CompiledGraph<S> {
         };
 
         // Longest path: only meaningful for DAGs reachable from start.
-        let depth = if has_cycle || start.is_none() {
-            0
-        } else {
-            longest_path(start.unwrap(), &adj, &reachable)
+        let depth = match start {
+            Some(s) if !has_cycle => longest_path(s, &adj, &reachable),
+            _ => 0,
         };
 
         GraphAnalysis {
@@ -133,14 +132,13 @@ fn detect_cycle<'a>(
                 if m == "__END__" || !reachable.contains(m) {
                     continue;
                 }
-                match color.get(m) {
+                let recurse = match color.get(m) {
                     Some(Color::Gray) => return true, // back-edge → cycle
-                    Some(Color::White) => {
-                        if visit(m, adj, reachable, color) {
-                            return true;
-                        }
-                    }
-                    _ => {}
+                    Some(Color::White) => true,
+                    _ => false,
+                };
+                if recurse && visit(m, adj, reachable, color) {
+                    return true;
                 }
             }
         }
