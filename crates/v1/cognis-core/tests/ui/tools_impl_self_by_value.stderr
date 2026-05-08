@@ -1,0 +1,5 @@
+error: #[tools_impl]: #[tool] methods must take `&self` (consuming `self` is rejected)
+  --> tests/ui/tools_impl_self_by_value.rs:12:18
+   |
+12 |     async fn run(self, _p: P) -> Result<(), ()> { Ok(()) }
+   |                  ^^^^

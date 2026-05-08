@@ -1,0 +1,57 @@
+[package]
+name = "cognis-rag"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "RAG primitives for Cognis: embeddings, vector stores (in-memory, FAISS, Chroma, Qdrant, Pinecone, Weaviate), retrievers, text splitters, document loaders, and incremental indexing pipelines."
+repository = "https://github.com/0xvasanth/cognis"
+
+[dependencies]
+cognis-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+futures.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+reqwest = { workspace = true, optional = true }
+secrecy = { workspace = true, optional = true }
+csv = { version = "1", optional = true }
+serde_yaml = { version = "0.9", optional = true }
+toml = { version = "0.8", optional = true }
+pdf-extract = { version = "0.7", optional = true }
+
+[features]
+default = ["openai", "ollama"]
+openai = ["dep:reqwest", "dep:secrecy"]
+google = ["dep:reqwest", "dep:secrecy"]
+voyage = ["dep:reqwest", "dep:secrecy"]
+ollama = ["dep:reqwest"]
+csv-loader = ["dep:csv"]
+html-loader = []
+yaml-loader = ["dep:serde_yaml"]
+toml-loader = ["dep:toml"]
+web-loader = ["dep:reqwest"]
+pdf-loader = ["dep:pdf-extract"]
+all-loaders = ["csv-loader", "html-loader", "yaml-loader", "toml-loader", "web-loader", "pdf-loader"]
+# Vector store backends.
+# HTTP-based stores need reqwest + secrecy; FAISS is pure-Rust, no extra deps.
+vectorstore-chroma = ["dep:reqwest", "dep:secrecy"]
+vectorstore-qdrant = ["dep:reqwest", "dep:secrecy"]
+vectorstore-pinecone = ["dep:reqwest", "dep:secrecy"]
+vectorstore-weaviate = ["dep:reqwest", "dep:secrecy"]
+vectorstore-faiss = []
+all-vectorstores = [
+    "vectorstore-chroma",
+    "vectorstore-qdrant",
+    "vectorstore-pinecone",
+    "vectorstore-weaviate",
+    "vectorstore-faiss",
+]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"

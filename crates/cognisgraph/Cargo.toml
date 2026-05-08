@@ -1,34 +1,33 @@
 [package]
-name = "cognisgraph"
-version = "0.2.1"
+name = "cognis-graph"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "State graph orchestration framework for multi-actor agent workflows"
+authors.workspace = true
+description = "Stateful graph engine for Cognis: typed Graph<S>, Pregel-style superstep executor, per-field reducers, interrupts, time-travel via checkpointers (in-memory, SQLite, Postgres), and streaming."
 repository = "https://github.com/0xvasanth/cognis"
-readme = "README.md"
 
 [dependencies]
 cognis-core.workspace = true
+cognis-macros.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
-thiserror.workspace = true
-uuid.workspace = true
 futures.workspace = true
-base64.workspace = true
-flate2 = "1"
 tokio-stream.workspace = true
-sqlx = { workspace = true, optional = true }
-chrono = "0.4.44"
+tracing.workspace = true
+uuid.workspace = true
+schemars.workspace = true
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio"], optional = true }
+ciborium = { version = "0.2", optional = true }
 
 [features]
 default = []
-sqlite = ["dep:sqlx"]
-postgres = ["dep:sqlx"]
+sqlite = ["dep:sqlx", "sqlx/sqlite"]
+postgres = ["dep:sqlx", "sqlx/postgres", "sqlx/uuid"]
+serializer-cbor = ["dep:ciborium"]
 
 [dev-dependencies]
-cognis-macros.workspace = true
-serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"

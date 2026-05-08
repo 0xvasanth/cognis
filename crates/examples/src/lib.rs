@@ -1,2 +1,3 @@
-// This crate exists only to host [[example]] binaries.
-// It has no library code of its own.
+//! Stub crate root — the V2 examples are registered as `[[example]]`
+//! entries in `Cargo.toml` and live at `examples/v2/*.rs`. There is no
+//! library code here.

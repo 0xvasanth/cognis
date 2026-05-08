@@ -1,459 +1,476 @@
-//! Web search tools for retrieving information from the internet.
+//! Web search tool with a pluggable provider.
 //!
-//! Provides a generic [`WebSearchTool`] that can be configured with any search
-//! API endpoint, and a ready-to-use [`DuckDuckGoSearchTool`] that queries the
-//! DuckDuckGo instant answer API (no API key required).
+//! Web search is heterogeneous — every provider (Tavily / Brave / Bing /
+//! SerpAPI / DuckDuckGo) has a different API shape, key requirement, and
+//! result format. The tool ships a [`WebSearchProvider`] trait + one
+//! reference implementation ([`TavilyProvider`]) so users can swap
+//! providers without forking.
+//!
+//! Customization:
+//! - [`WebSearchTool::new`] takes any `WebSearchProvider`.
+//! - Closures matching `Fn(WebSearchInput) -> Future<Output = Result<…>>`
+//!   can be used inline via the blanket impl.
+//! - [`TavilyProvider`] — reference impl. Free tier available;
+//!   sign up at <https://tavily.com>.
+//!
+//! Feature-gated under `tools-http` because all providers need
+//! `reqwest`.
+
+#![cfg(feature = "tools-http")]
+
+use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
-use cognis_core::error::{CognisError, Result};
-use cognis_core::tools::base::BaseTool;
-use cognis_core::tools::types::{ToolInput, ToolOutput};
-use secrecy::{ExposeSecret, SecretString};
-use serde::Deserialize;
-use serde_json::{json, Value};
+use cognis_core::schemars::{self, JsonSchema};
+use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use serde::{Deserialize, Serialize};
 
-// ---------------------------------------------------------------------------
-// WebSearchTool
-// ---------------------------------------------------------------------------
+use cognis_core::{CognisError, Result};
+use cognis_llm::tools::{Tool, ToolInput, ToolOutput};
 
-/// A configurable web search tool that queries a search API endpoint.
-///
-/// # Builder
-///
-/// ```rust,ignore
-/// let tool = WebSearchTool::builder()
-///     .api_url("https://my-search-api.example.com/search")
-///     .api_key("sk-...")
-///     .num_results(3)
-///     .build();
-/// ```
-pub struct WebSearchTool {
-    /// The search API endpoint URL.
-    api_url: Option<String>,
-    /// Optional API key sent as a `Bearer` token.
-    api_key: Option<SecretString>,
-    /// Maximum number of results to return (default: 5).
-    num_results: usize,
-    /// Shared HTTP client.
-    client: reqwest::Client,
+const TAVILY_DEFAULT_BASE: &str = "https://api.tavily.com";
+
+/// Tool input — what the LLM sends.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct WebSearchInput {
+    /// Search query.
+    pub query: String,
+    /// Maximum number of results (default: 5).
+    #[serde(default)]
+    pub max_results: Option<usize>,
 }
 
-/// Builder for [`WebSearchTool`].
-pub struct WebSearchToolBuilder {
-    api_url: Option<String>,
-    api_key: Option<SecretString>,
-    num_results: usize,
-    client: Option<reqwest::Client>,
+/// One result from any provider — providers normalize into this shape.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebSearchResult {
+    /// Page title.
+    pub title: String,
+    /// Page URL.
+    pub url: String,
+    /// Snippet / preview content.
+    pub snippet: String,
+    /// Provider-supplied relevance score, if available (0.0–1.0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f32>,
 }
 
-impl WebSearchToolBuilder {
-    /// Set the search API endpoint URL.
-    pub fn api_url(mut self, url: impl Into<String>) -> Self {
-        self.api_url = Some(url.into());
-        self
+/// Pluggable provider trait. Implementors translate `WebSearchInput`
+/// into the provider's native request and normalize results into
+/// [`WebSearchResult`] so the tool's output shape stays stable.
+#[async_trait]
+pub trait WebSearchProvider: Send + Sync {
+    /// Run a search.
+    async fn search(&self, input: WebSearchInput) -> Result<Vec<WebSearchResult>>;
+
+    /// Friendly name for diagnostics (e.g. `"tavily"`, `"brave"`).
+    fn name(&self) -> &str {
+        std::any::type_name::<Self>()
+    }
+}
+
+/// Closure-based provider for inline / testing use.
+#[async_trait]
+impl<F, Fut> WebSearchProvider for F
+where
+    F: Fn(WebSearchInput) -> Fut + Send + Sync,
+    Fut: std::future::Future<Output = Result<Vec<WebSearchResult>>> + Send,
+{
+    async fn search(&self, input: WebSearchInput) -> Result<Vec<WebSearchResult>> {
+        (self)(input).await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TavilyProvider — reference impl.
+// ---------------------------------------------------------------------------
+
+/// Reference implementation of [`WebSearchProvider`] for Tavily.
+///
+/// Tavily exposes a single POST endpoint at `/search`. The
+/// `search_depth` knob trades latency for quality (`"basic"` /
+/// `"advanced"`). Set `include_answer: true` to have Tavily synthesize a
+/// short answer alongside the raw results — currently dropped from the
+/// normalized output but available for users that want to call the
+/// underlying client directly.
+pub struct TavilyProvider {
+    api_key: String,
+    base_url: String,
+    search_depth: String,
+    include_domains: Vec<String>,
+    exclude_domains: Vec<String>,
+    http: reqwest::Client,
+}
+
+impl std::fmt::Debug for TavilyProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TavilyProvider")
+            .field("base_url", &self.base_url)
+            .field("search_depth", &self.search_depth)
+            .finish_non_exhaustive()
+    }
+}
+
+impl TavilyProvider {
+    /// New with API key + defaults (`search_depth = "basic"`).
+    pub fn new(api_key: impl Into<String>) -> Result<Self> {
+        Self::builder().api_key(api_key).build()
     }
 
-    /// Set the API key (sent as a `Bearer` authorization header).
-    pub fn api_key(mut self, key: impl Into<String>) -> Self {
-        self.api_key = Some(SecretString::from(key.into()));
-        self
+    /// Fluent builder.
+    pub fn builder() -> TavilyProviderBuilder {
+        TavilyProviderBuilder::default()
     }
+}
 
-    /// Set the number of results to request (default: 5).
-    pub fn num_results(mut self, n: usize) -> Self {
-        self.num_results = n;
-        self
-    }
-
-    /// Provide a custom [`reqwest::Client`].
-    pub fn client(mut self, client: reqwest::Client) -> Self {
-        self.client = Some(client);
-        self
-    }
-
-    /// Build the [`WebSearchTool`].
-    pub fn build(self) -> WebSearchTool {
-        WebSearchTool {
-            api_url: self.api_url,
-            api_key: self.api_key,
-            num_results: self.num_results,
-            client: self.client.unwrap_or_default(),
+#[async_trait]
+impl WebSearchProvider for TavilyProvider {
+    async fn search(&self, input: WebSearchInput) -> Result<Vec<WebSearchResult>> {
+        #[derive(Serialize)]
+        struct Body<'a> {
+            api_key: &'a str,
+            query: &'a str,
+            search_depth: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            max_results: Option<usize>,
+            #[serde(skip_serializing_if = "<[String]>::is_empty")]
+            include_domains: &'a [String],
+            #[serde(skip_serializing_if = "<[String]>::is_empty")]
+            exclude_domains: &'a [String],
         }
+        #[derive(Deserialize)]
+        struct Resp {
+            #[serde(default)]
+            results: Vec<Hit>,
+        }
+        #[derive(Deserialize)]
+        struct Hit {
+            #[serde(default)]
+            title: String,
+            #[serde(default)]
+            url: String,
+            #[serde(default)]
+            content: String,
+            #[serde(default)]
+            score: Option<f32>,
+        }
+        let url = if self.base_url.ends_with('/') {
+            format!("{}search", self.base_url)
+        } else {
+            format!("{}/search", self.base_url)
+        };
+        let body = Body {
+            api_key: &self.api_key,
+            query: &input.query,
+            search_depth: &self.search_depth,
+            max_results: input.max_results,
+            include_domains: &self.include_domains,
+            exclude_domains: &self.exclude_domains,
+        };
+        let resp = self
+            .http
+            .post(&url)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| CognisError::Internal(format!("tavily search: {e}")))?;
+        if !resp.status().is_success() {
+            let s = resp.status();
+            let t = resp.text().await.unwrap_or_default();
+            return Err(CognisError::Internal(format!(
+                "tavily search: HTTP {s}: {t}"
+            )));
+        }
+        let parsed: Resp = resp
+            .json()
+            .await
+            .map_err(|e| CognisError::Serialization(format!("tavily json: {e}")))?;
+        Ok(parsed
+            .results
+            .into_iter()
+            .map(|h| WebSearchResult {
+                title: h.title,
+                url: h.url,
+                snippet: h.content,
+                score: h.score,
+            })
+            .collect())
     }
+
+    fn name(&self) -> &str {
+        "tavily"
+    }
+}
+
+/// Fluent builder for [`TavilyProvider`].
+#[derive(Default)]
+pub struct TavilyProviderBuilder {
+    api_key: Option<String>,
+    base_url: Option<String>,
+    search_depth: Option<String>,
+    include_domains: Vec<String>,
+    exclude_domains: Vec<String>,
+    timeout_secs: Option<u64>,
+    http: Option<reqwest::Client>,
+}
+
+impl TavilyProviderBuilder {
+    /// Set the API key (required).
+    pub fn api_key(mut self, k: impl Into<String>) -> Self {
+        self.api_key = Some(k.into());
+        self
+    }
+    /// Override the base URL (default `https://api.tavily.com`).
+    pub fn base_url(mut self, u: impl Into<String>) -> Self {
+        self.base_url = Some(u.into());
+        self
+    }
+    /// `"basic"` (faster, default) or `"advanced"` (deeper crawl).
+    pub fn search_depth(mut self, d: impl Into<String>) -> Self {
+        self.search_depth = Some(d.into());
+        self
+    }
+    /// Restrict results to these domains.
+    pub fn include_domains<I, S>(mut self, domains: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.include_domains = domains.into_iter().map(Into::into).collect();
+        self
+    }
+    /// Drop results from these domains.
+    pub fn exclude_domains<I, S>(mut self, domains: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.exclude_domains = domains.into_iter().map(Into::into).collect();
+        self
+    }
+    /// HTTP timeout in seconds.
+    pub fn timeout_secs(mut self, s: u64) -> Self {
+        self.timeout_secs = Some(s);
+        self
+    }
+    /// Override the HTTP client.
+    pub fn http_client(mut self, c: reqwest::Client) -> Self {
+        self.http = Some(c);
+        self
+    }
+    /// Build.
+    pub fn build(self) -> Result<TavilyProvider> {
+        let api_key = self
+            .api_key
+            .ok_or_else(|| CognisError::Configuration("Tavily: API key required".into()))?;
+        let http = match self.http {
+            Some(c) => c,
+            None => {
+                let mut b = reqwest::ClientBuilder::new();
+                if let Some(t) = self.timeout_secs {
+                    b = b.timeout(Duration::from_secs(t));
+                }
+                b.build()
+                    .map_err(|e| CognisError::Configuration(format!("HTTP client: {e}")))?
+            }
+        };
+        Ok(TavilyProvider {
+            api_key,
+            base_url: self
+                .base_url
+                .unwrap_or_else(|| TAVILY_DEFAULT_BASE.to_string()),
+            search_depth: self.search_depth.unwrap_or_else(|| "basic".to_string()),
+            include_domains: self.include_domains,
+            exclude_domains: self.exclude_domains,
+            http,
+        })
+    }
+}
+
+// `AUTHORIZATION` is imported above for users who want to wrap the
+// Tavily client with header-based auth in tests; suppress the
+// unused-import lint for the default code path.
+#[allow(dead_code)]
+fn _silence_authorization_import(_: HeaderValue) {
+    let _ = AUTHORIZATION;
+}
+
+// ---------------------------------------------------------------------------
+// WebSearchTool — wraps a provider as a Tool.
+// ---------------------------------------------------------------------------
+
+/// Tool exposing a [`WebSearchProvider`] to the LLM.
+pub struct WebSearchTool {
+    provider: Arc<dyn WebSearchProvider>,
+    name: String,
+    description: String,
+    default_max_results: usize,
 }
 
 impl WebSearchTool {
-    /// Create a new builder.
-    pub fn builder() -> WebSearchToolBuilder {
-        WebSearchToolBuilder {
-            api_url: None,
-            api_key: None,
-            num_results: 5,
-            client: None,
-        }
-    }
-}
-
-#[async_trait]
-impl BaseTool for WebSearchTool {
-    fn name(&self) -> &str {
-        "web_search"
-    }
-
-    fn description(&self) -> &str {
-        "Search the web for information. Input should be a search query string."
-    }
-
-    fn args_schema(&self) -> Option<Value> {
-        Some(json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The search query"
-                }
-            },
-            "required": ["query"]
-        }))
-    }
-
-    async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
-        let query = extract_query(&input)?;
-
-        let api_url = match &self.api_url {
-            Some(url) => url,
-            None => {
-                return Ok(ToolOutput::Content(Value::String(format!(
-                    "WebSearchTool: No api_url configured. \
-                     Would search for: \"{query}\". \
-                     Please set an api_url to enable real searches."
-                ))));
-            }
-        };
-
-        let mut req = self
-            .client
-            .get(api_url)
-            .query(&[("q", &query), ("num", &self.num_results.to_string())]);
-
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key.expose_secret()));
-        }
-
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| CognisError::ToolException(format!("Web search request failed: {e}")))?;
-
-        if !resp.status().is_success() {
-            return Err(CognisError::ToolException(format!(
-                "Web search returned status {}",
-                resp.status()
-            )));
-        }
-
-        let body = resp.text().await.map_err(|e| {
-            CognisError::ToolException(format!("Failed to read search response: {e}"))
-        })?;
-
-        Ok(ToolOutput::Content(Value::String(body)))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// DuckDuckGoSearchTool
-// ---------------------------------------------------------------------------
-
-/// A web search tool that uses the DuckDuckGo instant answer API.
-///
-/// No API key is required.
-///
-/// ```rust,ignore
-/// let tool = DuckDuckGoSearchTool::new();
-/// let result = tool.run_str("Rust programming language").await.unwrap();
-/// ```
-pub struct DuckDuckGoSearchTool {
-    /// Shared HTTP client.
-    client: reqwest::Client,
-}
-
-impl DuckDuckGoSearchTool {
-    /// Create a new DuckDuckGo search tool with a default HTTP client.
-    pub fn new() -> Self {
+    /// Wrap a provider with the default tool name `"web_search"`.
+    pub fn new<P: WebSearchProvider + 'static>(provider: P) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            provider: Arc::new(provider),
+            name: "web_search".into(),
+            description: "Search the public web. Returns a list of \
+                {title, url, snippet, score} results."
+                .into(),
+            default_max_results: 5,
         }
     }
 
-    /// Create a new tool with a custom [`reqwest::Client`].
-    pub fn with_client(client: reqwest::Client) -> Self {
-        Self { client }
-    }
-}
-
-impl Default for DuckDuckGoSearchTool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Response shape from the DuckDuckGo instant answer API.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub(crate) struct DdgResponse {
-    #[serde(default, rename = "AbstractText")]
-    pub abstract_text: String,
-    #[serde(default, rename = "AbstractSource")]
-    pub abstract_source: String,
-    #[serde(default, rename = "AbstractURL")]
-    pub abstract_url: String,
-    #[serde(default, rename = "Heading")]
-    pub heading: String,
-    #[serde(default, rename = "RelatedTopics")]
-    pub related_topics: Vec<DdgRelatedTopic>,
-}
-
-/// A related topic entry from DuckDuckGo.
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub(crate) struct DdgRelatedTopic {
-    #[serde(default, rename = "Text")]
-    pub text: String,
-    #[serde(default, rename = "FirstURL")]
-    pub first_url: String,
-}
-
-/// Format a DuckDuckGo API response into a readable string.
-pub(crate) fn format_ddg_response(resp: &DdgResponse) -> String {
-    let mut parts: Vec<String> = Vec::new();
-
-    if !resp.heading.is_empty() {
-        parts.push(format!("# {}", resp.heading));
+    /// Override the registered tool name.
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
     }
 
-    if !resp.abstract_text.is_empty() {
-        parts.push(resp.abstract_text.clone());
-        if !resp.abstract_url.is_empty() {
-            parts.push(format!("Source: {}", resp.abstract_url));
-        }
+    /// Override the description shown to the LLM.
+    pub fn with_description(mut self, d: impl Into<String>) -> Self {
+        self.description = d.into();
+        self
     }
 
-    if !resp.related_topics.is_empty() {
-        parts.push("\nRelated:".to_string());
-        for (i, topic) in resp.related_topics.iter().take(5).enumerate() {
-            if !topic.text.is_empty() {
-                parts.push(format!("{}. {}", i + 1, topic.text));
-            }
-        }
-    }
-
-    if parts.is_empty() {
-        "No results found.".to_string()
-    } else {
-        parts.join("\n")
+    /// Override the default `max_results` cap when the LLM doesn't specify.
+    pub fn with_default_max_results(mut self, n: usize) -> Self {
+        self.default_max_results = n.max(1);
+        self
     }
 }
 
 #[async_trait]
-impl BaseTool for DuckDuckGoSearchTool {
+impl Tool for WebSearchTool {
     fn name(&self) -> &str {
-        "duckduckgo_search"
+        &self.name
     }
-
     fn description(&self) -> &str {
-        "Search the web using DuckDuckGo. Input should be a search query string."
+        &self.description
     }
-
-    fn args_schema(&self) -> Option<Value> {
-        Some(json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The search query"
-                }
-            },
-            "required": ["query"]
-        }))
+    fn args_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::to_value(schemars::schema_for!(WebSearchInput)).unwrap_or_default())
     }
-
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
-        let query = extract_query(&input)?;
-
-        let resp = self
-            .client
-            .get("https://api.duckduckgo.com/")
-            .query(&[
-                ("q", &query),
-                ("format", &"json".to_string()),
-                ("no_html", &"1".to_string()),
-            ])
-            .send()
-            .await
-            .map_err(|e| CognisError::ToolException(format!("DuckDuckGo request failed: {e}")))?;
-
-        if !resp.status().is_success() {
-            return Err(CognisError::ToolException(format!(
-                "DuckDuckGo returned status {}",
-                resp.status()
-            )));
+        let mut parsed: WebSearchInput =
+            serde_json::from_value(input.into_json()).map_err(|e| {
+                CognisError::ToolValidationError(format!("web_search: invalid args: {e}"))
+            })?;
+        if parsed.max_results.is_none() {
+            parsed.max_results = Some(self.default_max_results);
         }
-
-        let ddg: DdgResponse = resp.json().await.map_err(|e| {
-            CognisError::ToolException(format!("Failed to parse DuckDuckGo response: {e}"))
-        })?;
-
-        let formatted = format_ddg_response(&ddg);
-        Ok(ToolOutput::Content(Value::String(formatted)))
+        let results = self.provider.search(parsed).await?;
+        Ok(ToolOutput::Content(serde_json::json!({
+            "results": results,
+        })))
     }
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Extract a query string from various input formats.
-fn extract_query(input: &ToolInput) -> Result<String> {
-    match input {
-        ToolInput::Text(s) => Ok(s.clone()),
-        ToolInput::Structured(map) => {
-            if let Some(Value::String(q)) = map.get("query") {
-                Ok(q.clone())
-            } else {
-                Err(CognisError::ToolValidationError(
-                    "Missing required field 'query'".into(),
-                ))
-            }
-        }
-        ToolInput::ToolCall(tc) => {
-            if let Some(Value::String(q)) = tc.args.get("query") {
-                Ok(q.clone())
-            } else {
-                Err(CognisError::ToolValidationError(
-                    "Missing required field 'query'".into(),
-                ))
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
 
     #[test]
-    fn test_web_search_builder_defaults() {
-        let tool = WebSearchTool::builder().build();
-        assert_eq!(tool.name(), "web_search");
-        assert_eq!(tool.num_results, 5);
-        assert!(tool.api_url.is_none());
-        assert!(tool.api_key.is_none());
+    fn tavily_builder_requires_api_key() {
+        let err = TavilyProviderBuilder::default().build().unwrap_err();
+        assert!(format!("{err}").contains("API key"));
     }
 
     #[test]
-    fn test_web_search_builder_custom() {
-        let tool = WebSearchTool::builder()
-            .api_url("https://example.com/search")
-            .api_key("test-key")
-            .num_results(3)
-            .build();
-        assert_eq!(tool.api_url.as_deref(), Some("https://example.com/search"));
-        assert_eq!(tool.num_results, 3);
-        assert!(tool.api_key.is_some());
+    fn tavily_builder_sets_defaults() {
+        let p = TavilyProvider::new("sk-test").unwrap();
+        assert_eq!(p.search_depth, "basic");
+        assert_eq!(p.base_url, TAVILY_DEFAULT_BASE);
     }
 
     #[test]
-    fn test_web_search_args_schema() {
-        let tool = WebSearchTool::builder().build();
-        let schema = tool.args_schema().unwrap();
-        assert_eq!(schema["type"], "object");
-        assert_eq!(schema["properties"]["query"]["type"], "string");
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&Value::String("query".to_string())));
+    fn tavily_builder_custom_domains() {
+        let p = TavilyProviderBuilder::default()
+            .api_key("sk-test")
+            .include_domains(["docs.rs", "rust-lang.org"])
+            .exclude_domains(["spam.example.com"])
+            .build()
+            .unwrap();
+        assert_eq!(p.include_domains.len(), 2);
+        assert_eq!(p.exclude_domains.len(), 1);
     }
 
     #[tokio::test]
-    async fn test_web_search_no_api_url_returns_placeholder() {
-        let tool = WebSearchTool::builder().build();
-        let result = tool
-            ._run(ToolInput::Text("test query".to_string()))
-            .await
-            .unwrap();
-        match result {
-            ToolOutput::Content(Value::String(s)) => {
-                assert!(s.contains("No api_url configured"));
-                assert!(s.contains("test query"));
+    async fn closure_provider_returns_canned_results() {
+        // Plug a closure provider; verify the tool surfaces results
+        // and applies the default max_results when absent.
+        let captured: Arc<Mutex<Option<WebSearchInput>>> = Arc::new(Mutex::new(None));
+        let c2 = captured.clone();
+        let provider = move |input: WebSearchInput| {
+            let c3 = c2.clone();
+            async move {
+                *c3.lock().unwrap() = Some(input);
+                Ok(vec![WebSearchResult {
+                    title: "Rust".into(),
+                    url: "https://rust-lang.org".into(),
+                    snippet: "Rust programming language".into(),
+                    score: Some(0.95),
+                }])
             }
-            _ => panic!("Expected Content with String"),
-        }
-    }
-
-    #[test]
-    fn test_ddg_response_parsing() {
-        let json_str = r#"{
-            "AbstractText": "Rust is a systems programming language.",
-            "AbstractSource": "Wikipedia",
-            "AbstractURL": "https://en.wikipedia.org/wiki/Rust_(programming_language)",
-            "Heading": "Rust (programming language)",
-            "RelatedTopics": [
-                {"Text": "Rust was designed by Graydon Hoare.", "FirstURL": "https://example.com/1"},
-                {"Text": "Rust emphasizes safety.", "FirstURL": "https://example.com/2"}
-            ]
-        }"#;
-
-        let resp: DdgResponse = serde_json::from_str(json_str).unwrap();
-        assert_eq!(resp.heading, "Rust (programming language)");
-        assert_eq!(
-            resp.abstract_text,
-            "Rust is a systems programming language."
-        );
-        assert_eq!(resp.related_topics.len(), 2);
-
-        let formatted = format_ddg_response(&resp);
-        assert!(formatted.contains("# Rust (programming language)"));
-        assert!(formatted.contains("Rust is a systems programming language."));
-        assert!(formatted.contains("1. Rust was designed by Graydon Hoare."));
-        assert!(formatted.contains("2. Rust emphasizes safety."));
-    }
-
-    #[test]
-    fn test_ddg_empty_response() {
-        let resp = DdgResponse {
-            abstract_text: String::new(),
-            abstract_source: String::new(),
-            abstract_url: String::new(),
-            heading: String::new(),
-            related_topics: Vec::new(),
         };
-        let formatted = format_ddg_response(&resp);
-        assert_eq!(formatted, "No results found.");
+        let tool = WebSearchTool::new(provider).with_default_max_results(3);
+        let mut m = HashMap::new();
+        m.insert("query".to_string(), serde_json::json!("rust"));
+        let out = tool._run(ToolInput::Structured(m)).await.unwrap();
+        match out {
+            ToolOutput::Content(v) => {
+                assert_eq!(v["results"][0]["title"], "Rust");
+                assert_eq!(v["results"][0]["url"], "https://rust-lang.org");
+            }
+            _ => panic!("expected content"),
+        }
+        let seen = captured.lock().unwrap().clone().unwrap();
+        assert_eq!(seen.query, "rust");
+        // Default applied when caller didn't supply.
+        assert_eq!(seen.max_results, Some(3));
+    }
+
+    #[tokio::test]
+    async fn caller_supplied_max_results_overrides_default() {
+        let provider = |input: WebSearchInput| async move {
+            assert_eq!(input.max_results, Some(10));
+            Ok(Vec::new())
+        };
+        let tool = WebSearchTool::new(provider).with_default_max_results(3);
+        let mut m = HashMap::new();
+        m.insert("query".to_string(), serde_json::json!("anything"));
+        m.insert("max_results".to_string(), serde_json::json!(10));
+        let _ = tool._run(ToolInput::Structured(m)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn missing_query_errors_validation() {
+        let tool = WebSearchTool::new(|_input: WebSearchInput| async {
+            Ok(Vec::<WebSearchResult>::new())
+        });
+        let res = tool._run(ToolInput::Structured(HashMap::new())).await;
+        assert!(matches!(res, Err(CognisError::ToolValidationError(_))));
     }
 
     #[test]
-    fn test_extract_query_from_text() {
-        let input = ToolInput::Text("hello world".to_string());
-        assert_eq!(extract_query(&input).unwrap(), "hello world");
+    fn custom_name_and_description() {
+        let t =
+            WebSearchTool::new(|_i: WebSearchInput| async { Ok(Vec::<WebSearchResult>::new()) })
+                .with_name("search")
+                .with_description("custom");
+        assert_eq!(t.name(), "search");
+        assert_eq!(t.description(), "custom");
     }
 
     #[test]
-    fn test_extract_query_from_structured() {
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "query".to_string(),
-            Value::String("structured query".to_string()),
-        );
-        let input = ToolInput::Structured(map);
-        assert_eq!(extract_query(&input).unwrap(), "structured query");
-    }
-
-    #[test]
-    fn test_extract_query_missing_field() {
-        let map = std::collections::HashMap::new();
-        let input = ToolInput::Structured(map);
-        assert!(extract_query(&input).is_err());
+    fn schema_serializes_with_query_and_max_results() {
+        let t =
+            WebSearchTool::new(|_i: WebSearchInput| async { Ok(Vec::<WebSearchResult>::new()) });
+        let s = t.args_schema().unwrap();
+        let s = s.to_string();
+        assert!(s.contains("query"));
+        assert!(s.contains("max_results"));
     }
 }

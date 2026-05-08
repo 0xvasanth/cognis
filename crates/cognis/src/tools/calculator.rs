@@ -1,337 +1,293 @@
-//! A safe math expression evaluator tool.
+//! Math expression evaluator.
 //!
-//! Supports +, -, *, /, parentheses, and correct operator precedence via a
-//! recursive descent parser. No `eval` or code execution is used.
+//! Supports `+ - * / % ^`, parentheses, unary `-`, and floating-point
+//! numbers. Pure Rust, no deps. Returns the result as text.
+//!
+//! Intentionally no variables / no functions / no code execution — keep
+//! it predictable for an LLM-driven agent. Need symbolic math? Pick a
+//! different tool.
 
 use async_trait::async_trait;
-use cognis_core::error::{CognisError, Result};
-use cognis_core::tools::base::BaseTool;
-use cognis_core::tools::types::{ToolInput, ToolOutput};
-use serde_json::{json, Value};
+use cognis_core::schemars::{self, JsonSchema};
+use serde::Deserialize;
 
-/// A safe math expression evaluator.
-pub struct CalculatorTool;
+use cognis_core::{CognisError, Result};
+use cognis_llm::tools::{Tool, ToolInput, ToolOutput};
+
+/// Math expression input.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CalculatorInput {
+    /// The expression to evaluate. Example: `"(2 + 3) * 4"`.
+    pub expression: String,
+}
+
+/// Stateless calculator tool.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Calculator;
+
+impl Calculator {
+    /// Construct a `Calculator`.
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
-impl BaseTool for CalculatorTool {
+impl Tool for Calculator {
     fn name(&self) -> &str {
         "calculator"
     }
 
     fn description(&self) -> &str {
-        "Evaluate mathematical expressions. Input should be a valid math expression like '2 + 3 * 4'."
+        "Evaluate a numeric expression. Supports +, -, *, /, %, ^, parentheses, \
+         and unary minus. Returns the result as a number."
     }
 
-    fn args_schema(&self) -> Option<Value> {
-        Some(json!({
-            "type": "object",
-            "properties": {
-                "expression": {
-                    "type": "string",
-                    "description": "Math expression to evaluate"
-                }
-            },
-            "required": ["expression"]
-        }))
+    fn args_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::to_value(schemars::schema_for!(CalculatorInput)).unwrap_or_default())
     }
 
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
-        let expression = extract_expression(&input)?;
-        let result = evaluate(&expression).map_err(|e| {
-            CognisError::ToolException(format!("Failed to evaluate expression: {e}"))
+        let v = input.into_json();
+        let parsed: CalculatorInput = serde_json::from_value(v).map_err(|e| {
+            CognisError::ToolValidationError(format!("calculator: invalid args: {e}"))
         })?;
-        Ok(ToolOutput::Content(Value::String(format_result(result))))
+        let result = evaluate(&parsed.expression).map_err(|e| CognisError::Tool {
+            name: "calculator".into(),
+            reason: e,
+        })?;
+        Ok(ToolOutput::Text(format_number(result)))
     }
 }
 
-/// Extract the expression string from various input formats.
-fn extract_expression(input: &ToolInput) -> Result<String> {
-    match input {
-        ToolInput::Text(s) => Ok(s.clone()),
-        ToolInput::Structured(map) => {
-            if let Some(Value::String(expr)) = map.get("expression") {
-                Ok(expr.clone())
-            } else {
-                Err(CognisError::ToolValidationError(
-                    "Missing required field 'expression'".into(),
-                ))
-            }
-        }
-        ToolInput::ToolCall(tc) => {
-            if let Some(Value::String(expr)) = tc.args.get("expression") {
-                Ok(expr.clone())
-            } else {
-                Err(CognisError::ToolValidationError(
-                    "Missing required field 'expression'".into(),
-                ))
-            }
-        }
-    }
-}
-
-/// Format a floating-point result, removing trailing zeros for clean output.
-fn format_result(value: f64) -> String {
-    if value == value.floor() && value.abs() < 1e15 {
-        format!("{}", value as i64)
+/// Format `f64` losslessly when integer, otherwise with up to 12 sig figs.
+fn format_number(n: f64) -> String {
+    if n.is_finite() && n.fract() == 0.0 && n.abs() < 1e15 {
+        format!("{}", n as i64)
     } else {
-        format!("{}", value)
+        format!("{n:.12}")
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string()
     }
 }
 
 // ---------------------------------------------------------------------------
-// Recursive descent expression parser
+// Recursive-descent expression parser.
+//
+// Grammar (in precedence order, weakest first):
+//   expr   := term ( ('+' | '-') term )*
+//   term   := factor ( ('*' | '/' | '%') factor )*
+//   factor := unary ( '^' factor )?         // right-associative
+//   unary  := '-' unary | atom
+//   atom   := number | '(' expr ')'
 // ---------------------------------------------------------------------------
 
-/// Token types produced by the tokenizer.
-#[derive(Debug, Clone, PartialEq)]
-enum Token {
-    Number(f64),
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    LParen,
-    RParen,
-}
-
-/// Tokenize an expression string into a sequence of tokens.
-fn tokenize(input: &str) -> std::result::Result<Vec<Token>, String> {
-    let mut tokens = Vec::new();
-    let chars: Vec<char> = input.chars().collect();
-    let mut i = 0;
-
-    while i < chars.len() {
-        match chars[i] {
-            ' ' | '\t' | '\n' | '\r' => {
-                i += 1;
-            }
-            '+' => {
-                tokens.push(Token::Plus);
-                i += 1;
-            }
-            '-' => {
-                // Determine if this is a unary minus (negative number) or subtraction.
-                let is_unary = tokens.is_empty()
-                    || matches!(
-                        tokens.last(),
-                        Some(
-                            Token::Plus | Token::Minus | Token::Star | Token::Slash | Token::LParen
-                        )
-                    );
-
-                if is_unary {
-                    // Parse as a negative number
-                    i += 1;
-                    // Skip whitespace between minus and number/paren
-                    while i < chars.len() && chars[i] == ' ' {
-                        i += 1;
-                    }
-                    if i < chars.len() && chars[i] == '(' {
-                        // -( ... ) => push -1 * (
-                        tokens.push(Token::Number(-1.0));
-                        tokens.push(Token::Star);
-                        tokens.push(Token::LParen);
-                        i += 1;
-                    } else if i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
-                        let start = i;
-                        while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
-                            i += 1;
-                        }
-                        let num_str: String = chars[start..i].iter().collect();
-                        let num: f64 = num_str
-                            .parse()
-                            .map_err(|_| format!("Invalid number: -{num_str}"))?;
-                        tokens.push(Token::Number(-num));
-                    } else {
-                        return Err("Unexpected character after unary minus".into());
-                    }
-                } else {
-                    tokens.push(Token::Minus);
-                    i += 1;
-                }
-            }
-            '*' => {
-                tokens.push(Token::Star);
-                i += 1;
-            }
-            '/' => {
-                tokens.push(Token::Slash);
-                i += 1;
-            }
-            '(' => {
-                tokens.push(Token::LParen);
-                i += 1;
-            }
-            ')' => {
-                tokens.push(Token::RParen);
-                i += 1;
-            }
-            c if c.is_ascii_digit() || c == '.' => {
-                let start = i;
-                while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
-                    i += 1;
-                }
-                let num_str: String = chars[start..i].iter().collect();
-                let num: f64 = num_str
-                    .parse()
-                    .map_err(|_| format!("Invalid number: {num_str}"))?;
-                tokens.push(Token::Number(num));
-            }
-            c => {
-                return Err(format!("Unexpected character: '{c}'"));
-            }
-        }
+fn evaluate(input: &str) -> std::result::Result<f64, String> {
+    let mut p = Parser::new(input);
+    let v = p.parse_expr()?;
+    p.skip_ws();
+    if p.pos < p.bytes.len() {
+        return Err(format!(
+            "unexpected character `{}` at position {}",
+            p.bytes[p.pos] as char, p.pos
+        ));
     }
-
-    Ok(tokens)
+    Ok(v)
 }
 
-/// Parser state.
-struct Parser {
-    tokens: Vec<Token>,
+struct Parser<'a> {
+    bytes: &'a [u8],
     pos: usize,
 }
 
-impl Parser {
-    fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, pos: 0 }
+impl<'a> Parser<'a> {
+    fn new(s: &'a str) -> Self {
+        Self {
+            bytes: s.as_bytes(),
+            pos: 0,
+        }
     }
 
-    fn peek(&self) -> Option<&Token> {
-        self.tokens.get(self.pos)
-    }
-
-    fn next(&mut self) -> Option<Token> {
-        let tok = self.tokens.get(self.pos).cloned();
-        if tok.is_some() {
+    fn skip_ws(&mut self) {
+        while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_whitespace() {
             self.pos += 1;
         }
-        tok
     }
 
-    /// Parse the full expression.
+    fn peek(&mut self) -> Option<u8> {
+        self.skip_ws();
+        self.bytes.get(self.pos).copied()
+    }
+
+    fn consume(&mut self, c: u8) -> bool {
+        if self.peek() == Some(c) {
+            self.pos += 1;
+            true
+        } else {
+            false
+        }
+    }
+
     fn parse_expr(&mut self) -> std::result::Result<f64, String> {
-        let result = self.parse_addition()?;
-        if self.pos < self.tokens.len() {
-            return Err(format!("Unexpected token: {:?}", self.tokens[self.pos]));
-        }
-        Ok(result)
-    }
-
-    /// Addition and subtraction (lowest precedence).
-    fn parse_addition(&mut self) -> std::result::Result<f64, String> {
-        let mut left = self.parse_multiplication()?;
-        while let Some(tok) = self.peek() {
-            match tok {
-                Token::Plus => {
-                    self.next();
-                    left += self.parse_multiplication()?;
+        let mut left = self.parse_term()?;
+        loop {
+            match self.peek() {
+                Some(b'+') => {
+                    self.pos += 1;
+                    left += self.parse_term()?;
                 }
-                Token::Minus => {
-                    self.next();
-                    left -= self.parse_multiplication()?;
+                Some(b'-') => {
+                    self.pos += 1;
+                    left -= self.parse_term()?;
                 }
-                _ => break,
+                _ => return Ok(left),
             }
         }
-        Ok(left)
     }
 
-    /// Multiplication and division.
-    fn parse_multiplication(&mut self) -> std::result::Result<f64, String> {
-        let mut left = self.parse_primary()?;
-        while let Some(tok) = self.peek() {
-            match tok {
-                Token::Star => {
-                    self.next();
-                    left *= self.parse_primary()?;
+    fn parse_term(&mut self) -> std::result::Result<f64, String> {
+        let mut left = self.parse_factor()?;
+        loop {
+            match self.peek() {
+                Some(b'*') => {
+                    self.pos += 1;
+                    left *= self.parse_factor()?;
                 }
-                Token::Slash => {
-                    self.next();
-                    let right = self.parse_primary()?;
-                    if right == 0.0 {
-                        return Err("Division by zero".into());
+                Some(b'/') => {
+                    self.pos += 1;
+                    let r = self.parse_factor()?;
+                    if r == 0.0 {
+                        return Err("division by zero".into());
                     }
-                    left /= right;
+                    left /= r;
+                }
+                Some(b'%') => {
+                    self.pos += 1;
+                    let r = self.parse_factor()?;
+                    if r == 0.0 {
+                        return Err("modulo by zero".into());
+                    }
+                    left %= r;
+                }
+                _ => return Ok(left),
+            }
+        }
+    }
+
+    fn parse_factor(&mut self) -> std::result::Result<f64, String> {
+        let base = self.parse_unary()?;
+        if self.consume(b'^') {
+            let exp = self.parse_factor()?;
+            return Ok(base.powf(exp));
+        }
+        Ok(base)
+    }
+
+    fn parse_unary(&mut self) -> std::result::Result<f64, String> {
+        if self.consume(b'-') {
+            let v = self.parse_unary()?;
+            return Ok(-v);
+        }
+        if self.consume(b'+') {
+            return self.parse_unary();
+        }
+        self.parse_atom()
+    }
+
+    fn parse_atom(&mut self) -> std::result::Result<f64, String> {
+        if self.consume(b'(') {
+            let v = self.parse_expr()?;
+            if !self.consume(b')') {
+                return Err(format!("expected `)` at position {}", self.pos));
+            }
+            return Ok(v);
+        }
+        self.parse_number()
+    }
+
+    fn parse_number(&mut self) -> std::result::Result<f64, String> {
+        self.skip_ws();
+        let start = self.pos;
+        let mut saw_digit = false;
+        let mut saw_dot = false;
+        while let Some(&b) = self.bytes.get(self.pos) {
+            match b {
+                b'0'..=b'9' => {
+                    saw_digit = true;
+                    self.pos += 1;
+                }
+                b'.' if !saw_dot => {
+                    saw_dot = true;
+                    self.pos += 1;
+                }
+                b'e' | b'E' => {
+                    self.pos += 1;
+                    if matches!(self.bytes.get(self.pos), Some(b'+' | b'-')) {
+                        self.pos += 1;
+                    }
                 }
                 _ => break,
             }
         }
-        Ok(left)
-    }
-
-    /// Primary: numbers and parenthesized expressions.
-    fn parse_primary(&mut self) -> std::result::Result<f64, String> {
-        match self.next() {
-            Some(Token::Number(n)) => Ok(n),
-            Some(Token::LParen) => {
-                let val = self.parse_addition()?;
-                match self.next() {
-                    Some(Token::RParen) => Ok(val),
-                    _ => Err("Expected closing parenthesis".into()),
-                }
-            }
-            Some(tok) => Err(format!("Unexpected token: {tok:?}")),
-            None => Err("Unexpected end of expression".into()),
+        if !saw_digit {
+            return Err(format!("expected number at position {start}"));
         }
+        let slice = std::str::from_utf8(&self.bytes[start..self.pos])
+            .map_err(|e| format!("non-utf8 number: {e}"))?;
+        slice
+            .parse::<f64>()
+            .map_err(|e| format!("invalid number `{slice}`: {e}"))
     }
-}
-
-/// Evaluate a math expression string and return the result.
-pub fn evaluate(expression: &str) -> std::result::Result<f64, String> {
-    let tokens = tokenize(expression)?;
-    if tokens.is_empty() {
-        return Err("Empty expression".into());
-    }
-    let mut parser = Parser::new(tokens);
-    parser.parse_expr()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
-    fn test_calculator_addition() {
-        let result = evaluate("2 + 3").unwrap();
-        assert!((result - 5.0).abs() < 1e-10);
+    fn arithmetic_precedence() {
+        assert_eq!(evaluate("1 + 2 * 3").unwrap(), 7.0);
+        assert_eq!(evaluate("(1 + 2) * 3").unwrap(), 9.0);
+        assert_eq!(evaluate("2 ^ 3 ^ 2").unwrap(), 512.0); // right-assoc
+        assert_eq!(evaluate("10 % 3").unwrap(), 1.0);
+        assert_eq!(evaluate("-3 + 5").unwrap(), 2.0);
+        assert_eq!(evaluate("--5").unwrap(), 5.0);
+        assert_eq!(evaluate("2.5 * 4").unwrap(), 10.0);
+        assert_eq!(evaluate("1e3 / 100").unwrap(), 10.0);
     }
 
     #[test]
-    fn test_calculator_precedence() {
-        let result = evaluate("2 + 3 * 4").unwrap();
-        assert!((result - 14.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_calculator_parentheses() {
-        let result = evaluate("(2 + 3) * 4").unwrap();
-        assert!((result - 20.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_calculator_division() {
-        let result = evaluate("10 / 3").unwrap();
-        assert!((result - 3.333333333333333).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_calculator_negative() {
-        let result = evaluate("-5 + 3").unwrap();
-        assert!((result - (-2.0)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_calculator_complex() {
-        let result = evaluate("((1 + 2) * (3 + 4)) / 7").unwrap();
-        assert!((result - 3.0).abs() < 1e-10);
+    fn errors_on_bad_input() {
+        assert!(evaluate("").is_err());
+        assert!(evaluate("1 / 0").is_err());
+        assert!(evaluate("(1 + 2").is_err());
+        assert!(evaluate("1 + abc").is_err());
+        assert!(evaluate("1 2").is_err());
     }
 
     #[tokio::test]
-    async fn test_calculator_via_run_json() {
-        let tool = CalculatorTool;
-        let input = serde_json::json!({"expression": "2 + 3 * 4"});
-        let result = tool.run_json(&input).await.unwrap();
-        assert_eq!(result, Value::String("14".to_string()));
+    async fn tool_runs_via_trait() {
+        let t = Calculator::new();
+        let mut args = std::collections::HashMap::new();
+        args.insert("expression".into(), json!("(2 + 3) * 4"));
+        let out = t._run(ToolInput::Structured(args)).await.unwrap();
+        assert_eq!(out.as_string(), "20");
+    }
+
+    #[tokio::test]
+    async fn tool_validation_error_on_missing_field() {
+        let t = Calculator::new();
+        let args = std::collections::HashMap::new();
+        let err = t._run(ToolInput::Structured(args)).await.unwrap_err();
+        assert_eq!(err.category(), "tool_validation");
+    }
+
+    #[test]
+    fn format_number_handles_integers_and_floats() {
+        assert_eq!(format_number(20.0), "20");
+        assert_eq!(format_number(2.5), "2.5");
+        assert_eq!(format_number(1.0 / 3.0), "0.333333333333");
     }
 }

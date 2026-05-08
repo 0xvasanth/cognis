@@ -1,191 +1,161 @@
-//! Shell command execution tool.
+//! Sandboxed shell tool.
 //!
-//! Executes shell commands via `tokio::process::Command` with optional command
-//! whitelisting and configurable timeout.
+//! Refuses any command whose program (the first token) isn't on a
+//! caller-supplied allowlist. The agent never sees the raw shell — every
+//! invocation goes through `Command` with explicit args, `cwd`, and timeout.
+//!
+//! # Why no shell parsing?
+//!
+//! Shell-string parsing is a footgun: quoting, globbing, and pipelines all
+//! invite injection. The tool takes a structured `program + args` JSON
+//! payload so the LLM can't slip a `; rm -rf /` past us.
 
-use async_trait::async_trait;
-use cognis_core::error::{CognisError, Result};
-use cognis_core::tools::base::BaseTool;
-use cognis_core::tools::types::{ToolInput, ToolOutput};
-use serde_json::{json, Value};
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
-/// Execute shell commands safely.
-pub struct ShellTool {
-    /// Optional whitelist of allowed command prefixes. `None` means allow all.
-    pub allowed_commands: Option<Vec<String>>,
-    /// Optional working directory for command execution.
-    pub working_dir: Option<String>,
-    /// Timeout in seconds (default: 30).
-    pub timeout_secs: u64,
+use async_trait::async_trait;
+use cognis_core::schemars::{self, JsonSchema};
+use serde::Deserialize;
+use tokio::process::Command;
+
+use cognis_core::{CognisError, Result};
+use cognis_llm::tools::{Tool, ToolInput, ToolOutput};
+
+/// Input shape: `{ "program": "ls", "args": ["-la"] }`.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ShellInput {
+    /// Program name (must appear on the tool's allowlist).
+    program: String,
+    /// Arguments passed to the program. No shell parsing is performed.
+    #[serde(default)]
+    args: Vec<String>,
 }
 
-impl Default for ShellTool {
-    fn default() -> Self {
+/// Sandboxed shell tool.
+///
+/// Construction requires:
+/// - An explicit allowlist of program names.
+/// - A working directory (relative to which `cwd` is resolved).
+/// - A per-call timeout.
+pub struct ShellTool {
+    allowed: Vec<String>,
+    cwd: PathBuf,
+    timeout: Duration,
+}
+
+impl ShellTool {
+    /// Build a shell tool. `allowed` is the *exact* set of program names
+    /// the agent may run — typically things like `["ls", "cat", "rg"]`.
+    /// Programs are not resolved against `$PATH` for the allowlist check —
+    /// the value `"ls"` matches both `/usr/bin/ls` and `/bin/ls` because
+    /// the program field is compared as-is.
+    pub fn new(
+        allowed: impl IntoIterator<Item = impl Into<String>>,
+        cwd: impl Into<PathBuf>,
+        timeout: Duration,
+    ) -> Self {
         Self {
-            allowed_commands: None,
-            working_dir: None,
-            timeout_secs: 30,
+            allowed: allowed.into_iter().map(Into::into).collect(),
+            cwd: cwd.into(),
+            timeout,
         }
+    }
+
+    /// Wrap behind an `Arc<dyn Tool>` for registration.
+    pub fn into_arc(self) -> Arc<dyn Tool> {
+        Arc::new(self)
     }
 }
 
 #[async_trait]
-impl BaseTool for ShellTool {
+impl Tool for ShellTool {
     fn name(&self) -> &str {
         "shell"
     }
-
     fn description(&self) -> &str {
-        "Execute shell commands. Use with caution."
+        "Run a sandboxed shell command. The `program` must be on the tool's \
+         allowlist. Arguments are passed without shell parsing."
     }
-
-    fn args_schema(&self) -> Option<Value> {
-        Some(json!({
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string"
-                }
-            },
-            "required": ["command"]
-        }))
+    fn args_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::to_value(schemars::schema_for!(ShellInput)).unwrap_or_default())
     }
-
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
-        let command = extract_command(&input)?;
+        let parsed: ShellInput = serde_json::from_value(input.into_json())
+            .map_err(|e| CognisError::ToolValidationError(format!("shell: {e}")))?;
 
-        // Validate against allowed commands whitelist
-        if let Some(ref allowed) = self.allowed_commands {
-            let cmd_trimmed = command.trim();
-            let is_allowed = allowed.iter().any(|prefix| {
-                cmd_trimmed == prefix.as_str() || cmd_trimmed.starts_with(&format!("{} ", prefix))
+        if !self.allowed.iter().any(|p| p == &parsed.program) {
+            return Err(CognisError::Tool {
+                name: "shell".into(),
+                reason: format!("program `{}` not on allowlist", parsed.program),
             });
-            if !is_allowed {
-                return Err(CognisError::ToolException(format!(
-                    "Command not allowed: '{command}'. Allowed commands: {allowed:?}"
-                )));
-            }
         }
 
-        let mut cmd = tokio::process::Command::new("sh");
-        cmd.arg("-c").arg(&command);
+        let mut cmd = Command::new(&parsed.program);
+        cmd.args(&parsed.args);
+        cmd.current_dir(&self.cwd);
+        cmd.kill_on_drop(true);
 
-        if let Some(ref dir) = self.working_dir {
-            cmd.current_dir(dir);
-        }
-
-        let output = tokio::time::timeout(Duration::from_secs(self.timeout_secs), cmd.output())
+        let fut = cmd.output();
+        let output = tokio::time::timeout(self.timeout, fut)
             .await
-            .map_err(|_| {
-                CognisError::ToolException(format!(
-                    "Command timed out after {} seconds",
-                    self.timeout_secs
-                ))
+            .map_err(|_| CognisError::Timeout {
+                operation: format!("shell:{}", parsed.program),
+                timeout_ms: self.timeout.as_millis() as u64,
             })?
-            .map_err(|e| CognisError::ToolException(format!("Failed to execute command: {e}")))?;
+            .map_err(|e| CognisError::Tool {
+                name: "shell".into(),
+                reason: format!("spawn `{}`: {e}", parsed.program),
+            })?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 
-        let combined = if stderr.is_empty() {
-            stdout.to_string()
-        } else if stdout.is_empty() {
-            stderr.to_string()
-        } else {
-            format!("{stdout}{stderr}")
-        };
-
-        Ok(ToolOutput::Content(Value::String(combined)))
-    }
-}
-
-/// Extract the command string from various input formats.
-fn extract_command(input: &ToolInput) -> Result<String> {
-    match input {
-        ToolInput::Text(s) => Ok(s.clone()),
-        ToolInput::Structured(map) => {
-            if let Some(Value::String(cmd)) = map.get("command") {
-                Ok(cmd.clone())
-            } else {
-                Err(CognisError::ToolValidationError(
-                    "Missing required field 'command'".into(),
-                ))
-            }
-        }
-        ToolInput::ToolCall(tc) => {
-            if let Some(Value::String(cmd)) = tc.args.get("command") {
-                Ok(cmd.clone())
-            } else {
-                Err(CognisError::ToolValidationError(
-                    "Missing required field 'command'".into(),
-                ))
-            }
-        }
+        Ok(ToolOutput::Content(serde_json::json!({
+            "exit_code": output.status.code(),
+            "stdout": stdout,
+            "stderr": stderr,
+        })))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[tokio::test]
-    async fn test_shell_echo() {
-        let tool = ShellTool::default();
-        let input = ToolInput::Structured(
-            [(
-                "command".to_string(),
-                Value::String("echo hello".to_string()),
-            )]
-            .into_iter()
-            .collect(),
-        );
-        let result = tool._run(input).await.unwrap();
-        match result {
-            ToolOutput::Content(Value::String(s)) => assert_eq!(s, "hello\n"),
-            other => panic!("Expected Content(String), got: {other:?}"),
-        }
+    async fn refuses_program_not_on_allowlist() {
+        let t = ShellTool::new(["echo"], ".", Duration::from_secs(2));
+        let mut a = std::collections::HashMap::new();
+        a.insert("program".into(), json!("rm"));
+        a.insert("args".into(), json!(["-rf", "/"]));
+        let err = t._run(ToolInput::Structured(a)).await.unwrap_err();
+        assert!(matches!(err, CognisError::Tool { .. }));
     }
 
     #[tokio::test]
-    async fn test_shell_with_allowed_commands() {
-        let tool = ShellTool {
-            allowed_commands: Some(vec!["echo".to_string()]),
-            ..Default::default()
+    async fn runs_allowed_program() {
+        let t = ShellTool::new(["echo"], ".", Duration::from_secs(5));
+        let mut a = std::collections::HashMap::new();
+        a.insert("program".into(), json!("echo"));
+        a.insert("args".into(), json!(["hello"]));
+        let out = t._run(ToolInput::Structured(a)).await.unwrap();
+        let v: serde_json::Value = match out {
+            ToolOutput::Content(v) => v,
+            _ => panic!(),
         };
-
-        // Allowed command should succeed
-        let input = ToolInput::Structured(
-            [(
-                "command".to_string(),
-                Value::String("echo hello".to_string()),
-            )]
-            .into_iter()
-            .collect(),
-        );
-        let result = tool._run(input).await;
-        assert!(result.is_ok());
-
-        // Blocked command should fail
-        let input = ToolInput::Structured(
-            [("command".to_string(), Value::String("rm -rf /".to_string()))]
-                .into_iter()
-                .collect(),
-        );
-        let result = tool._run(input).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.to_string().contains("not allowed"),
-            "Expected 'not allowed' in error: {err}"
-        );
+        assert!(v["stdout"].as_str().unwrap().contains("hello"));
+        assert_eq!(v["exit_code"], 0);
     }
 
     #[tokio::test]
-    async fn test_shell_via_run_json() {
-        let tool = ShellTool::default();
-        let input = serde_json::json!({"command": "echo test"});
-        let result = tool.run_json(&input).await.unwrap();
-        assert_eq!(result, Value::String("test\n".to_string()));
+    async fn times_out_on_long_running_command() {
+        let t = ShellTool::new(["sleep"], ".", Duration::from_millis(50));
+        let mut a = std::collections::HashMap::new();
+        a.insert("program".into(), json!("sleep"));
+        a.insert("args".into(), json!(["5"]));
+        let err = t._run(ToolInput::Structured(a)).await.unwrap_err();
+        assert!(matches!(err, CognisError::Timeout { .. }));
     }
 }

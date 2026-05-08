@@ -1,95 +1,45 @@
-<div align="center">
-
 # cognis-core
 
-**The foundation traits and types for the Cognis LLM framework.**
+The foundation crate for Cognis v2, providing the core traits and primitives for building composable AI workflows.
 
-[![crates.io](https://img.shields.io/crates/v/cognis-core.svg)](https://crates.io/crates/cognis-core)
-[![docs.rs](https://docs.rs/cognis-core/badge.svg)](https://docs.rs/cognis-core)
-[![MIT](https://img.shields.io/crates/l/cognis-core.svg)](https://opensource.org/licenses/MIT)
+## Purpose
+`cognis-core` defines the typed `Runnable<I, O>` trait, which is the building block of all operations in Cognis. It also provides the essential data structures for chat messages, prompts, output parsing, and functional composition.
 
-[Workspace](https://github.com/0xvasanth/cognis) | [API Docs](https://docs.rs/cognis-core)
+## Key Features
+- **Runnable Trait**: A standardized interface for any unit of work that can be invoked, batched, or streamed.
+- **Composition**: Primitives like `pipe`, `Parallel`, and `Branch` to build complex chains from simple runnables.
+- **Messages**: Typed chat messages (`SystemMessage`, `HumanMessage`, `AiMessage`, `ToolMessage`) with support for multi-modal content.
+- **Prompts**: Template systems for generating formatted strings or message sequences.
+- **Output Parsers**: Tools to transform raw LLM output into structured data (JSON, XML, lists, etc.).
+- **Wrappers**: Higher-order runnables for `Retry`, `Fallback`, `Timeout`, and `Cache`.
 
-</div>
-
----
-
-`cognis-core` defines the trait interfaces and types that every crate in the [Cognis](https://github.com/0xvasanth/cognis) workspace builds on. It has **zero** workspace dependencies — everything starts here.
-
-## Core Abstractions
-
-```text
-BaseChatModel  ─  Chat model providers (Anthropic, OpenAI, ...)
-BaseTool       ─  Tools that agents can call
-Runnable       ─  Composable async computation unit (the LCEL equivalent)
-Message        ─  Human | AI | System | Tool message types
-Embeddings     ─  Vector embedding providers
-VectorStore    ─  Similarity search interface
-Document       ─  Text + metadata, used across loaders and retrievers
+## Usage
+Add this to your `Cargo.toml`:
+```toml
+[dependencies]
+cognis-core = "0.1.0"
 ```
 
-## Composable Chains with `chain!`
-
-The `Runnable` trait and its combinators let you compose pipelines:
-
+### Basic Example: Defining and Piping Runnables
 ```rust
-use std::sync::Arc;
-use cognis_core::chain;
-use cognis_core::language_models::{ChatModelRunnable, FakeListChatModel};
-use cognis_core::output_parsers::StrOutputParser;
-use cognis_core::prompts::ChatPromptTemplate;
-use cognis_core::runnables::Runnable;
-use serde_json::json;
+use cognis_core::prelude::*;
+use async_trait::async_trait;
+
+struct Doubler;
+
+#[async_trait]
+impl Runnable<u32, u32> for Doubler {
+    async fn invoke(&self, input: u32, _: RunnableConfig) -> Result<u32> {
+        Ok(input * 2)
+    }
+}
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let prompt = ChatPromptTemplate::from_messages(vec![
-        ("system", "You are a helpful assistant."),
-        ("human", "Explain {topic} in one sentence."),
-    ])?;
-
-    let model = FakeListChatModel::new(vec![
-        "Rust ensures memory safety without garbage collection.".into(),
-    ]);
-
-    let chain = chain!(
-        prompt,
-        ChatModelRunnable::new(Arc::new(model)),
-        StrOutputParser
-    )?;
-
-    let result = chain.invoke(json!({"topic": "Rust"}), None).await?;
-    println!("{}", result.as_str().unwrap());
+async fn main() -> Result<()> {
+    let chain = pipe(Doubler, lambda(|x: u32| async move { Ok(x + 1) }));
+    
+    let result = chain.invoke(5, RunnableConfig::default()).await?;
+    assert_eq!(result, 11); // (5 * 2) + 1
     Ok(())
 }
 ```
-
-## Runnable Combinators
-
-| Combinator | What it does |
-|------------|-------------|
-| `chain!` / `RunnableSequence` | Pipeline: A then B then C |
-| `RunnableParallel` | Fan-out: run A, B, C concurrently |
-| `RunnableBranch` | Conditional routing based on input |
-| `RunnableLambda` | Wrap any closure as a Runnable |
-| `RunnableWithFallbacks` | Try A, fall back to B on error |
-| `RunnableRetry` | Retry with configurable backoff |
-
-## Testing
-
-Fake model implementations are included for testing without API keys or network:
-
-- `FakeListChatModel` — cycles through predefined string responses
-- `FakeMessagesListChatModel` — cycles through predefined `Message` responses
-- `GenericFakeChatModel` — word-level streaming from predefined messages
-- `FakeListLLM` — completion-style fake model
-- `DeterministicFakeEmbedding` — produces reproducible embeddings
-
-## Part of the Cognis Workspace
-
-| Crate | Role |
-|-------|------|
-| **cognis-core** | Foundation traits and types (you are here) |
-| [cognis](https://crates.io/crates/cognis) | LLM providers, chains, memory, tools |
-| [cognisgraph](https://crates.io/crates/cognisgraph) | State graph orchestration engine |
-| [cognisagent](https://crates.io/crates/cognisagent) | High-level agent framework |

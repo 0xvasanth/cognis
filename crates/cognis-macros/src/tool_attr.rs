@@ -13,9 +13,19 @@
 //!   emits a separate `BaseTool` impl whose `_run` dispatches into that
 //!   method (letting tools hold state like HTTP clients or API keys).
 //!
-//! Generated code references `cognis_core` by absolute path, so callers
-//! only need `cognis_core` and `async_trait` in scope. Regex compilation
-//! for `#[schema(pattern(...))]` goes through
+//! # Schema generation
+//!
+//! The generated args struct derives `schemars::JsonSchema`. The
+//! `args_schema()` method calls `schemars::schema_for!(...)` and then
+//! post-processes the resulting JSON to inject keywords driven by
+//! `#[schema(...)]` validators (minimum/maximum/minLength/maxLength/
+//! pattern/enum/format). This keeps the schemars derive vanilla while
+//! preserving the rich validator surface the rest of the framework
+//! depends on.
+//!
+//! Generated code references `cognis_core` and `schemars` by absolute
+//! path, so callers only need `cognis_core` and `async_trait` in scope.
+//! Regex compilation for `#[schema(pattern(...))]` goes through
 //! `cognis_core::tools::validation::__regex` — users do not need to add
 //! `regex` to their `Cargo.toml`.
 
@@ -30,6 +40,27 @@ use syn::{
 
 use crate::schema_attr::{self, Validator};
 
+/// Convert a `crate_path` string like `"cognis_core"` or `"cognis_core"`
+/// into an absolute path token (`::cognis_core` / `::cognis_core`) that
+/// can be interpolated into generated code with `quote!`.
+fn root_path(crate_path: &str) -> syn::Path {
+    let segments: Vec<syn::Ident> = crate_path
+        .split("::")
+        .map(|seg| syn::Ident::new(seg, proc_macro2::Span::call_site()))
+        .collect();
+    syn::parse_quote!(:: #(#segments)::*)
+}
+
+/// Stringify a `syn::Path` in the form schemars's `crate =` attribute expects.
+fn path_to_string(p: &syn::Path) -> String {
+    let segs: Vec<String> = p.segments.iter().map(|s| s.ident.to_string()).collect();
+    if p.leading_colon.is_some() {
+        format!("::{}::schemars", segs.join("::"))
+    } else {
+        format!("{}::schemars", segs.join("::"))
+    }
+}
+
 /// Parsed arguments of the `#[tool(...)]` attribute.
 #[derive(Default)]
 pub(crate) struct ToolArgs {
@@ -37,11 +68,18 @@ pub(crate) struct ToolArgs {
     pub description: Option<String>,
     #[allow(dead_code)]
     pub return_direct: Option<bool>,
+    /// Crate path used in generated code, e.g. `"cognis_core"` (default,
+    /// for v1) or `"cognis_core"` (for v2). The macro emits all framework
+    /// type references as `::<crate_path>::tools::*` etc.
+    pub crate_path: String,
 }
 
 impl Parse for ToolArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut args = ToolArgs::default();
+        let mut args = ToolArgs {
+            crate_path: "cognis_core".to_string(),
+            ..ToolArgs::default()
+        };
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
             let _: Token![=] = input.parse()?;
@@ -52,11 +90,12 @@ impl Parse for ToolArgs {
                     let b: syn::LitBool = input.parse()?;
                     args.return_direct = Some(b.value);
                 }
+                "crate_path" => args.crate_path = input.parse::<LitStr>()?.value(),
                 other => {
                     return Err(syn::Error::new(
                         key.span(),
                         format!(
-                            "unknown #[tool] argument `{other}`; expected name, description, or return_direct"
+                            "unknown #[tool] argument `{other}`; expected name, description, return_direct, or crate_path"
                         ),
                     ))
                 }
@@ -72,8 +111,6 @@ impl Parse for ToolArgs {
 /// Entry point — dispatches to the correct form based on what `input`
 /// parses as.
 pub(crate) fn expand(args: ToolArgs, input: TokenStream2) -> syn::Result<TokenStream2> {
-    // Try ItemFn first — if the annotated item is an impl block, we won't
-    // mis-parse it as a fn because ItemImpl has a distinct `impl` keyword.
     if let Ok(item_fn) = syn::parse2::<ItemFn>(input.clone()) {
         return expand_fn(args, item_fn);
     }
@@ -108,10 +145,8 @@ fn expand_fn(args: ToolArgs, item_fn: ItemFn) -> syn::Result<TokenStream2> {
     let fn_ident = &item_fn.sig.ident;
     let fn_doc = collect_doc_comment(&item_fn.attrs);
 
-    // Parse the fn parameters into arg specs. Rejects `&self`/references.
     let arg_specs = parse_typed_args(&item_fn.sig, /* allow_self = */ false)?;
 
-    // Derive identifiers.
     let struct_ident = pascal_case_ident(&fn_ident.to_string(), fn_ident.span());
     let args_struct_ident = format_ident!("__{}Args", pascal_case(&fn_ident.to_string()));
     let body_fn_ident = format_ident!("__{}_body", fn_ident);
@@ -120,9 +155,9 @@ fn expand_fn(args: ToolArgs, item_fn: ItemFn) -> syn::Result<TokenStream2> {
     let description = args.description.clone().or(fn_doc).unwrap_or_default();
     let return_direct = args.return_direct.unwrap_or(false);
 
-    // Emit components.
-    let args_struct = emit_args_struct(&args_struct_ident, &arg_specs);
-    let validate_impl = emit_validate_impl(&args_struct_ident, &arg_specs)?;
+    let root = root_path(&args.crate_path);
+    let args_struct = emit_args_struct(&args_struct_ident, &arg_specs, &root);
+    let validate_impl = emit_validate_impl(&args_struct_ident, &arg_specs, &root)?;
     let body_fn = emit_body_fn(&body_fn_ident, &item_fn)?;
     let base_tool_impl = emit_base_tool_impl_standalone(
         vis,
@@ -133,6 +168,7 @@ fn expand_fn(args: ToolArgs, item_fn: ItemFn) -> syn::Result<TokenStream2> {
         &description,
         return_direct,
         &arg_specs,
+        &root,
     );
 
     Ok(quote! {
@@ -162,7 +198,6 @@ fn expand_impl(args: ToolArgs, item_impl: ItemImpl) -> syn::Result<TokenStream2>
         ));
     }
 
-    // Identify the single async fn in the impl.
     let mut async_methods = Vec::new();
     for item in &item_impl.items {
         if let ImplItem::Fn(m) = item {
@@ -186,7 +221,6 @@ fn expand_impl(args: ToolArgs, item_impl: ItemImpl) -> syn::Result<TokenStream2>
     }
     let method = async_methods[0];
 
-    // Extract the self-type (ident) from the impl target.
     let self_ty = &*item_impl.self_ty;
     let struct_path = quote! { #self_ty };
     let struct_ident = match self_ty {
@@ -204,7 +238,6 @@ fn expand_impl(args: ToolArgs, item_impl: ItemImpl) -> syn::Result<TokenStream2>
         }
     };
 
-    // Must take &self.
     let receiver = method.sig.receiver().ok_or_else(|| {
         syn::Error::new_spanned(
             &method.sig,
@@ -228,7 +261,6 @@ fn expand_impl(args: ToolArgs, item_impl: ItemImpl) -> syn::Result<TokenStream2>
     let method_doc = collect_doc_comment(&method.attrs);
     let arg_specs = parse_typed_args(&method.sig, /* allow_self = */ true)?;
 
-    // Derived idents.
     let args_struct_ident = format_ident!(
         "__{}{}Args",
         pascal_case(&struct_ident.to_string()),
@@ -242,9 +274,9 @@ fn expand_impl(args: ToolArgs, item_impl: ItemImpl) -> syn::Result<TokenStream2>
     let description = args.description.clone().or(method_doc).unwrap_or_default();
     let return_direct = args.return_direct.unwrap_or(false);
 
-    // Emit components.
-    let args_struct = emit_args_struct(&args_struct_ident, &arg_specs);
-    let validate_impl = emit_validate_impl(&args_struct_ident, &arg_specs)?;
+    let root = root_path(&args.crate_path);
+    let args_struct = emit_args_struct(&args_struct_ident, &arg_specs, &root);
+    let validate_impl = emit_validate_impl(&args_struct_ident, &arg_specs, &root)?;
     let base_tool_impl = emit_base_tool_impl_method(
         &struct_path,
         &args_struct_ident,
@@ -253,16 +285,13 @@ fn expand_impl(args: ToolArgs, item_impl: ItemImpl) -> syn::Result<TokenStream2>
         &description,
         return_direct,
         &arg_specs,
+        &root,
     );
 
     // Strip helper attributes from the preserved impl block's method
-    // parameters. Both `#[schema(...)]` and `///` doc comments were
-    // already captured into `arg_specs`, and leaving them in place on
-    // the regenerated fn parameters would be a hard error:
-    //
-    // - `#[schema]` → "cannot find attribute `schema`" (no derive in scope)
-    // - `///` (doc) → "allow, cfg, ... are the only allowed built-in
-    //   attributes in function parameters" on stable Rust
+    // parameters. `#[schema(...)]` and `///` doc comments were already
+    // captured into `arg_specs`; leaving them on the regenerated fn
+    // parameters would be a hard error on stable Rust.
     let mut cleaned_impl = item_impl.clone();
     for item in cleaned_impl.items.iter_mut() {
         if let ImplItem::Fn(m) = item {
@@ -302,13 +331,8 @@ struct ArgSpec {
     /// `true` iff the outer type was `Option<T>`.
     is_option: bool,
     /// Doc comment (rustdoc) attached to the argument, passed through to
-    /// the generated struct so `#[derive(JsonSchema)]` picks it up.
+    /// the generated struct so `schemars` picks it up as `description`.
     docs: Vec<syn::Attribute>,
-    /// Raw `#[schema(...)]` attributes from the argument, forwarded to
-    /// the generated struct field. These drive both the JSON-Schema
-    /// emission (via `#[derive(JsonSchema)]`) and the runtime validator
-    /// emission (via [`emit_validate_impl`]).
-    schema_attrs: Vec<syn::Attribute>,
     /// Parsed validators (accumulated across all `#[schema(...)]` attrs).
     validators: Vec<Validator>,
 }
@@ -324,7 +348,6 @@ fn parse_typed_args(sig: &Signature, allow_self: bool) -> syn::Result<Vec<ArgSpe
                         "standalone #[tool] functions cannot take `self` — use the impl-block form instead",
                     ));
                 }
-                // In the impl form, skip the receiver; validated by caller.
             }
             FnArg::Typed(pat_type) => {
                 let ident = match &*pat_type.pat {
@@ -350,17 +373,13 @@ fn parse_typed_args(sig: &Signature, allow_self: bool) -> syn::Result<Vec<ArgSpe
                     .filter(|a| a.path().is_ident("doc"))
                     .cloned()
                     .collect();
-                let schema_attrs: Vec<syn::Attribute> = pat_type
+
+                let mut validators = Vec::new();
+                for attr in pat_type
                     .attrs
                     .iter()
                     .filter(|a| a.path().is_ident("schema"))
-                    .cloned()
-                    .collect();
-
-                // Parse validators for runtime check emission. Schema emission
-                // happens in the derive(JsonSchema) on the generated struct.
-                let mut validators = Vec::new();
-                for attr in &schema_attrs {
+                {
                     let parsed = attr.parse_args::<schema_attr::SchemaAttr>()?;
                     validators.extend(parsed.validators);
                 }
@@ -371,7 +390,6 @@ fn parse_typed_args(sig: &Signature, allow_self: bool) -> syn::Result<Vec<ArgSpe
                     inner_ty: inner_ty.clone(),
                     is_option,
                     docs,
-                    schema_attrs,
                     validators,
                 });
             }
@@ -401,20 +419,24 @@ fn unwrap_option(ty: &Type) -> (Type, bool) {
 // Code emission
 // ---------------------------------------------------------------------------
 
-fn emit_args_struct(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> TokenStream2 {
+fn emit_args_struct(
+    struct_ident: &syn::Ident,
+    specs: &[ArgSpec],
+    root: &syn::Path,
+) -> TokenStream2 {
     let fields = specs.iter().map(|s| {
         let ident = &s.ident;
         let ty = &s.ty;
         let docs = &s.docs;
-        let schema_attrs = &s.schema_attrs;
         quote! {
             #(#docs)*
-            #(#schema_attrs)*
             pub #ident: #ty,
         }
     });
+    let crate_str = path_to_string(root);
     quote! {
-        #[derive(::serde::Deserialize, ::cognis_macros::JsonSchema)]
+        #[derive(::serde::Deserialize, #root::schemars::JsonSchema)]
+        #[schemars(crate = #crate_str)]
         #[allow(non_camel_case_types, non_snake_case, dead_code)]
         struct #struct_ident {
             #(#fields)*
@@ -422,10 +444,11 @@ fn emit_args_struct(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> TokenStream
     }
 }
 
-fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Result<TokenStream2> {
-    // Per-field pattern regex statics — one per `Pattern` validator per
-    // field. Names are derived from struct + field + index so multiple
-    // patterns on the same field still emit unique statics.
+fn emit_validate_impl(
+    struct_ident: &syn::Ident,
+    specs: &[ArgSpec],
+    root: &syn::Path,
+) -> syn::Result<TokenStream2> {
     let mut pattern_statics = Vec::new();
     let mut validator_stmts = Vec::new();
 
@@ -441,7 +464,7 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
                     let min_tok = option_f64(min);
                     let max_tok = option_f64(max);
                     checks.push(quote! {
-                        ::cognis_core::tools::validation::check_range(
+                        #root::tools::validation::check_range(
                             #field_name,
                             (*__v) as f64,
                             #min_tok,
@@ -456,14 +479,10 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
                         TypeKind::String => {
                             quote! { ::core::primitive::str::chars(__v.as_str()).count() }
                         }
-                        TypeKind::Vec => quote! { __v.len() },
-                        TypeKind::Other => {
-                            // Fallback: assume it has a `.len()` method.
-                            quote! { __v.len() }
-                        }
+                        TypeKind::Vec | TypeKind::Other => quote! { __v.len() },
                     };
                     checks.push(quote! {
-                        ::cognis_core::tools::validation::check_length(
+                        #root::tools::validation::check_length(
                             #field_name,
                             #len_expr,
                             #min_tok,
@@ -488,20 +507,20 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
                     pattern_statics.push(quote! {
                         static #static_ident:
                             ::std::sync::OnceLock<
-                                ::cognis_core::tools::validation::__regex::Regex,
+                                #root::tools::validation::__regex::Regex,
                             > = ::std::sync::OnceLock::new();
                         #[allow(non_snake_case)]
                         fn #accessor_ident()
-                            -> &'static ::cognis_core::tools::validation::__regex::Regex
+                            -> &'static #root::tools::validation::__regex::Regex
                         {
                             #static_ident.get_or_init(|| {
-                                ::cognis_core::tools::validation::__regex::Regex::new(#pat_lit)
+                                #root::tools::validation::__regex::Regex::new(#pat_lit)
                                     .expect("regex validated at macro time")
                             })
                         }
                     });
                     checks.push(quote! {
-                        ::cognis_core::tools::validation::check_pattern(
+                        #root::tools::validation::check_pattern(
                             #field_name,
                             __v.as_str(),
                             #accessor_ident(),
@@ -511,7 +530,7 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
                 Validator::EnumValues(values) => {
                     let values_tok = values.iter().map(|s| quote! { #s });
                     checks.push(quote! {
-                        ::cognis_core::tools::validation::check_enum(
+                        #root::tools::validation::check_enum(
                             #field_name,
                             __v.as_str(),
                             &[#(#values_tok),*],
@@ -528,10 +547,10 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
                         schema_attr::FormatName::Ipv6 => quote! { Ipv6 },
                     };
                     checks.push(quote! {
-                        ::cognis_core::tools::validation::check_format(
+                        #root::tools::validation::check_format(
                             #field_name,
                             __v.as_str(),
-                            ::cognis_core::tools::validation::Format::#fmt_variant,
+                            #root::tools::validation::Format::#fmt_variant,
                         )?;
                     });
                 }
@@ -565,8 +584,8 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
 
     Ok(quote! {
         #(#pattern_statics)*
-        impl ::cognis_core::tools::validation::ValidateArgs for #struct_ident {
-            fn validate(&self) -> ::cognis_core::error::Result<()> {
+        impl #root::tools::validation::ValidateArgs for #struct_ident {
+            fn validate(&self) -> #root::error::Result<()> {
                 #(#validator_stmts)*
                 Ok(())
             }
@@ -575,10 +594,6 @@ fn emit_validate_impl(struct_ident: &syn::Ident, specs: &[ArgSpec]) -> syn::Resu
 }
 
 fn emit_body_fn(body_fn_ident: &syn::Ident, item_fn: &ItemFn) -> syn::Result<TokenStream2> {
-    // Render the function with a renamed ident. Preserve its signature
-    // (including async, return type) and body. Arg attributes (docs,
-    // #[schema]) are stripped — they're meaningless on the body fn and
-    // would trigger unused-attribute warnings.
     let vis = &item_fn.vis;
     let mut sig = item_fn.sig.clone();
     sig.ident = body_fn_ident.clone();
@@ -604,6 +619,7 @@ fn emit_base_tool_impl_standalone(
     description: &str,
     return_direct: bool,
     specs: &[ArgSpec],
+    root: &syn::Path,
 ) -> TokenStream2 {
     let field_idents: Vec<_> = specs.iter().map(|s| &s.ident).collect();
     let return_direct_method = if return_direct {
@@ -613,26 +629,27 @@ fn emit_base_tool_impl_standalone(
     } else {
         None
     };
+    let schema_body = emit_args_schema_body(args_struct_ident, specs, root);
 
     quote! {
         #[::async_trait::async_trait]
-        impl ::cognis_core::tools::BaseTool for #struct_ident {
+        impl #root::tools::BaseTool for #struct_ident {
             fn name(&self) -> &str { #tool_name }
             fn description(&self) -> &str { #description }
             fn args_schema(&self) -> ::core::option::Option<::serde_json::Value> {
-                ::core::option::Option::Some(#args_struct_ident::json_schema())
+                #schema_body
             }
             #return_direct_method
             async fn _run(
                 &self,
-                input: ::cognis_core::tools::ToolInput,
-            ) -> ::cognis_core::error::Result<::cognis_core::tools::ToolOutput> {
+                input: #root::tools::ToolInput,
+            ) -> #root::error::Result<#root::tools::ToolOutput> {
                 let __json = input.into_json();
                 let __args: #args_struct_ident = ::serde_json::from_value(__json)
-                    .map_err(|e| ::cognis_core::error::CognisError::ToolValidationError(
+                    .map_err(|e| #root::error::CognisError::ToolValidationError(
                         e.to_string(),
                     ))?;
-                <#args_struct_ident as ::cognis_core::tools::validation::ValidateArgs>::validate(&__args)?;
+                <#args_struct_ident as #root::tools::validation::ValidateArgs>::validate(&__args)?;
                 #body_fn_ident(#(__args.#field_idents),*).await
             }
         }
@@ -648,6 +665,7 @@ fn emit_base_tool_impl_method(
     description: &str,
     return_direct: bool,
     specs: &[ArgSpec],
+    root: &syn::Path,
 ) -> TokenStream2 {
     let field_idents: Vec<_> = specs.iter().map(|s| &s.ident).collect();
     let return_direct_method = if return_direct {
@@ -657,29 +675,145 @@ fn emit_base_tool_impl_method(
     } else {
         None
     };
+    let schema_body = emit_args_schema_body(args_struct_ident, specs, root);
 
     quote! {
         #[::async_trait::async_trait]
-        impl ::cognis_core::tools::BaseTool for #struct_path {
+        impl #root::tools::BaseTool for #struct_path {
             fn name(&self) -> &str { #tool_name }
             fn description(&self) -> &str { #description }
             fn args_schema(&self) -> ::core::option::Option<::serde_json::Value> {
-                ::core::option::Option::Some(#args_struct_ident::json_schema())
+                #schema_body
             }
             #return_direct_method
             async fn _run(
                 &self,
-                input: ::cognis_core::tools::ToolInput,
-            ) -> ::cognis_core::error::Result<::cognis_core::tools::ToolOutput> {
+                input: #root::tools::ToolInput,
+            ) -> #root::error::Result<#root::tools::ToolOutput> {
                 let __json = input.into_json();
                 let __args: #args_struct_ident = ::serde_json::from_value(__json)
-                    .map_err(|e| ::cognis_core::error::CognisError::ToolValidationError(
+                    .map_err(|e| #root::error::CognisError::ToolValidationError(
                         e.to_string(),
                     ))?;
-                <#args_struct_ident as ::cognis_core::tools::validation::ValidateArgs>::validate(&__args)?;
+                <#args_struct_ident as #root::tools::validation::ValidateArgs>::validate(&__args)?;
                 self.#method_ident(#(__args.#field_idents),*).await
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// args_schema() body — schemars + per-field validator post-processing.
+// ---------------------------------------------------------------------------
+
+/// Build the body of `args_schema()`. Calls `schemars::schema_for!(Args)`,
+/// converts to `serde_json::Value`, then inserts validator-derived keywords
+/// (minimum/maximum/minLength/maxLength/pattern/enum/format) into the
+/// matching `properties.<field>` objects.
+fn emit_args_schema_body(
+    args_struct_ident: &syn::Ident,
+    specs: &[ArgSpec],
+    root: &syn::Path,
+) -> TokenStream2 {
+    let mut field_mutations = Vec::new();
+    for spec in specs {
+        let field_name = spec.ident.to_string();
+        let type_kind = classify_type(&spec.inner_ty);
+        let mut inserts = Vec::new();
+
+        for v in &spec.validators {
+            match v {
+                Validator::Range { min, max } => {
+                    if let Some(m) = min {
+                        let tok = number_token(*m);
+                        inserts.push(quote! {
+                            __field.insert("minimum".to_string(), ::serde_json::json!(#tok));
+                        });
+                    }
+                    if let Some(m) = max {
+                        let tok = number_token(*m);
+                        inserts.push(quote! {
+                            __field.insert("maximum".to_string(), ::serde_json::json!(#tok));
+                        });
+                    }
+                }
+                Validator::Length { min, max } => {
+                    let (min_key, max_key) = match type_kind {
+                        TypeKind::Vec => ("minItems", "maxItems"),
+                        TypeKind::String | TypeKind::Other => ("minLength", "maxLength"),
+                    };
+                    if let Some(m) = min {
+                        inserts.push(quote! {
+                            __field.insert(#min_key.to_string(), ::serde_json::json!(#m));
+                        });
+                    }
+                    if let Some(m) = max {
+                        inserts.push(quote! {
+                            __field.insert(#max_key.to_string(), ::serde_json::json!(#m));
+                        });
+                    }
+                }
+                Validator::Pattern(p) => {
+                    let s = p.as_str();
+                    inserts.push(quote! {
+                        __field.insert("pattern".to_string(), ::serde_json::json!(#s));
+                    });
+                }
+                Validator::EnumValues(values) => {
+                    let list = values.iter().map(|v| quote! { #v }).collect::<Vec<_>>();
+                    inserts.push(quote! {
+                        __field.insert(
+                            "enum".to_string(),
+                            ::serde_json::json!([#(#list),*]),
+                        );
+                    });
+                }
+                Validator::Format(fmt) => {
+                    let name = fmt.as_str();
+                    inserts.push(quote! {
+                        __field.insert("format".to_string(), ::serde_json::json!(#name));
+                    });
+                }
+                Validator::Items(_) => {
+                    // Items-nested validators are not yet propagated to the
+                    // schema in the schemars-backed path. Runtime iteration
+                    // for Vec items is also not implemented. Tracked as a
+                    // follow-up.
+                }
+            }
+        }
+
+        if inserts.is_empty() {
+            continue;
+        }
+
+        field_mutations.push(quote! {
+            if let Some(__field) = __properties
+                .get_mut(#field_name)
+                .and_then(|v| v.as_object_mut())
+            {
+                #(#inserts)*
+            }
+        });
+    }
+
+    if field_mutations.is_empty() {
+        return quote! {
+            ::serde_json::to_value(#root::schemars::schema_for!(#args_struct_ident)).ok()
+        };
+    }
+
+    quote! {
+        let mut __schema = ::serde_json::to_value(
+            #root::schemars::schema_for!(#args_struct_ident)
+        ).ok()?;
+        if let Some(__properties) = __schema
+            .get_mut("properties")
+            .and_then(|v| v.as_object_mut())
+        {
+            #(#field_mutations)*
+        }
+        ::core::option::Option::Some(__schema)
     }
 }
 
@@ -720,6 +854,18 @@ fn option_usize(v: &Option<usize>) -> TokenStream2 {
     }
 }
 
+/// Emit a numeric literal as integer if it's a whole number within `i64`
+/// range, otherwise as a float. Keeps `range(min = 1)` rendered as the
+/// integer `1` in the schema, not `1.0`.
+fn number_token(v: f64) -> TokenStream2 {
+    if v.is_finite() && v.fract() == 0.0 && v >= i64::MIN as f64 && v <= i64::MAX as f64 {
+        let as_i64 = v as i64;
+        quote! { #as_i64 }
+    } else {
+        quote! { #v }
+    }
+}
+
 fn pascal_case(s: &str) -> String {
     let mut out = String::new();
     let mut upper_next = true;
@@ -740,8 +886,6 @@ fn pascal_case_ident(s: &str, span: Span) -> syn::Ident {
     syn::Ident::new(&pascal_case(s), span)
 }
 
-/// Collect consecutive `#[doc = "..."]` attrs into one description, stripping
-/// a single leading space (rustdoc's convention).
 fn collect_doc_comment(attrs: &[syn::Attribute]) -> Option<String> {
     let lines: Vec<String> = attrs
         .iter()
@@ -753,7 +897,6 @@ fn collect_doc_comment(attrs: &[syn::Attribute]) -> Option<String> {
                 if let Expr::Lit(el) = &nv.value {
                     if let Lit::Str(s) = &el.lit {
                         let raw = s.value();
-                        // Rustdoc prepends a space — strip one if present.
                         let trimmed = raw.strip_prefix(' ').unwrap_or(&raw).to_string();
                         return Some(trimmed);
                     }
@@ -768,7 +911,6 @@ fn collect_doc_comment(attrs: &[syn::Attribute]) -> Option<String> {
     Some(lines.join(" ").trim().to_string())
 }
 
-// Silence `unused` warnings on helper imports that only some code paths use.
 #[allow(dead_code)]
 fn _touch_spans(t: &dyn ToTokens) -> Span {
     t.span()

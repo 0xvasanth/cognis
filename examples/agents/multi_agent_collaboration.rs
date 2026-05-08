@@ -1,263 +1,43 @@
-//! Multi-Agent Collaboration Example
-//!
-//! Demonstrates creating multiple agents using cognisagent with SubAgentMiddleware.
-//! A researcher agent and a writer agent collaborate through a coordinated pipeline
-//! built on top of CognisGraph's StateGraph.
-//!
-//! Auto-detects Ollama for real LLM reasoning. Falls back to fake models
-//! with canned responses when Ollama is not available.
-//!
-//! Run with: cargo run -p cognis-examples --example multi_agent_collaboration
+//! Multi-agent collaboration — V2's MultiAgentOrchestrator with
+//! Sequential, Supervisor, and ParallelVote handoff strategies.
 
-#[path = "../shared.rs"]
-mod shared;
+use cognis::prelude::*;
+use cognis::{AgentBuilder, MultiAgentOrchestrator, ParallelVote, Sequential};
+use cognis_llm::Client;
 
-use std::sync::Arc;
-
-use serde_json::{json, Value};
-
-use cognis_core::messages::Message;
-use cognisagent::agent::create_deep_agent;
-use cognisagent::config::DeepAgentConfig;
-use cognisagent::middleware::subagent::SubAgentMiddleware;
-use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
+fn make_agent(prompt: &str) -> Result<cognis::Agent> {
+    AgentBuilder::new()
+        .with_llm(Client::from_env()?)
+        .with_system_prompt(prompt)
+        .build()
+}
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Multi-Agent Collaboration Example ===\n");
-
-    // -------------------------------------------------------------------------
-    // Step 1: Create the researcher agent
-    // -------------------------------------------------------------------------
-    println!("--- Step 1: Setting up researcher agent ---\n");
-
-    // The sub-agent model is used by SubAgentMiddleware for fact-checking.
-    let subagent_model = shared::get_chat_model(vec![
-        "Fact-check result: Rust was first released in 2010 by Mozilla Research. \
-         It reached version 1.0 in May 2015. The borrow checker is a key innovation."
-            .into(),
-    ]);
-
-    let subagent_mw = SubAgentMiddleware::new(subagent_model.clone(), 3);
-    let subagent_tools = subagent_mw.tools();
-
-    println!(
-        "  SubAgentMiddleware provides {} tool(s):",
-        subagent_tools.len()
-    );
-    for tool in &subagent_tools {
-        println!("    - {} : {}", tool.name(), tool.description());
+async fn main() -> Result<()> {
+    if std::env::var("COGNIS_PROVIDER").is_err() {
+        std::env::set_var("COGNIS_PROVIDER", "ollama");
     }
 
-    // The researcher model produces research findings.
-    let researcher_model = shared::get_chat_model(vec![
-        "Research findings: Rust was created by Mozilla Research, first released in 2010, \
-         and reached 1.0 in May 2015. Its key innovation is the borrow checker which enables \
-         memory safety without garbage collection. It has won 'most loved language' in Stack \
-         Overflow surveys multiple years running."
-            .into(),
-    ]);
-
-    let researcher_config = DeepAgentConfig::default()
-        .with_system_prompt(
-            "You are a thorough researcher. Investigate the given topic and produce \
-             detailed research notes with key facts and findings.",
+    println!("--- Sequential ---");
+    let orch = MultiAgentOrchestrator::new(Sequential)
+        .add(
+            "brainstormer",
+            make_agent("Generate 3 ideas for a kids' birthday party.")?,
         )
-        .with_tools(subagent_tools);
-
-    let researcher_graph = create_deep_agent(researcher_model, researcher_config)?;
-    println!(
-        "  Researcher agent compiled: nodes = {:?}\n",
-        researcher_graph.node_names()
-    );
-
-    // -------------------------------------------------------------------------
-    // Step 2: Create the writer agent
-    // -------------------------------------------------------------------------
-    println!("--- Step 2: Setting up writer agent ---\n");
-
-    let writer_model = shared::get_chat_model(vec![
-        "# The Rust Programming Language: A Brief History\n\n\
-         Rust emerged from Mozilla Research in 2010 as a bold experiment in systems \
-         programming. The language reached its 1.0 milestone in May 2015, proving that \
-         memory safety and performance need not be mutually exclusive.\n\n\
-         At the heart of Rust's innovation lies the borrow checker -- a compile-time \
-         system that enforces strict ownership rules. This eliminates entire classes of \
-         bugs (use-after-free, data races) without the overhead of garbage collection.\n\n\
-         The developer community has embraced Rust enthusiastically, voting it the 'most \
-         loved programming language' in Stack Overflow surveys for multiple consecutive years."
-            .into(),
-    ]);
-
-    let writer_config = DeepAgentConfig::default().with_system_prompt(
-        "You are a skilled technical writer. Transform research notes into polished, \
-         well-structured articles with clear headings and engaging prose.",
-    );
-
-    let writer_graph = create_deep_agent(writer_model, writer_config)?;
-    println!(
-        "  Writer agent compiled: nodes = {:?}\n",
-        writer_graph.node_names()
-    );
-
-    // -------------------------------------------------------------------------
-    // Step 3: Build a coordination graph connecting both agents
-    // -------------------------------------------------------------------------
-    println!("--- Step 3: Building coordination graph ---\n");
-
-    let researcher_graph = Arc::new(researcher_graph);
-    let writer_graph = Arc::new(writer_graph);
-
-    // Node 1: Researcher — takes a topic and produces research notes.
-    let research_node: AsyncNodeAction = {
-        let graph = researcher_graph.clone();
-        Arc::new(move |state: Value| {
-            let graph = graph.clone();
-            Box::pin(async move {
-                let topic = state
-                    .get("topic")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Rust programming");
-
-                println!("  [research] Researching topic: \"{topic}\"");
-
-                let input = json!({
-                    "messages": [
-                        {"type": "human", "content": format!("Research this topic: {topic}")}
-                    ]
-                });
-
-                let result = graph.invoke(input).await?;
-
-                // Extract the last AI message as research notes.
-                let messages = result["messages"].as_array().cloned().unwrap_or_default();
-                let research_notes = messages
-                    .iter()
-                    .rev()
-                    .find_map(|m| {
-                        let msg: Message = serde_json::from_value(m.clone()).ok()?;
-                        if let Message::Ai(ai) = &msg {
-                            if ai.tool_calls.is_empty() {
-                                return Some(ai.base.content.text());
-                            }
-                        }
-                        None
-                    })
-                    .unwrap_or_else(|| "No research found.".to_string());
-
-                println!(
-                    "  [research] Produced {} chars of notes",
-                    research_notes.len()
-                );
-
-                Ok(json!({
-                    "research_notes": research_notes,
-                    "research_complete": true,
-                }))
-            })
-        })
-    };
-
-    // Node 2: Writer — takes research notes and produces a polished article.
-    let write_node: AsyncNodeAction = {
-        let graph = writer_graph.clone();
-        Arc::new(move |state: Value| {
-            let graph = graph.clone();
-            Box::pin(async move {
-                let notes = state
-                    .get("research_notes")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("No notes provided.");
-
-                println!(
-                    "  [write] Writing article from {} chars of research notes",
-                    notes.len()
-                );
-
-                let input = json!({
-                    "messages": [
-                        {"type": "human", "content": format!(
-                            "Write a polished article based on these research notes:\n\n{notes}"
-                        )}
-                    ]
-                });
-
-                let result = graph.invoke(input).await?;
-
-                let messages = result["messages"].as_array().cloned().unwrap_or_default();
-                let article = messages
-                    .iter()
-                    .rev()
-                    .find_map(|m| {
-                        let msg: Message = serde_json::from_value(m.clone()).ok()?;
-                        if let Message::Ai(_) = &msg {
-                            Some(msg.content().text())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_else(|| "Failed to write article.".to_string());
-
-                println!("  [write] Produced {} chars of article", article.len());
-
-                Ok(json!({
-                    "article": article,
-                    "write_complete": true,
-                }))
-            })
-        })
-    };
-
-    // Wire the graph: research -> write
-    let coordination_graph = StateGraph::new()
-        .add_node("research", research_node)
-        .add_node("write", write_node)
-        .add_edge("__start__", "research")
-        .add_edge("research", "write")
-        .add_edge("write", "__end__")
-        .compile()?;
-
-    println!(
-        "  Coordination graph nodes: {:?}\n",
-        coordination_graph.node_names()
-    );
-
-    // -------------------------------------------------------------------------
-    // Step 4: Run the full pipeline
-    // -------------------------------------------------------------------------
-    println!("--- Step 4: Running the collaboration pipeline ---\n");
-
-    let topic = "The history and innovations of Rust programming language";
-    println!("  Topic: \"{topic}\"\n");
-
-    let result = coordination_graph.invoke(json!({ "topic": topic })).await?;
-
-    // -------------------------------------------------------------------------
-    // Step 5: Display the results
-    // -------------------------------------------------------------------------
-    println!("\n--- Final Results ---\n");
-
-    if let Some(notes) = result.get("research_notes").and_then(|v| v.as_str()) {
-        println!("Research Notes ({} chars):", notes.len());
-        println!("  {}...\n", &notes[..notes.len().min(120)]);
-    }
-
-    if let Some(article) = result.get("article").and_then(|v| v.as_str()) {
-        println!("Final Article:\n");
-        println!("{article}");
-    }
-
-    // Show sub-agent execution history.
-    let subagents = subagent_mw.subagents().await;
-    println!("\n--- Sub-Agent History ---");
-    println!("  Total sub-agents spawned: {}", subagents.len());
-    for (id, handle) in &subagents {
-        println!(
-            "  [{:.8}] task=\"{}\" status={:?}",
-            id, handle.task, handle.status
+        .add(
+            "editor",
+            make_agent("Pick the best idea and explain why in one sentence.")?,
         );
-    }
+    println!("{}\n", orch.run("Plan a kids' party.").await?.content);
 
-    println!("\nDone!");
+    println!("--- ParallelVote ---");
+    let orch2 = MultiAgentOrchestrator::new(ParallelVote)
+        .add("a", make_agent("Reply with the single word: yes.")?)
+        .add("b", make_agent("Reply with the single word: yes.")?)
+        .add("c", make_agent("Reply with the single word: no.")?);
+    println!(
+        "majority answer: {}",
+        orch2.run("Pick yes or no.").await?.content
+    );
     Ok(())
 }

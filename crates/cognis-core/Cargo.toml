@@ -1,11 +1,11 @@
 [package]
 name = "cognis-core"
-version = "0.2.1"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Core traits and types for the Cognis LLM framework"
+authors.workspace = true
+description = "Foundation traits and types for Cognis: typed Runnable<I, O>, Message, errors, streaming, prompts, output parsers, callbacks. Zero external integrations."
 repository = "https://github.com/0xvasanth/cognis"
-readme = "README.md"
 
 [dependencies]
 serde.workspace = true
@@ -16,11 +16,12 @@ thiserror.workspace = true
 uuid.workspace = true
 futures.workspace = true
 tokio-stream.workspace = true
-regex = "1"
-base64.workspace = true
-reqwest.workspace = true
-cognis-macros.workspace = true
+schemars.workspace = true
+tracing.workspace = true
+pin-project-lite = "0.2"
+tokio-util = { version = "0.7", features = ["rt"] }
+num_cpus = "1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
-trybuild = "1"
+uuid.workspace = true

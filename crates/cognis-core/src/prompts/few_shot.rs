@@ -1,264 +1,133 @@
-use std::collections::HashMap;
-use std::sync::Arc;
+//! Few-shot string prompt: prefix + per-example template + suffix.
+
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use serde_json::Value;
+use serde::Serialize;
 
-use crate::error::{CognisError, Result};
-use crate::messages::Message;
-use crate::runnables::base::Runnable;
-use crate::runnables::config::RunnableConfig;
+use crate::prompts::template::{render, scan_variables};
+use crate::runnable::{Runnable, RunnableConfig};
+use crate::{CognisError, Result};
 
-use super::base::PromptTemplate;
-use super::example_selector::BaseExampleSelector;
-use super::message::MessagePromptTemplate;
-use super::string_formatter::TemplateFormat;
-
-/// A few-shot prompt template that formats examples between a prefix and suffix.
+/// Few-shot string prompt with a static list of examples.
 ///
-/// Supports both static examples and dynamic example selection.
-pub struct FewShotPromptTemplate {
-    pub examples: Option<Vec<HashMap<String, Value>>>,
-    pub example_selector: Option<Arc<dyn BaseExampleSelector>>,
-    pub example_prompt: PromptTemplate,
-    pub prefix: String,
-    pub suffix: String,
-    pub example_separator: String,
-    pub input_variables: Vec<String>,
-    pub template_format: TemplateFormat,
+/// Renders as:
+/// `<prefix><sep><ex1><sep><ex2><sep>...<sep><suffix>`
+///
+/// The prefix and suffix are rendered against the call input. Each example
+/// is rendered against itself (separate `Serialize` type).
+#[derive(Debug, Clone)]
+pub struct FewShotTemplate<I = serde_json::Value, E = serde_json::Value> {
+    prefix: String,
+    example_template: String,
+    examples: Vec<E>,
+    suffix: String,
+    separator: String,
+    _input: PhantomData<fn() -> I>,
 }
 
-impl FewShotPromptTemplate {
+impl<I, E> FewShotTemplate<I, E>
+where
+    I: Serialize + Send + Sync + 'static,
+    E: Serialize + Send + Sync + Clone + 'static,
+{
+    /// Build a few-shot template.
     pub fn new(
-        examples: Vec<HashMap<String, Value>>,
-        example_prompt: PromptTemplate,
+        prefix: impl Into<String>,
+        example_template: impl Into<String>,
+        examples: Vec<E>,
         suffix: impl Into<String>,
     ) -> Self {
-        let suffix = suffix.into();
-        let suffix_vars =
-            super::string_formatter::get_template_variables(&suffix, TemplateFormat::FString);
-
         Self {
-            examples: Some(examples),
-            example_selector: None,
-            example_prompt,
-            prefix: String::new(),
-            suffix,
-            example_separator: "\n\n".into(),
-            input_variables: suffix_vars,
-            template_format: TemplateFormat::FString,
+            prefix: prefix.into(),
+            example_template: example_template.into(),
+            examples,
+            suffix: suffix.into(),
+            separator: "\n\n".into(),
+            _input: PhantomData,
         }
     }
 
-    /// Create a few-shot template with a dynamic example selector.
-    pub fn with_example_selector(
-        example_selector: Arc<dyn BaseExampleSelector>,
-        example_prompt: PromptTemplate,
-        suffix: impl Into<String>,
-    ) -> Self {
-        let suffix = suffix.into();
-        let suffix_vars =
-            super::string_formatter::get_template_variables(&suffix, TemplateFormat::FString);
-
-        Self {
-            examples: None,
-            example_selector: Some(example_selector),
-            example_prompt,
-            prefix: String::new(),
-            suffix,
-            example_separator: "\n\n".into(),
-            input_variables: suffix_vars,
-            template_format: TemplateFormat::FString,
-        }
-    }
-
-    pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
-        self.prefix = prefix.into();
-        self
-    }
-
+    /// Override the separator used between rendered examples (default `\n\n`).
     pub fn with_separator(mut self, sep: impl Into<String>) -> Self {
-        self.example_separator = sep.into();
+        self.separator = sep.into();
         self
     }
 
-    /// Get examples — either static or from the selector.
-    async fn get_examples(
-        &self,
-        kwargs: &HashMap<String, Value>,
-    ) -> Result<Vec<HashMap<String, Value>>> {
-        if let Some(examples) = &self.examples {
-            Ok(examples.clone())
-        } else if let Some(selector) = &self.example_selector {
-            selector.select_examples(kwargs).await
-        } else {
-            Err(CognisError::Other(
-                "FewShotPromptTemplate has neither examples nor example_selector".into(),
-            ))
+    /// Render the full prompt against the input.
+    pub fn render(&self, input: &I) -> Result<String> {
+        let input_ctx =
+            serde_json::to_value(input).map_err(|e| CognisError::Serialization(e.to_string()))?;
+        let mut rendered_examples = Vec::with_capacity(self.examples.len());
+        for ex in &self.examples {
+            let ex_ctx =
+                serde_json::to_value(ex).map_err(|e| CognisError::Serialization(e.to_string()))?;
+            rendered_examples.push(render(&self.example_template, &ex_ctx)?);
         }
+        let prefix = render(&self.prefix, &input_ctx)?;
+        let suffix = render(&self.suffix, &input_ctx)?;
+        let body = rendered_examples.join(&self.separator);
+        Ok(format!(
+            "{prefix}{sep}{body}{sep}{suffix}",
+            sep = self.separator
+        ))
     }
 
-    /// Format the few-shot prompt into a string.
-    pub fn format(&self, kwargs: &HashMap<String, Value>) -> Result<String> {
-        let examples = self.examples.as_ref().ok_or_else(|| {
-            CognisError::Other(
-                "Use format_async for FewShotPromptTemplate with example_selector".into(),
-            )
-        })?;
-        self.format_with_examples(examples, kwargs)
-    }
-
-    /// Format with async example selection support.
-    pub async fn format_async(&self, kwargs: &HashMap<String, Value>) -> Result<String> {
-        let examples = self.get_examples(kwargs).await?;
-        self.format_with_examples(&examples, kwargs)
-    }
-
-    fn format_with_examples(
-        &self,
-        examples: &[HashMap<String, Value>],
-        kwargs: &HashMap<String, Value>,
-    ) -> Result<String> {
-        let example_strings: Vec<String> = examples
-            .iter()
-            .map(|ex| self.example_prompt.format(ex))
-            .collect::<Result<Vec<_>>>()?;
-
-        let mut pieces: Vec<&str> = Vec::new();
-        if !self.prefix.is_empty() {
-            pieces.push(&self.prefix);
+    /// Variables referenced by the prefix and suffix.
+    pub fn input_variables(&self) -> Vec<String> {
+        let mut out = scan_variables(&self.prefix);
+        for v in scan_variables(&self.suffix) {
+            if !out.contains(&v) {
+                out.push(v);
+            }
         }
-        for s in &example_strings {
-            pieces.push(s);
-        }
-        pieces.push(&self.suffix);
-
-        let template = pieces.join(&self.example_separator);
-        super::string_formatter::format_template(&template, self.template_format, kwargs)
+        out
     }
 }
 
 #[async_trait]
-impl Runnable for FewShotPromptTemplate {
+impl<I, E> Runnable<I, String> for FewShotTemplate<I, E>
+where
+    I: Serialize + Send + Sync + 'static,
+    E: Serialize + Send + Sync + Clone + 'static,
+{
+    async fn invoke(&self, input: I, _: RunnableConfig) -> Result<String> {
+        self.render(&input)
+    }
     fn name(&self) -> &str {
-        "FewShotPromptTemplate"
-    }
-
-    async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let kwargs: HashMap<String, Value> = match input {
-            Value::Object(map) => map.into_iter().collect(),
-            _ => {
-                return Err(CognisError::TypeMismatch {
-                    expected: "Object".into(),
-                    got: "non-Object".into(),
-                });
-            }
-        };
-        let text = self.format_async(&kwargs).await?;
-        Ok(Value::String(text))
+        "FewShotTemplate"
     }
 }
 
-/// A few-shot template for chat messages, formatting examples as message sequences.
-pub struct FewShotChatMessagePromptTemplate {
-    pub examples: Option<Vec<HashMap<String, Value>>>,
-    pub example_selector: Option<Arc<dyn BaseExampleSelector>>,
-    pub example_prompt: MessagePromptTemplate,
-    pub input_variables: Vec<String>,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
 
-impl FewShotChatMessagePromptTemplate {
-    pub fn new(
-        examples: Vec<HashMap<String, Value>>,
-        example_prompt: MessagePromptTemplate,
-    ) -> Self {
-        let input_variables = example_prompt.input_variables().to_vec();
-        Self {
-            examples: Some(examples),
-            example_selector: None,
-            example_prompt,
-            input_variables,
-        }
+    #[test]
+    fn renders_prefix_examples_suffix() {
+        let examples = vec![json!({"q": "2+2", "a": "4"}), json!({"q": "3+3", "a": "6"})];
+        let p: FewShotTemplate<Value, Value> = FewShotTemplate::new(
+            "Math problems for {topic}:",
+            "Q: {q}\nA: {a}",
+            examples,
+            "Q: {question}\nA:",
+        );
+        let out = p
+            .render(&json!({"topic": "addition", "question": "5+5"}))
+            .unwrap();
+        assert!(out.starts_with("Math problems for addition:"));
+        assert!(out.contains("Q: 2+2\nA: 4"));
+        assert!(out.contains("Q: 3+3\nA: 6"));
+        assert!(out.ends_with("Q: 5+5\nA:"));
     }
 
-    /// Create with a dynamic example selector.
-    pub fn with_example_selector(
-        example_selector: Arc<dyn BaseExampleSelector>,
-        example_prompt: MessagePromptTemplate,
-    ) -> Self {
-        let input_variables = example_prompt.input_variables().to_vec();
-        Self {
-            examples: None,
-            example_selector: Some(example_selector),
-            example_prompt,
-            input_variables,
-        }
-    }
-
-    /// Get examples — either static or from the selector.
-    async fn get_examples(
-        &self,
-        kwargs: &HashMap<String, Value>,
-    ) -> Result<Vec<HashMap<String, Value>>> {
-        if let Some(examples) = &self.examples {
-            Ok(examples.clone())
-        } else if let Some(selector) = &self.example_selector {
-            selector.select_examples(kwargs).await
-        } else {
-            Err(CognisError::Other(
-                "FewShotChatMessagePromptTemplate has neither examples nor example_selector".into(),
-            ))
-        }
-    }
-
-    /// Format examples as a flat list of messages.
-    pub fn format_messages(&self, kwargs: &HashMap<String, Value>) -> Result<Vec<Message>> {
-        let examples = self.examples.as_ref().ok_or_else(|| {
-            CognisError::Other("Use format_messages_async for dynamic example selection".into())
-        })?;
-        self.format_messages_with_examples(examples, kwargs)
-    }
-
-    /// Format with async example selection support.
-    pub async fn format_messages_async(
-        &self,
-        kwargs: &HashMap<String, Value>,
-    ) -> Result<Vec<Message>> {
-        let examples = self.get_examples(kwargs).await?;
-        self.format_messages_with_examples(&examples, kwargs)
-    }
-
-    fn format_messages_with_examples(
-        &self,
-        examples: &[HashMap<String, Value>],
-        _kwargs: &HashMap<String, Value>,
-    ) -> Result<Vec<Message>> {
-        let mut messages = Vec::new();
-        for example in examples {
-            messages.extend(self.example_prompt.format_messages(example)?);
-        }
-        Ok(messages)
-    }
-}
-
-#[async_trait]
-impl Runnable for FewShotChatMessagePromptTemplate {
-    fn name(&self) -> &str {
-        "FewShotChatMessagePromptTemplate"
-    }
-
-    async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let kwargs: HashMap<String, Value> = match input {
-            Value::Object(map) => map.into_iter().collect(),
-            _ => {
-                return Err(CognisError::TypeMismatch {
-                    expected: "Object".into(),
-                    got: "non-Object".into(),
-                });
-            }
-        };
-        let messages = self.format_messages_async(&kwargs).await?;
-        serde_json::to_value(&messages)
-            .map_err(|e| CognisError::Other(format!("Failed to serialize messages: {}", e)))
+    #[test]
+    fn separator_override() {
+        let p: FewShotTemplate<Value, Value> =
+            FewShotTemplate::new("P", "{x}", vec![json!({"x": "a"}), json!({"x": "b"})], "S")
+                .with_separator(" | ");
+        let out = p.render(&json!({})).unwrap();
+        assert_eq!(out, "P | a | b | S");
     }
 }

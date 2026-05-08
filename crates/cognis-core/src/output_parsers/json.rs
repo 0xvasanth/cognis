@@ -1,119 +1,130 @@
+//! Typed JSON parser — deserializes LLM output into any `DeserializeOwned`.
+
+use std::marker::PhantomData;
+
 use async_trait::async_trait;
-use serde_json::Value;
+use serde::de::DeserializeOwned;
 
-use crate::error::{CognisError, Result};
-use crate::outputs::Generation;
-use crate::runnables::base::Runnable;
-use crate::runnables::config::RunnableConfig;
+use crate::output_parsers::OutputParser;
+use crate::runnable::{Runnable, RunnableConfig};
+use crate::{CognisError, Result};
 
-use super::base::OutputParser;
-
-/// Parses JSON from LLM output, stripping markdown fences if present.
-pub struct JsonOutputParser {
-    /// Optional JSON schema for format instructions.
-    pub schema: Option<Value>,
+/// Parses JSON output into a typed value `T`.
+///
+/// Tolerates code-fenced output (` ```json ... ``` ` or plain ` ``` ... ``` `)
+/// by stripping the fences before parsing. Tolerates leading/trailing
+/// whitespace.
+#[derive(Debug, Clone, Copy)]
+pub struct JsonParser<T> {
+    _t: PhantomData<fn() -> T>,
 }
 
-impl JsonOutputParser {
-    pub fn new() -> Self {
-        Self { schema: None }
-    }
-
-    pub fn with_schema(schema: Value) -> Self {
-        Self {
-            schema: Some(schema),
-        }
-    }
-}
-
-impl Default for JsonOutputParser {
+impl<T> Default for JsonParser<T> {
     fn default() -> Self {
-        Self::new()
+        Self { _t: PhantomData }
     }
 }
 
-/// Strip markdown code fences from JSON output.
-fn parse_json_markdown(text: &str) -> Result<Value> {
-    let trimmed = text.trim();
-
-    // Try to extract from ```json ... ``` blocks
-    let json_str = if trimmed.starts_with("```") {
-        let after_fence = if let Some(rest) = trimmed.strip_prefix("```json") {
-            rest
-        } else if let Some(rest) = trimmed.strip_prefix("```JSON") {
-            rest
-        } else if let Some(rest) = trimmed.strip_prefix("```") {
-            rest
-        } else {
-            trimmed
-        };
-
-        after_fence
-            .trim()
-            .strip_suffix("```")
-            .unwrap_or(after_fence)
-            .trim()
-    } else {
-        trimmed
-    };
-
-    serde_json::from_str(json_str).map_err(|e| CognisError::OutputParserError {
-        message: format!("Failed to parse JSON: {}", e),
-        observation: Some(json_str.to_string()),
-        llm_output: Some(text.to_string()),
-    })
+impl<T> JsonParser<T> {
+    /// Construct a `JsonParser<T>`.
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
-impl OutputParser for JsonOutputParser {
-    fn parse(&self, text: &str) -> Result<Value> {
-        parse_json_markdown(text)
+impl<T> OutputParser<T> for JsonParser<T>
+where
+    T: DeserializeOwned + Send + 'static,
+{
+    fn parse(&self, text: &str) -> Result<T> {
+        let cleaned = strip_code_fence(text.trim());
+        serde_json::from_str(cleaned)
+            .map_err(|e| CognisError::Serialization(format!("json parse: {e}")))
     }
 
-    fn parse_result(&self, result: &[Generation], partial: bool) -> Result<Value> {
-        if result.is_empty() {
-            return Err(CognisError::OutputParserError {
-                message: "No generations to parse".into(),
-                observation: None,
-                llm_output: None,
-            });
-        }
-        match parse_json_markdown(&result[0].text) {
-            Ok(v) => Ok(v),
-            Err(_) if partial => Ok(Value::Null),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn get_format_instructions(&self) -> Option<String> {
-        match &self.schema {
-            Some(schema) => Some(format!(
-                "Return a JSON object that conforms to the following schema:\n```json\n{}\n```\n\
-                 Return ONLY the JSON object, with no additional text or markdown formatting.",
-                serde_json::to_string_pretty(schema).unwrap_or_default()
-            )),
-            None => Some(
-                "Return a JSON object. Return ONLY the JSON, with no additional text or markdown formatting."
-                    .into(),
-            ),
-        }
-    }
-
-    fn parser_type(&self) -> &str {
-        "json_output_parser"
+    fn format_instructions(&self) -> Option<String> {
+        Some(
+            "Reply with a single JSON object. Do not include any text before \
+             or after the JSON. Do not wrap the JSON in markdown code fences."
+                .to_string(),
+        )
     }
 }
 
 #[async_trait]
-impl Runnable for JsonOutputParser {
+impl<T> Runnable<String, T> for JsonParser<T>
+where
+    T: DeserializeOwned + Send + 'static,
+{
+    async fn invoke(&self, input: String, _: RunnableConfig) -> Result<T> {
+        OutputParser::parse(self, &input)
+    }
     fn name(&self) -> &str {
-        "JsonOutputParser"
+        "JsonParser"
+    }
+}
+
+fn strip_code_fence(s: &str) -> &str {
+    let s = s.trim();
+    let s = s
+        .strip_prefix("```json")
+        .or_else(|| s.strip_prefix("```"))
+        .unwrap_or(s);
+    let s = s.trim_start_matches('\n').trim_start();
+    s.strip_suffix("```").unwrap_or(s).trim_end()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Foo {
+        bar: String,
+        baz: u32,
     }
 
-    async fn invoke(&self, input: Value, _config: Option<&RunnableConfig>) -> Result<Value> {
-        let text = match &input {
-            Value::String(s) => s.clone(),
-            other => other.to_string(),
-        };
-        self.parse(&text)
+    #[tokio::test]
+    async fn parses_plain_json() {
+        let p: JsonParser<Foo> = JsonParser::new();
+        let out = p
+            .invoke(r#"{"bar":"hi","baz":7}"#.into(), RunnableConfig::default())
+            .await
+            .unwrap();
+        assert_eq!(
+            out,
+            Foo {
+                bar: "hi".into(),
+                baz: 7
+            }
+        );
+    }
+
+    #[test]
+    fn strips_json_code_fence() {
+        let p: JsonParser<Foo> = JsonParser::new();
+        let out = p.parse("```json\n{\"bar\":\"hi\",\"baz\":7}\n```").unwrap();
+        assert_eq!(out.baz, 7);
+    }
+
+    #[test]
+    fn strips_plain_code_fence() {
+        let p: JsonParser<Foo> = JsonParser::new();
+        let out = p.parse("```\n{\"bar\":\"hi\",\"baz\":1}\n```").unwrap();
+        assert_eq!(out.baz, 1);
+    }
+
+    #[test]
+    fn invalid_json_errors_with_serialization_kind() {
+        let p: JsonParser<Foo> = JsonParser::new();
+        let err = p.parse("not json").unwrap_err();
+        assert!(matches!(err, CognisError::Serialization(_)));
+    }
+
+    #[test]
+    fn format_instructions_set() {
+        let p: JsonParser<Foo> = JsonParser::new();
+        assert!(OutputParser::format_instructions(&p).is_some());
     }
 }

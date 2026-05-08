@@ -1,91 +1,51 @@
-<div align="center">
+# cognis-graph
 
-# cognisgraph
+A state-aware graph execution engine for building complex AI agents and cyclic workflows.
 
-**Stateful, multi-actor agent workflows as executable graphs.**
+## Purpose
+`cognis-graph` implements a Pregel-inspired superstep executor for executing graphs where nodes communicate via shared state. It is designed for building agents that require loops, complex decision trees, and persistent state across execution steps.
 
-[![crates.io](https://img.shields.io/crates/v/cognisgraph.svg)](https://crates.io/crates/cognisgraph)
-[![docs.rs](https://docs.rs/cognisgraph/badge.svg)](https://docs.rs/cognisgraph)
-[![MIT](https://img.shields.io/crates/l/cognisgraph.svg)](https://opensource.org/licenses/MIT)
+## Key Features
+- **Typed State**: Define your graph state as a Rust struct with per-field "reducers" (e.g., append to list, take last value).
+- **Cyclic Execution**: Support for loops and conditional edges, enabling ReAct-style agent loops.
+- **Checkpointers**: Built-in support for persisting graph state to memory, SQLite, or Postgres, allowing workflows to be paused and resumed.
+- **Runnable Integration**: A compiled graph implements the `Runnable<S, S>` trait, making it compatible with the rest of the Cognis ecosystem.
+- **Audit Logs**: Detailed execution tracking for debugging and observability.
 
-[Workspace](https://github.com/0xvasanth/cognis) | [API Docs](https://docs.rs/cognisgraph)
-
-</div>
-
----
-
-`cognisgraph` is the orchestration layer of the [Cognis](https://github.com/0xvasanth/cognis) framework. Build agent workflows as directed graphs with conditional branching, checkpointing, streaming, human-in-the-loop interrupts, and subgraph composition. Inspired by Pregel and Apache Beam.
-
-## Quick Start
-
+## Usage
+Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-cognisgraph = "0.1"
-tokio = { version = "1", features = ["full"] }
-serde_json = "1"
+cognis-graph = "0.1.0"
 ```
 
-```rust,ignore
-use std::sync::Arc;
-use cognisgraph::graph::state::{AsyncNodeAction, StateGraph};
-use serde_json::{json, Value};
+### Basic Example: A Simple State Machine
+```rust
+use cognis_graph::*;
+use serde::{Deserialize, Serialize};
 
-let classify: AsyncNodeAction = Arc::new(|state: Value| {
-    Box::pin(async move {
-        let input = state["input"].as_str().unwrap_or("");
-        let category = if input.contains("error") { "issue" } else { "general" };
-        Ok(json!({ "category": category }))
-    })
-});
+#[derive(Default, Serialize, Deserialize, GraphState, Clone)]
+struct State {
+    #[reducer(LastValue)]
+    count: u32,
+}
 
-let respond: AsyncNodeAction = Arc::new(|state: Value| {
-    Box::pin(async move {
-        let cat = state["category"].as_str().unwrap_or("unknown");
-        Ok(json!({ "response": format!("Handling as: {cat}") }))
-    })
-});
+#[tokio::main]
+async fn main() -> Result<()> {
+    let mut workflow = Graph::new();
 
-let graph = StateGraph::new()
-    .add_node("classify", classify)
-    .add_node("respond", respond)
-    .add_edge("__start__", "classify")
-    .add_edge("classify", "respond")
-    .add_edge("respond", "__end__")
-    .compile()?;
+    workflow.add_node("increment", node_fn(|mut state: State, _| async move {
+        state.count += 1;
+        Ok(state)
+    }));
 
-let result = graph.invoke(json!({ "input": "There is an error" })).await?;
+    workflow.set_entry_point("increment");
+    workflow.add_edge("increment", END);
+
+    let app = workflow.compile();
+    let final_state = app.invoke(State::default(), RunnableConfig::default()).await?;
+    
+    println!("Final count: {}", final_state.count);
+    Ok(())
+}
 ```
-
-## Capabilities
-
-**State Graphs** — Define nodes as async functions, connect them with edges, add conditional routing with `add_conditional_edges`.
-
-**Pregel Execution** — Superstep-based execution engine that processes nodes in parallel where the graph allows.
-
-**Checkpointing** — Save and resume graph execution. SQLite and Postgres backends available behind feature flags.
-
-**Streaming** — Stream execution updates with `StreamMode::Values`, `Updates`, or `Debug`.
-
-**Human-in-the-Loop** — Pause execution at any node with `InterruptType::Before` or `After` for approval workflows.
-
-**Subgraphs** — Compose graphs within graphs for modular workflow design.
-
-**Prebuilt Agents** — `create_react_agent` gives you a tool-calling ReAct loop out of the box.
-
-**Retry & Caching** — Per-node `RetryPolicy` and `CachePolicy` for resilient execution.
-
-## Feature Flags
-
-```toml
-cognisgraph = { version = "0.1", features = ["sqlite"] }    # SQLite checkpoints
-cognisgraph = { version = "0.1", features = ["postgres"] }   # Postgres checkpoints
-```
-
-## Part of the Cognis Workspace
-
-| Crate | Role |
-|-------|------|
-| [cognis-core](https://crates.io/crates/cognis-core) | Foundation traits and types |
-| [cognis](https://crates.io/crates/cognis) | LLM providers, chains, memory, tools |
-| **cognisgraph** | State graph orchestration engine (you are here) |
-| [cognisagent](https://crates.io/crates/cognisagent) | High-level agent framework |

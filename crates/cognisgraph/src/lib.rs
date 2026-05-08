@@ -1,53 +1,63 @@
-//! # cognisgraph
+//! # cognis-graph
 //!
-//! Orchestration layer for building stateful, multi-actor agent workflows as
-//! directed graphs. Inspired by Pregel and Apache Beam, cognisgraph provides a
-//! [`StateGraph`](graph::state::StateGraph) builder that compiles into an
-//! executable graph with support for checkpointing, streaming, human-in-the-loop
-//! interrupts, and subgraph composition.
-//!
-//! ## Quick Example
-//!
-//! ```rust,ignore
-//! use cognisgraph::graph::state::StateGraph;
-//! use cognisgraph::{START, END};
-//! use serde_json::{json, Value};
-//!
-//! let mut graph = StateGraph::new();
-//! graph.add_node("greet", |state: Value| {
-//!     Ok(json!({"response": "Hello!"}))
-//! });
-//! graph.add_edge(START, "greet");
-//! graph.add_edge("greet", END);
-//! let compiled = graph.compile(None).unwrap();
-//! let result = compiled.invoke(json!({})).await.unwrap();
-//! ```
-//!
-//! ## Key Modules
-//!
-//! - [`graph`] -- `StateGraph` builder, `CompiledStateGraph`, conditional branching, subgraphs.
-//! - [`pregel`] -- Pregel-style execution engine with superstep processing.
-//! - [`channels`] -- State channels: LastValue, BinaryOp, Topic, AnyValue, NamedBarrier.
-//! - [`checkpoint`] -- `CheckpointSaver` trait with SQLite backend (behind `sqlite` feature).
-//! - [`prebuilt`] -- `create_react_agent` for tool-calling ReAct loops.
-//! - [`types`] -- Core types: `StreamMode`, `InterruptType`, `RetryPolicy`, `CachePolicy`.
-//! - [`runtime`] -- Tokio-based async runtime utilities.
+//! v2-beta graph engine: typed `Graph<S>` + Pregel superstep executor.
+//! `CompiledGraph<S>` implements `cognis_core::Runnable<S, S>`.
 
+#![warn(missing_docs)]
+#![warn(rust_2018_idioms)]
+
+pub mod audit;
+pub mod barrier;
+pub mod builder;
 pub mod channels;
 pub mod checkpoint;
-pub mod config;
-pub mod constants;
-pub mod errors;
-pub mod graph;
-pub mod managed;
-pub mod prebuilt;
-pub mod pregel;
-pub mod runtime;
-pub mod types;
-pub mod utils;
+pub mod command;
+pub mod compiled;
+pub mod durability;
+pub(crate) mod engine;
+pub mod goto;
+pub mod metrics;
+pub mod node;
+pub mod reducer;
+pub mod snapshot;
+pub mod state;
+pub mod stream_mode;
+pub mod subgraph;
+pub(crate) mod validate;
+pub mod viz;
 
-pub use constants::{END, START};
-pub use errors::{LangGraphError, Result};
-pub use graph::{GraphStateField, GraphStateSchema};
-pub use runtime::Runtime;
-pub use types::*;
+pub use audit::{AuditEntry, AuditKind, AuditLog, AuditLogObserver, InMemoryAuditLog};
+pub use barrier::BarrierNode;
+pub use builder::{Graph, LinearBuilder};
+pub use channels::{
+    AnyValue, BinaryOp, Broadcast, Channel, ChannelRef, CustomChannel, Topic, Untracked,
+};
+#[cfg(feature = "postgres")]
+pub use checkpoint::PostgresCheckpointer;
+#[cfg(feature = "sqlite")]
+pub use checkpoint::SqliteCheckpointer;
+pub use checkpoint::{ActiveSnapshot, Checkpointer, InMemoryCheckpointer};
+pub use command::Command;
+pub use compiled::CompiledGraph;
+pub use durability::{Durability, DurabilityDecision, DurabilityHook};
+pub use goto::Goto;
+pub use metrics::{GraphMetrics, MetricsObserver, NodeTiming, ProfilingObserver};
+pub use node::{node_fn, Node, NodeCtx, NodeFn, NodeOut, NodeRetryPolicy};
+pub use reducer::{Add, Append, Custom, LastValue, Merge, Reducer};
+pub use snapshot::GraphSnapshot;
+pub use state::GraphState;
+pub use stream_mode::{StreamMode, StreamModes};
+pub use subgraph::Subgraph;
+
+/// Derive macro — generates `impl GraphState for <T>` with per-field reducers.
+/// The derive name shadows the trait name; both are imported via
+/// `use cognis_graph::GraphState;` because Rust allows a trait and a
+/// derive macro to share the same identifier (they live in different namespaces).
+pub use cognis_macros::GraphStateV2 as GraphState;
+
+/// Re-export of [`cognis_core`] — graph users import from this crate
+/// and `cognis_core::*` is implicitly in scope via re-export.
+pub use cognis_core;
+
+/// Re-export of the [`schemars`] crate (via cognis-core).
+pub use cognis_core::schemars;

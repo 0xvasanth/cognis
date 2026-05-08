@@ -1,28 +1,26 @@
 //! Proc macros for the Cognis framework.
 //!
-//! This crate exposes two kinds of macros with different coupling guarantees:
+//! # Macros
 //!
-//! # Framework-independent derives
+//! - [`tool`] — `#[cognis::tool]` attribute that generates a
+//!   `cognis_core::tools::BaseTool` implementation from an `async fn` (or
+//!   from an `impl` block containing one). Uses [`schemars`] under the hood
+//!   for parameter schema generation.
+//! - [`GraphState`] — derive macro for graph state schemas with per-field
+//!   reducers (see attributes `#[reducer(append|last_value|add|merge)]`).
 //!
-//! [`JsonSchema`] / [`ToolSchema`] / [`GraphState`] are derive macros whose
-//! generated code references **only `serde_json`** (and, for `GraphState`, the
-//! reducer fn paths the user supplies). They don't reference `cognis_core` or
-//! any other workspace crate, so consumers can derive schemas in crates that
-//! don't depend on the framework.
+//! # JSON Schema generation
 //!
-//! # Framework-coupled attributes
-//!
-//! [`tool`] is a `#[proc_macro_attribute]` that generates a
-//! `cognis_core::tools::BaseTool` implementation. Its output necessarily
-//! references `cognis_core::tools::{ValidateArgs, BaseTool, ToolInput,
-//! ToolOutput}` and `cognis_core::tools::validation::check_*`. Code annotated
-//! with `#[cognis::tool]` must therefore compile against the cognis framework.
-//!
-//! # Derive usage
+//! For `#[derive(JsonSchema)]` on your own structs/enums, use the re-export
+//! at `cognis_core::JsonSchema` (which is `schemars::JsonSchema`). The legacy
+//! hand-rolled `JsonSchema` / `ToolSchema` derives in this crate were removed
+//! in favor of the upstream `schemars` crate, which supports recursive types,
+//! `$ref`/`definitions`, doc-comment → `description`, and richer attribute
+//! syntax.
 //!
 //! ```ignore
-//! use cognis_macros::JsonSchema;
-//! use serde::{Serialize, Deserialize};
+//! use cognis_core::JsonSchema;
+//! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(JsonSchema, Serialize, Deserialize)]
 //! struct SearchFilter {
@@ -30,76 +28,20 @@
 //!     min_score: f64,
 //!     /// Categories to include
 //!     categories: Vec<String>,
-//!     /// Optional max results
-//!     limit: Option<u32>,
 //! }
 //!
-//! // Static schema — no instance needed
-//! let schema = SearchFilter::json_schema();
-//! // {"type":"object","properties":{...},"required":["min_score","categories"]}
+//! let schema = serde_json::to_value(schemars::schema_for!(SearchFilter)).unwrap();
 //! ```
-//!
-//! # `#[derive(JsonSchema)]` supported types
-//!
-//! | Rust type | JSON Schema |
-//! |-----------|-------------|
-//! | `String` | `{"type": "string"}` |
-//! | `f32`, `f64` | `{"type": "number"}` |
-//! | `i8`..`i128`, `u8`..`u128`, `usize`, `isize` | `{"type": "integer"}` |
-//! | `bool` | `{"type": "boolean"}` |
-//! | `Vec<T>` | `{"type": "array", "items": <T>}` |
-//! | `Option<T>` | schema of T, removed from required |
-//! | `HashMap<String, V>` | `{"type": "object", "additionalProperties": <V>}` |
-//! | `serde_json::Value` | `{}` (any) |
-//! | Nested struct with `#[derive(JsonSchema)]` | recursive object schema |
-//! | Enum with `#[derive(JsonSchema)]` | `{"type": "string", "enum": [...]}` |
 
 mod graph_state;
+mod graph_state_v2;
 mod schema_attr;
 mod tool_attr;
+mod tools_impl_attr;
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
-use syn::{parse_macro_input, Attribute, Data, DeriveInput, Expr, Fields, Lit, Meta, Type};
-
-// ---------------------------------------------------------------------------
-// #[derive(JsonSchema)]
-// ---------------------------------------------------------------------------
-
-/// Derive macro that generates a `pub fn json_schema() -> serde_json::Value`
-/// inherent method returning an OpenAPI-compatible JSON Schema.
-///
-/// Works on **structs** (produces `"type": "object"` with properties) and
-/// **enums** (produces `"type": "string"` with enum values).
-///
-/// # Field-level behaviour
-///
-/// - Doc comments (`///`) become `"description"` in the schema.
-/// - `Option<T>` fields are excluded from `"required"`.
-/// - `#[serde(skip)]` fields are excluded entirely.
-/// - `#[serde(rename = "new_name")]` uses the renamed key.
-/// - `#[serde(default)]` removes the field from `"required"`.
-/// - Nested structs that also derive `JsonSchema` produce nested object schemas.
-/// - Enums with `#[serde(rename = "...")]` on variants use the renamed values.
-#[proc_macro_derive(JsonSchema, attributes(schema))]
-pub fn derive_json_schema(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    match derive_json_schema_impl(&input) {
-        Ok(tokens) => tokens.into(),
-        Err(err) => err.to_compile_error().into(),
-    }
-}
-
-/// Backward-compatible alias for `#[derive(JsonSchema)]`.
-#[proc_macro_derive(ToolSchema, attributes(schema))]
-pub fn derive_tool_schema(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    match derive_json_schema_impl(&input) {
-        Ok(tokens) => tokens.into(),
-        Err(err) => err.to_compile_error().into(),
-    }
-}
+use syn::{parse_macro_input, DeriveInput};
 
 // ---------------------------------------------------------------------------
 // #[derive(GraphState)]
@@ -140,10 +82,13 @@ pub fn derive_graph_state(input: TokenStream) -> TokenStream {
 ///
 /// `#[schema(range(...))]`, `#[schema(length(...))]`, `#[schema(pattern(...))]`,
 /// `#[schema(enum_values(...))]`, and `#[schema(format(...))]` on fn arguments
-/// emit matching runtime checks plus JSON Schema keywords.
+/// emit matching runtime checks. Range/length/pattern are also translated into
+/// `#[schemars(...)]` attributes on the generated args struct so they appear
+/// in the JSON Schema produced via `schemars::schema_for!`. Enum-values and
+/// format are merged into the schema during `args_schema()` post-processing.
 ///
-/// See `cognis_core::tools::validation` for the helpers the generated
-/// code invokes.
+/// See `cognis_core::tools::validation` for the runtime helpers the
+/// generated code invokes.
 #[proc_macro_attribute]
 pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as tool_attr::ToolArgs);
@@ -154,484 +99,33 @@ pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-// =========================================================================
-// Implementation
-// =========================================================================
-
-fn derive_json_schema_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
-    let name = &input.ident;
-
-    match &input.data {
-        Data::Struct(data) => match &data.fields {
-            Fields::Named(f) => generate_struct_schema(name, &f.named),
-            _ => Err(syn::Error::new_spanned(
-                name,
-                "JsonSchema derive for structs only supports named fields",
-            )),
-        },
-        Data::Enum(data) => {
-            let variants: Vec<String> = data
-                .variants
-                .iter()
-                .map(|v| {
-                    if let Some(renamed) = get_serde_rename(&v.attrs) {
-                        renamed
-                    } else {
-                        v.ident.to_string()
-                    }
-                })
-                .collect();
-
-            let variant_literals: Vec<_> = variants.iter().map(|v| quote! { #v }).collect();
-
-            Ok(quote! {
-                impl #name {
-                    /// Returns the OpenAPI-compatible JSON Schema for this enum.
-                    pub fn json_schema() -> serde_json::Value {
-                        serde_json::json!({
-                            "type": "string",
-                            "enum": [#(#variant_literals),*]
-                        })
-                    }
-                }
-            })
-        }
-        _ => Err(syn::Error::new_spanned(
-            name,
-            "JsonSchema derive only supports structs and enums",
-        )),
-    }
+/// `#[derive(GraphStateV2)]` — v2-shape state derive that emits a typed
+/// sibling `<Name>Update` struct and an `impl GraphState for <Name>`. Use
+/// in v2 code via the re-export `cognis_core::GraphState` (the rename
+/// happens in cognis-core's lib.rs in Plan #2).
+#[proc_macro_derive(GraphStateV2, attributes(reducer, graph_state))]
+pub fn derive_graph_state_v2(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    graph_state_v2::derive_graph_state_v2(input).into()
 }
 
-fn generate_struct_schema(
-    name: &syn::Ident,
-    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> syn::Result<TokenStream2> {
-    let schema_body = generate_schema_body(fields)?;
-    Ok(quote! {
-        impl #name {
-            /// Returns the OpenAPI-compatible JSON Schema for this struct.
-            pub fn json_schema() -> serde_json::Value {
-                #schema_body
-            }
-        }
-    })
-}
-
-// =========================================================================
-// Schema body generation
-// =========================================================================
-
-fn generate_schema_body(
-    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> syn::Result<TokenStream2> {
-    let mut property_inserts = Vec::new();
-    let mut required_inserts = Vec::new();
-
-    for field in fields {
-        if has_serde_skip(&field.attrs) {
-            continue;
-        }
-
-        let field_ident = field
-            .ident
-            .as_ref()
-            .ok_or_else(|| syn::Error::new_spanned(field, "expected named field"))?;
-
-        let json_key = if let Some(renamed) = get_serde_rename(&field.attrs) {
-            renamed
-        } else {
-            field_ident.to_string()
-        };
-
-        let description = get_doc_comment(&field.attrs);
-        let has_default = has_serde_default(&field.attrs);
-        let (inner_ty, is_option) = unwrap_option_type(&field.ty);
-        let schema_expr = type_to_schema(inner_ty);
-        let schema_attr_opt = parse_schema_attr(&field.attrs)?;
-        let merge_tokens = match &schema_attr_opt {
-            Some(s) => emit_schema_merge(s),
-            None => quote! {},
-        };
-
-        let property_value = if description.is_some() || schema_attr_opt.is_some() {
-            let desc_insert = description.as_ref().map(|d| quote! {
-                __schema_obj.insert("description".to_string(), serde_json::Value::String(#d.to_string()));
-            });
-            quote! {
-                {
-                    let mut __schema = #schema_expr;
-                    if let Some(__schema_obj) = __schema.as_object_mut() {
-                        #desc_insert
-                        #merge_tokens
-                    }
-                    __schema
-                }
-            }
-        } else {
-            schema_expr
-        };
-
-        property_inserts.push(quote! {
-            __properties.insert(#json_key.to_string(), #property_value);
-        });
-
-        if !is_option && !has_default {
-            required_inserts.push(quote! {
-                __required.push(serde_json::Value::String(#json_key.to_string()));
-            });
-        }
-    }
-
-    Ok(quote! {
-        {
-            let mut __properties = serde_json::Map::new();
-            let mut __required: Vec<serde_json::Value> = Vec::new();
-
-            #(#property_inserts)*
-            #(#required_inserts)*
-
-            let mut __schema = serde_json::json!({
-                "type": "object",
-                "properties": serde_json::Value::Object(__properties),
-            });
-
-            if !__required.is_empty() {
-                __schema["required"] = serde_json::Value::Array(__required);
-            }
-
-            __schema
-        }
-    })
-}
-
-// =========================================================================
-// Type → JSON Schema mapping (no framework references)
-// =========================================================================
-
-fn type_to_schema(ty: &Type) -> TokenStream2 {
-    match ty {
-        Type::Path(type_path) => {
-            let segments = &type_path.path.segments;
-            let last_segment = segments.last().unwrap();
-            let type_name = last_segment.ident.to_string();
-
-            match type_name.as_str() {
-                "String" | "str" => quote! { serde_json::json!({"type": "string"}) },
-                "f32" | "f64" => quote! { serde_json::json!({"type": "number"}) },
-                "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
-                | "u128" | "usize" => {
-                    quote! { serde_json::json!({"type": "integer"}) }
-                }
-                "bool" => quote! { serde_json::json!({"type": "boolean"}) },
-                "Vec" => {
-                    if let Some(inner) = extract_generic_arg(&last_segment.arguments) {
-                        let items_schema = type_to_schema(inner);
-                        quote! {
-                            serde_json::json!({
-                                "type": "array",
-                                "items": #items_schema
-                            })
-                        }
-                    } else {
-                        quote! { serde_json::json!({"type": "array"}) }
-                    }
-                }
-                "HashMap" | "BTreeMap" => {
-                    if let Some(value_ty) = extract_second_generic_arg(&last_segment.arguments) {
-                        let value_schema = type_to_schema(value_ty);
-                        quote! {
-                            serde_json::json!({
-                                "type": "object",
-                                "additionalProperties": #value_schema
-                            })
-                        }
-                    } else {
-                        quote! { serde_json::json!({"type": "object"}) }
-                    }
-                }
-                "Value" => quote! { serde_json::json!({}) },
-                "Option" => {
-                    if let Some(inner) = extract_generic_arg(&last_segment.arguments) {
-                        type_to_schema(inner)
-                    } else {
-                        quote! { serde_json::json!({}) }
-                    }
-                }
-                // Any other type — call its json_schema() inherent method
-                _ => {
-                    quote! { #ty::json_schema() }
-                }
-            }
-        }
-        Type::Reference(type_ref) => type_to_schema(&type_ref.elem),
-        _ => {
-            quote! { #ty::json_schema() }
-        }
-    }
-}
-
-// =========================================================================
-// Helpers
-// =========================================================================
-
-fn extract_generic_arg(args: &syn::PathArguments) -> Option<&Type> {
-    match args {
-        syn::PathArguments::AngleBracketed(ab) => ab.args.iter().find_map(|arg| match arg {
-            syn::GenericArgument::Type(ty) => Some(ty),
-            _ => None,
-        }),
-        _ => None,
-    }
-}
-
-fn extract_second_generic_arg(args: &syn::PathArguments) -> Option<&Type> {
-    match args {
-        syn::PathArguments::AngleBracketed(ab) => {
-            let mut types = ab.args.iter().filter_map(|arg| match arg {
-                syn::GenericArgument::Type(ty) => Some(ty),
-                _ => None,
-            });
-            types.next();
-            types.next()
-        }
-        _ => None,
-    }
-}
-
-fn get_doc_comment(attrs: &[Attribute]) -> Option<String> {
-    let docs: Vec<String> = attrs
-        .iter()
-        .filter_map(|attr| {
-            if !attr.path().is_ident("doc") {
-                return None;
-            }
-            match &attr.meta {
-                Meta::NameValue(nv) => {
-                    if let Expr::Lit(expr_lit) = &nv.value {
-                        if let Lit::Str(s) = &expr_lit.lit {
-                            return Some(s.value().trim().to_string());
-                        }
-                    }
-                    None
-                }
-                _ => None,
-            }
-        })
-        .collect();
-
-    if docs.is_empty() {
-        None
-    } else {
-        Some(docs.join(" "))
-    }
-}
-
-fn has_serde_skip(attrs: &[Attribute]) -> bool {
-    has_serde_attr(attrs, "skip")
-}
-
-fn has_serde_default(attrs: &[Attribute]) -> bool {
-    has_serde_attr(attrs, "default")
-}
-
-fn has_serde_attr(attrs: &[Attribute], attr_name: &str) -> bool {
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
-        let mut found = false;
-        let _ = attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident(attr_name) {
-                found = true;
-            }
-            Ok(())
-        });
-        if found {
-            return true;
-        }
-    }
-    false
-}
-
-fn get_serde_rename(attrs: &[Attribute]) -> Option<String> {
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
-        let mut rename_val: Option<String> = None;
-        let _ = attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("rename") {
-                let value = meta.value()?;
-                let s: Lit = value.parse()?;
-                if let Lit::Str(lit) = s {
-                    rename_val = Some(lit.value());
-                }
-            }
-            Ok(())
-        });
-        if rename_val.is_some() {
-            return rename_val;
-        }
-    }
-    None
-}
-
-fn unwrap_option_type(ty: &Type) -> (&Type, bool) {
-    if let Type::Path(type_path) = ty {
-        if let Some(last) = type_path.path.segments.last() {
-            if last.ident == "Option" {
-                if let Some(inner) = extract_generic_arg(&last.arguments) {
-                    return (inner, true);
-                }
-            }
-        }
-    }
-    (ty, false)
-}
-
-// =========================================================================
-// #[schema(...)] → JSON Schema key emission
-// =========================================================================
-
-/// Emit a numeric literal token as integer if the value is a whole number
-/// within `i64` range, otherwise as a float. Keeps JSON Schema `minimum`/
-/// `maximum` keys rendered as ints when the user wrote `range(min = 1)`.
-fn number_token(v: f64) -> TokenStream2 {
-    if v.is_finite() && v.fract() == 0.0 && v >= i64::MIN as f64 && v <= i64::MAX as f64 {
-        let as_i64 = v as i64;
-        quote! { #as_i64 }
-    } else {
-        quote! { #v }
-    }
-}
-
-/// Build a `TokenStream` that, when evaluated, merges the validator-derived
-/// keys into a `serde_json::Map` named `__schema_obj` (must be an object).
-fn emit_schema_merge(attr: &schema_attr::SchemaAttr) -> TokenStream2 {
-    use schema_attr::Validator;
-
-    let mut inserts = Vec::new();
-    for v in &attr.validators {
-        match v {
-            Validator::Range { min, max } => {
-                if let Some(m) = min {
-                    let tok = number_token(*m);
-                    inserts.push(quote! {
-                        __schema_obj.insert("minimum".to_string(), serde_json::json!(#tok));
-                    });
-                }
-                if let Some(m) = max {
-                    let tok = number_token(*m);
-                    inserts.push(quote! {
-                        __schema_obj.insert("maximum".to_string(), serde_json::json!(#tok));
-                    });
-                }
-            }
-            Validator::Length { min, max } => {
-                // String → minLength/maxLength; Vec → minItems/maxItems.
-                // Dispatch at runtime by inspecting the base schema's "type"
-                // — cheaper than a second codegen pass and handles Option<T>
-                // correctly because Option<T> uses T's schema.
-                if let Some(m) = min {
-                    inserts.push(quote! {
-                        if __schema_obj.get("type") == Some(&serde_json::json!("string")) {
-                            __schema_obj.insert("minLength".to_string(), serde_json::json!(#m));
-                        } else if __schema_obj.get("type") == Some(&serde_json::json!("array")) {
-                            __schema_obj.insert("minItems".to_string(), serde_json::json!(#m));
-                        }
-                    });
-                }
-                if let Some(m) = max {
-                    inserts.push(quote! {
-                        if __schema_obj.get("type") == Some(&serde_json::json!("string")) {
-                            __schema_obj.insert("maxLength".to_string(), serde_json::json!(#m));
-                        } else if __schema_obj.get("type") == Some(&serde_json::json!("array")) {
-                            __schema_obj.insert("maxItems".to_string(), serde_json::json!(#m));
-                        }
-                    });
-                }
-            }
-            Validator::Pattern(p) => {
-                inserts.push(quote! {
-                    __schema_obj.insert("pattern".to_string(), serde_json::json!(#p));
-                });
-            }
-            Validator::EnumValues(values) => {
-                let list = values.iter().map(|v| quote! { #v }).collect::<Vec<_>>();
-                inserts.push(quote! {
-                    __schema_obj.insert(
-                        "enum".to_string(),
-                        serde_json::json!([#(#list),*]),
-                    );
-                });
-            }
-            Validator::Format(f) => {
-                let name = f.as_str();
-                inserts.push(quote! {
-                    __schema_obj.insert("format".to_string(), serde_json::json!(#name));
-                });
-            }
-            Validator::Items(inner) => {
-                let inner_merge = emit_schema_merge(inner);
-                inserts.push(quote! {
-                    if let Some(items_val) = __schema_obj.get_mut("items") {
-                        if let Some(__schema_obj) = items_val.as_object_mut() {
-                            #inner_merge
-                        }
-                    }
-                });
-            }
-        }
-    }
-    quote! { #(#inserts)* }
-}
-
-/// Accumulate validators from **all** `#[schema(...)]` attributes on a field.
+/// `#[tools_impl]` — outer attribute that scans an `impl` block for inner
+/// `#[tool]`-marked async methods and generates one [`cognis_core::tools::BaseTool`]
+/// wrapper per method, plus an `into_tools()` collector method on the user's
+/// struct.
 ///
-/// Users may reasonably split validators across multiple `#[schema]` lines:
+/// # Arguments
 ///
-/// ```ignore
-/// #[schema(length(min = 1, max = 100))]
-/// #[schema(pattern("^[a-z]+$"))]
-/// name: String,
-/// ```
+/// - `crate_path = "..."` — override the framework crate (default: `"cognis_core"`).
 ///
-/// Every attribute contributes its parsed validators to the combined result,
-/// rather than the first match winning and the rest being silently dropped.
-fn parse_schema_attr(attrs: &[syn::Attribute]) -> syn::Result<Option<schema_attr::SchemaAttr>> {
-    let mut combined = schema_attr::SchemaAttr::default();
-    let mut any = false;
-    for a in attrs {
-        if a.path().is_ident("schema") {
-            any = true;
-            let parsed = a.parse_args::<schema_attr::SchemaAttr>()?;
-            combined.validators.extend(parsed.validators);
-        }
-    }
-    Ok(if any { Some(combined) } else { None })
-}
-
-#[cfg(test)]
-mod tests {
-    fn to_snake_case(s: &str) -> String {
-        let mut result = String::new();
-        for (i, ch) in s.chars().enumerate() {
-            if ch.is_uppercase() {
-                if i > 0 {
-                    result.push('_');
-                }
-                result.push(ch.to_lowercase().next().unwrap());
-            } else {
-                result.push(ch);
-            }
-        }
-        result
-    }
-
-    #[test]
-    fn test_to_snake_case() {
-        assert_eq!(to_snake_case("CalculatorTool"), "calculator_tool");
-        assert_eq!(to_snake_case("Search"), "search");
+/// Inner `#[tool]` markers on methods follow the same syntax as the standalone
+/// `#[tool]` attribute (name, description, return_direct, crate_path).
+#[proc_macro_attribute]
+pub fn tools_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as tools_impl_attr::ToolsImplArgs);
+    let item_ts: TokenStream2 = item.into();
+    match tools_impl_attr::expand(args, item_ts) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
     }
 }

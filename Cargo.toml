@@ -4,14 +4,18 @@ members = [
     "crates/cognis-core",
     "crates/cognis",
     "crates/cognisgraph",
-    "crates/cognisagent",
     "crates/cognis-macros",
+    "crates/cognis-llm",
+    "crates/cognis-rag",
+    "crates/cognis-trace",
     "crates/examples",
 ]
 
 [workspace.package]
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
+authors = ["Vasanth <itsparser@gmail.com>"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -27,10 +31,14 @@ base64 = "0.22"
 reqwest = { version = "0.12", features = ["json", "stream"] }
 secrecy = { version = "0.10", features = ["serde"] }
 tracing = "0.1"
+schemars = "0.8"
 
 
-cognis = { path = "crates/cognis", version = "0.2.1" }
-cognis-core = { path = "crates/cognis-core", version = "0.2.1" }
-cognis-macros = { path = "crates/cognis-macros", version = "0.2.1" }
-cognisgraph = { path = "crates/cognisgraph", version = "0.2.1" }
-cognisagent = { path = "crates/cognisagent", version = "0.2.1" }
+dashmap = "6"
+cognis = { path = "crates/cognis", version = "0.3.0" }
+cognis-core = { path = "crates/cognis-core", version = "0.3.0" }
+cognis-graph = { path = "crates/cognisgraph", version = "0.3.0" }
+cognis-llm = { path = "crates/cognis-llm", version = "0.3.0" }
+cognis-rag = { path = "crates/cognis-rag", version = "0.3.0" }
+cognis-macros = { path = "crates/cognis-macros", version = "0.3.0" }
+cognis-trace = { path = "crates/cognis-trace", version = "0.3.0" }

@@ -1,26 +1,32 @@
-pub mod base;
+//! Typed prompt templates.
+//!
+//! [`PromptTemplate<I>`] renders a string prompt from any `Serialize` input.
+//! [`ChatPromptTemplate<I>`] renders a `Vec<Message>`. [`FewShotTemplate`]
+//! interpolates a per-example template into a prefix/suffix wrapper.
+//!
+//! Templates use `{name}` for substitution. Use `{{` and `}}` for literal
+//! braces.
+//!
+//! ```no_run
+//! use cognis_core::prompts::{ChatPromptTemplate, Role};
+//! use serde::Serialize;
+//!
+//! #[derive(Serialize)]
+//! struct Input { topic: String }
+//!
+//! let prompt: ChatPromptTemplate<Input> = ChatPromptTemplate::new()
+//!     .system("You are a {topic} expert.")
+//!     .human("Write a haiku about {topic}.");
+//! ```
+
 pub mod chat;
-pub mod dict;
 pub mod example_selector;
-pub mod example_selectors;
 pub mod few_shot;
-pub mod few_shot_with_templates;
-pub mod image;
-pub mod loading;
-pub mod message;
-pub mod string_formatter;
-pub mod structured;
 pub mod template;
 
-pub use base::{PartialValue, PromptTemplate};
-pub use chat::{ChatPromptTemplate, MessageLike};
-pub use dict::DictPromptTemplate;
-pub use example_selector::BaseExampleSelector;
-pub use example_selectors::LengthBasedExampleSelector;
-pub use few_shot::{FewShotChatMessagePromptTemplate, FewShotPromptTemplate};
-pub use few_shot_with_templates::FewShotPromptWithTemplates;
-pub use image::ImagePromptTemplate;
-pub use loading::{load_prompt, load_prompt_from_config, LoadedPrompt, PromptType};
-pub use message::{MessagePromptTemplate, MessagesPlaceholder};
-pub use string_formatter::TemplateFormat;
-pub use structured::StructuredPrompt;
+pub use chat::{ChatPromptTemplate, Role};
+pub use example_selector::{
+    ExampleRenderFn, ExampleSelector, LengthBasedExampleSelector, StaticExampleSelector,
+};
+pub use few_shot::FewShotTemplate;
+pub use template::PromptTemplate;

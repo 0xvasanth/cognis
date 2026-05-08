@@ -1,1255 +1,524 @@
-//! OpenAPI tool auto-generation from API specifications.
+//! OpenAPI tool — generate one [`Tool`] per operation in an OpenAPI 3.x
+//! spec. Calls the underlying HTTP endpoint with the model-supplied
+//! arguments.
 //!
-//! This module parses simplified OpenAPI 3.0 JSON specs and automatically
-//! generates `BaseTool` implementations for each operation. Each operation
-//! becomes a standalone tool that constructs and executes HTTP requests
-//! based on the tool input parameters.
+//! Supports:
+//! - GET / POST / PUT / PATCH / DELETE
+//! - Path parameters (`{user_id}` → from `params.user_id`)
+//! - Query parameters (`in: query`)
+//! - Header parameters (`in: header`)
+//! - JSON request body (when `requestBody` is present and the only
+//!   content-type is `application/json`)
 //!
-//! # Example
+//! Customization:
+//! - [`OpenApiToolset::with_auth`] — pluggable [`AuthScheme`] applied
+//!   to every request (Bearer, ApiKey-header, custom signer).
+//! - [`OpenApiToolset::with_extra_header`] — additional headers on
+//!   every request (correlation id, tenant, etc.).
+//! - [`OpenApiToolset::filter_operations`] — only include operations
+//!   whose `operationId` matches a predicate.
 //!
-//! ```rust,ignore
-//! use serde_json::json;
-//! use cognis::tools::openapi::OpenAPIToolkit;
+//! What it does **not** do:
+//! - Full OpenAPI semantic validation. We treat the spec as a
+//!   `serde_json::Value` and walk the relevant paths. For strict
+//!   validation, parse with `openapiv3` externally and pass the
+//!   resulting JSON.
+//! - cookie / form / multipart bodies. JSON body only.
 //!
-//! let spec_json = json!({
-//!     "openapi": "3.0.0",
-//!     "info": { "title": "Pet Store", "version": "1.0.0" },
-//!     "servers": [{ "url": "https://api.example.com" }],
-//!     "paths": {
-//!         "/pets": {
-//!             "get": {
-//!                 "operationId": "listPets",
-//!                 "summary": "List all pets",
-//!                 "parameters": [{
-//!                     "name": "limit",
-//!                     "in": "query",
-//!                     "required": false,
-//!                     "schema": { "type": "integer" }
-//!                 }]
-//!             }
-//!         }
-//!     }
-//! });
-//!
-//! let toolkit = OpenAPIToolkit::from_json(&spec_json).unwrap();
-//! let tools = toolkit.get_tools();
-//! ```
+//! Feature-gated under `tools-http` because it needs `reqwest`.
+
+#![cfg(feature = "tools-http")]
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use cognis_core::schemars::{self, JsonSchema};
+use serde::Deserialize;
+use serde_json::Value;
 
-use cognis_core::error::{CognisError, Result};
-use cognis_core::tools::base::BaseTool;
-use cognis_core::tools::types::{ToolInput, ToolOutput};
+use cognis_core::{CognisError, Result};
+use cognis_llm::tools::{Tool, ToolInput, ToolOutput};
 
-// ---------------------------------------------------------------------------
-// Data types
-// ---------------------------------------------------------------------------
+/// Pluggable auth scheme. The closure receives the outgoing
+/// `RequestBuilder` and returns the (possibly modified) builder.
+pub trait AuthScheme: Send + Sync {
+    /// Apply auth to a request.
+    fn apply(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder;
+}
 
-/// Information about a single parameter in an OpenAPI operation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ParameterInfo {
-    /// Parameter name.
+/// Bearer-token auth.
+pub struct BearerAuth(pub String);
+
+impl AuthScheme for BearerAuth {
+    fn apply(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        req.bearer_auth(&self.0)
+    }
+}
+
+/// Custom header-based auth (e.g. `X-API-Key`).
+pub struct HeaderAuth {
+    /// Header name.
     pub name: String,
-    /// Location: "query", "path", "header", or "cookie".
-    pub location: String,
-    /// Whether the parameter is required.
-    pub required: bool,
-    /// JSON Schema describing the parameter type.
-    pub schema: Option<Value>,
-    /// Human-readable description.
-    pub description: Option<String>,
+    /// Header value.
+    pub value: String,
 }
 
-/// Describes a single API operation extracted from an OpenAPI spec.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationInfo {
-    /// Unique operation identifier (from `operationId`).
-    pub operation_id: String,
-    /// HTTP method (GET, POST, PUT, DELETE, PATCH).
-    pub method: String,
-    /// URL path template (e.g. `/pets/{petId}`).
-    pub path: String,
-    /// Short summary of the operation.
-    pub summary: String,
-    /// Longer description of the operation.
-    pub description: Option<String>,
-    /// Parameters (path, query, header).
-    pub parameters: Vec<ParameterInfo>,
-    /// Request body schema, if any.
-    pub request_body: Option<Value>,
-    /// Tags associated with the operation.
-    pub tags: Vec<String>,
+impl HeaderAuth {
+    /// Build with `(header_name, value)`.
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
 }
 
-/// A parsed OpenAPI 3.0 specification.
-#[derive(Debug, Clone)]
-pub struct OpenAPISpec {
-    /// Title of the API.
-    pub title: String,
-    /// Version of the API.
-    pub version: String,
-    /// Base URLs extracted from the `servers` array.
-    pub servers: Vec<String>,
-    /// All operations extracted from the spec.
-    pub operations: Vec<OperationInfo>,
+impl AuthScheme for HeaderAuth {
+    fn apply(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        req.header(&self.name, &self.value)
+    }
 }
 
-impl OpenAPISpec {
-    /// Parse an OpenAPI 3.0 spec from a `serde_json::Value`.
-    pub fn from_json(spec: &Value) -> Result<Self> {
-        let info = spec
-            .get("info")
-            .ok_or_else(|| CognisError::ToolValidationError("Missing 'info' in spec".into()))?;
+/// Closure-based auth.
+impl<F> AuthScheme for F
+where
+    F: Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync,
+{
+    fn apply(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        (self)(req)
+    }
+}
 
-        let title = info
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Untitled API")
-            .to_string();
+/// Boxed predicate over `operationId`.
+pub type OperationFilter = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+/// `(url, query_pairs, header_pairs)` returned from request assembly.
+pub type AssembledRequest = (String, Vec<(String, String)>, Vec<(String, String)>);
 
-        let version = info
-            .get("version")
-            .and_then(|v| v.as_str())
-            .unwrap_or("0.0.0")
-            .to_string();
+/// Toolset built from an OpenAPI spec.
+pub struct OpenApiToolset {
+    spec: Value,
+    base_url: String,
+    auth: Option<Arc<dyn AuthScheme>>,
+    extra_headers: Vec<(String, String)>,
+    operation_filter: Option<OperationFilter>,
+    http: reqwest::Client,
+}
 
-        let servers = spec
-            .get("servers")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|s| {
-                        s.get("url").and_then(|u| u.as_str()).map(|u| {
-                            // Strip trailing slash for consistency.
-                            u.trim_end_matches('/').to_string()
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+impl OpenApiToolset {
+    /// Build from a parsed spec value (typically loaded via `serde_json`
+    /// from a JSON or YAML file).
+    pub fn new(spec: Value) -> Result<Self> {
+        let base_url = extract_base_url(&spec)?;
+        let http = reqwest::ClientBuilder::new()
+            .build()
+            .map_err(|e| CognisError::Configuration(format!("HTTP client: {e}")))?;
+        Ok(Self {
+            spec,
+            base_url,
+            auth: None,
+            extra_headers: Vec::new(),
+            operation_filter: None,
+            http,
+        })
+    }
 
-        let paths = spec
-            .get("paths")
-            .and_then(|v| v.as_object())
-            .ok_or_else(|| {
-                CognisError::ToolValidationError("Missing or invalid 'paths' in spec".into())
-            })?;
+    /// Override the base URL (default: first `servers[0].url` in spec).
+    pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
+        self.base_url = url.into();
+        self
+    }
 
-        let mut operations = Vec::new();
+    /// Set the auth scheme.
+    pub fn with_auth<A: AuthScheme + 'static>(mut self, auth: A) -> Self {
+        self.auth = Some(Arc::new(auth));
+        self
+    }
 
-        for (path, path_item) in paths {
-            let path_item = match path_item.as_object() {
-                Some(obj) => obj,
+    /// Add an extra header on every request.
+    pub fn with_extra_header(mut self, k: impl Into<String>, v: impl Into<String>) -> Self {
+        self.extra_headers.push((k.into(), v.into()));
+        self
+    }
+
+    /// Only include operations whose `operationId` passes `predicate`.
+    pub fn filter_operations<F>(mut self, predicate: F) -> Self
+    where
+        F: Fn(&str) -> bool + Send + Sync + 'static,
+    {
+        self.operation_filter = Some(Arc::new(predicate));
+        self
+    }
+
+    /// Override the HTTP client.
+    pub fn with_http_client(mut self, http: reqwest::Client) -> Self {
+        self.http = http;
+        self
+    }
+
+    /// Generate one [`Tool`] per operation in the spec. Operations
+    /// without an `operationId` are skipped (the id is the tool name).
+    pub fn into_tools(self) -> Result<Vec<Arc<dyn Tool>>> {
+        let mut out: Vec<Arc<dyn Tool>> = Vec::new();
+        let paths = match self.spec.get("paths").and_then(|v| v.as_object()) {
+            Some(p) => p.clone(),
+            None => return Ok(out),
+        };
+        let toolset = Arc::new(ToolsetCore {
+            base_url: self.base_url,
+            auth: self.auth,
+            extra_headers: self.extra_headers,
+            http: self.http,
+        });
+        for (path, methods) in paths.iter() {
+            let methods_obj = match methods.as_object() {
+                Some(o) => o,
                 None => continue,
             };
-
-            // Shared parameters at path level.
-            let shared_params = path_item
-                .get("parameters")
-                .and_then(|v| v.as_array())
-                .map(|arr| Self::parse_parameters(arr))
-                .unwrap_or_default();
-
-            for method in &["get", "post", "put", "delete", "patch"] {
-                if let Some(op) = path_item.get(*method) {
-                    let operation_id = op
-                        .get("operationId")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-
-                    if operation_id.is_empty() {
-                        // Generate a fallback ID from method + path.
-                        let fallback = format!(
-                            "{}_{}",
-                            method,
-                            path.trim_start_matches('/')
-                                .replace('/', "_")
-                                .replace(['{', '}'], "")
-                        );
-                        let mut info = Self::parse_operation(op, &fallback, method, path);
-                        // Merge shared parameters (operation-level takes priority).
-                        Self::merge_params(&mut info.parameters, &shared_params);
-                        operations.push(info);
-                    } else {
-                        let mut info = Self::parse_operation(op, &operation_id, method, path);
-                        Self::merge_params(&mut info.parameters, &shared_params);
-                        operations.push(info);
+            for (method, op) in methods_obj {
+                let m = method.to_uppercase();
+                if !matches!(m.as_str(), "GET" | "POST" | "PUT" | "PATCH" | "DELETE") {
+                    continue;
+                }
+                let operation_id = match op
+                    .get("operationId")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                {
+                    Some(id) => id,
+                    None => continue,
+                };
+                if let Some(filter) = &self.operation_filter {
+                    if !filter(&operation_id) {
+                        continue;
                     }
                 }
-            }
-        }
-
-        Ok(Self {
-            title,
-            version,
-            servers,
-            operations,
-        })
-    }
-
-    /// Return all operations in the spec.
-    pub fn list_operations(&self) -> Vec<OperationInfo> {
-        self.operations.clone()
-    }
-
-    // ── Internal helpers ──────────────────────────────────────────────
-
-    fn parse_operation(op: &Value, operation_id: &str, method: &str, path: &str) -> OperationInfo {
-        let summary = op
-            .get("summary")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        let description = op
-            .get("description")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        let parameters = op
-            .get("parameters")
-            .and_then(|v| v.as_array())
-            .map(|arr| Self::parse_parameters(arr))
-            .unwrap_or_default();
-
-        let request_body = op.get("requestBody").cloned();
-
-        let tags = op
-            .get("tags")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|t| t.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        OperationInfo {
-            operation_id: operation_id.to_string(),
-            method: method.to_uppercase(),
-            path: path.to_string(),
-            summary,
-            description,
-            parameters,
-            request_body,
-            tags,
-        }
-    }
-
-    fn parse_parameters(params: &[Value]) -> Vec<ParameterInfo> {
-        params
-            .iter()
-            .filter_map(|p| {
-                let name = p.get("name")?.as_str()?.to_string();
-                let location = p
-                    .get("in")
+                let parameters = op
+                    .get("parameters")
+                    .cloned()
+                    .unwrap_or_else(|| Value::Array(Vec::new()));
+                let request_body = op.get("requestBody").cloned();
+                let description = op
+                    .get("summary")
+                    .or_else(|| op.get("description"))
                     .and_then(|v| v.as_str())
-                    .unwrap_or("query")
+                    .unwrap_or("OpenAPI operation")
                     .to_string();
-                let required = p.get("required").and_then(|v| v.as_bool()).unwrap_or(false);
-                let schema = p.get("schema").cloned();
-                let description = p
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                Some(ParameterInfo {
-                    name,
-                    location,
-                    required,
-                    schema,
+                out.push(Arc::new(OpenApiOperationTool {
+                    toolset: toolset.clone(),
+                    operation_id,
                     description,
-                })
-            })
-            .collect()
-    }
-
-    /// Merge shared (path-level) parameters into operation parameters.
-    /// Operation-level parameters with the same name take priority.
-    fn merge_params(op_params: &mut Vec<ParameterInfo>, shared: &[ParameterInfo]) {
-        for shared_param in shared {
-            let exists = op_params
-                .iter()
-                .any(|p| p.name == shared_param.name && p.location == shared_param.location);
-            if !exists {
-                op_params.push(shared_param.clone());
+                    method: m,
+                    path: path.to_string(),
+                    parameters,
+                    request_body,
+                }));
             }
         }
+        Ok(out)
     }
 }
 
-// ---------------------------------------------------------------------------
-// OpenAPITool — a BaseTool generated from a single operation
-// ---------------------------------------------------------------------------
-
-/// Trait for executing HTTP requests, enabling testability without real network calls.
-#[async_trait]
-pub trait HttpExecutor: Send + Sync {
-    /// Execute an HTTP request and return the response body as a `Value`.
-    async fn execute(
-        &self,
-        method: &str,
-        url: &str,
-        headers: &HashMap<String, String>,
-        body: Option<&Value>,
-    ) -> Result<Value>;
-}
-
-/// Default HTTP executor that uses `reqwest` to make real HTTP calls.
-/// Only available when one of the provider features is enabled.
-#[cfg(any(
-    feature = "openai",
-    feature = "anthropic",
-    feature = "google",
-    feature = "ollama",
-    feature = "azure"
-))]
-pub struct ReqwestExecutor {
-    client: reqwest::Client,
-}
-
-#[cfg(any(
-    feature = "openai",
-    feature = "anthropic",
-    feature = "google",
-    feature = "ollama",
-    feature = "azure"
-))]
-impl Default for ReqwestExecutor {
-    fn default() -> Self {
-        Self {
-            client: reqwest::Client::new(),
-        }
-    }
-}
-
-#[cfg(any(
-    feature = "openai",
-    feature = "anthropic",
-    feature = "google",
-    feature = "ollama",
-    feature = "azure"
-))]
-#[async_trait]
-impl HttpExecutor for ReqwestExecutor {
-    async fn execute(
-        &self,
-        method: &str,
-        url: &str,
-        headers: &HashMap<String, String>,
-        body: Option<&Value>,
-    ) -> Result<Value> {
-        let mut req = match method {
-            "GET" => self.client.get(url),
-            "POST" => self.client.post(url),
-            "PUT" => self.client.put(url),
-            "DELETE" => self.client.delete(url),
-            "PATCH" => self.client.patch(url),
-            _ => {
-                return Err(CognisError::ToolException(format!(
-                    "Unsupported HTTP method: {}",
-                    method
-                )));
-            }
-        };
-
-        for (key, value) in headers {
-            req = req.header(key, value);
-        }
-
-        if let Some(body_val) = body {
-            req = req.header("Content-Type", "application/json");
-            req = req.json(body_val);
-        }
-
-        let response = req
-            .send()
-            .await
-            .map_err(|e| CognisError::ToolException(format!("HTTP request failed: {}", e)))?;
-
-        let status = response.status().as_u16();
-        let response_body = response.text().await.map_err(|e| {
-            CognisError::ToolException(format!("Failed to read response body: {}", e))
-        })?;
-
-        if status >= 400 {
-            return Err(CognisError::HttpError {
-                status,
-                body: response_body,
-            });
-        }
-
-        let value: Value =
-            serde_json::from_str(&response_body).unwrap_or(Value::String(response_body));
-
-        Ok(value)
-    }
-}
-
-/// A no-op executor that returns a JSON description of the request instead of
-/// making a real HTTP call. Useful for testing and dry-run scenarios.
-pub struct DryRunExecutor;
-
-#[async_trait]
-impl HttpExecutor for DryRunExecutor {
-    async fn execute(
-        &self,
-        method: &str,
-        url: &str,
-        headers: &HashMap<String, String>,
-        body: Option<&Value>,
-    ) -> Result<Value> {
-        Ok(json!({
-            "url": url,
-            "method": method,
-            "headers": headers,
-            "body": body,
-        }))
-    }
-}
-
-/// A tool auto-generated from a single OpenAPI operation.
-///
-/// When invoked, it constructs the appropriate HTTP request from the tool
-/// input and executes it via the configured `HttpExecutor`.
-pub struct OpenAPITool {
-    operation: OperationInfo,
+struct ToolsetCore {
     base_url: String,
-    headers: HashMap<String, String>,
-    executor: Arc<dyn HttpExecutor>,
+    auth: Option<Arc<dyn AuthScheme>>,
+    extra_headers: Vec<(String, String)>,
+    http: reqwest::Client,
 }
 
-impl OpenAPITool {
-    /// Create a new tool from an operation, base URL, default headers, and executor.
-    pub fn new(
-        operation: OperationInfo,
-        base_url: String,
-        headers: HashMap<String, String>,
-        executor: Arc<dyn HttpExecutor>,
-    ) -> Self {
-        Self {
-            operation,
-            base_url,
-            headers,
-            executor,
-        }
-    }
-
-    /// Build the full URL with path parameter substitution.
-    pub fn build_url(&self, args: &HashMap<String, Value>) -> String {
-        let mut path = self.operation.path.clone();
-
-        // Substitute path parameters.
-        for param in &self.operation.parameters {
-            if param.location == "path" {
-                if let Some(val) = args.get(&param.name) {
-                    let replacement = match val {
-                        Value::String(s) => s.clone(),
-                        other => other.to_string().trim_matches('"').to_string(),
-                    };
-                    path = path.replace(&format!("{{{}}}", param.name), &replacement);
-                }
-            }
-        }
-
-        // Build query string.
-        let query_params: Vec<String> = self
-            .operation
-            .parameters
-            .iter()
-            .filter(|p| p.location == "query")
-            .filter_map(|p| {
-                args.get(&p.name).map(|val| {
-                    let val_str = match val {
-                        Value::String(s) => s.clone(),
-                        other => other.to_string().trim_matches('"').to_string(),
-                    };
-                    format!("{}={}", p.name, val_str)
-                })
-            })
-            .collect();
-
-        let base = format!("{}{}", self.base_url, path);
-        if query_params.is_empty() {
-            base
-        } else {
-            format!("{}?{}", base, query_params.join("&"))
-        }
-    }
-
-    /// Build the args schema (JSON Schema) from the operation parameters.
-    fn build_args_schema(&self) -> Value {
-        let mut properties = serde_json::Map::new();
-        let mut required = Vec::new();
-
-        for param in &self.operation.parameters {
-            let mut prop = param
-                .schema
-                .clone()
-                .unwrap_or_else(|| json!({"type": "string"}));
-            if let Some(desc) = &param.description {
-                if let Some(obj) = prop.as_object_mut() {
-                    obj.insert("description".to_string(), Value::String(desc.clone()));
-                }
-            }
-            properties.insert(param.name.clone(), prop);
-            if param.required {
-                required.push(Value::String(param.name.clone()));
-            }
-        }
-
-        // If there is a request body, add a "body" parameter.
-        if self.operation.request_body.is_some() {
-            let body_schema = self
-                .operation
-                .request_body
-                .as_ref()
-                .and_then(|rb| {
-                    rb.get("content")
-                        .and_then(|c| c.get("application/json"))
-                        .and_then(|j| j.get("schema"))
-                        .cloned()
-                })
-                .unwrap_or_else(|| json!({"type": "object"}));
-            properties.insert("body".to_string(), body_schema);
-            required.push(Value::String("body".to_string()));
-        }
-
-        json!({
-            "type": "object",
-            "properties": properties,
-            "required": required,
-        })
-    }
-
-    /// Extract header values from tool input arguments.
-    fn extract_headers(&self, args: &HashMap<String, Value>) -> HashMap<String, String> {
-        let mut headers = self.headers.clone();
-        for param in &self.operation.parameters {
-            if param.location == "header" {
-                if let Some(val) = args.get(&param.name) {
-                    let val_str = match val {
-                        Value::String(s) => s.clone(),
-                        other => other.to_string().trim_matches('"').to_string(),
-                    };
-                    headers.insert(param.name.clone(), val_str);
-                }
-            }
-        }
-        headers
-    }
-
-    /// Extract the request body from tool input arguments.
-    fn extract_body(&self, args: &HashMap<String, Value>) -> Option<Value> {
-        if self.operation.request_body.is_some() {
-            args.get("body").cloned()
-        } else {
-            None
-        }
-    }
+/// One operation, exposed as a Tool.
+struct OpenApiOperationTool {
+    toolset: Arc<ToolsetCore>,
+    operation_id: String,
+    description: String,
+    method: String,
+    path: String,
+    parameters: Value,
+    request_body: Option<Value>,
 }
 
-impl std::fmt::Debug for OpenAPITool {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenAPITool")
-            .field("operation_id", &self.operation.operation_id)
-            .field("method", &self.operation.method)
-            .field("path", &self.operation.path)
-            .finish()
-    }
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GenericInput {
+    /// Path / query / header parameters keyed by name.
+    #[serde(default)]
+    params: HashMap<String, Value>,
+    /// JSON body (when the operation declares one).
+    #[serde(default)]
+    body: Option<Value>,
 }
 
 #[async_trait]
-impl BaseTool for OpenAPITool {
+impl Tool for OpenApiOperationTool {
     fn name(&self) -> &str {
-        &self.operation.operation_id
+        &self.operation_id
     }
-
     fn description(&self) -> &str {
-        if !self.operation.summary.is_empty() {
-            &self.operation.summary
-        } else {
-            self.operation
-                .description
-                .as_deref()
-                .unwrap_or("OpenAPI tool")
-        }
+        &self.description
     }
-
-    fn args_schema(&self) -> Option<Value> {
-        Some(self.build_args_schema())
+    fn args_schema(&self) -> Option<serde_json::Value> {
+        // We could synthesize a per-operation schema from `parameters`,
+        // but a generic one is enough to let the LLM call the tool —
+        // the per-operation contract is announced in the description.
+        Some(serde_json::to_value(schemars::schema_for!(GenericInput)).unwrap_or_default())
     }
 
     async fn _run(&self, input: ToolInput) -> Result<ToolOutput> {
-        let args: HashMap<String, Value> = match input {
-            ToolInput::Structured(map) => map,
-            ToolInput::ToolCall(tc) => tc.args,
-            ToolInput::Text(s) => {
-                // Try to parse as JSON object; otherwise treat as empty.
-                serde_json::from_str(&s).unwrap_or_default()
+        let parsed: GenericInput = serde_json::from_value(input.into_json()).map_err(|e| {
+            CognisError::ToolValidationError(format!(
+                "openapi[{op}]: invalid args: {e}",
+                op = self.operation_id
+            ))
+        })?;
+        // Substitute `{name}` placeholders in path with params; remaining
+        // params are dispatched to query/header per the spec metadata.
+        let (url, query_pairs, header_pairs) = assemble_request(
+            &self.path,
+            &self.parameters,
+            &parsed.params,
+            &self.toolset.base_url,
+        )?;
+
+        let mut req = match self.method.as_str() {
+            "GET" => self.toolset.http.get(&url),
+            "POST" => self.toolset.http.post(&url),
+            "PUT" => self.toolset.http.put(&url),
+            "PATCH" => self.toolset.http.patch(&url),
+            "DELETE" => self.toolset.http.delete(&url),
+            other => {
+                return Err(CognisError::Internal(format!(
+                    "openapi: unsupported method `{other}`"
+                )))
             }
         };
 
-        let url = self.build_url(&args);
-        let headers = self.extract_headers(&args);
-        let body = self.extract_body(&args);
-
-        let value = self
-            .executor
-            .execute(&self.operation.method, &url, &headers, body.as_ref())
-            .await?;
-
-        Ok(ToolOutput::Content(value))
+        if !query_pairs.is_empty() {
+            req = req.query(&query_pairs);
+        }
+        for (k, v) in header_pairs {
+            req = req.header(&k, &v);
+        }
+        for (k, v) in &self.toolset.extra_headers {
+            req = req.header(k, v);
+        }
+        if let Some(auth) = &self.toolset.auth {
+            req = auth.apply(req);
+        }
+        if matches!(self.method.as_str(), "POST" | "PUT" | "PATCH") && self.request_body.is_some() {
+            if let Some(b) = parsed.body {
+                req = req.json(&b);
+            }
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| CognisError::Internal(format!("openapi[{}]: {e}", self.operation_id)))?;
+        let status = resp.status();
+        let body_text = resp.text().await.unwrap_or_default();
+        let body_value = serde_json::from_str::<Value>(&body_text)
+            .unwrap_or_else(|_| Value::String(body_text.clone()));
+        Ok(ToolOutput::Content(serde_json::json!({
+            "status": status.as_u16(),
+            "ok": status.is_success(),
+            "body": body_value,
+        })))
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tool generation
-// ---------------------------------------------------------------------------
-
-/// Generate a `BaseTool` for each operation in the spec.
-///
-/// Optionally filter by tags or specific operation IDs. The `executor`
-/// determines how HTTP requests are dispatched (use `DryRunExecutor` for
-/// testing or `ReqwestExecutor` for real calls).
-pub fn generate_tools(
-    spec: &OpenAPISpec,
-    base_url: Option<&str>,
-    headers: Option<HashMap<String, String>>,
-    filter_tags: Option<&[String]>,
-    filter_operation_ids: Option<&[String]>,
-    executor: Arc<dyn HttpExecutor>,
-) -> Vec<Arc<dyn BaseTool>> {
-    let url = base_url
-        .map(|s| s.trim_end_matches('/').to_string())
-        .or_else(|| spec.servers.first().cloned())
-        .unwrap_or_default();
-
-    let hdrs = headers.unwrap_or_default();
-
-    spec.operations
-        .iter()
-        .filter(|op| {
-            // Tag filter.
-            if let Some(tags) = filter_tags {
-                if !op.tags.iter().any(|t| tags.contains(t)) {
-                    return false;
-                }
-            }
-            // Operation ID filter.
-            if let Some(ids) = filter_operation_ids {
-                if !ids.contains(&op.operation_id) {
-                    return false;
-                }
-            }
-            true
-        })
-        .map(|op| {
-            Arc::new(OpenAPITool::new(
-                op.clone(),
-                url.clone(),
-                hdrs.clone(),
-                executor.clone(),
-            )) as Arc<dyn BaseTool>
-        })
-        .collect()
+fn extract_base_url(spec: &Value) -> Result<String> {
+    if let Some(servers) = spec.get("servers").and_then(|v| v.as_array()) {
+        if let Some(s) = servers
+            .first()
+            .and_then(|v| v.get("url"))
+            .and_then(|v| v.as_str())
+        {
+            return Ok(s.to_string());
+        }
+    }
+    Err(CognisError::Configuration(
+        "openapi: spec has no servers[0].url and no base_url override was provided".into(),
+    ))
 }
 
-// ---------------------------------------------------------------------------
-// OpenAPIToolkit — builder pattern
-// ---------------------------------------------------------------------------
+/// Build the final URL + query/header pairs for an operation call.
+/// Path templates `{name}` are substituted from `params`; consumed
+/// names are removed so they don't leak into query/header.
+fn assemble_request(
+    path: &str,
+    parameters: &Value,
+    params: &HashMap<String, Value>,
+    base_url: &str,
+) -> Result<AssembledRequest> {
+    let mut consumed_path: Vec<String> = Vec::new();
+    let mut query: Vec<(String, String)> = Vec::new();
+    let mut headers: Vec<(String, String)> = Vec::new();
 
-/// A toolkit that wraps an OpenAPI spec and produces `BaseTool` instances.
-///
-/// Use the builder pattern to configure base URL overrides, authentication
-/// headers, and operation filters.
-pub struct OpenAPIToolkit {
-    spec: OpenAPISpec,
-    base_url: Option<String>,
-    headers: HashMap<String, String>,
-    filter_tags: Option<Vec<String>>,
-    filter_operation_ids: Option<Vec<String>>,
-    executor: Arc<dyn HttpExecutor>,
-}
-
-impl OpenAPIToolkit {
-    /// Create a toolkit from a parsed `OpenAPISpec`.
-    ///
-    /// Uses `DryRunExecutor` by default. Call `with_executor` to provide
-    /// a real HTTP executor (e.g. `ReqwestExecutor`).
-    pub fn new(spec: OpenAPISpec) -> Self {
-        Self {
-            spec,
-            base_url: None,
-            headers: HashMap::new(),
-            filter_tags: None,
-            filter_operation_ids: None,
-            executor: Arc::new(DryRunExecutor),
+    // Substitute path templates first.
+    let mut full_path = path.to_string();
+    let mut start = 0usize;
+    while let Some(open) = full_path[start..].find('{') {
+        let abs_open = start + open;
+        if let Some(close_rel) = full_path[abs_open..].find('}') {
+            let abs_close = abs_open + close_rel;
+            let name = full_path[abs_open + 1..abs_close].to_string();
+            let value = params.get(&name).map(value_to_string).unwrap_or_default();
+            full_path.replace_range(abs_open..=abs_close, &value);
+            consumed_path.push(name);
+            start = abs_open + value.len();
+        } else {
+            break;
         }
     }
 
-    /// Create a toolkit directly from an OpenAPI JSON spec.
-    pub fn from_json(spec: &Value) -> Result<Self> {
-        let parsed = OpenAPISpec::from_json(spec)?;
-        Ok(Self::new(parsed))
+    // Walk the operation's `parameters` array to dispatch query/header.
+    if let Some(params_arr) = parameters.as_array() {
+        for p in params_arr {
+            let name = match p.get("name").and_then(|v| v.as_str()) {
+                Some(n) => n,
+                None => continue,
+            };
+            let location = match p.get("in").and_then(|v| v.as_str()) {
+                Some(l) => l,
+                None => continue,
+            };
+            // Skip already-substituted path params.
+            if location == "path" && consumed_path.iter().any(|n| n == name) {
+                continue;
+            }
+            let value = match params.get(name) {
+                Some(v) => v.clone(),
+                None => continue,
+            };
+            let s = value_to_string(&value);
+            match location {
+                "query" => query.push((name.to_string(), s)),
+                "header" => headers.push((name.to_string(), s)),
+                "path" => {
+                    // Path was already templated above; if the spec
+                    // declares a path parameter that the path template
+                    // doesn't reference, ignore it (malformed spec).
+                }
+                _ => {} // cookie / form / unknown — ignored
+            }
+        }
     }
 
-    /// Set a custom HTTP executor.
-    pub fn with_executor(mut self, executor: Arc<dyn HttpExecutor>) -> Self {
-        self.executor = executor;
-        self
+    let mut url = base_url.to_string();
+    if !url.ends_with('/') && !full_path.starts_with('/') {
+        url.push('/');
     }
-
-    /// Override the base URL for all requests.
-    pub fn with_base_url(mut self, url: &str) -> Self {
-        self.base_url = Some(url.trim_end_matches('/').to_string());
-        self
+    if url.ends_with('/') && full_path.starts_with('/') {
+        url.pop();
     }
-
-    /// Add a single default header applied to all requests.
-    pub fn with_header(mut self, key: &str, value: &str) -> Self {
-        self.headers.insert(key.to_string(), value.to_string());
-        self
-    }
-
-    /// Add multiple default headers applied to all requests.
-    pub fn with_headers(mut self, headers: HashMap<String, String>) -> Self {
-        self.headers.extend(headers);
-        self
-    }
-
-    /// Set an Authorization Bearer token header.
-    pub fn with_bearer_token(self, token: &str) -> Self {
-        self.with_header("Authorization", &format!("Bearer {}", token))
-    }
-
-    /// Only include operations matching the given tags.
-    pub fn with_tag_filter(mut self, tags: Vec<String>) -> Self {
-        self.filter_tags = Some(tags);
-        self
-    }
-
-    /// Only include operations with the given operation IDs.
-    pub fn with_operation_filter(mut self, ids: Vec<String>) -> Self {
-        self.filter_operation_ids = Some(ids);
-        self
-    }
-
-    /// Generate all tools from the spec, applying configured filters.
-    pub fn get_tools(&self) -> Vec<Arc<dyn BaseTool>> {
-        generate_tools(
-            &self.spec,
-            self.base_url.as_deref(),
-            Some(self.headers.clone()),
-            self.filter_tags.as_deref(),
-            self.filter_operation_ids.as_deref(),
-            self.executor.clone(),
-        )
-    }
-
-    /// Return a reference to the underlying parsed spec.
-    pub fn spec(&self) -> &OpenAPISpec {
-        &self.spec
-    }
+    url.push_str(&full_path);
+    Ok((url, query, headers))
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+fn value_to_string(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
-    /// Helper: minimal valid OpenAPI spec with a single GET endpoint.
-    fn pet_store_spec() -> Value {
+    fn sample_spec() -> Value {
         json!({
-            "openapi": "3.0.0",
-            "info": { "title": "Pet Store", "version": "1.0.0" },
-            "servers": [{ "url": "https://api.petstore.com/v1" }],
+            "servers": [{"url": "https://api.example.com/v1"}],
             "paths": {
-                "/pets": {
+                "/users/{id}": {
                     "get": {
-                        "operationId": "listPets",
-                        "summary": "List all pets",
-                        "tags": ["pets"],
+                        "operationId": "getUser",
+                        "summary": "Get user by id",
                         "parameters": [
-                            {
-                                "name": "limit",
-                                "in": "query",
-                                "required": false,
-                                "description": "Maximum number of pets to return",
-                                "schema": { "type": "integer" }
-                            },
-                            {
-                                "name": "status",
-                                "in": "query",
-                                "required": false,
-                                "schema": { "type": "string" }
-                            }
-                        ]
-                    },
-                    "post": {
-                        "operationId": "createPet",
-                        "summary": "Create a pet",
-                        "tags": ["pets"],
-                        "requestBody": {
-                            "required": true,
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "name": { "type": "string" },
-                                            "tag": { "type": "string" }
-                                        },
-                                        "required": ["name"]
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "/pets/{petId}": {
-                    "get": {
-                        "operationId": "getPet",
-                        "summary": "Get a pet by ID",
-                        "tags": ["pets"],
-                        "parameters": [
-                            {
-                                "name": "petId",
-                                "in": "path",
-                                "required": true,
-                                "schema": { "type": "string" }
-                            }
-                        ]
-                    },
-                    "put": {
-                        "operationId": "updatePet",
-                        "summary": "Update a pet",
-                        "tags": ["pets"],
-                        "parameters": [
-                            {
-                                "name": "petId",
-                                "in": "path",
-                                "required": true,
-                                "schema": { "type": "string" }
-                            }
-                        ],
-                        "requestBody": {
-                            "required": true,
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "name": { "type": "string" },
-                                            "tag": { "type": "string" }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "delete": {
-                        "operationId": "deletePet",
-                        "summary": "Delete a pet",
-                        "tags": ["pets"],
-                        "parameters": [
-                            {
-                                "name": "petId",
-                                "in": "path",
-                                "required": true,
-                                "schema": { "type": "string" }
-                            }
+                            {"name": "id", "in": "path"},
+                            {"name": "verbose", "in": "query"}
                         ]
                     }
                 },
                 "/users": {
-                    "get": {
-                        "operationId": "listUsers",
-                        "summary": "List all users",
-                        "tags": ["users"]
+                    "post": {
+                        "operationId": "createUser",
+                        "summary": "Create user",
+                        "requestBody": {"content": {"application/json": {}}}
                     }
                 }
             }
         })
     }
 
-    // ── Test 1: Parse simple OpenAPI spec ──────────────────────────────
+    #[test]
+    fn extracts_base_url_from_servers() {
+        let s = sample_spec();
+        assert_eq!(extract_base_url(&s).unwrap(), "https://api.example.com/v1");
+    }
 
     #[test]
-    fn test_parse_simple_spec() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        assert_eq!(spec.title, "Pet Store");
-        assert_eq!(spec.version, "1.0.0");
-        assert_eq!(spec.servers, vec!["https://api.petstore.com/v1"]);
-        assert!(!spec.operations.is_empty());
+    fn missing_servers_errors() {
+        let bad = json!({"paths": {}});
+        assert!(extract_base_url(&bad).is_err());
     }
-
-    // ── Test 2: List operations from spec ─────────────────────────────
 
     #[test]
-    fn test_list_operations() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let ops = spec.list_operations();
-        let ids: Vec<&str> = ops.iter().map(|o| o.operation_id.as_str()).collect();
-        assert!(ids.contains(&"listPets"));
-        assert!(ids.contains(&"createPet"));
-        assert!(ids.contains(&"getPet"));
-        assert!(ids.contains(&"updatePet"));
-        assert!(ids.contains(&"deletePet"));
-        assert!(ids.contains(&"listUsers"));
-        assert_eq!(ops.len(), 6);
-    }
-
-    // ── Test 3: Generate tool from GET endpoint ───────────────────────
-
-    #[tokio::test]
-    async fn test_generate_tool_from_get_endpoint() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(&spec, None, None, None, None, Arc::new(DryRunExecutor));
-
-        let list_pets_tool = tools.iter().find(|t| t.name() == "listPets").unwrap();
-        assert_eq!(list_pets_tool.description(), "List all pets");
-
-        // Invoke with query parameters.
-        let mut args = HashMap::new();
-        args.insert("limit".to_string(), json!(10));
-
-        let result = list_pets_tool
-            ._run(ToolInput::Structured(args))
-            .await
-            .unwrap();
-
-        match result {
-            ToolOutput::Content(v) => {
-                assert_eq!(v["method"], "GET");
-                assert!(v["url"].as_str().unwrap().contains("limit=10"));
-            }
-            _ => panic!("Expected Content output"),
-        }
-    }
-
-    // ── Test 4: Generate tool from POST endpoint with body ────────────
-
-    #[tokio::test]
-    async fn test_generate_tool_from_post_endpoint_with_body() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(&spec, None, None, None, None, Arc::new(DryRunExecutor));
-
-        let create_pet_tool = tools.iter().find(|t| t.name() == "createPet").unwrap();
-
-        let mut args = HashMap::new();
-        args.insert("body".to_string(), json!({"name": "Fido", "tag": "dog"}));
-
-        let result = create_pet_tool
-            ._run(ToolInput::Structured(args))
-            .await
-            .unwrap();
-
-        match result {
-            ToolOutput::Content(v) => {
-                assert_eq!(v["method"], "POST");
-                assert_eq!(v["body"]["name"], "Fido");
-            }
-            _ => panic!("Expected Content output"),
-        }
-    }
-
-    // ── Test 5: Tool name from operationId ────────────────────────────
-
-    #[test]
-    fn test_tool_name_from_operation_id() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(&spec, None, None, None, None, Arc::new(DryRunExecutor));
-
+    fn into_tools_produces_one_tool_per_operation() {
+        let toolset = OpenApiToolset::new(sample_spec()).unwrap();
+        let tools = toolset.into_tools().unwrap();
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"listPets"));
-        assert!(names.contains(&"createPet"));
-        assert!(names.contains(&"getPet"));
-        assert!(names.contains(&"updatePet"));
-        assert!(names.contains(&"deletePet"));
-    }
-
-    // ── Test 6: Tool description from summary ─────────────────────────
-
-    #[test]
-    fn test_tool_description_from_summary() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(&spec, None, None, None, None, Arc::new(DryRunExecutor));
-
-        let tool = tools.iter().find(|t| t.name() == "getPet").unwrap();
-        assert_eq!(tool.description(), "Get a pet by ID");
-    }
-
-    // ── Test 7: Parameter schema generation ───────────────────────────
-
-    #[test]
-    fn test_parameter_schema_generation() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(&spec, None, None, None, None, Arc::new(DryRunExecutor));
-
-        let tool = tools.iter().find(|t| t.name() == "listPets").unwrap();
-        let schema = tool.args_schema().unwrap();
-
-        // Should have "limit" and "status" properties.
-        let props = schema["properties"].as_object().unwrap();
-        assert!(props.contains_key("limit"));
-        assert!(props.contains_key("status"));
-
-        // "limit" should have integer type.
-        assert_eq!(props["limit"]["type"], "integer");
-
-        // Neither should be in required (both are optional).
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.is_empty());
-    }
-
-    // ── Test 8: Path parameter substitution ───────────────────────────
-
-    #[tokio::test]
-    async fn test_path_parameter_substitution() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(&spec, None, None, None, None, Arc::new(DryRunExecutor));
-
-        let get_pet_tool = tools.iter().find(|t| t.name() == "getPet").unwrap();
-
-        let mut args = HashMap::new();
-        args.insert("petId".to_string(), json!("42"));
-
-        let result = get_pet_tool
-            ._run(ToolInput::Structured(args))
-            .await
-            .unwrap();
-
-        match result {
-            ToolOutput::Content(v) => {
-                let url = v["url"].as_str().unwrap();
-                assert!(url.ends_with("/pets/42"), "URL was: {}", url);
-                assert!(!url.contains("{petId}"));
-            }
-            _ => panic!("Expected Content output"),
-        }
-    }
-
-    // ── Test 9: Query parameter appending ─────────────────────────────
-
-    #[tokio::test]
-    async fn test_query_parameter_appending() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(&spec, None, None, None, None, Arc::new(DryRunExecutor));
-
-        let tool = tools.iter().find(|t| t.name() == "listPets").unwrap();
-
-        let mut args = HashMap::new();
-        args.insert("limit".to_string(), json!(5));
-        args.insert("status".to_string(), json!("available"));
-
-        let result = tool._run(ToolInput::Structured(args)).await.unwrap();
-
-        match result {
-            ToolOutput::Content(v) => {
-                let url = v["url"].as_str().unwrap();
-                assert!(url.contains("limit=5"), "URL was: {}", url);
-                assert!(url.contains("status=available"), "URL was: {}", url);
-                assert!(url.contains('?'), "URL was: {}", url);
-            }
-            _ => panic!("Expected Content output"),
-        }
-    }
-
-    // ── Test 10: Multiple operations generate multiple tools ──────────
-
-    #[test]
-    fn test_multiple_operations_generate_multiple_tools() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(&spec, None, None, None, None, Arc::new(DryRunExecutor));
-        assert_eq!(tools.len(), 6);
-    }
-
-    // ── Test 11: Invalid spec handling ────────────────────────────────
-
-    #[test]
-    fn test_invalid_spec_missing_info() {
-        let spec = json!({"paths": {}});
-        let result = OpenAPISpec::from_json(&spec);
-        assert!(result.is_err());
+        assert!(names.contains(&"getUser"));
+        assert!(names.contains(&"createUser"));
     }
 
     #[test]
-    fn test_invalid_spec_missing_paths() {
-        let spec = json!({"info": {"title": "Test", "version": "1.0"}});
-        let result = OpenAPISpec::from_json(&spec);
-        assert!(result.is_err());
-    }
-
-    // ── Test 12: Base URL override ────────────────────────────────────
-
-    #[tokio::test]
-    async fn test_base_url_override() {
-        let toolkit = OpenAPIToolkit::from_json(&pet_store_spec())
+    fn filter_operations_skips_unmatched() {
+        let toolset = OpenApiToolset::new(sample_spec())
             .unwrap()
-            .with_base_url("https://custom.api.com/v2");
-
-        let tools = toolkit.get_tools();
-        let tool = tools.iter().find(|t| t.name() == "listPets").unwrap();
-
-        let result = tool
-            ._run(ToolInput::Structured(HashMap::new()))
-            .await
-            .unwrap();
-
-        match result {
-            ToolOutput::Content(v) => {
-                assert!(v["url"]
-                    .as_str()
-                    .unwrap()
-                    .starts_with("https://custom.api.com/v2"));
-            }
-            _ => panic!("Expected Content output"),
-        }
-    }
-
-    // ── Test 13: Auth headers are included ────────────────────────────
-
-    #[tokio::test]
-    async fn test_auth_headers_included() {
-        let toolkit = OpenAPIToolkit::from_json(&pet_store_spec())
-            .unwrap()
-            .with_bearer_token("my-secret-token");
-
-        let tools = toolkit.get_tools();
-        let tool = tools.iter().find(|t| t.name() == "listPets").unwrap();
-
-        let result = tool
-            ._run(ToolInput::Structured(HashMap::new()))
-            .await
-            .unwrap();
-
-        match result {
-            ToolOutput::Content(v) => {
-                let headers = v["headers"].as_object().unwrap();
-                assert_eq!(
-                    headers["Authorization"].as_str().unwrap(),
-                    "Bearer my-secret-token"
-                );
-            }
-            _ => panic!("Expected Content output"),
-        }
-    }
-
-    // ── Test 14: Tag-based filtering ──────────────────────────────────
-
-    #[test]
-    fn test_tag_filtering() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(
-            &spec,
-            None,
-            None,
-            Some(&["users".to_string()]),
-            None,
-            Arc::new(DryRunExecutor),
-        );
+            .filter_operations(|id| id.starts_with("create"));
+        let tools = toolset.into_tools().unwrap();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "listUsers");
+        assert_eq!(tools[0].name(), "createUser");
     }
 
-    // ── Test 15: Operation ID filtering ───────────────────────────────
-
     #[test]
-    fn test_operation_id_filtering() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(
-            &spec,
-            None,
-            None,
-            None,
-            Some(&["getPet".to_string(), "deletePet".to_string()]),
-            Arc::new(DryRunExecutor),
-        );
-        assert_eq!(tools.len(), 2);
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"getPet"));
-        assert!(names.contains(&"deletePet"));
+    fn assemble_request_substitutes_path_and_classifies_params() {
+        let mut params = HashMap::new();
+        params.insert("id".to_string(), json!(42));
+        params.insert("verbose".to_string(), json!(true));
+        params.insert("X-Trace".to_string(), json!("abc"));
+        let parameters = json!([
+            {"name": "id", "in": "path"},
+            {"name": "verbose", "in": "query"},
+            {"name": "X-Trace", "in": "header"}
+        ]);
+        let (url, query, headers) = assemble_request(
+            "/users/{id}",
+            &parameters,
+            &params,
+            "https://api.example.com/v1",
+        )
+        .unwrap();
+        assert_eq!(url, "https://api.example.com/v1/users/42");
+        assert_eq!(query, vec![("verbose".to_string(), "true".into())]);
+        assert_eq!(headers, vec![("X-Trace".to_string(), "abc".into())]);
     }
 
-    // ── Test 16: Fallback operation ID from method+path ───────────────
-
     #[test]
-    fn test_fallback_operation_id() {
-        let spec_json = json!({
-            "openapi": "3.0.0",
-            "info": { "title": "Test", "version": "1.0.0" },
-            "servers": [{ "url": "https://example.com" }],
-            "paths": {
-                "/items": {
-                    "get": {
-                        "summary": "List items"
-                    }
-                }
-            }
-        });
-
-        let spec = OpenAPISpec::from_json(&spec_json).unwrap();
-        assert_eq!(spec.operations.len(), 1);
-        assert_eq!(spec.operations[0].operation_id, "get_items");
+    fn auth_helpers_construct() {
+        // Just verify the structs build; we can't invoke without a real client.
+        let _ = BearerAuth("sk-test".into());
+        let _ = HeaderAuth::new("X-API-Key", "abc");
     }
 
-    // ── Test 17: Request body schema in args ──────────────────────────
-
     #[test]
-    fn test_post_tool_args_schema_includes_body() {
-        let spec = OpenAPISpec::from_json(&pet_store_spec()).unwrap();
-        let tools = generate_tools(&spec, None, None, None, None, Arc::new(DryRunExecutor));
-        let tool = tools.iter().find(|t| t.name() == "createPet").unwrap();
-
-        let schema = tool.args_schema().unwrap();
-        let props = schema["properties"].as_object().unwrap();
-        assert!(props.contains_key("body"));
-
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("body")));
-    }
-
-    // ── Test 18: Toolkit builder pattern ──────────────────────────────
-
-    #[test]
-    fn test_toolkit_builder_pattern() {
-        let toolkit = OpenAPIToolkit::from_json(&pet_store_spec())
+    fn with_base_url_overrides_servers() {
+        let toolset = OpenApiToolset::new(sample_spec())
             .unwrap()
-            .with_base_url("https://override.com")
-            .with_header("X-Api-Key", "key123")
-            .with_bearer_token("token456")
-            .with_tag_filter(vec!["pets".to_string()]);
-
-        let tools = toolkit.get_tools();
-        // "users" tag filtered out, so only pet operations remain.
-        assert_eq!(tools.len(), 5);
-    }
-
-    // ── Test 19: Servers trailing slash normalization ──────────────────
-
-    #[test]
-    fn test_trailing_slash_normalization() {
-        let spec_json = json!({
-            "openapi": "3.0.0",
-            "info": { "title": "Test", "version": "1.0" },
-            "servers": [{ "url": "https://api.example.com/" }],
-            "paths": {
-                "/health": {
-                    "get": { "operationId": "healthCheck", "summary": "Health" }
-                }
-            }
-        });
-
-        let spec = OpenAPISpec::from_json(&spec_json).unwrap();
-        assert_eq!(spec.servers[0], "https://api.example.com");
+            .with_base_url("https://staging.example.com");
+        assert!(toolset.base_url.contains("staging"));
     }
 }

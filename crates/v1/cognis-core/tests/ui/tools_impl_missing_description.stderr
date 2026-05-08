@@ -1,0 +1,5 @@
+error: #[tools_impl]: inner #[tool] requires a description (either via attribute or `///` doc comment)
+  --> tests/ui/tools_impl_missing_description.rs:12:5
+   |
+12 |     async fn run(&self, _p: P) -> Result<(), ()> { Ok(()) }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: unknown reducer; expected append, add, last, merge, skip, or custom = "path::fn"
+ --> tests/ui/graph_state_v2_unknown_reducer.rs:6:15
+  |
+6 |     #[reducer(unknown_op)]
+  |               ^^^^^^^^^^

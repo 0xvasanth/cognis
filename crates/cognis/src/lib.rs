@@ -1,73 +1,135 @@
 //! # cognis
 //!
-//! Implementation layer for the Cognis LLM framework. This crate provides
-//! concrete chat model integrations, agent execution, chains, memory strategies,
-//! document loaders, text splitters, embedding providers, and built-in tools.
-//!
-//! ## Chat Model Providers
-//!
-//! Each provider is gated behind a feature flag:
-//!
-//! | Feature | Provider |
-//! |---------|----------|
-//! | `anthropic` | Anthropic Claude |
-//! | `openai` | OpenAI GPT |
-//! | `google` | Google Gemini |
-//! | `ollama` | Ollama (local) |
-//! | `azure` | Azure OpenAI |
-//! | `all-providers` | All of the above |
-//!
-//! ## Quick Example
-//!
-//! ```rust,ignore
-//! use cognis::chat_models::anthropic::ChatAnthropic;
-//! use cognis_core::runnables::Runnable;
-//! use serde_json::json;
-//!
-//! let model = ChatAnthropic::new("claude-sonnet-4-20250514");
-//! let result = model.invoke(json!({"messages": []}), None).await.unwrap();
-//! ```
-//!
-//! ## Modules
-//!
-//! - [`chat_models`] -- Chat model implementations for each provider.
-//! - [`embeddings`] -- OpenAI and Ollama embedding providers.
-//! - [`agents`] -- Agent executor with a pluggable middleware pipeline.
-//! - [`chains`] -- LLM chain, conversation chain, and sequential chain.
-//! - [`memory`] -- Buffer, window, and summary memory strategies.
-//! - [`document_loaders`] -- Text, CSV, JSON, and directory document loaders.
-//! - [`text_splitter`] -- Character, recursive, markdown, HTML, JSON, code, and token splitters.
-//! - [`tools`] -- Calculator, shell, and JSON query tools.
+//! v2-beta umbrella crate. Re-exports `cognis-core`, `cognis-graph`,
+//! `cognis-llm`, `cognis-rag` and adds:
+//! - [`agent`] — the standard ReAct agent loop.
+//! - [`backend`] — agent workspace (in-memory or sandboxed real FS).
+//! - [`middleware`] — composable LLM-call hooks (retry, fallback, caching,
+//!   redaction, summarization, …).
+//! - [`retrievers`] — LLM-driven retrievers (multi-query, contextual
+//!   compression).
 
-pub mod agents;
-pub mod cache;
-pub mod caching;
-pub mod callbacks;
-pub mod chains;
-pub mod chat_models;
-pub mod chat_sessions;
-pub mod document_loaders;
-pub mod document_transformers;
-pub mod embeddings;
-pub mod evaluation;
-pub mod indexing;
-pub mod memory;
-pub mod output_parsers;
-pub mod prompts;
-pub mod providers;
-pub mod resilience;
+#![warn(missing_docs)]
+#![warn(rust_2018_idioms)]
+
+// Sub-crate re-exports.
+pub use cognis_core;
+pub use cognis_graph;
+pub use cognis_llm;
+pub use cognis_rag;
+
+pub use cognis_core::{
+    CharTokenizer, CognisError, Event, EventStream, Extensions, FnTokenizer, JsonSchema, Loader,
+    Message, Observer, Result, Runnable, RunnableConfig, RunnableDefinition, RunnableStream,
+    Serializable, Tokenizer, ToolCall,
+};
+pub use cognis_graph::{
+    node_fn, ActiveSnapshot, AuditEntry, AuditKind, AuditLog, AuditLogObserver, Checkpointer,
+    CompiledGraph, Goto, Graph, GraphMetrics, GraphSnapshot, GraphState, InMemoryAuditLog,
+    InMemoryCheckpointer, MetricsObserver, Node, NodeCtx, NodeOut, NodeRetryPolicy, NodeTiming,
+    ProfilingObserver, Subgraph,
+};
+pub use cognis_llm::{
+    Aggregated, BaseTool, ChatOptions, ChatResponse, Client, ClientBuilder, LLMProvider, Provider,
+    SchemaBasedTool, StreamAggregator, StreamChunk, Tool, ToolDefinition, ToolInput, ToolOutput,
+    ToolRegistry, Usage, UsageTracker,
+};
+#[cfg(feature = "ollama")]
+pub use cognis_rag::OllamaEmbeddings;
+#[cfg(feature = "openai")]
+pub use cognis_rag::OpenAIEmbeddings;
+pub use cognis_rag::{
+    CachingRetriever, CompressorPipeline, CrossEncoder, CrossEncoderReranker, Distance, Docstore,
+    Document, Embeddings, FakeEmbeddings, Filter, FnCrossEncoder, InMemoryDocstore,
+    InMemoryRecordManager, InMemoryVectorStore, IncrementalReport, LongContextReorder,
+    MultiVectorIndexer, MultiVectorRetriever, ParentDocumentRetriever, QueryTranslatorRetriever,
+    RecordManager, SearchResult, VectorStore,
+};
+
+// New stage-5 modules.
+pub mod agent;
+pub mod agent_bus;
+pub mod backend;
+#[cfg(feature = "cache-sqlite")]
+pub mod cache_sqlite;
+pub mod eval;
+pub mod history;
+pub mod middleware;
+pub mod multi_agent;
+pub mod observers;
+pub mod presets;
 pub mod retrievers;
-pub mod stores;
-pub mod streaming;
-pub mod text_splitter;
-pub mod text_splitters;
+pub mod session;
+pub mod skills;
+pub mod telemetry;
 pub mod tools;
-pub mod vectorstores;
 
-// Re-export core for convenience
-pub use cognis_core as core;
+pub use agent::{
+    default_react_graph, default_react_graph_with_limits, Agent, AgentBuilder, AgentHealth,
+    AgentLifecycle, AgentPlugin, AgentResponse, AgentState, AgentStateUpdate, Buffer,
+    ConversationMode, EntityExtractor, EntityFact, EntityMemory, FnPlugin, KnowledgeGraphMemory,
+    Memory, OnStart, SummaryBufferMemory, SummaryMemory, ThinkNode, TokenBufferMemory,
+    ToolDispatchNode, Triple, TripleExtractor, VectorMemory, Window, Workflow, WorkflowState,
+    WorkflowStateUpdate,
+};
+pub use agent_bus::{AgentBus, SubscribeError, Subscription};
+pub use backend::{
+    Backend, Blob, GrepHit, InMemoryStateBackend, InMemoryStorageBackend, LocalFsStorageBackend,
+    MemoryBackend, SandboxedFsBackend, StateBackend, StorageBackend,
+};
+pub use eval::{
+    Contains, EvalCase, EvalReport, EvalRow, EvalRunner, Evaluator, ExactMatch, LlmJudge,
+};
+pub use history::{
+    HistoryStore, HistoryTrimmer, InMemoryHistory, RunnableWithMessageHistory, SessionKey,
+    SessionResolver,
+};
+pub use middleware::{
+    AlwaysSkip, ApprovalGate, AutoApproveAll, AutoRejectAll, CapMessageLength, ChatApproval,
+    ChatApprover, ContextEditing, ContextInjection, ContextProvider, DropMatching, EditPolicy,
+    EmulatorSource, FilesystemMiddleware, FixedRecovery, FnContextProvider, FnRecovery,
+    FnToolCallPatcher, HumanDecision, HumanInTheLoop, HumanResponder, LimitTools, MapEmulator,
+    Middleware, MiddlewareCtx, MiddlewarePipeline, ModelCallLimit, ModelFallback, ModelRetry, Next,
+    PatchToolCalls, PiiRedactor, PipelinedClient, Planning, PromptCaching, RateLimit, RateLimiter,
+    Recovery, RecoveryStrategy, RegexRedactor, SubagentMiddleware, SubagentRouter, Summarization,
+    TodoMiddleware, TokenBucket, TokenCounter, ToolAllowList, ToolCallLimit, ToolCallPatcher,
+    ToolDenyList, ToolEmulator, ToolFilter, ToolRetry, ToolRetryClassifier, ToolSelection,
+    WorkspaceLister,
+};
+pub use multi_agent::{
+    AgentMessage, HandoffStrategy, InMemoryMessageBus, MessageBus, MultiAgentOrchestrator,
+    ParallelVote, RoundRobin, Sequential, Supervisor,
+};
+pub use observers::TracingObserver;
+pub use retrievers::{
+    ContextualCompressionRetriever, MultiQueryRetriever, RerankingRetriever, SearchSpec,
+    SelfQueryRetriever, TimeWeightedRetriever,
+};
+pub use session::{InMemorySessionStore, Session, SessionStore, SessionStoreHandle};
+pub use skills::{
+    AllSkills, BuiltSkill, KeywordSelector, Skill, SkillBuilder, SkillRegistry, SkillSelector,
+};
+pub use telemetry::{
+    InMemoryTelemetry, TelemetryEvent, TelemetryHandle, TelemetrySink, TelemetrySnapshot,
+};
+pub use tools::{
+    register_filesystem_tools, AllowList, ApprovalGatedTool, Approver, AutoApprove, CachedTool,
+    Calculator, CodeSanitizer, Decision, DotPathEngine, ExecutionPlan, FileEditTool,
+    FileExistsTool, FileGlobTool, FileGrepTool, FileListTool, FileReadTool, FileWriteTool,
+    HumanTool, JsonQueryTool, OrchestratorResult, PythonReplConfig, PythonReplTool, QueryEngine,
+    RejectAll, RetrieverTool, SanitizationError, ShellTool, StaticResponder, SubAgentTool,
+    ToolHumanResponder, ToolOrchestrator, ToolStep,
+};
+#[cfg(feature = "tools-http")]
+pub use tools::{
+    AuthScheme, BearerAuth, HeaderAuth, HttpMethod, HttpRequest, OpenApiToolset, TavilyProvider,
+    TavilyProviderBuilder, WebSearchInput, WebSearchProvider, WebSearchResult, WebSearchTool,
+    WikipediaAction, WikipediaTool, WikipediaToolBuilder,
+};
 
-/// `#[cognis::tool]` — attribute macro that generates a `BaseTool`
-/// implementation from an `async fn` (or an `impl` block containing one).
-/// See [`cognis_core::tool`] for the full documentation.
-pub use cognis_core::tool;
+/// Common imports for v2 user code building agents.
+pub mod prelude {
+    pub use crate::*;
+    pub use crate::{Distance, Embeddings, InMemoryVectorStore, SearchResult, VectorStore};
+    pub use async_trait::async_trait;
+}

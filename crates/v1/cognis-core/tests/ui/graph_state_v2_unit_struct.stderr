@@ -1,0 +1,5 @@
+error: GraphStateV2 requires a struct with named fields
+ --> tests/ui/graph_state_v2_unit_struct.rs:4:12
+  |
+4 | pub struct Bad;   // unit struct — not allowed
+  |            ^^^

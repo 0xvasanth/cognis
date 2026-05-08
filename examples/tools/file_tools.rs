@@ -1,132 +1,71 @@
-//! File Management Tools Example
-//!
-//! Demonstrates file tools (read, write, list, search, info) sandboxed in a temp directory,
-//! then uses an LLM to generate content and write it to a file.
-
-#[path = "../shared.rs"]
-mod shared;
+//! V2 file-management tools, backed by an in-memory backend.
+//! All six tools share an `Arc<dyn Backend>` so they see the same
+//! virtual filesystem.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use cognis::prelude::*;
+use cognis::tools::{
+    FileEditTool, FileExistsTool, FileGlobTool, FileListTool, FileReadTool, FileWriteTool,
+};
+use cognis::{Backend, MemoryBackend};
+use cognis_llm::tools::{Tool, ToolInput};
 use serde_json::{json, Value};
 
-use cognis::tools::file_management::{
-    create_file_toolkit, FileInfoTool, FileSystemConfig, ListDirectoryTool, ReadFileTool,
-    SearchFilesTool, WriteFileTool,
-};
-use cognis_core::tools::base::{BaseTool, BaseToolkit};
-use cognis_core::tools::types::{ToolInput, ToolOutput};
-
-fn structured_input(pairs: &[(&str, &str)]) -> ToolInput {
+fn structured(pairs: &[(&str, Value)]) -> ToolInput {
     let map: HashMap<String, Value> = pairs
         .iter()
-        .map(|(k, v)| (k.to_string(), Value::String(v.to_string())))
+        .map(|(k, v)| (k.to_string(), v.clone()))
         .collect();
     ToolInput::Structured(map)
 }
 
-fn text_input(s: &str) -> ToolInput {
-    ToolInput::Text(s.to_string())
-}
-
-fn content_str(output: &ToolOutput) -> String {
-    match output {
-        ToolOutput::Content(Value::String(s)) => s.clone(),
-        ToolOutput::Content(v) => v.to_string(),
-        other => format!("{:?}", other),
-    }
-}
-
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tmp_dir = tempfile::TempDir::new()?;
-    let root = tmp_dir.path();
-    let config = FileSystemConfig::new(root);
-    println!("Working directory: {}\n", root.display());
+async fn main() -> Result<()> {
+    let backend: Arc<dyn Backend> = Arc::new(MemoryBackend::new());
 
-    // Write files
-    let write_tool = WriteFileTool::new(config.clone());
-    for (path, content) in [
-        ("hello.txt", "Hello from Cognis!"),
-        (
-            "src/main.rs",
-            "fn main() {\n    println!(\"Hello, world!\");\n}\n",
-        ),
-        (
-            "config/settings.toml",
-            "[app]\nname = \"demo\"\nversion = \"1.0\"",
-        ),
-    ] {
-        let r = write_tool
-            ._run(structured_input(&[("path", path), ("content", content)]))
-            .await?;
-        println!("Write: {}", content_str(&r));
-    }
+    let writer = FileWriteTool::new(backend.clone());
+    let reader = FileReadTool::new(backend.clone());
+    let lister = FileListTool::new(backend.clone());
+    let exists = FileExistsTool::new(backend.clone());
+    let editor = FileEditTool::new(backend.clone());
+    let globber = FileGlobTool::new(backend.clone());
 
-    // Read a file back
-    let read_tool = ReadFileTool::new(config.clone());
-    let r = read_tool._run(text_input("hello.txt")).await?;
-    println!("\nRead hello.txt: \"{}\"", content_str(&r));
-
-    // List directory
-    let list_tool = ListDirectoryTool::new(config.clone());
-    let r = list_tool._run(text_input(".")).await?;
-    println!(
-        "\nRoot listing:\n  {}",
-        content_str(&r).replace('\n', "\n  ")
-    );
-
-    // Search by glob
-    let search_tool = SearchFilesTool::new(config.clone());
-    let r = search_tool
-        ._run(structured_input(&[("pattern", "**/*.rs")]))
+    writer
+        ._run(structured(&[
+            ("path", json!("hello.txt")),
+            ("contents", json!("hi there")),
+        ]))
         .await?;
-    println!(
-        "\nGlob '**/*.rs':\n  {}",
-        content_str(&r).replace('\n', "\n  ")
-    );
+    println!("wrote hello.txt");
 
-    // File info
-    let info_tool = FileInfoTool::new(config.clone());
-    let r = info_tool._run(text_input("hello.txt")).await?;
-    if let ToolOutput::Content(v) = &r {
-        println!(
-            "\nhello.txt info: size={} is_file={}",
-            v["size"], v["is_file"]
-        );
-    }
+    let read = reader
+        ._run(structured(&[("path", json!("hello.txt"))]))
+        .await?;
+    println!("read: {read:?}");
 
-    // Toolkit overview
-    let toolkit = create_file_toolkit(config.clone());
-    println!("\nToolkit: {} tools", toolkit.get_tools().len());
+    let listing = lister._run(structured(&[("path", json!("."))])).await?;
+    println!("ls: {listing:?}");
 
-    // Error handling: read missing file
-    if let Err(e) = read_tool._run(text_input("nonexistent.txt")).await {
-        println!("Missing file error: {}", e);
-    }
+    let ex = exists
+        ._run(structured(&[("path", json!("hello.txt"))]))
+        .await?;
+    println!("exists: {ex:?}");
 
-    // LLM-generated content written to file
-    let model = shared::get_chat_model(vec![
-        "# Cognis\n\nRust LLM framework.\n\n- Chat models\n- File tools\n- Graph engine".into(),
-    ]);
-    let messages = vec![
-        cognis_core::messages::Message::system("You are a technical writer."),
-        cognis_core::messages::Message::human("Write a short README for Cognis."),
-    ];
-    if let Ok(resp) = model.invoke_messages(&messages, None).await {
-        let text = resp.base.content.text();
-        write_tool
-            ._run(structured_input(&[
-                ("path", "llm_generated.md"),
-                ("content", &text),
-            ]))
-            .await?;
-        let r = read_tool._run(text_input("llm_generated.md")).await?;
-        println!(
-            "\nLLM-generated file:\n  {}",
-            content_str(&r).replace('\n', "\n  ")
-        );
-    }
+    editor
+        ._run(structured(&[
+            ("path", json!("hello.txt")),
+            ("find", json!("hi there")),
+            ("replace", json!("hello world")),
+        ]))
+        .await?;
+    println!("edited hello.txt");
+
+    let glob = globber
+        ._run(structured(&[("pattern", json!("*.txt"))]))
+        .await?;
+    println!("glob: {glob:?}");
 
     Ok(())
 }
