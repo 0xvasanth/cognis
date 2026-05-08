@@ -1,6 +1,6 @@
 ---
 title: "Quickstart"
-description: "Build a tool-calling agent in five minutes."
+description: "From zero to a running agent in five minutes."
 sidebarTitle: "Quickstart"
 ---
 
@@ -109,6 +109,17 @@ cargo run
 ```
 
 You should see something like `23 * 17 + 4 = 395`.
+
+## What you just built
+
+In about 11 lines, you ran an agent that:
+
+- **Decided when to call a tool** (the calculator) and when to answer directly.
+- **Handled the round-trip** from prompt → model → tool call → tool result → final reply.
+- **Works against any of six providers** with the same code — flip `COGNIS_PROVIDER` and rerun.
+- **Compiled to one binary** with everything you imported. No runtime, no Python, no shim.
+
+That's the whole V2 surface in its smallest form. Every [Pattern](/patterns/research-assistant) on this site builds on this shape — same `AgentBuilder`, same `with_*` chain, just more parts wired in.
 
 ## How it works
 
