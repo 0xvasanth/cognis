@@ -15,3 +15,6 @@ pub mod span;
 pub use span::{
     CostDetails, Generation, ObservationLevel, ScoreRecord, ScoreValue, Span, SpanKind, TokenUsage,
 };
+
+pub mod meta;
+pub use meta::TraceMeta;
