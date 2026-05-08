@@ -49,13 +49,22 @@ impl DocumentLoader for WebLoader {
                 status_code: e.status().map(|s| s.as_u16()),
                 message: e.to_string(),
             })?;
-        let status = resp.status().as_u16();
+        let status = resp.status();
         let content_type = resp
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .unwrap_or("")
             .to_string();
+        // Surface non-2xx as a Network error rather than emitting a doc
+        // whose `content` is the upstream's HTML error page.
+        if !status.is_success() {
+            return Err(CognisError::Network {
+                status_code: Some(status.as_u16()),
+                message: format!("WebLoader: {} returned HTTP {}", self.url, status.as_u16()),
+            });
+        }
+        let status = status.as_u16();
         let body = resp.text().await.map_err(|e| CognisError::Network {
             status_code: None,
             message: format!("read body: {e}"),

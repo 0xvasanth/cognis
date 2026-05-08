@@ -57,9 +57,20 @@ impl MultiVectorIndexer {
     ) -> Result<()> {
         let parent_id = parent_id.into();
         let mut parent = parent;
-        if parent.id.is_none() {
-            parent.id = Some(parent_id.clone());
+        // The `parent_id` argument is the source of truth — chunks key
+        // off it, so the docstore entry must use the same id. If the
+        // caller-supplied document carries a different id, log and
+        // overwrite to keep the two stores aligned.
+        if let Some(existing) = parent.id.as_ref() {
+            if existing != &parent_id {
+                tracing::warn!(
+                    document_id = %existing,
+                    explicit_parent_id = %parent_id,
+                    "MultiVectorIndexer: document.id overridden by explicit parent_id"
+                );
+            }
         }
+        parent.id = Some(parent_id.clone());
         self.parents.put(vec![(parent_id.clone(), parent)]).await?;
 
         if representations.is_empty() {

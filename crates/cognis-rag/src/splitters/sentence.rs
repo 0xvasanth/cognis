@@ -80,6 +80,14 @@ impl SentenceSplitter {
                     len = 0;
                 }
             }
+            // After the flush+overlap step, the retained tail may already
+            // be at/above chunk_size. Drop oldest sentences until the new
+            // one fits — if the sentence alone is bigger than chunk_size,
+            // we accept it as its own (oversized) chunk to avoid livelock.
+            while !buf.is_empty() && len + sl + 1 > self.chunk_size {
+                let dropped = buf.remove(0);
+                len = len.saturating_sub(dropped.chars().count() + 1);
+            }
             len += sl + 1;
             buf.push(s);
         }
