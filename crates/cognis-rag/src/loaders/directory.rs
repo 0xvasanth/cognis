@@ -14,10 +14,15 @@ use super::{DocumentLoader, DocumentStream};
 
 /// Recursively walks `root`, yielding one [`Document`] per file whose name
 /// ends with one of the configured `suffixes` (default: `.txt`, `.md`).
+///
+/// Symlinks are **skipped by default** to avoid filesystem cycles
+/// (a symlink to an ancestor would loop forever). Opt back in with
+/// [`DirectoryLoader::follow_symlinks`] — at your own risk.
 pub struct DirectoryLoader {
     root: PathBuf,
     suffixes: Vec<String>,
     recursive: bool,
+    follow_symlinks: bool,
 }
 
 impl DirectoryLoader {
@@ -27,6 +32,7 @@ impl DirectoryLoader {
             root: root.as_ref().to_path_buf(),
             suffixes: vec![".txt".into(), ".md".into()],
             recursive: true,
+            follow_symlinks: false,
         }
     }
 
@@ -46,6 +52,14 @@ impl DirectoryLoader {
         self
     }
 
+    /// Follow symlinks during traversal. **Off by default** — enabling
+    /// this can cause unbounded recursion if any descendant points back
+    /// at an ancestor. Only flip this on for trees you control.
+    pub fn follow_symlinks(mut self) -> Self {
+        self.follow_symlinks = true;
+        self
+    }
+
     fn collect(&self) -> Result<Vec<PathBuf>> {
         let mut out = Vec::new();
         self.walk(&self.root, &mut out)?;
@@ -61,7 +75,15 @@ impl DirectoryLoader {
         })?;
         for entry in read.flatten() {
             let path = entry.path();
-            if path.is_dir() {
+            // Inspect the entry without traversing the link target.
+            let meta = match std::fs::symlink_metadata(&path) {
+                Ok(m) => m,
+                Err(_) => continue, // racing with deletion etc. — skip silently
+            };
+            if meta.file_type().is_symlink() && !self.follow_symlinks {
+                continue;
+            }
+            if meta.is_dir() {
                 if self.recursive {
                     self.walk(&path, out)?;
                 }
@@ -149,5 +171,20 @@ mod tests {
             .unwrap();
         assert_eq!(docs.len(), 1);
         assert_eq!(docs[0].content, "2");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn symlink_cycle_does_not_recurse() {
+        let dir = TempDir::new().unwrap();
+        write(dir.path(), "real.txt", "real");
+        // Create a symlink loop: dir/loop -> dir
+        std::os::unix::fs::symlink(dir.path(), dir.path().join("loop")).unwrap();
+
+        // Default behavior: symlinks skipped; should terminate and find
+        // exactly the one real file.
+        let docs = DirectoryLoader::new(dir.path()).load_all().await.unwrap();
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].content, "real");
     }
 }
