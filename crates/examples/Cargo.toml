@@ -182,3 +182,8 @@ path = "../../examples/parsers/fixing_parser.rs"
 [[example]]
 name = "parsers_retry"
 path = "../../examples/parsers/retry_parser.rs"
+
+# memory/ — memory variants and extraction.
+[[example]]
+name = "memory_fact_extraction"
+path = "../../examples/memory/fact_extraction.rs"
