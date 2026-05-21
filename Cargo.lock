@@ -173,7 +173,7 @@ dependencies = [
 
 [[package]]
 name = "cognis"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "cognis-core",
@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "cognis-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "futures",
@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "cognis-graph"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "ciborium",
@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "cognis-llm"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "cognis-core",
@@ -274,7 +274,7 @@ dependencies = [
 
 [[package]]
 name = "cognis-macros"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -287,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "cognis-rag"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "cognis-core",
@@ -309,7 +309,7 @@ dependencies = [
 
 [[package]]
 name = "cognis-trace"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "base64",
