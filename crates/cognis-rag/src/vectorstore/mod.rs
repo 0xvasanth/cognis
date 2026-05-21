@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use cognis_core::Result;
 
+pub mod dedup;
+pub use dedup::{normalized_fingerprint, DedupVectorStore};
+
 mod in_memory;
 pub use in_memory::InMemoryVectorStore;
 
