@@ -84,7 +84,10 @@ pub use vectorstore::{
     FaissConfig, FaissIndex, FaissIndexType, FaissMetric, FaissVectorStore, FlatIndex, HNSWIndex,
     IVFFlatIndex,
 };
-pub use vectorstore::{Filter, InMemoryVectorStore, SearchResult, VectorStore};
+pub use vectorstore::{
+    normalized_fingerprint, DedupVectorStore, Filter, InMemoryVectorStore, SearchResult,
+    VectorStore,
+};
 #[cfg(feature = "vectorstore-pinecone")]
 pub use vectorstore::{PineconeBuilder, PineconeProvider};
 #[cfg(feature = "vectorstore-qdrant")]

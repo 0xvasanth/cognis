@@ -7,6 +7,7 @@
 pub mod agent;
 pub mod builder;
 pub mod default_graph;
+pub mod fact_extractor;
 pub mod health;
 pub mod lifecycle;
 pub mod memory;
@@ -19,6 +20,10 @@ pub mod workflow;
 
 pub use agent::{Agent, AgentResponse, ConversationMode};
 pub use builder::AgentBuilder;
+pub use fact_extractor::{
+    Fact, FactExtractionInput, FactExtractor, FactExtractorBuilder, FactKind, LlmExtractor,
+    LlmExtractorBuilder,
+};
 pub use default_graph::{default_react_graph, default_react_graph_with_limits};
 pub use health::AgentHealth;
 pub use lifecycle::{AgentLifecycle, OnStart};
