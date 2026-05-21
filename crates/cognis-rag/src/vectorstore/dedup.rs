@@ -12,8 +12,8 @@
 //! [`DedupVectorStore::with_fingerprint`] when your dedup key is not
 //! derived from raw text (e.g. a document ID or a composite hash).
 
-use std::collections::HashSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use async_trait::async_trait;
 
@@ -288,7 +288,9 @@ where
         };
 
         let mut inner_ids = if !pass_texts.is_empty() {
-            self.inner.add_vectors(pass_vecs, pass_texts, real_meta).await?
+            self.inner
+                .add_vectors(pass_vecs, pass_texts, real_meta)
+                .await?
         } else {
             Vec::new()
         };
@@ -313,7 +315,9 @@ where
         query_vector: Vec<f32>,
         k: usize,
     ) -> Result<Vec<SearchResult>> {
-        self.inner.similarity_search_by_vector(query_vector, k).await
+        self.inner
+            .similarity_search_by_vector(query_vector, k)
+            .await
     }
 
     async fn similarity_search_with_filter(
@@ -322,7 +326,9 @@ where
         k: usize,
         filter: &Filter,
     ) -> Result<Vec<SearchResult>> {
-        self.inner.similarity_search_with_filter(query, k, filter).await
+        self.inner
+            .similarity_search_with_filter(query, k, filter)
+            .await
     }
 
     async fn delete(&mut self, ids: Vec<String>) -> Result<()> {
@@ -354,16 +360,28 @@ mod tests {
     #[tokio::test]
     async fn skips_duplicate_on_second_add() {
         let mut store = DedupVectorStore::new(inner());
-        store.add_texts(vec!["the workspace uses Go".into()], None).await.unwrap();
-        store.add_texts(vec!["the workspace uses Go".into()], None).await.unwrap();
+        store
+            .add_texts(vec!["the workspace uses Go".into()], None)
+            .await
+            .unwrap();
+        store
+            .add_texts(vec!["the workspace uses Go".into()], None)
+            .await
+            .unwrap();
         assert_eq!(store.len(), 1);
     }
 
     #[tokio::test]
     async fn case_and_whitespace_normalisation_deduplicates() {
         let mut store = DedupVectorStore::new(inner());
-        store.add_texts(vec!["The workspace uses Go.".into()], None).await.unwrap();
-        store.add_texts(vec!["  THE  WORKSPACE   USES  GO.  ".into()], None).await.unwrap();
+        store
+            .add_texts(vec!["The workspace uses Go.".into()], None)
+            .await
+            .unwrap();
+        store
+            .add_texts(vec!["  THE  WORKSPACE   USES  GO.  ".into()], None)
+            .await
+            .unwrap();
         assert_eq!(store.len(), 1);
     }
 
@@ -388,7 +406,11 @@ mod tests {
 
         let ids2 = store
             .add_texts(
-                vec!["unique one".into(), "unique three".into(), "unique two".into()],
+                vec![
+                    "unique one".into(),
+                    "unique three".into(),
+                    "unique two".into(),
+                ],
                 None,
             )
             .await
@@ -396,7 +418,10 @@ mod tests {
         assert_eq!(ids2.len(), 3);
         // First and third are duplicates.
         assert!(ids2[0].starts_with("dedup:skipped:"));
-        assert!(!ids2[1].starts_with("dedup:skipped:"), "unique three should pass through");
+        assert!(
+            !ids2[1].starts_with("dedup:skipped:"),
+            "unique three should pass through"
+        );
         assert!(ids2[2].starts_with("dedup:skipped:"));
         assert_eq!(store.len(), 3);
     }
@@ -415,7 +440,10 @@ mod tests {
     #[tokio::test]
     async fn read_operations_pass_through() {
         let mut store = DedupVectorStore::new(inner());
-        store.add_texts(vec!["searchable fact".into()], None).await.unwrap();
+        store
+            .add_texts(vec!["searchable fact".into()], None)
+            .await
+            .unwrap();
         let results = store.similarity_search("fact", 5).await.unwrap();
         assert!(!results.is_empty());
     }
@@ -423,7 +451,10 @@ mod tests {
     #[tokio::test]
     async fn delete_passes_through() {
         let mut store = DedupVectorStore::new(inner());
-        let ids = store.add_texts(vec!["deletable".into()], None).await.unwrap();
+        let ids = store
+            .add_texts(vec!["deletable".into()], None)
+            .await
+            .unwrap();
         assert_eq!(store.len(), 1);
         store.delete(ids).await.unwrap();
         assert_eq!(store.len(), 0);
@@ -432,7 +463,10 @@ mod tests {
     #[tokio::test]
     async fn seen_count_tracks_unique_fingerprints() {
         let mut store = DedupVectorStore::new(inner());
-        store.add_texts(vec!["a".into(), "b".into()], None).await.unwrap();
+        store
+            .add_texts(vec!["a".into(), "b".into()], None)
+            .await
+            .unwrap();
         store.add_texts(vec!["a".into()], None).await.unwrap(); // duplicate
         assert_eq!(store.seen_count(), 2);
     }
@@ -441,7 +475,10 @@ mod tests {
     async fn contains_reflects_seen_set() {
         let mut store = DedupVectorStore::new(inner());
         assert!(!store.contains("new fact"));
-        store.add_texts(vec!["new fact".into()], None).await.unwrap();
+        store
+            .add_texts(vec!["new fact".into()], None)
+            .await
+            .unwrap();
         assert!(store.contains("new fact"));
         // Case variant also matches.
         assert!(store.contains("NEW FACT"));
@@ -460,8 +497,14 @@ mod tests {
                 .to_lowercase()
                 .to_string()
         });
-        store.add_texts(vec!["rust is great".into()], None).await.unwrap();
-        store.add_texts(vec!["rust is also fast".into()], None).await.unwrap();
+        store
+            .add_texts(vec!["rust is great".into()], None)
+            .await
+            .unwrap();
+        store
+            .add_texts(vec!["rust is also fast".into()], None)
+            .await
+            .unwrap();
         // Both start with "rust" → second is a duplicate.
         assert_eq!(store.len(), 1);
     }

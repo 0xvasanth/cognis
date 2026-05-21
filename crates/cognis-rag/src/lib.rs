@@ -77,16 +77,16 @@ pub use splitters::{
     TokenAwareSplitter, Tokenizer,
 };
 pub use transformers::{Dedup, Enrichment, LongContextReorder, MetadataTransformer};
+pub use vectorstore::{
+    normalized_fingerprint, DedupVectorStore, Filter, InMemoryVectorStore, SearchResult,
+    VectorStore,
+};
 #[cfg(feature = "vectorstore-chroma")]
 pub use vectorstore::{ChromaBuilder, ChromaProvider};
 #[cfg(feature = "vectorstore-faiss")]
 pub use vectorstore::{
     FaissConfig, FaissIndex, FaissIndexType, FaissMetric, FaissVectorStore, FlatIndex, HNSWIndex,
     IVFFlatIndex,
-};
-pub use vectorstore::{
-    normalized_fingerprint, DedupVectorStore, Filter, InMemoryVectorStore, SearchResult,
-    VectorStore,
 };
 #[cfg(feature = "vectorstore-pinecone")]
 pub use vectorstore::{PineconeBuilder, PineconeProvider};

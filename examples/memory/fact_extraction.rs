@@ -73,8 +73,8 @@
 
 use std::sync::Arc;
 
-use cognis::prelude::*;
 use cognis::agent::{Fact, FactExtractionInput, FactExtractor, LlmExtractor};
+use cognis::prelude::*;
 use cognis::{DedupVectorStore, FakeEmbeddings, InMemoryVectorStore};
 use cognis_core::schemars::{self, JsonSchema};
 use serde::Deserialize;
@@ -161,7 +161,10 @@ async fn main() -> Result<()> {
 
     // In-session dedup: re-adding the same facts verbatim must all be skipped.
     println!("\n── In-session dedup demo ─────────────────────────────────────────────");
-    println!("Re-adding the same {} facts verbatim …", session1_facts.len());
+    println!(
+        "Re-adding the same {} facts verbatim …",
+        session1_facts.len()
+    );
     let mut in_session_skipped = 0usize;
     for fact in &session1_facts {
         let ids = memory.add_texts(vec![fact.content.clone()], None).await?;
@@ -195,9 +198,7 @@ async fn main() -> Result<()> {
     let mut skipped = 0usize;
 
     for fact in &session2_facts {
-        let ids = memory
-            .add_texts(vec![fact.content.clone()], None)
-            .await?;
+        let ids = memory.add_texts(vec![fact.content.clone()], None).await?;
         if ids[0].starts_with("dedup:skipped:") {
             skipped += 1;
         } else {
@@ -207,10 +208,7 @@ async fn main() -> Result<()> {
     let after = memory.len();
 
     println!("Added {stored} new fact(s), skipped {skipped} duplicate(s).");
-    println!(
-        "Memory index: {} → {} unique document(s).\n",
-        before, after
-    );
+    println!("Memory index: {} → {} unique document(s).\n", before, after);
 
     // --------------------------------------------------------------------------
     // 2. LlmExtractor<T> — generic extraction with a custom output type
@@ -265,18 +263,14 @@ async fn main() -> Result<()> {
 
     // Simulate restart: new store pre-seeded with saved fingerprints.
     let fresh_embedder = Arc::new(FakeEmbeddings::new(16));
-    let mut restored: DedupVectorStore<InMemoryVectorStore> = DedupVectorStore::with_seen(
-        InMemoryVectorStore::new(fresh_embedder),
-        persisted,
-    );
+    let mut restored: DedupVectorStore<InMemoryVectorStore> =
+        DedupVectorStore::with_seen(InMemoryVectorStore::new(fresh_embedder), persisted);
 
     // Re-inserting any already-seen fact must be skipped, even in a fresh process.
     let all_facts: Vec<&Fact> = session1_facts.iter().chain(&session2_facts).collect();
     let mut still_skipped = 0usize;
     for fact in &all_facts {
-        let ids = restored
-            .add_texts(vec![fact.content.clone()], None)
-            .await?;
+        let ids = restored.add_texts(vec![fact.content.clone()], None).await?;
         if ids[0].starts_with("dedup:skipped:") {
             still_skipped += 1;
         }

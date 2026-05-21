@@ -20,11 +20,11 @@ pub mod workflow;
 
 pub use agent::{Agent, AgentResponse, ConversationMode};
 pub use builder::AgentBuilder;
+pub use default_graph::{default_react_graph, default_react_graph_with_limits};
 pub use fact_extractor::{
     Fact, FactExtractionInput, FactExtractor, FactExtractorBuilder, FactKind, LlmExtractor,
     LlmExtractorBuilder,
 };
-pub use default_graph::{default_react_graph, default_react_graph_with_limits};
 pub use health::AgentHealth;
 pub use lifecycle::{AgentLifecycle, OnStart};
 pub use memory::{

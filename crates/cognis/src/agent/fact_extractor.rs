@@ -136,8 +136,7 @@ where
     /// Send `text` to the model as the human turn. The system prompt
     /// already includes schema-derived format instructions.
     async fn invoke(&self, text: String, _: RunnableConfig) -> Result<O> {
-        let instructions = OutputParser::format_instructions(&self.parser)
-            .unwrap_or_default();
+        let instructions = OutputParser::format_instructions(&self.parser).unwrap_or_default();
         let system = format!("{}\n\n{instructions}", self.system_prompt);
         let messages = vec![Message::system(system), Message::human(text)];
         let resp = self.client.chat(messages, ChatOptions::default()).await?;
@@ -488,11 +487,8 @@ mod tests {
         }
 
         // Not JSON at all.
-        let extractor =
-            LlmExtractor::<Answer>::builder(canned_client("not json")).build();
-        let result = extractor
-            .invoke("input".into(), Default::default())
-            .await;
+        let extractor = LlmExtractor::<Answer>::builder(canned_client("not json")).build();
+        let result = extractor.invoke("input".into(), Default::default()).await;
         assert!(result.is_err());
     }
 
@@ -554,7 +550,10 @@ mod tests {
     async fn fact_extractor_returns_empty_on_model_empty_array() {
         let extractor = FactExtractor::new(canned_client("[]"));
         let facts = extractor
-            .invoke(FactExtractionInput::new("no useful info"), Default::default())
+            .invoke(
+                FactExtractionInput::new("no useful info"),
+                Default::default(),
+            )
             .await
             .unwrap();
         assert!(facts.is_empty());
