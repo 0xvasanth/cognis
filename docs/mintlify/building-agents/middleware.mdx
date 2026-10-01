@@ -52,6 +52,7 @@ The full catalog under `cognis::middleware::*`. Reach for these by job:
 | `RateLimit` | `RateLimit::new(Arc::new(TokenBucket::new(rate_per_sec, burst)))` — also accepts `SlidingWindow`, `Composite`, `CostBased` |
 | `ModelCallLimit` | `ModelCallLimit::new(cap)` — hard cap on calls per pipeline run |
 | `ToolCallLimit` | `ToolCallLimit::new(cap)` |
+| `TokenCounter` | `TokenCounter::new(tracker: Arc<UsageTracker>)` — observes `Usage` on every response; doesn't enforce anything itself. Pair with `RateLimit` for enforcement, read the `UsageTracker` at whatever cadence suits you (per-request, per-session, per-process). |
 
 ### Privacy
 
