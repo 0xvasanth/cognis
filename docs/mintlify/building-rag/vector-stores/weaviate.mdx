@@ -1,0 +1,29 @@
+---
+title: "Weaviate"
+description: "WeaviateProvider — HTTP backend, class-based object model."
+sidebarTitle: "Weaviate"
+---
+
+Feature flag: `vectorstore-weaviate`. Targets the Weaviate REST API (`/v1/objects` + `/v1/graphql`).
+
+## Construct
+
+```rust
+use cognis_rag::vectorstore::weaviate::WeaviateBuilder;
+
+let store = WeaviateBuilder::default()
+    .base_url("http://localhost:8080")
+    .class("Document")
+    .api_key(std::env::var("WEAVIATE_API_KEY")?)  // optional
+    .build()?;
+```
+
+## How it works
+
+Documents become Weaviate objects in a class, with a `text` property (configurable via `text_property` if your schema uses a different field name) plus whatever metadata you attach. Weaviate's GraphQL query API backs similarity search under the hood — the `VectorStore` trait surface is identical to every other backend, so none of that is visible to your retrieval code.
+
+## See also
+
+<Card title="Vector stores overview" icon="database" href="/building-rag/vector-stores/overview">
+  All six backends and the DedupVectorStore decorator.
+</Card>

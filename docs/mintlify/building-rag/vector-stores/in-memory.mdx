@@ -1,0 +1,33 @@
+---
+title: "In-memory"
+description: "InMemoryVectorStore — zero setup, linear-scan similarity search."
+sidebarTitle: "In-memory"
+---
+
+No feature flag — always available. Linear scan over stored vectors, so it's fine for prototyping and corpora under roughly 10k documents, but it's not a production-scale backend.
+
+## Construct
+
+```rust
+use std::sync::Arc;
+use cognis_rag::vectorstore::InMemoryVectorStore;
+use cognis_rag::distance::Distance;
+
+let store = InMemoryVectorStore::new(embedder);
+// or pick an explicit distance metric (defaults to cosine):
+let store = InMemoryVectorStore::with_distance(embedder, Distance::Euclidean);
+```
+
+## When to reach for it
+
+- Local development and tests — no network, no external service to run.
+- Small, static corpora that genuinely never need to scale past ~10k documents.
+- A baseline to validate retrieval quality before committing to an HTTP backend.
+
+For anything bigger, move to [FAISS](/building-rag/vector-stores/faiss) (still no external service, but indexed) or an HTTP backend.
+
+## See also
+
+<Card title="Vector stores overview" icon="database" href="/building-rag/vector-stores/overview">
+  All six backends and the DedupVectorStore decorator.
+</Card>

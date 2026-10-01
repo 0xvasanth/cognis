@@ -67,6 +67,19 @@
             "pages": [
               "building-rag/documents",
               "building-rag/embeddings",
+              {
+                "group": "Vector stores",
+                "icon": "database",
+                "pages": [
+                  "building-rag/vector-stores/overview",
+                  "building-rag/vector-stores/in-memory",
+                  "building-rag/vector-stores/faiss",
+                  "building-rag/vector-stores/chroma",
+                  "building-rag/vector-stores/qdrant",
+                  "building-rag/vector-stores/pinecone",
+                  "building-rag/vector-stores/weaviate"
+                ]
+              },
               "building-rag/retrievers",
               "building-rag/indexing",
               "building-rag/reranking"

@@ -1,0 +1,30 @@
+---
+title: "Chroma"
+description: "ChromaProvider — HTTP backend for the Chroma OSS API."
+sidebarTitle: "Chroma"
+---
+
+Feature flag: `vectorstore-chroma`. Targets the Chroma OSS HTTP API (`/api/v1`).
+
+## Construct
+
+```rust
+use cognis_rag::vectorstore::chroma::ChromaBuilder;
+
+let store = ChromaBuilder::default()
+    .base_url("http://localhost:8000")
+    .collection("my-docs")
+    .build()?;
+```
+
+Add an auth token or tenant headers via `.with_extra_header(...)` on the built `ChromaProvider` without forking the implementation.
+
+## How it works
+
+The store holds a collection name plus your `Arc<dyn Embeddings>`, and translates every `VectorStore` trait call into the corresponding Chroma REST call — no separate Chroma-specific API to learn on top of the trait you already use for every other backend.
+
+## See also
+
+<Card title="Vector stores overview" icon="database" href="/building-rag/vector-stores/overview">
+  All six backends and the DedupVectorStore decorator.
+</Card>

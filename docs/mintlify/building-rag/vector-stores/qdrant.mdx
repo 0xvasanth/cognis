@@ -1,0 +1,31 @@
+---
+title: "Qdrant"
+description: "QdrantProvider — HTTP backend with native filter pushdown."
+sidebarTitle: "Qdrant"
+---
+
+Feature flag: `vectorstore-qdrant`. Targets the Qdrant REST API. Documents are stored as points — a UUID id, the embedding as the vector, and `text` plus your metadata as the payload.
+
+## Construct
+
+```rust
+use cognis_rag::vectorstore::qdrant::QdrantBuilder;
+
+let store = QdrantBuilder::default()
+    .base_url("http://localhost:6334")
+    .collection("my-docs")
+    .api_key(std::env::var("QDRANT_API_KEY")?)  // optional, e.g. Qdrant Cloud
+    .build()?;
+```
+
+The payload key that holds document text defaults to `"text"` — configurable via `text_payload_key` if your collection already uses a different field name.
+
+## Filter pushdown
+
+Qdrant is the one backend here with a native filter translator: a `Filter` on your query is translated into Qdrant's own `filter` JSON and pushed down to the database, instead of being applied after fetching candidates. Filters that don't translate cleanly fall back to the trait's default post-filter behavior automatically — you don't need to know which path you're on.
+
+## See also
+
+<Card title="Vector stores overview" icon="database" href="/building-rag/vector-stores/overview">
+  All six backends and the DedupVectorStore decorator.
+</Card>
