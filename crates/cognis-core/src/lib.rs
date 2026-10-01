@@ -31,6 +31,7 @@ pub mod runnable_ext;
 pub mod security;
 pub mod serialization;
 pub mod stream;
+pub mod streaming_json;
 pub mod tokenizer;
 pub mod wrappers;
 
@@ -54,6 +55,7 @@ pub use runnable_ext::RunnableExt;
 pub use security::is_public_unicast;
 pub use serialization::{Loader, RunnableDefinition, Serializable};
 pub use stream::{Event, EventStream, Observer, RunnableStream};
+pub use streaming_json::StreamingJsonArray;
 pub use tokenizer::{CharTokenizer, FnTokenizer, Tokenizer};
 
 /// Re-export of the [`schemars`] crate. v2 user code uses
