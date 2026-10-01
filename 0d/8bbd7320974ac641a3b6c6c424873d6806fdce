@@ -1,0 +1,21 @@
+README.md
+  s_0d7905abf919e2::t_e9a63eb40d0875 169,172-182,184-188,193-194,212,215,226-235
+examples/agents/streaming_agent.rs
+  s_0d7905abf919e2::t_c2ddbd12a91d4b 3-4,11-17,23-27,36-37,39-40,45,47-59,76,82,85,88,90,92,100-164,173-176,178,187-213,215-226,231-237,247-255
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0d8bbd7320974ac641a3b6c6c424873d6806fdce",
+  "prompts": {},
+  "sessions": {
+    "s_0d7905abf919e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0488d876-2a2c-4fba-9e53-f308d8f2602c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
