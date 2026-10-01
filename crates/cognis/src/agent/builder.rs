@@ -157,8 +157,8 @@ impl AgentBuilder {
             .system_prompt
             .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
 
-        let graph = if let Some(g) = self.custom_graph {
-            g
+        let (graph, agent_client) = if let Some(g) = self.custom_graph {
+            (g, None)
         } else {
             let client = self.client.ok_or_else(|| {
                 CognisError::Configuration(
@@ -174,13 +174,15 @@ impl AgentBuilder {
             } else {
                 self.tools
             };
-            default_react_graph_with_limits(
+            let agent_client = Some(client.clone());
+            let graph = default_react_graph_with_limits(
                 client,
                 tools,
                 self.max_iterations,
                 self.max_tool_calls,
                 self.streaming,
-            )?
+            )?;
+            (graph, agent_client)
         };
 
         let memory: Option<Box<dyn Memory>> = match (self.mode, self.memory) {
@@ -191,7 +193,13 @@ impl AgentBuilder {
             (ConversationMode::Stateless, _) => None,
         };
 
-        Ok(Agent::new(graph, memory, self.mode, system_prompt))
+        Ok(Agent::new(
+            graph,
+            memory,
+            self.mode,
+            system_prompt,
+            agent_client,
+        ))
     }
 }
 

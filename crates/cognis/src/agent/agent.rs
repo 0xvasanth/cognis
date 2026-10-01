@@ -3,6 +3,7 @@
 
 use cognis_core::{EventStream, Message, Result, Runnable, RunnableConfig};
 use cognis_graph::CompiledGraph;
+use cognis_llm::Client;
 
 use super::memory::Memory;
 use super::state::AgentState;
@@ -38,6 +39,8 @@ pub struct Agent {
     pub(crate) memory: Option<Box<dyn Memory>>,
     pub(crate) mode: ConversationMode,
     pub(crate) system_prompt: String,
+    /// Present only for builder-constructed agents; backs [`Agent::stream_elements`].
+    pub(crate) client: Option<Client>,
 }
 
 impl std::fmt::Debug for Agent {
@@ -55,19 +58,27 @@ impl Agent {
         memory: Option<Box<dyn Memory>>,
         mode: ConversationMode,
         system_prompt: String,
+        client: Option<Client>,
     ) -> Self {
         Self {
             graph,
             memory,
             mode,
             system_prompt,
+            client,
         }
     }
 
     /// Wrap a custom graph directly. Bypasses [`AgentBuilder`] when you
     /// want full control.
     pub fn wrap(graph: CompiledGraph<AgentState>) -> Self {
-        Self::new(graph, None, ConversationMode::Stateless, String::new())
+        Self::new(
+            graph,
+            None,
+            ConversationMode::Stateless,
+            String::new(),
+            None,
+        )
     }
 
     /// One-shot run.
@@ -116,6 +127,29 @@ impl Agent {
         self.graph
             .stream_events(initial, RunnableConfig::default())
             .await
+    }
+
+    /// Stream the agent's structured list output element-by-element.
+    ///
+    /// Different from [`Agent::stream`], which emits graph events: this calls
+    /// the LLM directly with the seeded conversation and yields each element
+    /// of the JSON array as soon as it closes. It bypasses the tool loop and
+    /// does not write to memory.
+    ///
+    /// Requires an agent built via [`AgentBuilder`](super::AgentBuilder)
+    /// (the LLM client is needed); `wrap`-constructed agents and custom
+    /// graphs return a `Configuration` error.
+    pub async fn stream_elements<T: serde::de::DeserializeOwned + Send + 'static>(
+        &mut self,
+        input: impl Into<Message>,
+    ) -> Result<cognis_core::RunnableStream<T>> {
+        let client = self.client.clone().ok_or_else(|| {
+            cognis_core::CognisError::Configuration(
+                "stream_elements needs an AgentBuilder-built agent".into(),
+            )
+        })?;
+        let state = self.build_initial_state(input.into());
+        client.stream_array::<T>(state.messages).await
     }
 
     /// Escape hatch — give back the underlying compiled graph.
@@ -230,7 +264,13 @@ mod tests {
     async fn stateless_run_seeds_with_system_and_input() {
         let client = Client::new(Arc::new(Constant::new("hello back")));
         let graph = default_react_graph(client, Vec::new(), 10).unwrap();
-        let mut agent = Agent::new(graph, None, ConversationMode::Stateless, "be terse".into());
+        let mut agent = Agent::new(
+            graph,
+            None,
+            ConversationMode::Stateless,
+            "be terse".into(),
+            None,
+        );
         let resp = agent.run("hi there").await.unwrap();
         assert_eq!(resp.content, "hello back");
         // initial: [system, human]; after run: + ai = 3
@@ -245,5 +285,108 @@ mod tests {
         let mut agent = Agent::wrap(graph);
         let resp = agent.run("hello").await.unwrap();
         assert_eq!(resp.content, "ok");
+    }
+
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    struct Step {
+        id: u32,
+    }
+
+    /// Streams a JSON array in two pieces and records the messages it received.
+    struct ArrayStreamer {
+        seen: std::sync::Mutex<Vec<Message>>,
+    }
+
+    #[async_trait]
+    impl LLMProvider for ArrayStreamer {
+        fn name(&self) -> &str {
+            "array-streamer"
+        }
+        fn provider_type(&self) -> Provider {
+            Provider::Ollama
+        }
+        async fn chat_completion(
+            &self,
+            _messages: Vec<Message>,
+            _opts: ChatOptions,
+        ) -> Result<ChatResponse> {
+            unimplemented!()
+        }
+        async fn chat_completion_stream(
+            &self,
+            _messages: Vec<Message>,
+            _opts: ChatOptions,
+        ) -> Result<cognis_core::RunnableStream<StreamChunk>> {
+            unimplemented!()
+        }
+        async fn chat_completion_stream_with_tools(
+            &self,
+            messages: Vec<Message>,
+            _tools: Vec<cognis_llm::ToolDefinition>,
+            _opts: ChatOptions,
+        ) -> Result<cognis_core::RunnableStream<StreamChunk>> {
+            *self.seen.lock().unwrap() = messages;
+            let chunks: Vec<Result<StreamChunk>> = ["[{\"id\":1},", "{\"id\":2}]"]
+                .iter()
+                .map(|s| {
+                    Ok(StreamChunk {
+                        content: (*s).into(),
+                        is_delta: true,
+                        is_done: false,
+                        finish_reason: None,
+                        usage: None,
+                        tool_calls_delta: vec![],
+                    })
+                })
+                .collect();
+            Ok(cognis_core::RunnableStream::new(futures::stream::iter(
+                chunks,
+            )))
+        }
+        async fn health_check(&self) -> Result<HealthStatus> {
+            Ok(HealthStatus::Healthy { latency_ms: 0 })
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_elements_yields_typed_elements_with_system_prompt_seeded() {
+        use futures::StreamExt;
+        let provider = Arc::new(ArrayStreamer {
+            seen: Default::default(),
+        });
+        let mut agent = crate::agent::AgentBuilder::new()
+            .with_llm(Client::new(provider.clone()))
+            .with_system_prompt("plan things")
+            .build()
+            .unwrap();
+        let got: Vec<Step> = agent
+            .stream_elements::<Step>("go")
+            .await
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+            .await;
+        assert_eq!(got, vec![Step { id: 1 }, Step { id: 2 }]);
+        let seen = provider.seen.lock().unwrap();
+        assert!(
+            matches!(seen.first(), Some(Message::System(_))),
+            "got: {seen:?}"
+        );
+        assert_eq!(seen.last().unwrap().content(), "go");
+    }
+
+    #[tokio::test]
+    async fn stream_elements_errors_for_wrapped_agent_without_client() {
+        let client = Client::new(Arc::new(Constant::new("ok")));
+        let graph = default_react_graph(client, Vec::new(), 10).unwrap();
+        let mut agent = Agent::wrap(graph);
+        let err = match agent.stream_elements::<Step>("go").await {
+            Ok(_) => panic!("expected Configuration error"),
+            Err(e) => e,
+        };
+        assert!(
+            matches!(err, cognis_core::CognisError::Configuration(_)),
+            "got: {err:?}"
+        );
     }
 }

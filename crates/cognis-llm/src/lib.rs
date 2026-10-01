@@ -55,6 +55,7 @@ pub mod usage;
 pub use usage::UsageTracker;
 
 pub mod structured;
+pub mod structured_stream;
 pub use structured::StructuredClient;
 
 /// Common imports for v2 user code building agents and tools.
