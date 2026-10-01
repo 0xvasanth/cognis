@@ -2,11 +2,15 @@
 //!
 //! [`Client::stream_array`] turns a streamed JSON array into a
 //! [`RunnableStream`] of validated `T` values, yielding each element as soon
-//! as it closes. Processing is ordinary `futures::StreamExt` iteration.
+//! as it closes. [`Client::stream_object_partial_value`] instead streams one
+//! object as progressively-filled snapshots. Processing is ordinary
+//! `futures::StreamExt` iteration.
 
 use serde::de::DeserializeOwned;
 
-use cognis_core::{CognisError, Message, Result, RunnableStream, StreamingJsonArray};
+use cognis_core::{
+    close_partial_json, CognisError, Message, Result, RunnableStream, StreamingJsonArray,
+};
 use futures::StreamExt;
 
 use crate::Client;
@@ -41,6 +45,46 @@ impl Client {
             }
             for raw in parser.finish() {
                 yield decode::<T>(&raw);
+            }
+        };
+        Ok(RunnableStream::new(out))
+    }
+
+    /// Stream a single JSON object as progressively-filled snapshots.
+    ///
+    /// Different from [`Client::stream_array`], which yields whole elements:
+    /// each item is the object parsed so far, with open strings, arrays and
+    /// objects closed (see [`close_partial_json`]). Snapshots that parse to the
+    /// same value as the previous one are skipped. If the provider stream ends
+    /// before the object closes, the last good snapshot is the final item; a
+    /// provider error is yielded and ends the stream.
+    pub async fn stream_object_partial_value(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<RunnableStream<serde_json::Value>> {
+        let chunks = self.stream_with_tools(messages, Vec::new()).await?;
+        let out = async_stream::stream! {
+            let mut chunks = chunks;
+            let mut buf = String::new();
+            let mut last: Option<serde_json::Value> = None;
+            while let Some(item) = chunks.next().await {
+                match item {
+                    Ok(chunk) => {
+                        buf.push_str(&chunk.content);
+                        let snapshot = close_partial_json(&buf)
+                            .and_then(|closed| serde_json::from_str::<serde_json::Value>(&closed).ok());
+                        if let Some(v) = snapshot {
+                            if last.as_ref() != Some(&v) {
+                                last = Some(v.clone());
+                                yield Ok(v);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        yield Err(e);
+                        return;
+                    }
+                }
             }
         };
         Ok(RunnableStream::new(out))
@@ -206,6 +250,112 @@ mod tests {
             .await;
         assert_eq!(got.len(), 2, "got: {got:?}");
         assert_eq!(got[0].as_ref().unwrap(), &Step { id: 1 });
+        assert!(got[1].is_err());
+    }
+
+    #[tokio::test]
+    async fn stream_object_partial_value_fills_snapshots_progressively() {
+        let c = client(ArrProvider::new(&["{\"a\":1", ",\"b\":2}"]));
+        let got: Vec<serde_json::Value> = c
+            .stream_object_partial_value(vec![Message::human("obj")])
+            .await
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+            .await;
+        assert_eq!(
+            got,
+            vec![
+                serde_json::json!({"a": 1}),
+                serde_json::json!({"a": 1, "b": 2})
+            ],
+            "got: {got:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_object_partial_value_grows_string_value_across_chunks() {
+        let c = client(ArrProvider::new(&["{\"msg\":\"he", "llo wor", "ld\"}"]));
+        let got: Vec<serde_json::Value> = c
+            .stream_object_partial_value(vec![Message::human("obj")])
+            .await
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+            .await;
+        assert_eq!(
+            got,
+            vec![
+                serde_json::json!({"msg": "he"}),
+                serde_json::json!({"msg": "hello wor"}),
+                serde_json::json!({"msg": "hello world"}),
+            ],
+            "got: {got:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_object_partial_value_skips_duplicate_snapshots() {
+        // The second and third chunks add no new parseable content.
+        let c = client(ArrProvider::new(&["{\"a\":1", ",", " \"b\":", "2}"]));
+        let got: Vec<serde_json::Value> = c
+            .stream_object_partial_value(vec![Message::human("obj")])
+            .await
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+            .await;
+        assert_eq!(
+            got,
+            vec![
+                serde_json::json!({"a": 1}),
+                serde_json::json!({"a": 1, "b": 2})
+            ],
+            "got: {got:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_object_partial_value_ends_with_last_good_snapshot_when_never_closed() {
+        let c = client(ArrProvider::new(&["{\"a\":1,", "\"b\":\"par"]));
+        let got: Vec<serde_json::Value> = c
+            .stream_object_partial_value(vec![Message::human("obj")])
+            .await
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+            .await;
+        assert_eq!(
+            got.last(),
+            Some(&serde_json::json!({"a": 1, "b": "par"})),
+            "got: {got:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_object_partial_value_yields_nothing_without_an_object() {
+        let c = client(ArrProvider::new(&["no json ", "here"]));
+        let got: Vec<Result<serde_json::Value>> = c
+            .stream_object_partial_value(vec![Message::human("obj")])
+            .await
+            .unwrap()
+            .collect()
+            .await;
+        assert!(got.is_empty(), "got: {got:?}");
+    }
+
+    #[tokio::test]
+    async fn stream_object_partial_value_propagates_provider_error_and_stops() {
+        let mut p = ArrProvider::new(&["{\"a\":1"]);
+        p.fail_after = true;
+        let got: Vec<Result<serde_json::Value>> = client(p)
+            .stream_object_partial_value(vec![Message::human("obj")])
+            .await
+            .unwrap()
+            .collect()
+            .await;
+        assert_eq!(got.len(), 2, "got: {got:?}");
+        assert_eq!(got[0].as_ref().unwrap(), &serde_json::json!({"a": 1}));
         assert!(got[1].is_err());
     }
 }

@@ -103,6 +103,88 @@ impl StreamingJsonArray {
     }
 }
 
+/// Best-effort completion of a truncated JSON object prefix into parseable
+/// text, for rendering progressively-filled snapshots of a streamed object.
+///
+/// Different from [`StreamingJsonArray`], which waits for whole elements:
+/// this closes an open string, drops a dangling `key`, `key:` or trailing
+/// comma, and appends the missing `}`/`]` closers. Text before the first
+/// `{` is skipped; returns `None` if no `{` has arrived yet. A value cut
+/// mid-literal (`tru`, `1.`) still yields text that fails to parse, so
+/// callers should treat a parse failure as "no new snapshot".
+pub fn close_partial_json(buf: &str) -> Option<String> {
+    let start = buf.find('{')?;
+    let mut out = String::with_capacity(buf.len() - start + 8);
+    let mut stack: Vec<char> = Vec::new();
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut last_significant = '\0';
+    // Where the current `key: value` entry begins in `out`, so a dangling
+    // entry is cut at a structural boundary rather than by scanning for commas
+    // that may sit inside strings.
+    let mut entry_start = 0;
+    let mut string_is_key = false;
+    let mut last_string_was_key = false;
+    for ch in buf[start..].chars() {
+        if in_string {
+            out.push(ch);
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+                last_string_was_key = string_is_key;
+                last_significant = '"';
+            }
+            continue;
+        }
+        match ch {
+            '"' => {
+                string_is_key = stack.last() == Some(&'}') && matches!(last_significant, '{' | ',');
+                in_string = true;
+                out.push(ch);
+            }
+            '{' | '[' => {
+                stack.push(if ch == '{' { '}' } else { ']' });
+                out.push(ch);
+                entry_start = out.len();
+                last_significant = ch;
+            }
+            ',' => {
+                entry_start = out.len();
+                out.push(ch);
+                last_significant = ch;
+            }
+            '}' | ']' => {
+                stack.pop();
+                out.push(ch);
+                last_significant = ch;
+            }
+            c if c.is_whitespace() => out.push(c),
+            c => {
+                out.push(c);
+                last_significant = c;
+            }
+        }
+    }
+    if in_string {
+        out.push('"');
+        last_string_was_key = string_is_key;
+        last_significant = '"';
+    }
+    let dangling = match last_significant {
+        ':' | ',' => true,
+        '"' => last_string_was_key,
+        _ => false,
+    };
+    if dangling {
+        out.truncate(entry_start);
+    }
+    out.extend(stack.iter().rev());
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +245,66 @@ mod tests {
         let mut out = p.push_str("[{\"a\":1}");
         out.extend(p.finish());
         assert_eq!(out, vec!["{\"a\":1}".to_string()]);
+    }
+
+    fn closed(buf: &str) -> serde_json::Value {
+        let s = close_partial_json(buf).expect("object prefix");
+        serde_json::from_str(&s).unwrap_or_else(|e| panic!("{e}: {s}"))
+    }
+
+    #[test]
+    fn closes_open_object_and_string() {
+        let v = closed("{\"a\":1,\"b\":\"hel");
+        assert_eq!(v["a"], serde_json::json!(1));
+        assert_eq!(v["b"], serde_json::json!("hel"));
+    }
+
+    #[test]
+    fn drops_dangling_key_without_value() {
+        let v = closed("{\"a\":1,\"b\":");
+        assert_eq!(v, serde_json::json!({"a": 1}));
+    }
+
+    #[test]
+    fn drops_trailing_comma() {
+        assert_eq!(closed("{\"a\":1,"), serde_json::json!({"a": 1}));
+    }
+
+    #[test]
+    fn drops_key_whose_colon_has_not_arrived() {
+        assert_eq!(closed("{\"a\":1,\"b"), serde_json::json!({"a": 1}));
+    }
+
+    #[test]
+    fn drops_dangling_key_containing_comma_or_brace() {
+        assert_eq!(closed("{\"a\":1,\"b,{c\":"), serde_json::json!({"a": 1}));
+    }
+
+    #[test]
+    fn closes_nested_object_and_array() {
+        let v = closed("{\"a\":{\"b\":[1,2,{\"c\":\"x");
+        assert_eq!(v, serde_json::json!({"a": {"b": [1, 2, {"c": "x"}]}}));
+    }
+
+    #[test]
+    fn ignores_braces_and_escaped_quotes_inside_strings() {
+        let v = closed("{\"a\":\"x}\\\"[y");
+        assert_eq!(v["a"], serde_json::json!("x}\"[y"));
+    }
+
+    #[test]
+    fn skips_leading_prose_before_first_brace() {
+        assert_eq!(closed("Sure: {\"a\":1"), serde_json::json!({"a": 1}));
+    }
+
+    #[test]
+    fn leaves_complete_object_unchanged() {
+        assert_eq!(closed("{\"a\":[1,2]}"), serde_json::json!({"a": [1, 2]}));
+    }
+
+    #[test]
+    fn none_before_first_brace() {
+        assert!(close_partial_json("  ").is_none());
+        assert!(close_partial_json("").is_none());
     }
 }
