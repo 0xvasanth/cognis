@@ -1,0 +1,29 @@
+docs/mintlify/building-agents/memory.mdx
+  s_1c99a74d31b4d9::t_1570702cc4e42a 74-90
+docs/mintlify/docs.json
+  s_1c99a74d31b4d9::t_fe9c9f4a70bf89 56-66
+docs/mintlify/building-agents/memory/entity-and-knowledge-graph.mdx
+  s_1c99a74d31b4d9::t_01ca3af06b6655 1-71
+docs/mintlify/building-agents/memory/vector-memory.mdx
+  s_1c99a74d31b4d9::t_daf98d5e1dbc5e 1-46
+docs/mintlify/building-agents/memory/token-and-summary.mdx
+  s_1c99a74d31b4d9::t_d7f501356133ec 1-62
+docs/mintlify/building-agents/memory/hybrid-memory.mdx
+  s_1c99a74d31b4d9::t_55165b84c804ee 1-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cf00ccd65ec2aca854011edb82be54ac8aeb6a5d",
+  "prompts": {},
+  "sessions": {
+    "s_1c99a74d31b4d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d535c2a5-603f-4d23-afba-333a928e8120",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
