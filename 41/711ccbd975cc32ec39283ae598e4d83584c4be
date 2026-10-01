@@ -1,0 +1,19 @@
+docs/mintlify/building-agents/middleware.mdx
+  s_1c99a74d31b4d9::t_9e0ecac30e7660 55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "41711ccbd975cc32ec39283ae598e4d83584c4be",
+  "prompts": {},
+  "sessions": {
+    "s_1c99a74d31b4d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d535c2a5-603f-4d23-afba-333a928e8120",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
