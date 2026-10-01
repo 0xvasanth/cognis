@@ -130,6 +130,8 @@
             "pages": [
               "reference/feature-flags",
               "reference/env-vars",
+              "reference/faq",
+              "reference/troubleshooting",
               "reference/changelog"
             ]
           }
