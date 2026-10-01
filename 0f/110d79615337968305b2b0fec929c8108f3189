@@ -1,0 +1,25 @@
+docs/mintlify/docs.json
+  s_1c99a74d31b4d9::t_2a83fe48b6c418 133-134
+docs/mintlify/reference/troubleshooting.mdx
+  s_1c99a74d31b4d9::t_68973ba3aa99ba 1-102
+docs/mintlify/reference/faq.mdx
+  s_1c99a74d31b4d9::t_eb005bddffd008 1-59,63-67,72-99
+  s_1c99a74d31b4d9::t_32057c1ddee33f 60-62
+  s_1c99a74d31b4d9::t_fc4a5e61ec8763 68-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0f110d79615337968305b2b0fec929c8108f3189",
+  "prompts": {},
+  "sessions": {
+    "s_1c99a74d31b4d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d535c2a5-603f-4d23-afba-333a928e8120",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
