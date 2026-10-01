@@ -1,0 +1,37 @@
+docs/mintlify/building-rag/vector-stores/faiss.mdx
+  s_1c99a74d31b4d9::t_b43d24cbbc8aac 1-36
+docs/mintlify/building-rag/vector-stores/in-memory.mdx
+  s_1c99a74d31b4d9::t_c422f1f4de93d6 1-33
+docs/mintlify/building-rag/vector-stores/chroma.mdx
+  s_1c99a74d31b4d9::t_70b4f7bcde2b46 1-30
+docs/mintlify/reference/faq.mdx
+  s_1c99a74d31b4d9::t_cb91fe9d3ddc8a 62
+docs/mintlify/building-rag/vector-stores/qdrant.mdx
+  s_1c99a74d31b4d9::t_c0881b2b3d9c45 1-31
+docs/mintlify/building-rag/vector-stores/pinecone.mdx
+  s_1c99a74d31b4d9::t_5836a40a003df8 1-31
+docs/mintlify/building-rag/vector-stores/overview.mdx
+  s_1c99a74d31b4d9::t_781ef53fa4265d 1-63
+docs/mintlify/building-rag/vector-stores/weaviate.mdx
+  s_1c99a74d31b4d9::t_77dc04c1d6fcdb 1-29
+docs/mintlify/docs.json
+  s_1c99a74d31b4d9::t_79e73e778d50d8 70-82
+docs/mintlify/building-rag/retrievers.mdx
+  s_1c99a74d31b4d9::t_8150a719aa865a 126-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c35aabc6a1c3ed6fa12dbacfa8d881080140d6c",
+  "prompts": {},
+  "sessions": {
+    "s_1c99a74d31b4d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d535c2a5-603f-4d23-afba-333a928e8120",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
