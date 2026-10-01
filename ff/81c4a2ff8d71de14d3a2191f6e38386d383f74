@@ -1,0 +1,26 @@
+crates/cognis-core/src/lib.rs
+  s_0d7905abf919e2::t_d650e1c361c14c 58
+crates/cognis-core/src/streaming_json.rs
+  s_0d7905abf919e2::t_9d92953a788c9c 106-143,145-187
+  s_0d7905abf919e2::t_2f10ccb438e877 249-309
+  s_0d7905abf919e2::t_bc5f892a66b1b6 144
+crates/cognis-llm/src/structured_stream.rs
+  s_0d7905abf919e2::t_d650e1c361c14c 255-360
+  s_0d7905abf919e2::t_bc5f892a66b1b6 5-7,11-13,52-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff81c4a2ff8d71de14d3a2191f6e38386d383f74",
+  "prompts": {},
+  "sessions": {
+    "s_0d7905abf919e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0488d876-2a2c-4fba-9e53-f308d8f2602c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
