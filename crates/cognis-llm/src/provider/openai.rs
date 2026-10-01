@@ -3,17 +3,17 @@
 use std::time::Instant;
 
 use async_trait::async_trait;
-use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
 use cognis_core::{CognisError, Result, RunnableStream};
 
-use crate::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, ToolCallDelta, Usage};
+use crate::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, Usage};
 use crate::tools::ToolDefinition;
 use crate::{AiMessage, Message, ToolCall};
 
+use super::sse::decode_stream;
 use super::{LLMProvider, Provider};
 
 const DEFAULT_BASE: &str = "https://api.openai.com/v1/";
@@ -106,26 +106,7 @@ impl OpenAIProvider {
             });
         }
 
-        let byte_stream = resp.bytes_stream();
-        let chunk_stream = byte_stream
-            .filter_map(|res| async move {
-                match res {
-                    Ok(bytes) => Some(parse_sse_chunk(&bytes)),
-                    Err(e) => Some(Err(CognisError::Network {
-                        status_code: None,
-                        message: e.to_string(),
-                    })),
-                }
-            })
-            .filter_map(|res| async move {
-                match res {
-                    Ok(Some(chunk)) => Some(Ok(chunk)),
-                    Ok(None) => None, // [DONE] marker
-                    Err(e) => Some(Err(e)),
-                }
-            });
-
-        Ok(RunnableStream::new(chunk_stream))
+        Ok(decode_stream("openai", resp.bytes_stream()))
     }
 
     fn build_request(
@@ -504,55 +485,6 @@ fn tools_to_openai_format(tools: &[ToolDefinition]) -> serde_json::Value {
     serde_json::Value::Array(arr)
 }
 
-fn parse_sse_chunk(bytes: &[u8]) -> Result<Option<StreamChunk>> {
-    // OpenAI streams SSE lines like "data: {json}\n\n" plus "data: [DONE]\n\n".
-    let s = std::str::from_utf8(bytes).map_err(|e| CognisError::Provider {
-        provider: "openai".into(),
-        message: format!("invalid UTF-8 in stream: {e}"),
-    })?;
-    for line in s.lines() {
-        let line = line.trim();
-        if let Some(payload) = line.strip_prefix("data: ") {
-            if payload == "[DONE]" {
-                return Ok(None);
-            }
-            let v: serde_json::Value =
-                serde_json::from_str(payload).map_err(|e| CognisError::Provider {
-                    provider: "openai".into(),
-                    message: format!("stream parse: {e}"),
-                })?;
-            // Pull delta content + tool-call deltas
-            let delta = &v["choices"][0]["delta"];
-            let content = delta["content"].as_str().unwrap_or("").to_string();
-            let mut tool_calls_delta = Vec::new();
-            if let Some(arr) = delta["tool_calls"].as_array() {
-                for (i, t) in arr.iter().enumerate() {
-                    tool_calls_delta.push(ToolCallDelta {
-                        index: t["index"].as_u64().unwrap_or(i as u64) as u32,
-                        id: t["id"].as_str().map(|s| s.to_string()),
-                        name: t["function"]["name"].as_str().map(|s| s.to_string()),
-                        arguments_delta: t["function"]["arguments"].as_str().map(|s| s.to_string()),
-                    });
-                }
-            }
-            let finish_reason = v["choices"][0]["finish_reason"]
-                .as_str()
-                .map(|s| s.to_string());
-            let is_done = finish_reason.is_some();
-            return Ok(Some(StreamChunk {
-                content,
-                is_delta: true,
-                is_done,
-                finish_reason,
-                usage: None,
-                tool_calls_delta,
-            }));
-        }
-    }
-    // No data line in this chunk — return an empty no-op chunk.
-    Ok(Some(StreamChunk::default()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -575,6 +507,59 @@ mod tests {
         let tools = body["tools"].as_array().expect("tools array");
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0]["function"]["name"], "search");
+    }
+
+    fn weather_tool() -> ToolDefinition {
+        ToolDefinition {
+            name: "weather".into(),
+            description: "look up weather".into(),
+            parameters: Some(serde_json::json!({"type":"object"})),
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_assembles_exact_arguments_over_real_transport() {
+        use crate::provider::sse::tests::{serve_sse_once, tool_call_writes};
+        use crate::streaming::StreamAggregator;
+        use futures::StreamExt;
+
+        let (base, server) = serve_sse_once(tool_call_writes()).await;
+        let p = OpenAIBuilder::default()
+            .api_key("k")
+            .base_url(base)
+            .build()
+            .unwrap();
+        let mut s = p
+            .chat_completion_stream_with_tools(
+                vec![Message::human("weather?")],
+                vec![weather_tool()],
+                ChatOptions::default(),
+            )
+            .await
+            .unwrap();
+
+        let mut agg = StreamAggregator::new();
+        let mut chunks = 0;
+        while let Some(chunk) = s.next().await {
+            let chunk = chunk.unwrap();
+            assert!(chunk.is_delta, "native stream yields deltas: {chunk:?}");
+            chunks += 1;
+            agg.push(chunk);
+        }
+        assert_eq!(chunks, 4, "three argument fragments + the finish chunk");
+        let out = agg.finalize();
+        let calls = out.message.tool_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "weather");
+        assert_eq!(
+            calls[0].arguments,
+            serde_json::json!({"city": "San Francisco"})
+        );
+        assert_eq!(out.finish_reason.as_deref(), Some("tool_calls"));
+
+        let body = server.await.unwrap();
+        assert_eq!(body["stream"], serde_json::json!(true));
+        assert_eq!(body["tools"][0]["function"]["name"], "weather");
     }
 
     #[test]
@@ -632,22 +617,6 @@ mod tests {
         } else {
             panic!("expected Ai");
         }
-    }
-
-    #[test]
-    fn parse_sse_done_sentinel() {
-        let bytes = b"data: [DONE]\n\n";
-        let r = parse_sse_chunk(bytes).unwrap();
-        assert!(r.is_none());
-    }
-
-    #[test]
-    fn parse_sse_content_chunk() {
-        let bytes = br#"data: {"choices":[{"delta":{"content":"hello"}}]}
-"#;
-        let r = parse_sse_chunk(bytes).unwrap().unwrap();
-        assert_eq!(r.content, "hello");
-        assert!(!r.is_done);
     }
 
     #[test]

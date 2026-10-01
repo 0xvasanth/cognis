@@ -24,6 +24,8 @@ pub mod ollama;
 pub mod openai;
 #[cfg(feature = "openai")]
 pub mod openrouter;
+#[cfg(any(feature = "openai", feature = "azure"))]
+mod sse;
 pub mod wrappers;
 
 #[cfg(feature = "anthropic")]

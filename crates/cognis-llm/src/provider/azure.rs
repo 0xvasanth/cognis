@@ -10,17 +10,17 @@
 use std::time::Instant;
 
 use async_trait::async_trait;
-use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
 use cognis_core::{CognisError, Result, RunnableStream};
 
-use crate::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, ToolCallDelta, Usage};
+use crate::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk, Usage};
 use crate::tools::ToolDefinition;
 use crate::{AiMessage, Message, ToolCall};
 
+use super::sse::decode_stream;
 use super::{LLMProvider, Provider};
 
 const DEFAULT_API_VERSION: &str = "2024-08-01-preview";
@@ -210,26 +210,7 @@ impl LLMProvider for AzureProvider {
             });
         }
 
-        let byte_stream = resp.bytes_stream();
-        let chunk_stream = byte_stream
-            .filter_map(|res| async move {
-                match res {
-                    Ok(bytes) => Some(parse_sse_chunk(&bytes)),
-                    Err(e) => Some(Err(CognisError::Network {
-                        status_code: None,
-                        message: e.to_string(),
-                    })),
-                }
-            })
-            .filter_map(|res| async move {
-                match res {
-                    Ok(Some(chunk)) => Some(Ok(chunk)),
-                    Ok(None) => None,
-                    Err(e) => Some(Err(e)),
-                }
-            });
-
-        Ok(RunnableStream::new(chunk_stream))
+        Ok(decode_stream("azure", resp.bytes_stream()))
     }
 
     async fn health_check(&self) -> Result<HealthStatus> {
@@ -472,52 +453,6 @@ fn tools_to_openai_format(tools: &[ToolDefinition]) -> serde_json::Value {
         })
         .collect();
     serde_json::Value::Array(arr)
-}
-
-fn parse_sse_chunk(bytes: &[u8]) -> Result<Option<StreamChunk>> {
-    let s = std::str::from_utf8(bytes).map_err(|e| CognisError::Provider {
-        provider: "azure".into(),
-        message: format!("invalid UTF-8 in stream: {e}"),
-    })?;
-    for line in s.lines() {
-        let line = line.trim();
-        if let Some(payload) = line.strip_prefix("data: ") {
-            if payload == "[DONE]" {
-                return Ok(None);
-            }
-            let v: serde_json::Value =
-                serde_json::from_str(payload).map_err(|e| CognisError::Provider {
-                    provider: "azure".into(),
-                    message: format!("stream parse: {e}"),
-                })?;
-            let delta = &v["choices"][0]["delta"];
-            let content = delta["content"].as_str().unwrap_or("").to_string();
-            let mut tool_calls_delta = Vec::new();
-            if let Some(arr) = delta["tool_calls"].as_array() {
-                for (i, t) in arr.iter().enumerate() {
-                    tool_calls_delta.push(ToolCallDelta {
-                        index: t["index"].as_u64().unwrap_or(i as u64) as u32,
-                        id: t["id"].as_str().map(|s| s.to_string()),
-                        name: t["function"]["name"].as_str().map(|s| s.to_string()),
-                        arguments_delta: t["function"]["arguments"].as_str().map(|s| s.to_string()),
-                    });
-                }
-            }
-            let finish_reason = v["choices"][0]["finish_reason"]
-                .as_str()
-                .map(|s| s.to_string());
-            let is_done = finish_reason.is_some();
-            return Ok(Some(StreamChunk {
-                content,
-                is_delta: true,
-                is_done,
-                finish_reason,
-                usage: None,
-                tool_calls_delta,
-            }));
-        }
-    }
-    Ok(Some(StreamChunk::default()))
 }
 
 #[cfg(test)]
