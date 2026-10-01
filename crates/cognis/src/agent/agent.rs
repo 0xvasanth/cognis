@@ -321,7 +321,9 @@ mod tests {
         score: u32,
     }
 
-    /// Streams scripted text pieces and records the messages it received.
+    /// Streams scripted text pieces over the plain streaming path and records
+    /// the messages it received. `chat_completion` panics, so a typed stream
+    /// that falls back to the non-streaming tool path fails the test.
     struct ArrayStreamer {
         seen: std::sync::Mutex<Vec<Message>>,
         pieces: &'static [&'static str],
@@ -344,15 +346,7 @@ mod tests {
         }
         async fn chat_completion_stream(
             &self,
-            _messages: Vec<Message>,
-            _opts: ChatOptions,
-        ) -> Result<cognis_core::RunnableStream<StreamChunk>> {
-            unimplemented!()
-        }
-        async fn chat_completion_stream_with_tools(
-            &self,
             messages: Vec<Message>,
-            _tools: Vec<cognis_llm::ToolDefinition>,
             _opts: ChatOptions,
         ) -> Result<cognis_core::RunnableStream<StreamChunk>> {
             *self.seen.lock().unwrap() = messages;

@@ -92,6 +92,12 @@ impl StreamingJsonArray {
         done
     }
 
+    /// True once the opening `[` has been seen. Lets a caller tell "the
+    /// array was empty" from "there never was an array" at end of stream.
+    pub fn has_started(&self) -> bool {
+        self.started
+    }
+
     /// Flush any trailing element (e.g. stream ended without a closing `]`).
     pub fn finish(&mut self) -> Vec<String> {
         let mut done = Vec::new();
@@ -270,6 +276,20 @@ mod tests {
     fn empty_array_emits_nothing() {
         let mut p = StreamingJsonArray::new();
         assert!(p.push_str("[]").is_empty());
+    }
+
+    #[test]
+    fn has_started_distinguishes_empty_array_from_no_array() {
+        let mut empty = StreamingJsonArray::new();
+        assert!(!empty.has_started());
+        empty.push_str("[]");
+        assert!(empty.has_started());
+        assert!(empty.finish().is_empty());
+
+        let mut prose = StreamingJsonArray::new();
+        prose.push_str("I cannot help with that.");
+        assert!(!prose.has_started());
+        assert!(prose.finish().is_empty());
     }
 
     #[test]

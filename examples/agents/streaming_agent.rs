@@ -61,15 +61,6 @@ impl LLMProvider for ScriptedProvider {
         _m: Vec<Message>,
         _o: ChatOptions,
     ) -> Result<RunnableStream<StreamChunk>> {
-        unreachable!("this demo only streams")
-    }
-
-    async fn chat_completion_stream_with_tools(
-        &self,
-        _m: Vec<Message>,
-        _t: Vec<ToolDefinition>,
-        _o: ChatOptions,
-    ) -> Result<RunnableStream<StreamChunk>> {
         let chunks: Vec<Result<StreamChunk>> = self
             .fragments
             .iter()
@@ -85,6 +76,15 @@ impl LLMProvider for ScriptedProvider {
             })
             .collect();
         Ok(RunnableStream::new(futures::stream::iter(chunks)))
+    }
+
+    async fn chat_completion_stream_with_tools(
+        &self,
+        messages: Vec<Message>,
+        _t: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        self.chat_completion_stream(messages, opts).await
     }
 
     async fn health_check(&self) -> Result<HealthStatus> {
