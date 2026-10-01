@@ -160,6 +160,17 @@ impl LLMProvider for RoutingProvider {
         let p = self.resolve(&messages, &opts).clone();
         p.chat_completion_with_tools(messages, tools, opts).await
     }
+    async fn chat_completion_stream_with_tools(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        let p = self.resolve(&messages, &opts).clone();
+        p.chat_completion_stream_with_tools(messages, tools, opts)
+            .await
+    }
+
     async fn health_check(&self) -> Result<HealthStatus> {
         // Only check the default route — the others may be intentionally
         // unreachable when their predicates don't match.
@@ -254,6 +265,37 @@ mod tests {
 
         let _ = r.chat_completion(vec![], ChatOptions::default()).await;
         assert_eq!(seen.lock().unwrap()[0], "first");
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_dispatches_to_matching_route() {
+        use crate::provider::wrappers::test_support::{collect_deltas, one_tool, StreamSpy};
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let r = RoutingProvider::new("router", Arc::new(StreamSpy::new("default", calls.clone())))
+            .route(ProviderRoute::new(
+                "shouty",
+                Arc::new(StreamSpy::new("shouty", calls.clone())),
+                |msgs, _| msgs.iter().any(|m| m.content().contains('!')),
+            ));
+
+        for text in ["hi!", "hi"] {
+            let s = r
+                .chat_completion_stream_with_tools(
+                    vec![Message::human(text)],
+                    one_tool(),
+                    ChatOptions::default(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(collect_deltas(s).await.len(), 2);
+        }
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![
+                "shouty:stream_with_tools tools=1 last=hi!".to_string(),
+                "default:stream_with_tools tools=1 last=hi".to_string(),
+            ]
+        );
     }
 
     #[tokio::test]

@@ -5,8 +5,10 @@
 //! - Operates on chat-specific types ([`ChatOptions`], [`ChatResponse`],
 //!   [`Vec<Message>`]) rather than `(I, O)`.
 //! - Hooks fire on every provider entry-point (`chat_completion`,
-//!   `chat_completion_stream`, `chat_completion_with_tools`) — no need
-//!   to write three sets of generic hooks.
+//!   `chat_completion_stream`, `chat_completion_with_tools`,
+//!   `chat_completion_stream_with_tools`) — no need to write a set of
+//!   generic hooks per entry-point. The two streaming entry-points only
+//!   fire `before_call`.
 //!
 //! Customization:
 //! - Implement [`ChatInterceptor`] for full control.
@@ -297,6 +299,21 @@ impl LLMProvider for InterceptorProvider {
         }
     }
 
+    async fn chat_completion_stream_with_tools(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        // Same policy as `chat_completion_stream`: only `before_call` fires.
+        let mut messages = messages;
+        let mut opts = opts;
+        self.run_before(&mut messages, &mut opts).await?;
+        self.inner
+            .chat_completion_stream_with_tools(messages, tools, opts)
+            .await
+    }
+
     async fn health_check(&self) -> Result<HealthStatus> {
         self.inner.health_check().await
     }
@@ -436,6 +453,50 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, CognisError::Configuration(_)));
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_runs_before_hooks_and_forwards_to_native_stream() {
+        use crate::provider::wrappers::test_support::{collect_deltas, one_tool, StreamSpy};
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let ic = FnChatInterceptor::new().before(|msgs, _| {
+            msgs.push(Message::human("injected"));
+            Ok(())
+        });
+        let p = InterceptorProvider::new(Arc::new(StreamSpy::new("spy", calls.clone())))
+            .push(Arc::new(ic));
+        let s = p
+            .chat_completion_stream_with_tools(
+                vec![Message::human("hi")],
+                one_tool(),
+                ChatOptions::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(collect_deltas(s).await.len(), 2);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec!["spy:stream_with_tools tools=1 last=injected".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_skips_inner_when_before_hook_errors() {
+        use crate::provider::wrappers::test_support::{one_tool, StreamSpy};
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let ic = FnChatInterceptor::new()
+            .before(|_msgs, _opts| Err(CognisError::Configuration("blocked".into())));
+        let p = InterceptorProvider::new(Arc::new(StreamSpy::new("spy", calls.clone())))
+            .push(Arc::new(ic));
+        let res = p
+            .chat_completion_stream_with_tools(
+                vec![Message::human("hi")],
+                one_tool(),
+                ChatOptions::default(),
+            )
+            .await;
+        assert!(matches!(res, Err(CognisError::Configuration(_))));
+        assert!(calls.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

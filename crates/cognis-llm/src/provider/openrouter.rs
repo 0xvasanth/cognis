@@ -92,6 +92,17 @@ impl LLMProvider for OpenRouterProvider {
             .await
     }
 
+    async fn chat_completion_stream_with_tools(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        self.inner
+            .chat_completion_stream_with_tools(messages, tools, opts)
+            .await
+    }
+
     async fn health_check(&self) -> Result<HealthStatus> {
         self.inner.health_check().await
     }
@@ -202,6 +213,52 @@ mod tests {
         let p = OpenRouterProvider::new("sk-test").unwrap();
         assert_eq!(p.provider_type(), Provider::OpenRouter);
         assert_eq!(p.name(), "openrouter");
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_delegates_to_inner_native_stream() {
+        use crate::provider::sse::tests::{serve_sse_once, tool_call_writes};
+        use crate::streaming::StreamAggregator;
+
+        let (base, server) = serve_sse_once(tool_call_writes()).await;
+        let p = OpenRouterBuilder::default()
+            .api_key("sk-test")
+            .base_url(base)
+            .build()
+            .unwrap();
+        let chunks = p
+            .chat_completion_stream_with_tools(
+                vec![Message::human("weather?")],
+                vec![ToolDefinition {
+                    name: "weather".into(),
+                    description: "look up weather".into(),
+                    parameters: Some(serde_json::json!({"type": "object"})),
+                }],
+                ChatOptions::default(),
+            )
+            .await
+            .unwrap()
+            .collect_into_vec()
+            .await
+            .unwrap();
+
+        // The trait's fallback would have sent `stream: false` and produced
+        // one non-delta chunk; real deltas prove the inner override ran.
+        let body = server.await.unwrap();
+        assert_eq!(body["stream"], serde_json::json!(true));
+        assert_eq!(body["tools"][0]["function"]["name"], "weather");
+        assert_eq!(chunks.len(), 4, "got: {chunks:?}");
+        assert!(chunks.iter().all(|c| c.is_delta), "got: {chunks:?}");
+
+        let mut agg = StreamAggregator::new();
+        for c in chunks {
+            agg.push(c);
+        }
+        let out = agg.finalize();
+        assert_eq!(
+            out.message.tool_calls()[0].arguments,
+            serde_json::json!({"city": "San Francisco"})
+        );
     }
 
     #[test]

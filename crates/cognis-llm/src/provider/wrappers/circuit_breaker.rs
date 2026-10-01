@@ -274,6 +274,25 @@ impl LLMProvider for CircuitBreakerProvider {
         res
     }
 
+    async fn chat_completion_stream_with_tools(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        self.total_calls.fetch_add(1, Ordering::Relaxed);
+        self.try_acquire()?;
+        let res = self
+            .inner
+            .chat_completion_stream_with_tools(messages, tools, opts)
+            .await;
+        match &res {
+            Ok(_) => self.on_success(),
+            Err(e) => self.on_failure(e),
+        }
+        res
+    }
+
     async fn health_check(&self) -> Result<HealthStatus> {
         self.inner.health_check().await
     }
@@ -397,6 +416,68 @@ mod tests {
         }
         assert_eq!(cb.stats().state, CircuitState::Closed);
         assert_eq!(cb.stats().trips, 0);
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_passes_native_deltas_through_when_closed() {
+        use crate::provider::wrappers::test_support::{collect_deltas, one_tool, StreamSpy};
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let cb = CircuitBreakerProvider::new(Arc::new(StreamSpy::new("spy", calls.clone())));
+        let s = cb
+            .chat_completion_stream_with_tools(
+                vec![Message::human("hi")],
+                one_tool(),
+                ChatOptions::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(collect_deltas(s).await.len(), 2);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec!["spy:stream_with_tools tools=1 last=hi".to_string()]
+        );
+        assert_eq!(cb.stats().total_calls, 1);
+        assert_eq!(cb.stats().state, CircuitState::Closed);
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_trips_breaker_and_is_rejected_while_open() {
+        use crate::provider::wrappers::test_support::{one_tool, StreamSpy};
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let cb = CircuitBreakerProvider::new(Arc::new(StreamSpy::failing("spy", calls.clone())))
+            .with_failure_threshold(1);
+        let first = cb
+            .chat_completion_stream_with_tools(
+                vec![Message::human("hi")],
+                one_tool(),
+                ChatOptions::default(),
+            )
+            .await;
+        assert!(first.is_err());
+        assert_eq!(cb.stats().state, CircuitState::Open);
+        assert_eq!(cb.stats().trips, 1);
+
+        let second = cb
+            .chat_completion_stream_with_tools(
+                vec![Message::human("hi")],
+                one_tool(),
+                ChatOptions::default(),
+            )
+            .await;
+        let err = match second {
+            Err(e) => e,
+            Ok(_) => panic!("open breaker must reject"),
+        };
+        assert!(
+            format!("{err}").contains("circuit breaker open"),
+            "got: {err}"
+        );
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            1,
+            "inner must not be reached while open"
+        );
+        assert_eq!(cb.stats().total_calls, 2);
     }
 
     #[tokio::test]

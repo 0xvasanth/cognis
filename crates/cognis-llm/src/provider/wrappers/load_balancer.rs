@@ -265,6 +265,18 @@ impl LLMProvider for LoadBalancerProvider {
             .unwrap_or_else(|| CognisError::Internal("load balancer reached no endpoints".into())))
     }
 
+    async fn chat_completion_stream_with_tools(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        // No failover, for the same reason as `chat_completion_stream`.
+        let ep = self.pick(0);
+        ep.chat_completion_stream_with_tools(messages, tools, opts)
+            .await
+    }
+
     async fn health_check(&self) -> Result<HealthStatus> {
         // Healthy if any endpoint is healthy. Returns the first Healthy
         // result verbatim (with its latency).
@@ -391,6 +403,65 @@ mod tests {
         let s = seen.lock().unwrap().clone();
         assert!(s.contains(&"bad"));
         assert!(s.contains(&"good"));
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_forwards_to_first_pick_only() {
+        use crate::provider::wrappers::test_support::{collect_deltas, one_tool, StreamSpy};
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let lb = LoadBalancerProvider::new(
+            "pool",
+            vec![
+                Arc::new(StreamSpy::new("a", calls.clone())) as Arc<dyn LLMProvider>,
+                Arc::new(StreamSpy::new("b", calls.clone())),
+            ],
+            Box::new(|_n: usize, _a: usize| 1usize),
+        )
+        .unwrap();
+        let s = lb
+            .chat_completion_stream_with_tools(
+                vec![Message::human("hi")],
+                one_tool(),
+                ChatOptions::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(collect_deltas(s).await.len(), 2);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec!["b:stream_with_tools tools=1 last=hi".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_does_not_fail_over_when_first_pick_errors() {
+        use crate::provider::wrappers::test_support::{one_tool, StreamSpy};
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let lb = LoadBalancerProvider::new(
+            "pool",
+            vec![
+                Arc::new(StreamSpy::failing("bad", calls.clone())) as Arc<dyn LLMProvider>,
+                Arc::new(StreamSpy::new("good", calls.clone())),
+            ],
+            Box::new(|_n: usize, _a: usize| 0usize),
+        )
+        .unwrap()
+        .with_failover(1);
+        let res = lb
+            .chat_completion_stream_with_tools(
+                vec![Message::human("hi")],
+                one_tool(),
+                ChatOptions::default(),
+            )
+            .await;
+        assert!(
+            res.is_err(),
+            "streaming has no failover, same as plain stream"
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec!["bad:stream_with_tools tools=1 last=hi".to_string()]
+        );
     }
 
     #[tokio::test]

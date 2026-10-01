@@ -196,31 +196,37 @@ pub trait LLMProvider: Send + Sync {
         let resp = self
             .chat_completion_with_tools(messages, tools, opts)
             .await?;
-        let tool_calls_delta = resp
-            .message
-            .tool_calls()
-            .iter()
-            .enumerate()
-            .map(|(i, tc)| ToolCallDelta {
-                index: i as u32,
-                id: Some(tc.id.clone()),
-                name: Some(tc.name.clone()),
-                arguments_delta: Some(tc.arguments.to_string()),
-            })
-            .collect();
-        let chunk = StreamChunk {
-            content: resp.message.content().to_string(),
-            is_delta: false,
-            is_done: true,
-            finish_reason: Some(resp.finish_reason),
-            usage: resp.usage,
-            tool_calls_delta,
-        };
-        Ok(RunnableStream::once(Ok(chunk)))
+        Ok(RunnableStream::once(Ok(terminal_chunk(resp))))
     }
 
     /// Connectivity probe.
     async fn health_check(&self) -> Result<HealthStatus>;
+}
+
+/// Fold a complete [`ChatResponse`] into the single terminal [`StreamChunk`]
+/// a non-streaming provider emits: full content, fully-formed tool-call
+/// deltas, `is_done = true`.
+pub(crate) fn terminal_chunk(resp: ChatResponse) -> StreamChunk {
+    let tool_calls_delta = resp
+        .message
+        .tool_calls()
+        .iter()
+        .enumerate()
+        .map(|(i, tc)| ToolCallDelta {
+            index: i as u32,
+            id: Some(tc.id.clone()),
+            name: Some(tc.name.clone()),
+            arguments_delta: Some(tc.arguments.to_string()),
+        })
+        .collect();
+    StreamChunk {
+        content: resp.message.content().to_string(),
+        is_delta: false,
+        is_done: true,
+        finish_reason: Some(resp.finish_reason),
+        usage: resp.usage,
+        tool_calls_delta,
+    }
 }
 
 #[cfg(test)]

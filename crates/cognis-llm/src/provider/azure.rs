@@ -70,6 +70,38 @@ impl AzureProvider {
         Ok(h)
     }
 
+    /// Shared streaming path for [`LLMProvider::chat_completion_stream`] and
+    /// [`LLMProvider::chat_completion_stream_with_tools`]; they differ only in
+    /// whether `tools` is empty.
+    async fn stream_request(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        let body = self.build_request(&messages, &tools, &opts, true);
+        let resp = self
+            .http
+            .post(self.url("chat/completions"))
+            .headers(self.headers()?)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| CognisError::Network {
+                status_code: None,
+                message: e.to_string(),
+            })?;
+
+        if !resp.status().is_success() {
+            return Err(CognisError::Network {
+                status_code: Some(resp.status().as_u16()),
+                message: resp.text().await.unwrap_or_default(),
+            });
+        }
+
+        Ok(decode_stream("azure", resp.bytes_stream()))
+    }
+
     fn build_request(
         &self,
         messages: &[Message],
@@ -190,27 +222,16 @@ impl LLMProvider for AzureProvider {
         messages: Vec<Message>,
         opts: ChatOptions,
     ) -> Result<RunnableStream<StreamChunk>> {
-        let body = self.build_request(&messages, &[], &opts, true);
-        let resp = self
-            .http
-            .post(self.url("chat/completions"))
-            .headers(self.headers()?)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| CognisError::Network {
-                status_code: None,
-                message: e.to_string(),
-            })?;
+        self.stream_request(messages, Vec::new(), opts).await
+    }
 
-        if !resp.status().is_success() {
-            return Err(CognisError::Network {
-                status_code: Some(resp.status().as_u16()),
-                message: resp.text().await.unwrap_or_default(),
-            });
-        }
-
-        Ok(decode_stream("azure", resp.bytes_stream()))
+    async fn chat_completion_stream_with_tools(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        self.stream_request(messages, tools, opts).await
     }
 
     async fn health_check(&self) -> Result<HealthStatus> {
@@ -472,6 +493,86 @@ mod tests {
             u.starts_with("https://r.openai.azure.com/openai/deployments/gpt-4o/chat/completions")
         );
         assert!(u.contains("api-version="));
+    }
+
+    fn weather_tool() -> ToolDefinition {
+        ToolDefinition {
+            name: "weather".into(),
+            description: "look up weather".into(),
+            parameters: Some(serde_json::json!({"type": "object"})),
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_sends_tools_and_streams_native_deltas() {
+        use crate::provider::sse::tests::{serve_sse_once, tool_call_writes};
+        use crate::streaming::StreamAggregator;
+
+        let (base, server) = serve_sse_once(tool_call_writes()).await;
+        let p = AzureBuilder::default()
+            .endpoint(base)
+            .deployment("gpt-4o")
+            .api_key("k")
+            .build()
+            .unwrap();
+        let chunks = p
+            .chat_completion_stream_with_tools(
+                vec![Message::human("weather?")],
+                vec![weather_tool()],
+                ChatOptions::default(),
+            )
+            .await
+            .unwrap()
+            .collect_into_vec()
+            .await
+            .unwrap();
+
+        let body = server.await.unwrap();
+        assert_eq!(body["stream"], serde_json::json!(true));
+        assert_eq!(body["tools"][0]["function"]["name"], "weather");
+        assert_eq!(chunks.len(), 4, "got: {chunks:?}");
+        assert!(chunks.iter().all(|c| c.is_delta), "got: {chunks:?}");
+
+        let mut agg = StreamAggregator::new();
+        for c in chunks {
+            agg.push(c);
+        }
+        let out = agg.finalize();
+        let calls = out.message.tool_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "weather");
+        assert_eq!(
+            calls[0].arguments,
+            serde_json::json!({"city": "San Francisco"})
+        );
+        assert_eq!(out.finish_reason.as_deref(), Some("tool_calls"));
+    }
+
+    #[tokio::test]
+    async fn plain_stream_omits_tools_key_from_request() {
+        use crate::provider::sse::tests::serve_sse_once;
+
+        let wire = b"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n";
+        let (base, server) = serve_sse_once(vec![wire.to_vec()]).await;
+        let p = AzureBuilder::default()
+            .endpoint(base)
+            .deployment("gpt-4o")
+            .api_key("k")
+            .build()
+            .unwrap();
+        let chunks = p
+            .chat_completion_stream(vec![Message::human("hi")], ChatOptions::default())
+            .await
+            .unwrap()
+            .collect_into_vec()
+            .await
+            .unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].content, "hi");
+
+        let body = server.await.unwrap();
+        assert_eq!(body["stream"], serde_json::json!(true));
+        assert!(body.get("tools").is_none(), "got: {body}");
     }
 
     #[test]

@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use cognis_core::{Result, RunnableStream};
 
 use crate::chat::{ChatOptions, ChatResponse, HealthStatus, StreamChunk};
-use crate::provider::{LLMProvider, Provider};
+use crate::provider::{terminal_chunk, LLMProvider, Provider};
 use crate::streaming::Aggregated;
 use crate::tools::ToolDefinition;
 use crate::Message;
@@ -172,6 +172,30 @@ impl LLMProvider for GracefulDegradationProvider {
             .await
     }
 
+    async fn chat_completion_stream_with_tools(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        if self.lacks(Capability::Streaming) {
+            self.warn_drop("streaming → emitting single-chunk synthetic stream");
+            // Route through our own `chat_completion_with_tools` so a
+            // missing `Tools` capability is honoured on this path too.
+            let r = self
+                .chat_completion_with_tools(messages, tools, opts)
+                .await?;
+            return Ok(RunnableStream::once(Ok(terminal_chunk(r))));
+        }
+        if self.lacks(Capability::Tools) && !tools.is_empty() {
+            self.warn_drop("tools → falling back to streaming without tools");
+            return self.inner.chat_completion_stream(messages, opts).await;
+        }
+        self.inner
+            .chat_completion_stream_with_tools(messages, tools, opts)
+            .await
+    }
+
     async fn health_check(&self) -> Result<HealthStatus> {
         self.inner.health_check().await
     }
@@ -302,6 +326,83 @@ mod tests {
             .unwrap();
         let first = s.next().await.unwrap().unwrap();
         assert_eq!(first.content, "inner-ok");
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_forwards_natively_when_nothing_is_missing() {
+        use crate::provider::wrappers::test_support::{collect_deltas, one_tool, StreamSpy};
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let p = GracefulDegradationProvider::new(Arc::new(StreamSpy::new("spy", calls.clone())));
+        let s = p
+            .chat_completion_stream_with_tools(
+                vec![Message::human("hi")],
+                one_tool(),
+                ChatOptions::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(collect_deltas(s).await.len(), 2);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec!["spy:stream_with_tools tools=1 last=hi".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_drops_tools_and_streams_plainly_when_tools_unsupported() {
+        use crate::provider::wrappers::test_support::{collect_deltas, one_tool, StreamSpy};
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let p = GracefulDegradationProvider::new(Arc::new(StreamSpy::new("spy", calls.clone())))
+            .missing(Capability::Tools)
+            .with_warn(false);
+        let s = p
+            .chat_completion_stream_with_tools(
+                vec![Message::human("hi")],
+                one_tool(),
+                ChatOptions::default(),
+            )
+            .await
+            .unwrap();
+        let chunks = collect_deltas(s).await;
+        let text: String = chunks.iter().map(|c| c.content.as_str()).collect();
+        assert_eq!(text, "token");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec!["spy:stream last=hi".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_synthesizes_terminal_chunk_when_streaming_unsupported() {
+        use crate::provider::wrappers::test_support::{one_tool, StreamSpy};
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let p = GracefulDegradationProvider::new(Arc::new(StreamSpy::new("spy", calls.clone())))
+            .missing(Capability::Streaming)
+            .with_warn(false);
+        let chunks = p
+            .chat_completion_stream_with_tools(
+                vec![Message::human("hi")],
+                one_tool(),
+                ChatOptions::default(),
+            )
+            .await
+            .unwrap()
+            .collect_into_vec()
+            .await
+            .unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert!(chunks[0].is_done && !chunks[0].is_delta);
+        assert_eq!(chunks[0].finish_reason.as_deref(), Some("tool_calls"));
+        assert_eq!(chunks[0].tool_calls_delta.len(), 1);
+        assert_eq!(
+            chunks[0].tool_calls_delta[0].name.as_deref(),
+            Some("search")
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec!["spy:chat_with_tools tools=1 last=hi".to_string()],
+            "the inner streaming entry points must not be touched"
+        );
     }
 
     #[tokio::test]
