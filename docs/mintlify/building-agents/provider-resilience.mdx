@@ -1,0 +1,146 @@
+---
+title: "Provider resilience and routing"
+description: "Circuit breakers, load balancing, request routing, graceful degradation, and chat interceptors — five composable LLMProvider wrappers that ship in cognis-llm."
+sidebarTitle: "Resilience & routing"
+---
+
+Every wrapper on this page implements `LLMProvider`, exactly like a real provider does. That means they compose with each other and with `Client` — wrap a `RoutingProvider` in a `CircuitBreakerProvider`, hand the result to `Client::new`, and nothing downstream knows the difference. Order matters: the outermost wrapper sees requests first and responses last.
+
+All five are always available — none are feature-gated, since they wrap whatever `Arc<dyn LLMProvider>` you already have.
+
+## Circuit breaker
+
+Stops hammering a provider that's already failing. Three states: **Closed** (normal — every call passes through), **Open** (every call rejected immediately with `CognisError::Configuration`, no network round-trip), **HalfOpen** (one probe call allowed through after the cooldown; success closes the breaker, failure re-opens it).
+
+```rust
+use std::time::Duration;
+use std::sync::Arc;
+use cognis_llm::CircuitBreakerProvider;
+
+let breaker = CircuitBreakerProvider::new(Arc::new(openai_provider))
+    .with_failure_threshold(5)   // default: 5 consecutive failures
+    .with_cooldown(Duration::from_secs(30)); // default: 30s
+
+let client = cognis_llm::Client::new(Arc::new(breaker));
+```
+
+By default every `Err` counts toward the failure budget. Swap in `RetryableClassifier` to only trip the breaker on transient errors (network issues, rate limits) rather than on every error class:
+
+```rust
+use cognis_llm::{CircuitBreakerProvider, RetryableClassifier};
+
+let breaker = CircuitBreakerProvider::new(inner)
+    .with_classifier(RetryableClassifier);
+```
+
+Inspect the breaker's counters at any time with `.stats()` (returns `state`, `consecutive_failures`, `total_calls`, `trips`), or force it back to `Closed` with `.reset()`.
+
+## Load balancer
+
+Distributes calls across a fleet of equivalent providers — useful for spreading load across API keys, regions, or identical self-hosted endpoints.
+
+```rust
+use std::sync::Arc;
+use cognis_llm::{LoadBalancerProvider, WeightedRoundRobinStrategy};
+
+let lb = LoadBalancerProvider::new(
+    "openai-fleet",
+    vec![Arc::new(endpoint_a), Arc::new(endpoint_b), Arc::new(endpoint_c)],
+)
+.with_failover(1); // retry on 1 other endpoint if the chosen one errors
+```
+
+Three strategies ship in the box — swap via a constructor argument or implement `LoadBalancingStrategy` for your own:
+
+| Strategy | Behavior |
+|---|---|
+| `RoundRobinStrategy` | Cycles through endpoints in order. |
+| `WeightedRoundRobinStrategy::new(weights)` | Round-robin with per-endpoint weights. |
+| `RandomStrategy` | Uniform random pick each call. |
+
+## Routing
+
+Dispatches each call to one of N providers based on a predicate you supply — route cheap/fast queries to a small model, long-context queries to a large-context model, or route by user-tier metadata.
+
+```rust
+use std::sync::Arc;
+use cognis_llm::{ProviderRoute, RoutingProvider};
+
+let router = RoutingProvider::new("tiered", Arc::new(default_model))
+    .route(ProviderRoute::new(
+        "long-context",
+        Arc::new(large_context_model),
+        |messages| messages.iter().map(|m| m.content().len()).sum::<usize>() > 32_000,
+    ))
+    .route(ProviderRoute::new(
+        "cheap",
+        Arc::new(small_fast_model),
+        |messages| messages.len() <= 2,
+    ));
+```
+
+Routes are checked in order; the first matching predicate wins. No route matches → falls through to the `default_route` passed to `new`. For dispatch logic more complex than a closure, implement `RoutingStrategy` directly.
+
+## Graceful degradation
+
+Wraps a provider that's missing a capability — tools, streaming, multimodal input, or structured output — so your calling code doesn't have to branch on what the backend supports. Instead of erroring, the wrapper strips the unsupported part of the request or substitutes a fallback path (e.g. emitting a single-chunk stream from a non-streaming response).
+
+```rust
+use std::sync::Arc;
+use cognis_llm::{Capability, GracefulDegradationProvider};
+
+let degraded = GracefulDegradationProvider::new(Arc::new(small_local_model))
+    .missing_many([Capability::Tools, Capability::Streaming]);
+```
+
+By default a downgrade logs a `tracing::warn!`. Call `.with_warn(false)` to silence it — useful in batch workloads where the warning would flood logs.
+
+## Interceptor
+
+Before/after/error hooks for any provider's chat calls — request rewriting, response transformation, or side effects like logging, all without touching the provider implementation itself. Fires on every entry point (`chat_completion`, `chat_completion_stream`, `chat_completion_with_tools`), so you write one set of hooks instead of three.
+
+```rust
+use std::sync::Arc;
+use cognis_llm::{FnChatInterceptor, InterceptorProvider};
+
+let interceptor = FnChatInterceptor::new()
+    .with_name("request-logger")
+    .before(|messages, _opts| {
+        tracing::info!(count = messages.len(), "sending chat request");
+        Ok(())
+    })
+    .on_error(|err| {
+        tracing::error!(?err, "chat request failed");
+    });
+
+let wrapped = InterceptorProvider::new(Arc::new(provider)).push(Arc::new(interceptor));
+```
+
+`InterceptorProvider::push` accepts multiple interceptors — they run in the order pushed. For full control beyond closures, implement `ChatInterceptor` directly.
+
+## Composing wrappers
+
+These are ordinary `LLMProvider` wrappers, so they nest like any other:
+
+```rust
+use std::sync::Arc;
+
+let resilient = CircuitBreakerProvider::new(
+    Arc::new(LoadBalancerProvider::new("fleet", endpoints)),
+).with_failure_threshold(3);
+
+let client = cognis_llm::Client::new(Arc::new(resilient));
+```
+
+This differs from the `Runnable`-level wrappers in [Core ideas → Runnables](/core-ideas/runnables#wrappers) (`with_max_retries`, `with_timeout`, `with_fallback`) — those operate generically on any `Runnable<I, O>`. The wrappers on this page are chat-shaped specifically, so they can see `ChatOptions`/`ChatResponse`/tool definitions directly instead of opaque `(I, O)` types.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Models and providers" icon="server" href="/building-agents/models">
+    The base `Client` and per-provider builders these wrappers sit around.
+  </Card>
+  <Card title="Production → Resilience" icon="shield" href="/production/resilience">
+    Runnable-level retry and backoff policies.
+  </Card>
+</CardGroup>

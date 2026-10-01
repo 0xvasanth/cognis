@@ -39,6 +39,7 @@
             "icon": "robot",
             "pages": [
               "building-agents/models",
+              "building-agents/provider-resilience",
               "building-agents/tools",
               "building-agents/memory",
               "building-agents/multi-agent",
