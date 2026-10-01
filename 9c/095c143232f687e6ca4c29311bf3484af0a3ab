@@ -1,0 +1,30 @@
+crates/cognis-llm/src/provider/sse.rs
+  s_0d7905abf919e2::t_d9b76463a2eced 1-49,70-72,75,85,128-131,136-170,176-231,301-338,343-362,367-390,396-518
+  s_0d7905abf919e2::t_197301c5dc06d4 132-135,171-175,339-342,363-366,391-395
+  s_0d7905abf919e2::t_c4062b0945fa1f 232-300
+  s_0d7905abf919e2::t_2cffff3b6e1ec6 50-69,73-74,76-84,86-127
+crates/cognis-llm/src/provider/mod.rs
+  s_0d7905abf919e2::t_6206f67092c3e8 27-28
+crates/cognis-llm/src/provider/azure.rs
+  s_0d7905abf919e2::t_bbe3564695ec4c 19,23,213
+crates/cognis-llm/src/provider/openai.rs
+  s_0d7905abf919e2::t_bbe3564695ec4c 12,16,109
+  s_0d7905abf919e2::t_c4062b0945fa1f 513-534,536-564
+  s_0d7905abf919e2::t_197301c5dc06d4 512,535
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c095c143232f687e6ca4c29311bf3484af0a3ab",
+  "prompts": {},
+  "sessions": {
+    "s_0d7905abf919e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0488d876-2a2c-4fba-9e53-f308d8f2602c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
