@@ -27,15 +27,17 @@ pub fn default_react_graph(
     tools: Vec<Arc<dyn Tool>>,
     max_iterations: u32,
 ) -> Result<CompiledGraph<AgentState>> {
-    default_react_graph_with_limits(client, tools, max_iterations, None)
+    default_react_graph_with_limits(client, tools, max_iterations, None, false)
 }
 
-/// Same as [`default_react_graph`] but with an explicit tool-call cap.
+/// Same as [`default_react_graph`] but with an explicit tool-call cap and
+/// a `streaming` toggle (token-level `OnLlmToken` events from the think node).
 pub fn default_react_graph_with_limits(
     client: Client,
     tools: Vec<Arc<dyn Tool>>,
     max_iterations: u32,
     max_tool_calls: Option<u32>,
+    streaming: bool,
 ) -> Result<CompiledGraph<AgentState>> {
     let tool_defs: Vec<ToolDefinition> = tools
         .iter()
@@ -46,6 +48,7 @@ pub fn default_react_graph_with_limits(
     if let Some(n) = max_tool_calls {
         think = think.with_max_tool_calls(n);
     }
+    think = think.with_streaming(streaming);
     let act = ToolDispatchNode::new(tools);
 
     Graph::<AgentState>::new()

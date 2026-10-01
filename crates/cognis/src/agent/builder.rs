@@ -27,6 +27,7 @@ pub struct AgentBuilder {
     memory: Option<Box<dyn Memory>>,
     max_iterations: u32,
     max_tool_calls: Option<u32>,
+    streaming: bool,
     mode: ConversationMode,
     custom_graph: Option<CompiledGraph<AgentState>>,
     approver: Option<Arc<dyn Approver>>,
@@ -48,6 +49,7 @@ impl AgentBuilder {
             memory: None,
             max_iterations: 10,
             max_tool_calls: None,
+            streaming: false,
             mode: ConversationMode::Stateless,
             custom_graph: None,
             approver: None,
@@ -116,6 +118,13 @@ impl AgentBuilder {
         self
     }
 
+    /// Enable token-level streaming for the agent's LLM calls. The think
+    /// step emits `OnLlmToken` events as the model produces output.
+    pub fn with_streaming(mut self, on: bool) -> Self {
+        self.streaming = on;
+        self
+    }
+
     /// Wrap every registered tool in an [`ApprovalGatedTool`] backed by
     /// `approver`. Tools registered AFTER this call are NOT auto-wrapped —
     /// call `.with_approver(...)` last.
@@ -170,6 +179,7 @@ impl AgentBuilder {
                 tools,
                 self.max_iterations,
                 self.max_tool_calls,
+                self.streaming,
             )?
         };
 
