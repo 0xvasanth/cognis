@@ -28,7 +28,7 @@
 //!
 //!   1. Line Graph: for showing trends over time
 //!   2. Bar Chart: for comparing categorical data
-//!   ...
+//!      ...
 //!   5. Heatmap: for visualizing matrix data
 //!
 //!   Or perhaps you have something else in mind?

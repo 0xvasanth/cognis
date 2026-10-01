@@ -25,8 +25,8 @@
 //! Sample output (against ollama / llama3.1 + nomic-embed-text):
 //!   --- context ---
 //!   - cognis-rag bundles embeddings, vector stores, and retrievers.
-//!   --- answer ---
-//!   Cognis-RAG includes:
+//!     --- answer ---
+//!     Cognis-RAG includes:
 //!   1. Embeddings — vector representations of each query or prompt.
 //!   2. Vector stores — databases optimized for storing dense vectors.
 //!   3. Retrievers — algorithms that use the store to fetch the most

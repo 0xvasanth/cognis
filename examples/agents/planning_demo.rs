@@ -27,7 +27,7 @@
 //!   * Tea leaves (black, green, or herbal)
 //!   * Teapot
 //!   * Tea infuser (optional)
-//!   ...
+//!     ...
 //!   * Adjust the amount of sugar or milk based on personal preference.
 //!
 //!   Enjoy your perfect cup of tea!
