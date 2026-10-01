@@ -71,6 +71,23 @@ let memory = Window::new(20)
 
 `Buffer`, `Window`, `TokenBufferMemory`, and `SummaryBufferMemory` all accept this.
 
+## Going deeper
+
+<CardGroup cols={2}>
+  <Card title="Token & summary" icon="gauge" href="/building-agents/memory/token-and-summary">
+    TokenBufferMemory, SummaryMemory, SummaryBufferMemory compared in depth.
+  </Card>
+  <Card title="Entity & knowledge graph" icon="diagram-project" href="/building-agents/memory/entity-and-knowledge-graph">
+    Custom extractors, the seed() preamble gotcha.
+  </Card>
+  <Card title="Vector memory" icon="magnifying-glass" href="/building-agents/memory/vector-memory">
+    Explicit .recall() instead of automatic seeding.
+  </Card>
+  <Card title="Hybrid memory" icon="layer-group" href="/building-agents/memory/hybrid-memory">
+    Composing multiple variants, and why ordering matters.
+  </Card>
+</CardGroup>
+
 ## Customizing memory
 
 If none of the built-ins fit, implement `Memory`:

@@ -1,0 +1,62 @@
+---
+title: "Token-budgeted and summarizing memory"
+description: "TokenBufferMemory, SummaryMemory, and SummaryBufferMemory — three ways to keep long conversations under a token budget."
+sidebarTitle: "Token & summary"
+---
+
+Three variants, three different trade-offs between cost and what the model can still see:
+
+| Variant | Strategy | Costs an LLM call? |
+|---|---|---|
+| `TokenBufferMemory` | Trims to a token budget — drops oldest messages. | No |
+| `SummaryMemory` | Summarizes the oldest half of messages once a count threshold is hit. | Yes, periodically |
+| `SummaryBufferMemory` | Keeps recent messages whole, compresses older ones into a running summary under a token budget. | Yes, periodically |
+
+## TokenBufferMemory — trim, don't summarize
+
+```rust
+use cognis::prelude::*;
+
+let memory = TokenBufferMemory::new(2000)   // 2000-token budget
+    .with_tokenizer(my_tokenizer)            // optional — defaults to a built-in estimator
+    .with_strategy(TrimStrategy::DropOldest)
+    .with_system("Stay in character as a pirate.");
+```
+
+Every `seed()` call re-trims down to `max_tokens` using the configured `Tokenizer`. The pinned system message, if set, is always kept regardless of trimming. No LLM call, no cost beyond the agent's own turns — the right choice when you want to maximize what fits without paying to summarize.
+
+## SummaryMemory — periodic compaction
+
+```rust
+use cognis::prelude::*;
+use cognis_llm::Client;
+
+let memory = SummaryMemory::new(client.clone(), 20)   // summarize once past 20 messages
+    .with_prompt("Summarize the conversation so far in two sentences.");
+```
+
+When the message count exceeds `threshold`, the oldest `threshold / 2` messages are summarized into a single system message via the supplied `Client`, and the originals are dropped. Summarization is **lazy** — it runs inside `seed()` (called before each turn), which keeps `write()` synchronous as the `Memory` trait requires. That means the summarization LLM call happens on the turn that crosses the threshold, not on a background timer.
+
+## SummaryBufferMemory — the general-purpose default
+
+```rust
+use cognis::prelude::*;
+use cognis_llm::Client;
+
+let memory = SummaryBufferMemory::new(client.clone(), 4000)  // 4000-token budget
+    .with_tokenizer(my_tokenizer)
+    .with_prompt("Summarize the older turns, preserving names and decisions.");
+```
+
+A hybrid: recent messages stay whole, but once the cumulative token cost of the full transcript would exceed `max_tokens`, the oldest messages are rolled into a running LLM-generated summary and dropped from the message list. Every subsequent `seed()` (or explicit `compact()` call) re-checks the budget and compacts further if needed. This is the variant to reach for by default on anything that might run long — it degrades gracefully instead of either blowing the context window or summarizing on a rigid schedule.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Memory overview" icon="brain" href="/building-agents/memory">
+    The full comparison table across all nine variants.
+  </Card>
+  <Card title="Entity & knowledge graph memory" icon="diagram-project" href="/building-agents/memory/entity-and-knowledge-graph">
+    Fact extraction instead of summarization.
+  </Card>
+</CardGroup>

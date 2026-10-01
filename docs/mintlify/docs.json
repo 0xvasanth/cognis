@@ -53,7 +53,17 @@
               },
               "building-agents/provider-resilience",
               "building-agents/tools",
-              "building-agents/memory",
+              {
+                "group": "Memory",
+                "icon": "brain",
+                "pages": [
+                  "building-agents/memory",
+                  "building-agents/memory/token-and-summary",
+                  "building-agents/memory/entity-and-knowledge-graph",
+                  "building-agents/memory/vector-memory",
+                  "building-agents/memory/hybrid-memory"
+                ]
+              },
               "building-agents/multi-agent",
               "building-agents/middleware",
               "building-agents/hitl",
