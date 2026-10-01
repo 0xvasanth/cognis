@@ -166,17 +166,31 @@ async fn main() -> Result<()> {
 
 #### Streaming agents and typed output
 
-Build the agent with `with_streaming(true)` and `Agent::stream` yields `Event::OnLlmToken` events interleaved with the node and tool events:
+Build the agent with `with_streaming(true)` and `Agent::stream` yields `Event::OnLlmToken` events as the model writes, with `OnToolStart` / `OnToolEnd` around each tool call and `OnNodeStart` / `OnNodeEnd` around each step:
 
 ```rust
-let mut agent = AgentBuilder::new().with_llm(client).with_streaming(true).build()?;
-let mut events = agent.stream(Message::human("Capital of France?")).await?;
+use std::sync::Arc;
+
+use cognis::prelude::*;
+use futures::StreamExt;
+
+let mut agent = AgentBuilder::new()
+    .with_llm(client)
+    .with_tool(Arc::new(WeatherTool))
+    .with_streaming(true)
+    .build()?;
+let mut events = agent.stream(Message::human("Weather in Paris?")).await?;
 while let Some(ev) = events.next().await {
-    if let Event::OnLlmToken { token, .. } = ev {
-        print!("{token}");
+    match ev {
+        Event::OnLlmToken { token, .. } => print!("{token}"),
+        Event::OnToolStart { tool, args, .. } => println!("\n[tool start] {tool} {args}"),
+        Event::OnToolEnd { tool, result, .. } => println!("[tool end] {tool} -> {result}"),
+        _ => {}
     }
 }
 ```
+
+Only OpenAI-family providers (OpenAI, Azure OpenAI, OpenRouter) stream tool calls natively. With any other provider the agent still works, but each model turn falls back to a regular completion delivered as one terminal chunk, so the reply arrives as a single `OnLlmToken`.
 
 `stream_elements::<T>` yields each element of a streamed JSON array as soon as it closes, even when the element is split across chunks:
 
@@ -195,9 +209,10 @@ while let Some(step) = steps.next().await {
 `stream_partial::<T>` yields a progressively-filled snapshot of a streamed JSON object. `#[derive(Partial)]` generates `<Name>Partial`, the same struct with every field an `Option`:
 
 ```rust
-use cognis_macros::Partial;
+use cognis::prelude::*; // `Partial`: the derive and the trait
 
 #[derive(Partial)]
+#[partial(crate = "cognis::cognis_core")]
 struct Report { title: String, score: u32 }
 
 let mut snapshots = agent
@@ -208,7 +223,16 @@ while let Some(snapshot) = snapshots.next().await {
 }
 ```
 
-`stream_elements` and `stream_partial` do not inject format instructions: the prompt must ask the model for a JSON array or object. Both run a single LLM turn (no tool loop) and return an ordinary `RunnableStream`, so you process them with `futures::StreamExt`. The same streams are available on `Client` as `stream_array` and `stream_object_partial`. A runnable offline demo is in [`examples/agents/streaming_agent.rs`](examples/agents/streaming_agent.rs).
+`#[partial(crate = "cognis::cognis_core")]` tells the derive where the framework lives when `cognis` is your only Cognis dependency; leave it out if `cognis-core` is in your `Cargo.toml`. The serde attributes `rename_all`, `rename` and `alias` on your struct carry over to the mirror; ones the mirror cannot honour (`flatten`, `deserialize_with`, …) are compile errors.
+
+What to expect from the typed streams:
+
+- **One LLM turn.** `stream_elements` and `stream_partial` call the model once. They skip the tool loop and memory: no tools run, and the exchange is not written to the agent's memory.
+- **You ask for the JSON.** No format instructions or schema are injected; the prompt must ask the model for a JSON array or object. Prose or a code fence around the JSON is tolerated.
+- **Strings may be prefixes.** In a partial snapshot a string field holds whatever has arrived so far, so it may be a prefix of its final value until the stream ends. Numbers, booleans and `null` appear only once complete.
+- **Failures are errors, not silence.** If the model answers without the JSON, or the finished object does not fit `T`, the stream ends with an `Err` item rather than ending empty.
+
+Both return an ordinary `RunnableStream`, so you process them with `futures::StreamExt`. The same streams are available on `Client` as `stream_array` and `stream_object_partial`. A runnable offline demo, including a streamed tool call, is in [`examples/agents/streaming_agent.rs`](examples/agents/streaming_agent.rs).
 
 ### Multi-agent orchestration
 
