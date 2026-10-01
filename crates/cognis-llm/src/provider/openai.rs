@@ -77,6 +77,57 @@ impl OpenAIProvider {
         Ok(h)
     }
 
+    /// Shared streaming path for [`LLMProvider::chat_completion_stream`] and
+    /// [`LLMProvider::chat_completion_stream_with_tools`]; they differ only in
+    /// whether `tools` is empty, so fixes to SSE handling land in one place.
+    async fn stream_request(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        let body = self.build_request(&messages, &tools, &opts, true);
+        let resp = self
+            .http
+            .post(self.endpoint("chat/completions"))
+            .headers(self.headers()?)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| CognisError::Network {
+                status_code: None,
+                message: e.to_string(),
+            })?;
+
+        if !resp.status().is_success() {
+            return Err(CognisError::Network {
+                status_code: Some(resp.status().as_u16()),
+                message: resp.text().await.unwrap_or_default(),
+            });
+        }
+
+        let byte_stream = resp.bytes_stream();
+        let chunk_stream = byte_stream
+            .filter_map(|res| async move {
+                match res {
+                    Ok(bytes) => Some(parse_sse_chunk(&bytes)),
+                    Err(e) => Some(Err(CognisError::Network {
+                        status_code: None,
+                        message: e.to_string(),
+                    })),
+                }
+            })
+            .filter_map(|res| async move {
+                match res {
+                    Ok(Some(chunk)) => Some(Ok(chunk)),
+                    Ok(None) => None, // [DONE] marker
+                    Err(e) => Some(Err(e)),
+                }
+            });
+
+        Ok(RunnableStream::new(chunk_stream))
+    }
+
     fn build_request(
         &self,
         messages: &[Message],
@@ -198,46 +249,7 @@ impl LLMProvider for OpenAIProvider {
         messages: Vec<Message>,
         opts: ChatOptions,
     ) -> Result<RunnableStream<StreamChunk>> {
-        let body = self.build_request(&messages, &[], &opts, true);
-        let resp = self
-            .http
-            .post(self.endpoint("chat/completions"))
-            .headers(self.headers()?)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| CognisError::Network {
-                status_code: None,
-                message: e.to_string(),
-            })?;
-
-        if !resp.status().is_success() {
-            return Err(CognisError::Network {
-                status_code: Some(resp.status().as_u16()),
-                message: resp.text().await.unwrap_or_default(),
-            });
-        }
-
-        let byte_stream = resp.bytes_stream();
-        let chunk_stream = byte_stream
-            .filter_map(|res| async move {
-                match res {
-                    Ok(bytes) => Some(parse_sse_chunk(&bytes)),
-                    Err(e) => Some(Err(CognisError::Network {
-                        status_code: None,
-                        message: e.to_string(),
-                    })),
-                }
-            })
-            .filter_map(|res| async move {
-                match res {
-                    Ok(Some(chunk)) => Some(Ok(chunk)),
-                    Ok(None) => None, // [DONE] marker
-                    Err(e) => Some(Err(e)),
-                }
-            });
-
-        Ok(RunnableStream::new(chunk_stream))
+        self.stream_request(messages, Vec::new(), opts).await
     }
 
     async fn chat_completion_stream_with_tools(
@@ -246,46 +258,7 @@ impl LLMProvider for OpenAIProvider {
         tools: Vec<ToolDefinition>,
         opts: ChatOptions,
     ) -> Result<RunnableStream<StreamChunk>> {
-        let body = self.build_request(&messages, &tools, &opts, true);
-        let resp = self
-            .http
-            .post(self.endpoint("chat/completions"))
-            .headers(self.headers()?)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| CognisError::Network {
-                status_code: None,
-                message: e.to_string(),
-            })?;
-
-        if !resp.status().is_success() {
-            return Err(CognisError::Network {
-                status_code: Some(resp.status().as_u16()),
-                message: resp.text().await.unwrap_or_default(),
-            });
-        }
-
-        let byte_stream = resp.bytes_stream();
-        let chunk_stream = byte_stream
-            .filter_map(|res| async move {
-                match res {
-                    Ok(bytes) => Some(parse_sse_chunk(&bytes)),
-                    Err(e) => Some(Err(CognisError::Network {
-                        status_code: None,
-                        message: e.to_string(),
-                    })),
-                }
-            })
-            .filter_map(|res| async move {
-                match res {
-                    Ok(Some(chunk)) => Some(Ok(chunk)),
-                    Ok(None) => None, // [DONE] marker
-                    Err(e) => Some(Err(e)),
-                }
-            });
-
-        Ok(RunnableStream::new(chunk_stream))
+        self.stream_request(messages, tools, opts).await
     }
 
     async fn health_check(&self) -> Result<HealthStatus> {
