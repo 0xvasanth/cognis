@@ -96,6 +96,22 @@ impl Client {
             .await
     }
 
+    /// Streaming chat completion with tool definitions.
+    ///
+    /// Delegates to [`LLMProvider::chat_completion_stream_with_tools`]: providers
+    /// with native support stream text and tool-call deltas; others emit one
+    /// terminal chunk. Different from [`Client::invoke_with_tools`], which
+    /// returns only after the full response is available.
+    pub async fn stream_with_tools(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        self.provider
+            .chat_completion_stream_with_tools(messages, tools, ChatOptions::default())
+            .await
+    }
+
     /// Chat completion with tool definitions.
     pub async fn invoke_with_tools(
         &self,
@@ -329,6 +345,89 @@ impl ClientBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::chat::HealthStatus;
+    use futures::StreamExt;
+
+    /// Overrides only the streaming-with-tools path; every other path panics
+    /// so the test proves `Client::stream_with_tools` routes to it.
+    struct ScriptedStreamProvider;
+
+    #[async_trait]
+    impl LLMProvider for ScriptedStreamProvider {
+        fn name(&self) -> &str {
+            "scripted"
+        }
+        fn provider_type(&self) -> Provider {
+            Provider::Ollama
+        }
+        async fn chat_completion(&self, _: Vec<Message>, _: ChatOptions) -> Result<ChatResponse> {
+            unreachable!("stream_with_tools must not use chat_completion")
+        }
+        async fn chat_completion_stream(
+            &self,
+            _: Vec<Message>,
+            _: ChatOptions,
+        ) -> Result<RunnableStream<StreamChunk>> {
+            unreachable!("stream_with_tools must not use the tool-less stream")
+        }
+        async fn chat_completion_stream_with_tools(
+            &self,
+            _: Vec<Message>,
+            tools: Vec<ToolDefinition>,
+            _: ChatOptions,
+        ) -> Result<RunnableStream<StreamChunk>> {
+            let done_reason = format!("tools={}", tools.len());
+            let chunks = vec![
+                Ok(StreamChunk {
+                    content: "Hel".into(),
+                    is_delta: true,
+                    ..Default::default()
+                }),
+                Ok(StreamChunk {
+                    content: "lo".into(),
+                    is_delta: true,
+                    ..Default::default()
+                }),
+                Ok(StreamChunk {
+                    is_done: true,
+                    finish_reason: Some(done_reason),
+                    ..Default::default()
+                }),
+            ];
+            Ok(RunnableStream::new(futures::stream::iter(chunks)))
+        }
+        async fn health_check(&self) -> Result<HealthStatus> {
+            Ok(HealthStatus::Healthy { latency_ms: 0 })
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_with_tools_forwards_provider_chunks_in_order() {
+        let client = Client::new(Arc::new(ScriptedStreamProvider));
+        let tool = ToolDefinition {
+            name: "search".into(),
+            description: "find".into(),
+            parameters: None,
+        };
+        let mut s = client
+            .stream_with_tools(vec![Message::human("hi")], vec![tool])
+            .await
+            .unwrap();
+
+        let a = s.next().await.unwrap().unwrap();
+        let b = s.next().await.unwrap().unwrap();
+        let done = s.next().await.unwrap().unwrap();
+        assert_eq!((a.content.as_str(), b.content.as_str()), ("Hel", "lo"));
+        assert!(!a.is_done && !b.is_done);
+        assert!(done.is_done);
+        assert_eq!(
+            done.finish_reason.as_deref(),
+            Some("tools=1"),
+            "tools must reach the provider"
+        );
+        assert!(s.next().await.is_none(), "stream ends after done chunk");
+    }
 
     #[cfg(feature = "openai")]
     #[test]

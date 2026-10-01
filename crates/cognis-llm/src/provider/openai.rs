@@ -240,6 +240,54 @@ impl LLMProvider for OpenAIProvider {
         Ok(RunnableStream::new(chunk_stream))
     }
 
+    async fn chat_completion_stream_with_tools(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+        opts: ChatOptions,
+    ) -> Result<RunnableStream<StreamChunk>> {
+        let body = self.build_request(&messages, &tools, &opts, true);
+        let resp = self
+            .http
+            .post(self.endpoint("chat/completions"))
+            .headers(self.headers()?)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| CognisError::Network {
+                status_code: None,
+                message: e.to_string(),
+            })?;
+
+        if !resp.status().is_success() {
+            return Err(CognisError::Network {
+                status_code: Some(resp.status().as_u16()),
+                message: resp.text().await.unwrap_or_default(),
+            });
+        }
+
+        let byte_stream = resp.bytes_stream();
+        let chunk_stream = byte_stream
+            .filter_map(|res| async move {
+                match res {
+                    Ok(bytes) => Some(parse_sse_chunk(&bytes)),
+                    Err(e) => Some(Err(CognisError::Network {
+                        status_code: None,
+                        message: e.to_string(),
+                    })),
+                }
+            })
+            .filter_map(|res| async move {
+                match res {
+                    Ok(Some(chunk)) => Some(Ok(chunk)),
+                    Ok(None) => None, // [DONE] marker
+                    Err(e) => Some(Err(e)),
+                }
+            });
+
+        Ok(RunnableStream::new(chunk_stream))
+    }
+
     async fn health_check(&self) -> Result<HealthStatus> {
         let start = Instant::now();
         let resp = self
@@ -535,6 +583,34 @@ fn parse_sse_chunk(bytes: &[u8]) -> Result<Option<StreamChunk>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_request_includes_tools_when_streaming() {
+        let p = OpenAIProvider::new("k");
+        let tool = ToolDefinition {
+            name: "search".into(),
+            description: "find".into(),
+            parameters: Some(serde_json::json!({"type":"object"})),
+        };
+        let body = p.build_request(
+            &[Message::human("hi")],
+            std::slice::from_ref(&tool),
+            &ChatOptions::default(),
+            true,
+        );
+        assert_eq!(body["stream"], serde_json::json!(true));
+        let tools = body["tools"].as_array().expect("tools array");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["function"]["name"], "search");
+    }
+
+    #[test]
+    fn build_request_omits_tools_key_when_none_given_while_streaming() {
+        let p = OpenAIProvider::new("k");
+        let body = p.build_request(&[Message::human("hi")], &[], &ChatOptions::default(), true);
+        assert_eq!(body["stream"], serde_json::json!(true));
+        assert!(body.get("tools").is_none(), "got: {body}");
+    }
 
     #[test]
     fn message_to_openai_human() {
