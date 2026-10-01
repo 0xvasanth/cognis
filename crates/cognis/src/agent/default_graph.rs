@@ -27,12 +27,27 @@ pub fn default_react_graph(
     tools: Vec<Arc<dyn Tool>>,
     max_iterations: u32,
 ) -> Result<CompiledGraph<AgentState>> {
-    default_react_graph_with_limits(client, tools, max_iterations, None, false)
+    react_graph(client, tools, max_iterations, None, false)
 }
 
-/// Same as [`default_react_graph`] but with an explicit tool-call cap and
-/// a `streaming` toggle (token-level `OnLlmToken` events from the think node).
+/// Same as [`default_react_graph`] but with an explicit tool-call cap.
+///
+/// For token-level streaming from the think node, build the agent with
+/// [`AgentBuilder::with_streaming`](super::AgentBuilder::with_streaming), or
+/// assemble the graph yourself with [`ThinkNode::with_streaming`].
 pub fn default_react_graph_with_limits(
+    client: Client,
+    tools: Vec<Arc<dyn Tool>>,
+    max_iterations: u32,
+    max_tool_calls: Option<u32>,
+) -> Result<CompiledGraph<AgentState>> {
+    react_graph(client, tools, max_iterations, max_tool_calls, false)
+}
+
+/// The one place the ReAct graph is assembled. Crate-private so the
+/// `streaming` flag never becomes a positional `bool` on a public function;
+/// callers outside the crate reach it through `AgentBuilder`.
+pub(crate) fn react_graph(
     client: Client,
     tools: Vec<Arc<dyn Tool>>,
     max_iterations: u32,
@@ -165,5 +180,102 @@ mod tests {
         assert_eq!(final_state.messages.len(), 4);
         assert_eq!(final_state.iterations, 2);
         assert_eq!(final_state.messages.last().unwrap().content(), "done");
+    }
+
+    /// Always answers with one more `echo` tool call, so only a limit can
+    /// end the loop.
+    struct AlwaysCalls;
+    #[async_trait]
+    impl LLMProvider for AlwaysCalls {
+        fn name(&self) -> &str {
+            "always-calls"
+        }
+        fn provider_type(&self) -> Provider {
+            Provider::Ollama
+        }
+        async fn chat_completion(
+            &self,
+            messages: Vec<Message>,
+            _opts: ChatOptions,
+        ) -> Result<ChatResponse> {
+            Ok(ChatResponse {
+                message: Message::Ai(AiMessage {
+                    content: String::new(),
+                    tool_calls: vec![ToolCall {
+                        id: format!("c{}", messages.len()),
+                        name: "echo".into(),
+                        arguments: serde_json::json!({}),
+                    }],
+                    parts: Vec::new(),
+                }),
+                usage: Some(Usage::default()),
+                finish_reason: "tool_calls".into(),
+                model: "ac".into(),
+            })
+        }
+        async fn chat_completion_stream(
+            &self,
+            _messages: Vec<Message>,
+            _opts: ChatOptions,
+        ) -> Result<cognis_core::RunnableStream<StreamChunk>> {
+            unimplemented!("the public graph constructors never stream")
+        }
+        async fn health_check(&self) -> Result<HealthStatus> {
+            Ok(HealthStatus::Healthy { latency_ms: 0 })
+        }
+    }
+
+    #[tokio::test]
+    async fn with_limits_takes_four_arguments_and_stops_at_tool_call_cap() {
+        use cognis_core::{Runnable, RunnableConfig};
+        let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(EchoTool)];
+        let graph =
+            default_react_graph_with_limits(Client::new(Arc::new(AlwaysCalls)), tools, 10, Some(2))
+                .unwrap();
+        let final_state = graph
+            .invoke(
+                AgentState {
+                    messages: vec![Message::human("loop")],
+                    iterations: 0,
+                    extras: Default::default(),
+                },
+                RunnableConfig::default(),
+            )
+            .await
+            .unwrap();
+        let tool_messages = final_state
+            .messages
+            .iter()
+            .filter(|m| matches!(m, Message::Tool(_)))
+            .count();
+        assert_eq!(tool_messages, 2);
+        assert_eq!(
+            final_state.messages.last().unwrap().content(),
+            "[max_tool_calls=2 reached]"
+        );
+    }
+
+    #[tokio::test]
+    async fn with_limits_none_leaves_only_the_iteration_cap() {
+        use cognis_core::{Runnable, RunnableConfig};
+        let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(EchoTool)];
+        let graph =
+            default_react_graph_with_limits(Client::new(Arc::new(AlwaysCalls)), tools, 3, None)
+                .unwrap();
+        let final_state = graph
+            .invoke(
+                AgentState {
+                    messages: vec![Message::human("loop")],
+                    iterations: 0,
+                    extras: Default::default(),
+                },
+                RunnableConfig::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            final_state.messages.last().unwrap().content(),
+            "[max_iterations=3 reached]"
+        );
     }
 }

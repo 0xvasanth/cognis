@@ -254,77 +254,145 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn default_stream_with_tools_falls_back_to_one_terminal_chunk() {
-        use crate::chat::{ChatResponse, HealthStatus, StreamChunk, Usage};
-        use crate::{Message, ToolCall};
-        use cognis_core::{AiMessage, RunnableStream};
-        use futures::StreamExt;
+    /// Provider implementing ONLY the non-streaming entry points, so
+    /// `chat_completion_stream_with_tools` resolves to the trait default.
+    struct Fallback {
+        message: Message,
+    }
 
-        // Provider implementing ONLY chat_completion_with_tools (no stream override).
-        struct Fallback;
-        #[async_trait]
-        impl LLMProvider for Fallback {
-            fn name(&self) -> &str {
-                "fallback"
-            }
-            fn provider_type(&self) -> Provider {
-                Provider::Ollama
-            }
-            async fn chat_completion(
-                &self,
-                _m: Vec<Message>,
-                _o: ChatOptions,
-            ) -> Result<ChatResponse> {
-                unreachable!("with_tools path is used")
-            }
-            async fn chat_completion_with_tools(
-                &self,
-                _m: Vec<Message>,
-                _t: Vec<ToolDefinition>,
-                _o: ChatOptions,
-            ) -> Result<ChatResponse> {
-                Ok(ChatResponse {
-                    message: Message::Ai(AiMessage {
-                        content: "hi".into(),
-                        tool_calls: vec![ToolCall {
-                            id: "c1".into(),
-                            name: "search".into(),
-                            arguments: serde_json::json!({"q":1}),
-                        }],
-                        parts: Vec::new(),
-                    }),
-                    usage: Some(Usage::default()),
-                    finish_reason: "tool_calls".into(),
-                    model: "fallback".into(),
-                })
-            }
-            async fn chat_completion_stream(
-                &self,
-                _m: Vec<Message>,
-                _o: ChatOptions,
-            ) -> Result<RunnableStream<StreamChunk>> {
-                unreachable!()
-            }
-            async fn health_check(&self) -> Result<HealthStatus> {
-                Ok(HealthStatus::Healthy { latency_ms: 0 })
-            }
+    #[async_trait]
+    impl LLMProvider for Fallback {
+        fn name(&self) -> &str {
+            "fallback"
         }
+        fn provider_type(&self) -> Provider {
+            Provider::Ollama
+        }
+        async fn chat_completion(&self, _m: Vec<Message>, _o: ChatOptions) -> Result<ChatResponse> {
+            unreachable!("with_tools path is used")
+        }
+        async fn chat_completion_with_tools(
+            &self,
+            _m: Vec<Message>,
+            _t: Vec<ToolDefinition>,
+            _o: ChatOptions,
+        ) -> Result<ChatResponse> {
+            Ok(ChatResponse {
+                message: self.message.clone(),
+                usage: Some(crate::chat::Usage {
+                    prompt_tokens: 11,
+                    completion_tokens: 7,
+                    total_tokens: 18,
+                }),
+                finish_reason: "tool_calls".into(),
+                model: "fallback".into(),
+            })
+        }
+        async fn chat_completion_stream(
+            &self,
+            _m: Vec<Message>,
+            _o: ChatOptions,
+        ) -> Result<RunnableStream<StreamChunk>> {
+            unreachable!()
+        }
+        async fn health_check(&self) -> Result<HealthStatus> {
+            Ok(HealthStatus::Healthy { latency_ms: 0 })
+        }
+    }
 
-        let p = Fallback;
-        let mut s = p
+    fn message_with_two_tool_calls() -> Message {
+        Message::Ai(cognis_core::AiMessage {
+            content: "hi".into(),
+            tool_calls: vec![
+                crate::ToolCall {
+                    id: "c1".into(),
+                    name: "search".into(),
+                    arguments: serde_json::json!({"q": 1, "nested": {"tags": ["a", "b"]}}),
+                },
+                crate::ToolCall {
+                    id: "c2".into(),
+                    name: "lookup".into(),
+                    arguments: serde_json::json!({"id": "x\"y"}),
+                },
+            ],
+            parts: Vec::new(),
+        })
+    }
+
+    async fn fallback_chunks(message: Message) -> Vec<StreamChunk> {
+        Fallback { message }
             .chat_completion_stream_with_tools(
                 vec![Message::human("x")],
                 vec![],
                 ChatOptions::default(),
             )
             .await
-            .unwrap();
-        let first = s.next().await.unwrap().unwrap();
-        assert_eq!(first.content, "hi");
-        assert!(first.is_done);
-        assert_eq!(first.tool_calls_delta.len(), 1);
-        assert_eq!(first.tool_calls_delta[0].name.as_deref(), Some("search"));
-        assert!(s.next().await.is_none(), "exactly one terminal chunk");
+            .unwrap()
+            .collect_into_vec()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn default_stream_with_tools_falls_back_to_one_terminal_chunk() {
+        let chunks = fallback_chunks(message_with_two_tool_calls()).await;
+        assert_eq!(chunks.len(), 1, "exactly one terminal chunk");
+        let chunk = &chunks[0];
+        assert_eq!(chunk.content, "hi");
+        assert!(chunk.is_done);
+        assert!(!chunk.is_delta);
+        assert_eq!(chunk.finish_reason.as_deref(), Some("tool_calls"));
+        let usage = chunk.usage.as_ref().expect("usage carried over");
+        assert_eq!(
+            (
+                usage.prompt_tokens,
+                usage.completion_tokens,
+                usage.total_tokens
+            ),
+            (11, 7, 18)
+        );
+
+        assert_eq!(chunk.tool_calls_delta.len(), 2);
+        let first = &chunk.tool_calls_delta[0];
+        assert_eq!(first.index, 0);
+        assert_eq!(first.id.as_deref(), Some("c1"));
+        assert_eq!(first.name.as_deref(), Some("search"));
+        assert_eq!(
+            first.arguments_delta.as_deref(),
+            Some(r#"{"nested":{"tags":["a","b"]},"q":1}"#)
+        );
+        let second = &chunk.tool_calls_delta[1];
+        assert_eq!(second.index, 1);
+        assert_eq!(second.id.as_deref(), Some("c2"));
+        assert_eq!(second.name.as_deref(), Some("lookup"));
+        assert_eq!(second.arguments_delta.as_deref(), Some(r#"{"id":"x\"y"}"#));
+    }
+
+    #[tokio::test]
+    async fn default_stream_with_tools_chunk_aggregates_back_to_original_message() {
+        use crate::streaming::StreamAggregator;
+
+        for original in [
+            message_with_two_tool_calls(),
+            Message::ai("plain text, no tools"),
+            Message::Ai(cognis_core::AiMessage {
+                content: String::new(),
+                tool_calls: vec![crate::ToolCall {
+                    id: "c1".into(),
+                    name: "noargs".into(),
+                    arguments: serde_json::json!({}),
+                }],
+                parts: Vec::new(),
+            }),
+        ] {
+            let mut agg = StreamAggregator::new();
+            for chunk in fallback_chunks(original.clone()).await {
+                agg.push(chunk);
+            }
+            let out = agg.finalize();
+            assert_eq!(out.message, original);
+            assert_eq!(out.finish_reason.as_deref(), Some("tool_calls"));
+            assert_eq!(out.usage.map(|u| u.total_tokens), Some(18));
+        }
     }
 }

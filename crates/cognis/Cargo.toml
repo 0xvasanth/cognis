@@ -52,3 +52,4 @@ cache-sqlite = ["dep:sqlx"]
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
+tokio-util = { version = "0.7", features = ["rt"] }

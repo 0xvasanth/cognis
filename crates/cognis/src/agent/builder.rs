@@ -7,7 +7,7 @@ use cognis_graph::CompiledGraph;
 use cognis_llm::{Client, Tool};
 
 use super::agent::{Agent, ConversationMode};
-use super::default_graph::default_react_graph_with_limits;
+use super::default_graph::react_graph;
 use super::memory::{Memory, Window};
 use super::state::AgentState;
 use crate::backend::Backend;
@@ -119,7 +119,17 @@ impl AgentBuilder {
     }
 
     /// Enable token-level streaming for the agent's LLM calls. The think
-    /// step emits `OnLlmToken` events as the model produces output.
+    /// step emits `OnLlmToken` events on [`Agent::stream`] as the model
+    /// produces output; the final message is the same either way.
+    ///
+    /// Tokens arrive incrementally only on providers that stream tool calls
+    /// natively: OpenAI, Azure OpenAI and OpenRouter. Every other provider
+    /// (Anthropic, Google, Ollama, custom ones without an override) falls
+    /// back to a normal completion delivered as one terminal chunk, so the
+    /// whole reply shows up as a single `OnLlmToken`.
+    ///
+    /// Has no effect together with [`AgentBuilder::with_graph`]: a custom
+    /// graph decides for itself whether its think node streams.
     pub fn with_streaming(mut self, on: bool) -> Self {
         self.streaming = on;
         self
@@ -134,6 +144,11 @@ impl AgentBuilder {
     }
 
     /// Power-user override: supply your own graph instead of the default ReAct.
+    ///
+    /// Tools, iteration limits and [`AgentBuilder::with_streaming`] configure
+    /// the default graph and are ignored here. Add [`AgentBuilder::with_llm`]
+    /// as well if you want [`Agent::stream_elements`] /
+    /// [`Agent::stream_partial`], which call the model directly.
     pub fn with_graph(mut self, graph: CompiledGraph<AgentState>) -> Self {
         self.custom_graph = Some(graph);
         self
@@ -158,7 +173,9 @@ impl AgentBuilder {
             .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
 
         let (graph, agent_client) = if let Some(g) = self.custom_graph {
-            (g, None)
+            // The custom graph owns its own model calls; the client is kept
+            // only for the typed streams, which bypass the graph.
+            (g, self.client)
         } else {
             let client = self.client.ok_or_else(|| {
                 CognisError::Configuration(
@@ -175,7 +192,7 @@ impl AgentBuilder {
                 self.tools
             };
             let agent_client = Some(client.clone());
-            let graph = default_react_graph_with_limits(
+            let graph = react_graph(
                 client,
                 tools,
                 self.max_iterations,

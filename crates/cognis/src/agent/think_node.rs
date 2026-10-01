@@ -47,7 +47,7 @@ impl ThinkNode {
     /// Stream the model's output token-by-token, emitting
     /// [`Event::OnLlmToken`](cognis_core::stream::Event::OnLlmToken) per
     /// non-empty content chunk. The final message is identical to the
-    /// non-streaming path. Default off.
+    /// non-streaming path. Cancellation is checked per chunk. Default off.
     pub fn with_streaming(mut self, on: bool) -> Self {
         self.streaming = on;
         self
@@ -103,6 +103,11 @@ impl Node<AgentState> for ThinkNode {
                 .await?;
             let mut agg = StreamAggregator::new();
             while let Some(item) = stream.next().await {
+                // A model turn can stream for a long time; honour
+                // cancellation between chunks instead of only between nodes.
+                if ctx.is_cancelled() {
+                    return Err(cognis_core::CognisError::Cancelled);
+                }
                 let chunk = item?;
                 if !chunk.content.is_empty() {
                     ctx.emit(&Event::OnLlmToken {
@@ -400,6 +405,246 @@ mod tests {
         let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
         let res = node.execute(&AgentState::default(), &ctx).await;
         assert!(matches!(res, Err(cognis_core::CognisError::Cancelled)));
+    }
+
+    fn tool_delta(index: u32, id: Option<&str>, name: Option<&str>, args: &str) -> StreamChunk {
+        StreamChunk {
+            content: String::new(),
+            is_delta: true,
+            is_done: false,
+            finish_reason: None,
+            usage: None,
+            tool_calls_delta: vec![cognis_llm::chat::ToolCallDelta {
+                index,
+                id: id.map(String::from),
+                name: name.map(String::from),
+                arguments_delta: Some(args.into()),
+            }],
+        }
+    }
+
+    fn tool_calls_done() -> StreamChunk {
+        StreamChunk {
+            finish_reason: Some("tool_calls".into()),
+            ..done_chunk()
+        }
+    }
+
+    async fn run_streaming(chunks: Vec<Result<StreamChunk>>) -> NodeOut<AgentState> {
+        let client = Client::new(Arc::new(StreamingProvider::new(chunks)));
+        let node = ThinkNode::new(client, Vec::new(), 10).with_streaming(true);
+        let cfg = RunnableConfig::default();
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
+        node.execute(&AgentState::default(), &ctx).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn streaming_think_routes_to_act_when_tool_arguments_split_across_chunks() {
+        let out = run_streaming(vec![
+            Ok(tool_delta(0, Some("call_1"), Some("weather"), "")),
+            Ok(tool_delta(0, None, None, "{\"ci")),
+            Ok(tool_delta(0, None, None, "ty\":\"")),
+            Ok(tool_delta(0, None, None, "San")),
+            Ok(tool_delta(0, None, None, " Fran")),
+            Ok(tool_delta(0, None, None, "cisco\"")),
+            Ok(tool_delta(0, None, None, ",\"units\":\"c\"}")),
+            Ok(tool_calls_done()),
+        ])
+        .await;
+
+        assert!(
+            matches!(out.goto, Goto::Node(ref s) if s == "act"),
+            "got: {:?}",
+            out.goto
+        );
+        assert_eq!(
+            out.update.messages,
+            vec![Message::Ai(AiMessage {
+                content: String::new(),
+                tool_calls: vec![ToolCall {
+                    id: "call_1".into(),
+                    name: "weather".into(),
+                    arguments: serde_json::json!({"city": "San Francisco", "units": "c"}),
+                }],
+                parts: Vec::new(),
+            })]
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_think_assembles_parallel_tool_calls_when_deltas_interleave() {
+        // Index 1 opens first and the argument fragments alternate, so a
+        // merge keyed on arrival order instead of `index` would scramble them.
+        let out = run_streaming(vec![
+            Ok(tool_delta(1, Some("call_b"), Some("time"), "{\"tz\":")),
+            Ok(tool_delta(0, Some("call_a"), Some("weather"), "{\"city\":")),
+            Ok(tool_delta(1, None, None, "\"Europe")),
+            Ok(tool_delta(0, None, None, "\"Par")),
+            Ok(tool_delta(1, None, None, "/Paris\"}")),
+            Ok(tool_delta(0, None, None, "is\"}")),
+            Ok(tool_calls_done()),
+        ])
+        .await;
+
+        assert!(matches!(out.goto, Goto::Node(ref s) if s == "act"));
+        assert_eq!(
+            out.update.messages[0].tool_calls(),
+            &[
+                ToolCall {
+                    id: "call_a".into(),
+                    name: "weather".into(),
+                    arguments: serde_json::json!({"city": "Paris"}),
+                },
+                ToolCall {
+                    id: "call_b".into(),
+                    name: "time".into(),
+                    arguments: serde_json::json!({"tz": "Europe/Paris"}),
+                },
+            ]
+        );
+    }
+
+    /// The wire shape a streaming provider would produce for `msg`: content
+    /// and each tool call's argument JSON cut into small fragments.
+    fn stream_chunks_for(msg: &Message) -> Vec<Result<StreamChunk>> {
+        fn pieces(s: &str, n: usize) -> Vec<String> {
+            let chars: Vec<char> = s.chars().collect();
+            chars.chunks(n).map(|c| c.iter().collect()).collect()
+        }
+        let mut chunks = Vec::new();
+        for piece in pieces(msg.content(), 4) {
+            chunks.push(Ok(delta(&piece)));
+        }
+        for (i, tc) in msg.tool_calls().iter().enumerate() {
+            let i = i as u32;
+            chunks.push(Ok(tool_delta(i, Some(&tc.id), Some(&tc.name), "")));
+            for piece in pieces(&tc.arguments.to_string(), 3) {
+                chunks.push(Ok(tool_delta(i, None, None, &piece)));
+            }
+        }
+        chunks.push(Ok(tool_calls_done()));
+        chunks
+    }
+
+    #[tokio::test]
+    async fn streaming_and_non_streaming_think_produce_equal_messages() {
+        let scripted = Message::Ai(AiMessage {
+            content: "Let me check both — un instant ☕.".into(),
+            tool_calls: vec![
+                ToolCall {
+                    id: "call_a".into(),
+                    name: "weather".into(),
+                    arguments: serde_json::json!({"city": "San Francisco", "days": 3}),
+                },
+                ToolCall {
+                    id: "call_b".into(),
+                    name: "time".into(),
+                    arguments: serde_json::json!({"tz": "Europe/Paris", "nested": {"a": [1, 2]}}),
+                },
+            ],
+            parts: Vec::new(),
+        });
+
+        let streamed = run_streaming(stream_chunks_for(&scripted)).await;
+
+        let provider = Arc::new(ScriptedProvider::new(vec![scripted.clone()]));
+        let node = ThinkNode::new(Client::new(provider), Vec::new(), 10);
+        let cfg = RunnableConfig::default();
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
+        let plain = node.execute(&AgentState::default(), &ctx).await.unwrap();
+
+        assert_eq!(streamed.update.messages, plain.update.messages);
+        assert_eq!(streamed.update.messages, vec![scripted]);
+        assert_eq!(streamed.update.iterations, plain.update.iterations);
+        assert!(matches!(streamed.goto, Goto::Node(ref s) if s == "act"));
+        assert!(matches!(plain.goto, Goto::Node(ref s) if s == "act"));
+    }
+
+    /// Provider whose stream cancels the run's token while yielding the
+    /// chunk at `cancel_at`, and counts how many chunks were pulled.
+    struct CancellingProvider {
+        token: tokio_util::sync::CancellationToken,
+        cancel_at: usize,
+        pulled: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl LLMProvider for CancellingProvider {
+        fn name(&self) -> &str {
+            "cancelling"
+        }
+        fn provider_type(&self) -> Provider {
+            Provider::Ollama
+        }
+        async fn chat_completion(&self, _m: Vec<Message>, _o: ChatOptions) -> Result<ChatResponse> {
+            unreachable!()
+        }
+        async fn chat_completion_stream(
+            &self,
+            _m: Vec<Message>,
+            _o: ChatOptions,
+        ) -> Result<RunnableStream<StreamChunk>> {
+            unreachable!()
+        }
+        async fn chat_completion_stream_with_tools(
+            &self,
+            _m: Vec<Message>,
+            _t: Vec<ToolDefinition>,
+            _o: ChatOptions,
+        ) -> Result<RunnableStream<StreamChunk>> {
+            let token = self.token.clone();
+            let cancel_at = self.cancel_at;
+            let pulled = self.pulled.clone();
+            let chunks = ["a", "b", "c", "d"]
+                .into_iter()
+                .enumerate()
+                .map(move |(i, t)| {
+                    pulled.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if i == cancel_at {
+                        token.cancel();
+                    }
+                    Ok(delta(t))
+                });
+            Ok(RunnableStream::new(futures::stream::iter(chunks)))
+        }
+        async fn health_check(&self) -> Result<HealthStatus> {
+            Ok(HealthStatus::Healthy { latency_ms: 0 })
+        }
+    }
+
+    #[tokio::test]
+    async fn streaming_think_returns_cancelled_when_token_fires_mid_stream() {
+        let token = tokio_util::sync::CancellationToken::new();
+        let pulled = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let tokens = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let provider = CancellingProvider {
+            token: token.clone(),
+            cancel_at: 1,
+            pulled: pulled.clone(),
+        };
+        let node =
+            ThinkNode::new(Client::new(Arc::new(provider)), Vec::new(), 10).with_streaming(true);
+        let cfg = RunnableConfig::default()
+            .with_cancel_token(token)
+            .with_observer(Arc::new(Rec(tokens.clone())));
+        let ctx = NodeCtx::new(Uuid::nil(), 0, &cfg);
+
+        let res = node.execute(&AgentState::default(), &ctx).await;
+
+        assert!(
+            matches!(res, Err(cognis_core::CognisError::Cancelled)),
+            "expected Cancelled"
+        );
+        assert_eq!(
+            *tokens.lock().unwrap(),
+            vec!["a".to_string()],
+            "the chunk that arrived after cancellation must not be emitted"
+        );
+        assert_eq!(
+            pulled.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "the stream must not be drained after cancellation"
+        );
     }
 
     #[tokio::test]
