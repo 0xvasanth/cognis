@@ -1,19 +1,27 @@
-//! Incremental JSON-array element extraction.
+//! Incremental parsing of streamed JSON text.
 //!
-//! Feeds streamed text into [`StreamingJsonArray`]; each time a top-level
-//! array element closes, its raw JSON text is returned. Used to deliver
-//! structured list output element-by-element before the whole array
-//! finishes. Tracks brace/bracket depth and string-escape state.
+//! Reach for [`StreamingJsonArray`] to deliver a structured list element by
+//! element before the whole array finishes, and for [`close_partial_json`]
+//! to render progressively-filled snapshots of a single streamed object.
+//! Both track brace/bracket depth and string-escape state.
 
 /// Extracts top-level elements from a streamed JSON array.
+///
+/// The first `[` anywhere in the fed text starts parsing, so leading prose
+/// or a code fence is skipped — and so is any `[` they happen to contain.
+/// An element is emitted when the top-level `,` or `]` that follows it
+/// arrives, not when its own closing brace does; the last element of an
+/// array the stream never closed is only available from
+/// [`StreamingJsonArray::finish`]. Everything after the array's closing `]`
+/// is ignored.
 #[derive(Debug, Default)]
 pub struct StreamingJsonArray {
-    started: bool,  // seen the opening '['
-    finished: bool, // seen the matching ']'
-    depth: i32,     // nesting depth inside the current element
+    started: bool,
+    finished: bool,
+    depth: i32,
     in_string: bool,
     escaped: bool,
-    current: String,   // accumulating element text
+    current: String,
     has_content: bool, // current holds a real (non-whitespace) element
 }
 
@@ -108,10 +116,25 @@ impl StreamingJsonArray {
 ///
 /// Different from [`StreamingJsonArray`], which waits for whole elements:
 /// this closes an open string, drops a dangling `key`, `key:` or trailing
-/// comma, and appends the missing `}`/`]` closers. Text before the first
-/// `{` is skipped; returns `None` if no `{` has arrived yet. A value cut
-/// mid-literal (`tru`, `1.`) still yields text that fails to parse, so
-/// callers should treat a parse failure as "no new snapshot".
+/// comma, and appends the missing `}`/`]` closers.
+///
+/// What a snapshot may contain:
+/// - **Strings stream as prefixes.** A string field still being written is
+///   closed where it stands, so its value may be a prefix of the final one
+///   until the stream ends.
+/// - **Numbers and literals appear only once complete.** A number, `true`,
+///   `false` or `null` at the very end of the buffer cannot be told apart
+///   from a longer one (`9` vs `92`), so its entry is withheld until a `,`,
+///   `}`, `]` or whitespace terminates it.
+/// - **The first `{` starts the object.** Text before it is skipped —
+///   including prose or a code fence, and any `{` they happen to contain.
+///   Returns `None` if no `{` has arrived yet.
+/// - **Text after the root object is ignored.** Scanning stops at the `}`
+///   that closes the root object, so a trailing code fence or sign-off does
+///   not corrupt the result.
+///
+/// Malformed input can still yield text that fails to parse, so callers
+/// should treat a parse failure as "no new snapshot".
 pub fn close_partial_json(buf: &str) -> Option<String> {
     let start = buf.find('{')?;
     let mut out = String::with_capacity(buf.len() - start + 8);
@@ -125,6 +148,9 @@ pub fn close_partial_json(buf: &str) -> Option<String> {
     let mut entry_start = 0;
     let mut string_is_key = false;
     let mut last_string_was_key = false;
+    // True while the last thing scanned is a number/literal no delimiter has
+    // terminated yet — it may still grow, so it is provisional.
+    let mut in_scalar = false;
     for ch in buf[start..].chars() {
         if in_string {
             out.push(ch);
@@ -143,6 +169,7 @@ pub fn close_partial_json(buf: &str) -> Option<String> {
             '"' => {
                 string_is_key = stack.last() == Some(&'}') && matches!(last_significant, '{' | ',');
                 in_string = true;
+                in_scalar = false;
                 out.push(ch);
             }
             '{' | '[' => {
@@ -150,21 +177,37 @@ pub fn close_partial_json(buf: &str) -> Option<String> {
                 out.push(ch);
                 entry_start = out.len();
                 last_significant = ch;
+                in_scalar = false;
             }
             ',' => {
                 entry_start = out.len();
                 out.push(ch);
                 last_significant = ch;
+                in_scalar = false;
             }
             '}' | ']' => {
                 stack.pop();
                 out.push(ch);
                 last_significant = ch;
+                in_scalar = false;
+                if stack.is_empty() {
+                    // Root object closed: whatever follows is not part of it.
+                    break;
+                }
             }
-            c if c.is_whitespace() => out.push(c),
+            ':' => {
+                out.push(ch);
+                last_significant = ch;
+                in_scalar = false;
+            }
+            c if c.is_whitespace() => {
+                out.push(c);
+                in_scalar = false;
+            }
             c => {
                 out.push(c);
                 last_significant = c;
+                in_scalar = true;
             }
         }
     }
@@ -173,11 +216,12 @@ pub fn close_partial_json(buf: &str) -> Option<String> {
         last_string_was_key = string_is_key;
         last_significant = '"';
     }
-    let dangling = match last_significant {
-        ':' | ',' => true,
-        '"' => last_string_was_key,
-        _ => false,
-    };
+    let dangling = in_scalar
+        || match last_significant {
+            ':' | ',' => true,
+            '"' => last_string_was_key,
+            _ => false,
+        };
     if dangling {
         out.truncate(entry_start);
     }
@@ -229,9 +273,9 @@ mod tests {
     }
 
     #[test]
-    fn multibyte_char_split_across_chunks_is_safe() {
-        // push_str takes &str, so callers must not split a codepoint; this
-        // test documents that whole-char input reassembles correctly.
+    fn reassembles_multibyte_text_when_split_at_char_boundary() {
+        // push_str takes &str, so a chunk can never end inside a codepoint;
+        // this covers a split right after a multibyte character.
         let mut p = StreamingJsonArray::new();
         let mut out = Vec::new();
         out.extend(p.push_str("[\"café"));
@@ -294,12 +338,106 @@ mod tests {
 
     #[test]
     fn skips_leading_prose_before_first_brace() {
-        assert_eq!(closed("Sure: {\"a\":1"), serde_json::json!({"a": 1}));
+        assert_eq!(
+            closed("Sure: {\"a\":1,\"b\":\"x"),
+            serde_json::json!({"a": 1, "b": "x"})
+        );
     }
 
     #[test]
     fn leaves_complete_object_unchanged() {
         assert_eq!(closed("{\"a\":[1,2]}"), serde_json::json!({"a": [1, 2]}));
+    }
+
+    #[test]
+    fn ignores_closing_code_fence_after_root_object() {
+        let v = closed("{\"title\":\"Q3\",\"score\":92}\n```\n");
+        assert_eq!(v, serde_json::json!({"title": "Q3", "score": 92}));
+    }
+
+    #[test]
+    fn ignores_prose_after_root_object() {
+        let v = closed("{\"title\":\"Q3\",\"score\":92} Hope this helps!");
+        assert_eq!(v, serde_json::json!({"title": "Q3", "score": 92}));
+    }
+
+    #[test]
+    fn extracts_fenced_object_arriving_as_single_chunk() {
+        let v = closed("```json\n{\"title\":\"Q3\",\"score\":92}\n```");
+        assert_eq!(v, serde_json::json!({"title": "Q3", "score": 92}));
+    }
+
+    #[test]
+    fn ignores_second_object_and_stray_closers_after_root_object() {
+        let v = closed("{\"a\":{\"b\":[1]}}}] {\"c\":2");
+        assert_eq!(v, serde_json::json!({"a": {"b": [1]}}));
+    }
+
+    #[test]
+    fn withholds_number_still_being_written_at_buffer_end() {
+        assert_eq!(closed("{\"a\":1,\"score\":9"), serde_json::json!({"a": 1}));
+    }
+
+    #[test]
+    fn keeps_number_once_closing_brace_terminates_it() {
+        assert_eq!(
+            closed("{\"a\":1,\"score\":92}"),
+            serde_json::json!({"a": 1, "score": 92})
+        );
+    }
+
+    #[test]
+    fn keeps_number_once_comma_or_whitespace_terminates_it() {
+        assert_eq!(
+            closed("{\"a\":1,\"score\":92,"),
+            serde_json::json!({"a": 1, "score": 92})
+        );
+        assert_eq!(
+            closed("{\"a\":1,\"score\":92\n"),
+            serde_json::json!({"a": 1, "score": 92})
+        );
+    }
+
+    #[test]
+    fn withholds_literal_still_being_written_at_buffer_end() {
+        assert_eq!(closed("{\"a\":1,\"ok\":tru"), serde_json::json!({"a": 1}));
+        assert_eq!(closed("{\"a\":1,\"ok\":true"), serde_json::json!({"a": 1}));
+        assert_eq!(
+            closed("{\"a\":1,\"ok\":true}"),
+            serde_json::json!({"a": 1, "ok": true})
+        );
+    }
+
+    #[test]
+    fn withholds_unterminated_scalar_when_it_is_the_only_entry() {
+        for buf in [
+            "{\"score\":9",
+            "{\"ok\":tru",
+            "{\"x\":1.",
+            "{\"n\":nul",
+            "{\"v\":-",
+        ] {
+            assert_eq!(closed(buf), serde_json::json!({}), "input: {buf}");
+        }
+    }
+
+    #[test]
+    fn withholds_array_element_number_at_buffer_end() {
+        assert_eq!(closed("{\"xs\":[1,2"), serde_json::json!({"xs": [1]}));
+        assert_eq!(closed("{\"xs\":[1"), serde_json::json!({"xs": []}));
+        assert_eq!(closed("{\"xs\":[1,2]"), serde_json::json!({"xs": [1, 2]}));
+    }
+
+    #[test]
+    fn keeps_streaming_string_prefix_while_withholding_later_number() {
+        assert_eq!(
+            closed("{\"title\":\"Quar"),
+            serde_json::json!({"title": "Quar"})
+        );
+        assert_eq!(
+            closed("{\"title\":\"Quarterly\",\"score\":4"),
+            serde_json::json!({"title": "Quarterly"})
+        );
     }
 
     #[test]

@@ -294,7 +294,9 @@ mod tests {
 
     #[tokio::test]
     async fn stream_object_partial_value_fills_snapshots_progressively() {
-        let c = client(ArrProvider::new(&["{\"a\":1", ",\"b\":2}"]));
+        // A number is withheld until a delimiter proves it is complete: `1`
+        // only shows once the `,` arrives, `2` once the `}` does.
+        let c = client(ArrProvider::new(&["{\"a\":1", ",\"b\":2", "}"]));
         let got: Vec<serde_json::Value> = c
             .stream_object_partial_value(vec![Message::human("obj")])
             .await
@@ -305,6 +307,7 @@ mod tests {
         assert_eq!(
             got,
             vec![
+                serde_json::json!({}),
                 serde_json::json!({"a": 1}),
                 serde_json::json!({"a": 1, "b": 2})
             ],
@@ -336,7 +339,7 @@ mod tests {
     #[tokio::test]
     async fn stream_object_partial_value_skips_duplicate_snapshots() {
         // The second and third chunks add no new parseable content.
-        let c = client(ArrProvider::new(&["{\"a\":1", ",", " \"b\":", "2}"]));
+        let c = client(ArrProvider::new(&["{\"a\":1,", " ", "\"b\":", "2}"]));
         let got: Vec<serde_json::Value> = c
             .stream_object_partial_value(vec![Message::human("obj")])
             .await
@@ -385,7 +388,7 @@ mod tests {
 
     #[tokio::test]
     async fn stream_object_partial_value_propagates_provider_error_and_stops() {
-        let mut p = ArrProvider::new(&["{\"a\":1"]);
+        let mut p = ArrProvider::new(&["{\"a\":1,"]);
         p.fail_after = true;
         let got: Vec<Result<serde_json::Value>> = client(p)
             .stream_object_partial_value(vec![Message::human("obj")])
