@@ -25,6 +25,7 @@ pub mod extensions;
 pub mod json_merge;
 pub mod message;
 pub mod output_parsers;
+pub mod partial;
 pub mod prompts;
 pub mod runnable;
 pub mod runnable_ext;
@@ -50,6 +51,7 @@ pub use message::{
     AiMessage, HumanChunk, HumanMessage, Message, MessageChunk, RemoveMessage, SystemChunk,
     SystemMessage, ToolCall, ToolCallChunk, ToolChunk, ToolMessage, TrimStrategy,
 };
+pub use partial::Partial;
 pub use runnable::{Runnable, RunnableConfig};
 pub use runnable_ext::RunnableExt;
 pub use security::is_public_unicast;

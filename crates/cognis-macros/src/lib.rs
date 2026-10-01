@@ -8,6 +8,8 @@
 //!   for parameter schema generation.
 //! - [`GraphState`] — derive macro for graph state schemas with per-field
 //!   reducers (see attributes `#[reducer(append|last_value|add|merge)]`).
+//! - [`Partial`] — derive macro generating an all-`Option` mirror struct for
+//!   typed partial-object streaming.
 //!
 //! # JSON Schema generation
 //!
@@ -35,6 +37,7 @@
 
 mod graph_state;
 mod graph_state_v2;
+mod partial;
 mod schema_attr;
 mod tool_attr;
 mod tools_impl_attr;
@@ -42,6 +45,23 @@ mod tools_impl_attr;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use syn::{parse_macro_input, DeriveInput};
+
+// ---------------------------------------------------------------------------
+// #[derive(Partial)]
+// ---------------------------------------------------------------------------
+
+/// Derive an all-`Option` mirror struct `<Name>Partial` for streaming.
+///
+/// The mirror derives `Debug`, `Default` and `serde::Deserialize` (every field
+/// `#[serde(default)]`), and the macro implements `cognis_core::Partial` for
+/// the source type so `Client::stream_object_partial::<Name>` yields
+/// `NamePartial` snapshots. Named-field, non-generic structs only. Serde
+/// attributes on the source are not copied to the mirror.
+#[proc_macro_derive(Partial)]
+pub fn derive_partial(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    partial::derive_partial(input).into()
+}
 
 // ---------------------------------------------------------------------------
 // #[derive(GraphState)]

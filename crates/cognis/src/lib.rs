@@ -20,8 +20,8 @@ pub use cognis_rag;
 
 pub use cognis_core::{
     CharTokenizer, CognisError, Event, EventStream, Extensions, FnTokenizer, JsonSchema, Loader,
-    Message, Observer, Result, Runnable, RunnableConfig, RunnableDefinition, RunnableStream,
-    Serializable, Tokenizer, ToolCall,
+    Message, Observer, Partial, Result, Runnable, RunnableConfig, RunnableDefinition,
+    RunnableStream, Serializable, Tokenizer, ToolCall,
 };
 pub use cognis_graph::{
     node_fn, ActiveSnapshot, AuditEntry, AuditKind, AuditLog, AuditLogObserver, Checkpointer,

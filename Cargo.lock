@@ -299,6 +299,7 @@ dependencies = [
 name = "cognis-macros"
 version = "0.3.2"
 dependencies = [
+ "cognis-core",
  "proc-macro2",
  "quote",
  "regex",

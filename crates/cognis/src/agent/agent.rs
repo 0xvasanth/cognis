@@ -152,6 +152,28 @@ impl Agent {
         client.stream_array::<T>(state.messages).await
     }
 
+    /// Stream the agent's response as a single object of type `T`, delivered
+    /// as progressively-filled `T::Partial` snapshots.
+    ///
+    /// Different from [`Agent::stream_elements`], which yields whole list
+    /// elements: this yields the same object repeatedly as more of it arrives,
+    /// every field optional until streamed (see `#[derive(Partial)]`). Like
+    /// `stream_elements`, it is a single LLM turn with no tool loop and does
+    /// not write to memory, and needs an [`AgentBuilder`](super::AgentBuilder)
+    /// built agent (`Configuration` error otherwise).
+    pub async fn stream_partial<T: cognis_core::Partial>(
+        &mut self,
+        input: impl Into<Message>,
+    ) -> Result<cognis_core::RunnableStream<T::Partial>> {
+        let client = self.client.clone().ok_or_else(|| {
+            cognis_core::CognisError::Configuration(
+                "stream_partial needs an AgentBuilder-built agent".into(),
+            )
+        })?;
+        let state = self.build_initial_state(input.into());
+        client.stream_object_partial::<T>(state.messages).await
+    }
+
     /// Escape hatch — give back the underlying compiled graph.
     pub fn into_graph(self) -> CompiledGraph<AgentState> {
         self.graph
@@ -292,9 +314,17 @@ mod tests {
         id: u32,
     }
 
-    /// Streams a JSON array in two pieces and records the messages it received.
+    #[derive(cognis_macros::Partial)]
+    #[allow(dead_code)]
+    struct Report {
+        title: String,
+        score: u32,
+    }
+
+    /// Streams scripted text pieces and records the messages it received.
     struct ArrayStreamer {
         seen: std::sync::Mutex<Vec<Message>>,
+        pieces: &'static [&'static str],
     }
 
     #[async_trait]
@@ -326,7 +356,8 @@ mod tests {
             _opts: ChatOptions,
         ) -> Result<cognis_core::RunnableStream<StreamChunk>> {
             *self.seen.lock().unwrap() = messages;
-            let chunks: Vec<Result<StreamChunk>> = ["[{\"id\":1},", "{\"id\":2}]"]
+            let chunks: Vec<Result<StreamChunk>> = self
+                .pieces
                 .iter()
                 .map(|s| {
                     Ok(StreamChunk {
@@ -353,6 +384,7 @@ mod tests {
         use futures::StreamExt;
         let provider = Arc::new(ArrayStreamer {
             seen: Default::default(),
+            pieces: &["[{\"id\":1},", "{\"id\":2}]"],
         });
         let mut agent = crate::agent::AgentBuilder::new()
             .with_llm(Client::new(provider.clone()))
@@ -381,6 +413,51 @@ mod tests {
         let graph = default_react_graph(client, Vec::new(), 10).unwrap();
         let mut agent = Agent::wrap(graph);
         let err = match agent.stream_elements::<Step>("go").await {
+            Ok(_) => panic!("expected Configuration error"),
+            Err(e) => e,
+        };
+        assert!(
+            matches!(err, cognis_core::CognisError::Configuration(_)),
+            "got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_partial_yields_typed_snapshots_with_system_prompt_seeded() {
+        use futures::StreamExt;
+        let provider = Arc::new(ArrayStreamer {
+            seen: Default::default(),
+            pieces: &["{\"title\":\"x\"", ",\"score\":5}"],
+        });
+        let mut agent = crate::agent::AgentBuilder::new()
+            .with_llm(Client::new(provider.clone()))
+            .with_system_prompt("report")
+            .build()
+            .unwrap();
+        let got: Vec<ReportPartial> = agent
+            .stream_partial::<Report>("go")
+            .await
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+            .await;
+        let last = got.last().unwrap();
+        assert_eq!(last.title.as_deref(), Some("x"));
+        assert_eq!(last.score, Some(5));
+        let seen = provider.seen.lock().unwrap();
+        assert!(
+            matches!(seen.first(), Some(Message::System(_))),
+            "got: {seen:?}"
+        );
+        assert_eq!(seen.last().unwrap().content(), "go");
+    }
+
+    #[tokio::test]
+    async fn stream_partial_errors_for_wrapped_agent_without_client() {
+        let client = Client::new(Arc::new(Constant::new("ok")));
+        let graph = default_react_graph(client, Vec::new(), 10).unwrap();
+        let mut agent = Agent::wrap(graph);
+        let err = match agent.stream_partial::<Report>("go").await {
             Ok(_) => panic!("expected Configuration error"),
             Err(e) => e,
         };
