@@ -39,6 +39,18 @@
             "icon": "robot",
             "pages": [
               "building-agents/models",
+              {
+                "group": "Providers",
+                "icon": "plug",
+                "pages": [
+                  "building-agents/models/openai",
+                  "building-agents/models/anthropic",
+                  "building-agents/models/google",
+                  "building-agents/models/ollama",
+                  "building-agents/models/azure",
+                  "building-agents/models/openrouter"
+                ]
+              },
               "building-agents/provider-resilience",
               "building-agents/tools",
               "building-agents/memory",

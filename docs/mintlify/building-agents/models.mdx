@@ -60,7 +60,7 @@ Use **provider builders** when you need provider-specific knobs (organization id
 
 ## Switching providers
 
-The same agent, six ways. Same code; different env or different provider builder.
+The same agent, six ways. Same code; different env or different provider builder. Each provider has its own reference page covering wire-format differences and gotchas: [OpenAI](/building-agents/models/openai), [Anthropic](/building-agents/models/anthropic), [Google](/building-agents/models/google), [Ollama](/building-agents/models/ollama), [Azure](/building-agents/models/azure), [OpenRouter](/building-agents/models/openrouter).
 
 <Tabs>
   <Tab title="OpenAI">
@@ -126,8 +126,8 @@ The same agent, six ways. Same code; different env or different provider builder
     let provider = OpenRouterBuilder::default()
         .api_key(std::env::var("OPENROUTER_API_KEY")?)
         .model("anthropic/claude-sonnet-4")
-        .extra_header("HTTP-Referer", "https://yourapp.com")
-        .extra_header("X-Title", "your-app")
+        .with_referer("https://yourapp.com")
+        .with_title("your-app")
         .build()?;
     ```
   </Tab>

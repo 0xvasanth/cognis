@@ -1,0 +1,38 @@
+---
+title: "Ollama"
+description: "OllamaProvider — local models, no API key required."
+sidebarTitle: "Ollama"
+---
+
+Feature flag: `ollama` (on by default). Default base URL: `http://localhost:11434/api/`.
+
+The only provider with no `api_key` field at all — it's a local daemon, not a hosted API.
+
+## Construct
+
+```rust
+use cognis_llm::provider::ollama::OllamaBuilder;
+
+let provider = OllamaBuilder::default()
+    .base_url("http://localhost:11434")  // optional, this is the default
+    .model("llama3.1")
+    .build()?;
+```
+
+Or via env: `COGNIS_PROVIDER=ollama`, `COGNIS_OLLAMA_MODEL`. No `COGNIS_OLLAMA_API_KEY` — there's nothing to set.
+
+Prerequisite: `ollama serve` running locally with the model pulled (`ollama pull llama3.1`).
+
+## Builder methods
+
+| Method | Notes |
+|---|---|
+| `model(name)` | Required — no default. Must match a locally pulled model. |
+| `base_url(url)` | Override if Ollama is running elsewhere (a container, a remote box). |
+| `timeout_secs(s)` | Per-request timeout. Local inference on CPU can be slow — raise this if you're timing out, not retrying against a flaky network. |
+
+## See also
+
+<Card title="Models overview" icon="plug" href="/building-agents/models">
+  Client construction and switching providers.
+</Card>

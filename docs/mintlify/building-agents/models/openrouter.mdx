@@ -1,0 +1,47 @@
+---
+title: "OpenRouter"
+description: "OpenRouterProvider — OpenAI-compatible wire format with vendor/model namespacing, no separate feature flag."
+sidebarTitle: "OpenRouter"
+---
+
+No separate feature flag — OpenRouter rides on `OpenAIProvider` internally, so it's gated under the `openai` feature (on by default). Default base URL: `https://openrouter.ai/api/v1/`.
+
+## Construct
+
+```rust
+use cognis_llm::provider::openrouter::OpenRouterBuilder;
+
+let provider = OpenRouterBuilder::default()
+    .api_key(std::env::var("OPENROUTER_API_KEY")?)
+    .model("anthropic/claude-sonnet-4")   // vendor/model namespacing
+    .with_referer("https://yourapp.com")  // recommended by OpenRouter
+    .with_title("your-app")               // recommended by OpenRouter
+    .build()?;
+```
+
+Or via env: `COGNIS_PROVIDER=openrouter`, `COGNIS_OPENROUTER_API_KEY`, `COGNIS_OPENROUTER_MODEL`.
+
+## Builder methods
+
+| Method | Notes |
+|---|---|
+| `api_key(key)` | Required. |
+| `model(name)` | Required, namespaced as `vendor/model` (e.g. `anthropic/claude-sonnet-4`, `meta-llama/llama-3.1-70b-instruct`). |
+| `with_referer(url)` | Sets `HTTP-Referer` — OpenRouter's recommended attribution header. |
+| `with_title(name)` | Sets `X-Title` — shows up in OpenRouter's dashboard. |
+| `base_url(url)` | Override the API base. |
+| `extra_header(k, v)` | Add any other header beyond referer/title. |
+
+`with_referer` and `with_title` are the idiomatic way to set those two headers — prefer them over calling `extra_header("HTTP-Referer", ...)` / `extra_header("X-Title", ...)` directly.
+
+## Wire format notes
+
+- Implementation is a thin wrapper around `OpenAIProvider` — same request/response shapes, same tool-call normalization.
+- `provider_type()` reports `Provider::OpenRouter` (not `Provider::OpenAI`), so observers and callbacks can distinguish an OpenRouter call from a real OpenAI call against a custom base URL.
+- Since it's OpenAI-compatible, any OpenRouter-hosted model works without a model-specific code path — only the `model` string changes.
+
+## See also
+
+<Card title="Models overview" icon="plug" href="/building-agents/models">
+  Client construction and switching providers.
+</Card>
