@@ -47,6 +47,14 @@ pub use cognis_rag::{
     SearchResult, VectorStore,
 };
 
+/// `#[derive(Partial)]` — generates the all-`Option` streaming mirror and the
+/// [`Partial`] impl for a struct. Shares its name with the trait (they live
+/// in different namespaces, as with serde's `Deserialize`), so
+/// `use cognis::Partial;` brings in both. When `cognis` is your only
+/// dependency, point the derive at the re-exported core crate:
+/// `#[partial(crate = "cognis::cognis_core")]`.
+pub use cognis_macros::Partial;
+
 // New stage-5 modules.
 pub mod agent;
 pub mod agent_bus;
@@ -139,4 +147,28 @@ pub mod prelude {
     pub use crate::*;
     pub use crate::{Distance, Embeddings, InMemoryVectorStore, SearchResult, VectorStore};
     pub use async_trait::async_trait;
+}
+
+#[cfg(test)]
+mod tests {
+    // Only umbrella paths: the derive and the trait both come from this
+    // crate's root, and the derive is pointed at the re-exported core.
+    use crate::Partial;
+
+    #[derive(Partial)]
+    #[partial(crate = "crate::cognis_core")]
+    #[serde(rename_all = "camelCase")]
+    #[allow(dead_code)]
+    struct Report {
+        report_title: String,
+        score: u32,
+    }
+
+    #[test]
+    fn umbrella_reexports_partial_derive_alongside_trait() {
+        let p: <Report as Partial>::Partial =
+            serde_json::from_str("{\"reportTitle\":\"Q3\"}").unwrap();
+        assert_eq!(p.report_title.as_deref(), Some("Q3"));
+        assert_eq!(p.score, None);
+    }
 }

@@ -65,6 +65,11 @@ pub use tokenizer::{CharTokenizer, FnTokenizer, Tokenizer};
 pub use schemars;
 pub use schemars::{schema_for, JsonSchema};
 
+// Macro support: `#[derive(Partial)]` derives `Deserialize` on the mirror
+// through this path so callers need no direct `serde` dependency.
+#[doc(hidden)]
+pub use serde as __serde;
+
 /// Common imports for v2 user code.
 pub mod prelude {
     pub use crate::compose::{lambda, pipe, Branch, Each, Lambda, Parallel, Passthrough, Pipe};

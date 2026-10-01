@@ -55,9 +55,35 @@ use syn::{parse_macro_input, DeriveInput};
 /// The mirror derives `Debug`, `Default` and `serde::Deserialize` (every field
 /// `#[serde(default)]`), and the macro implements `cognis_core::Partial` for
 /// the source type so `Client::stream_object_partial::<Name>` yields
-/// `NamePartial` snapshots. Named-field, non-generic structs only. Serde
-/// attributes on the source are not copied to the mirror.
-#[proc_macro_derive(Partial)]
+/// `NamePartial` snapshots. Named-field, non-generic structs only.
+///
+/// # Field types
+///
+/// Every field `f: T` becomes `f: Option<T>`. A source field that is already
+/// `Option<T>` therefore becomes `Option<Option<T>>`: the outer `None` means
+/// "not streamed yet (or JSON `null`)", `Some(Some(v))` means a value arrived.
+///
+/// # Attributes
+///
+/// - `#[partial(crate = "path")]` — where the `Partial` trait lives. Defaults
+///   to `::cognis_core`. Set it when you depend on the framework only through
+///   the umbrella crate: `#[partial(crate = "cognis::cognis_core")]`.
+///
+/// # Serde attributes
+///
+/// The mirror must read the same JSON keys as the source type, so the serde
+/// attributes that rename keys are copied to it:
+///
+/// - struct-level `rename_all`;
+/// - field-level `rename` and `alias`.
+///
+/// `default` and the serialize-only keys (`skip_serializing`,
+/// `skip_serializing_if`, `serialize_with`) are ignored: mirror fields are
+/// always defaulted and the mirror is never serialized. Any other serde key
+/// on the struct or on a field (`flatten`, `deserialize_with`, `skip`,
+/// `deny_unknown_fields`, …) is a compile error naming the key, because the
+/// mirror cannot honour it.
+#[proc_macro_derive(Partial, attributes(partial, serde))]
 pub fn derive_partial(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     partial::derive_partial(input).into()
