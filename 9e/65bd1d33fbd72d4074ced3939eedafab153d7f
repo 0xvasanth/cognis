@@ -1,0 +1,23 @@
+docs/mintlify/docs.json
+  s_1c99a74d31b4d9::t_e7085cfdb49d3f 42
+docs/mintlify/building-agents/models.mdx
+  s_1c99a74d31b4d9::t_2b76c52fff5ee5 171-173
+docs/mintlify/building-agents/provider-resilience.mdx
+  s_1c99a74d31b4d9::t_8a36279a3d87bf 1-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9e65bd1d33fbd72d4074ced3939eedafab153d7f",
+  "prompts": {},
+  "sessions": {
+    "s_1c99a74d31b4d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d535c2a5-603f-4d23-afba-333a928e8120",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
