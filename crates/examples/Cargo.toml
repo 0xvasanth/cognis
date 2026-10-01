@@ -12,6 +12,7 @@ cognis-core.workspace = true
 cognis = { workspace = true, features = ["openai", "ollama"] }
 cognis-graph.workspace = true
 cognis-llm = { workspace = true, features = ["ollama", "openai"] }
+cognis-macros.workspace = true
 cognis-rag = { workspace = true, features = ["ollama", "openai"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -76,6 +77,9 @@ path = "../../examples/agents/planning_demo.rs"
 [[example]]
 name = "agents_streaming_events"
 path = "../../examples/agents/streaming_agent_events.rs"
+[[example]]
+name = "agents_streaming_agent"
+path = "../../examples/agents/streaming_agent.rs"
 
 # memory/ — memory variants.
 [[example]]

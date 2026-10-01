@@ -245,6 +245,7 @@ dependencies = [
  "cognis-core",
  "cognis-graph",
  "cognis-llm",
+ "cognis-macros",
  "cognis-rag",
  "futures",
  "serde",

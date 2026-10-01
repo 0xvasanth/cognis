@@ -164,6 +164,52 @@ async fn main() -> Result<()> {
 }
 ```
 
+#### Streaming agents and typed output
+
+Build the agent with `with_streaming(true)` and `Agent::stream` yields `Event::OnLlmToken` events interleaved with the node and tool events:
+
+```rust
+let mut agent = AgentBuilder::new().with_llm(client).with_streaming(true).build()?;
+let mut events = agent.stream(Message::human("Capital of France?")).await?;
+while let Some(ev) = events.next().await {
+    if let Event::OnLlmToken { token, .. } = ev {
+        print!("{token}");
+    }
+}
+```
+
+`stream_elements::<T>` yields each element of a streamed JSON array as soon as it closes, even when the element is split across chunks:
+
+```rust
+#[derive(serde::Deserialize)]
+struct Step { id: u32, title: String }
+
+let mut steps = agent
+    .stream_elements::<Step>(Message::human("Reply with a JSON array of steps."))
+    .await?;
+while let Some(step) = steps.next().await {
+    println!("{}", step?.title);
+}
+```
+
+`stream_partial::<T>` yields a progressively-filled snapshot of a streamed JSON object. `#[derive(Partial)]` generates `<Name>Partial`, the same struct with every field an `Option`:
+
+```rust
+use cognis_macros::Partial;
+
+#[derive(Partial)]
+struct Report { title: String, score: u32 }
+
+let mut snapshots = agent
+    .stream_partial::<Report>(Message::human("Reply with a JSON object."))
+    .await?;
+while let Some(snapshot) = snapshots.next().await {
+    println!("{:?}", snapshot?); // ReportPartial { title: Some(..), score: None }, ...
+}
+```
+
+`stream_elements` and `stream_partial` do not inject format instructions: the prompt must ask the model for a JSON array or object. Both run a single LLM turn (no tool loop) and return an ordinary `RunnableStream`, so you process them with `futures::StreamExt`. The same streams are available on `Client` as `stream_array` and `stream_object_partial`. A runnable offline demo is in [`examples/agents/streaming_agent.rs`](examples/agents/streaming_agent.rs).
+
 ### Multi-agent orchestration
 
 ```rust
@@ -283,6 +329,7 @@ cargo run -p cognis-examples --example graphs_with_checkpoints
 cargo run -p cognis-examples --example graphs_interrupts
 cargo run -p cognis-examples --example resilience_ssrf_protection
 cargo run -p cognis-examples --example resilience_rate_limiters
+cargo run -p cognis-examples --example agents_streaming_agent
 
 # Provider-backed demos (need a running LLM — `ollama pull llama3.1`)
 COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
