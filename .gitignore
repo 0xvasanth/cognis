@@ -21,9 +21,8 @@ Thumbs.db
 .env
 .env.local
 
-# Docs — global ignore covers docs/, but track the Mintlify site and
-# the Fumadocs site (docs/site/ has its own .gitignore for node_modules/.next).
+# Docs — global ignore covers docs/, but track the docs site
+# (docs/site/ has its own .gitignore for node_modules/.next).
 !docs/
 docs/*
-!docs/mintlify/
 !docs/site/
