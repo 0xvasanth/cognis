@@ -1,0 +1,83 @@
+---
+title: "Error handling"
+description: "One shared CognisError across the workspace, actionable variants, and how the umbrella crate's own errors differ."
+sidebarTitle: "Error handling"
+---
+
+Cognis doesn't scatter a different error type per crate that you then have to match on individually. `cognis_core::CognisError` (built on `thiserror`) is the error type `cognis-llm`, `cognis-rag`, and `cognis-graph` all use directly via the shared `cognis_core::Result<T>` alias — not three separate error enums you convert between.
+
+## The shared error type
+
+```rust
+pub enum CognisError {
+    Provider { provider: String, message: String },
+    RateLimited { retry_after_ms: u64 },
+    AuthenticationFailed(String),
+    Tool { name: String, reason: String },
+    ToolValidationError(String),
+    Configuration(String),
+    Network { message: String, status_code: Option<u16> },
+    Timeout { operation: String, timeout_ms: u64 },
+    Cancelled,
+    RecursionLimit { limit: usize },
+    GraphInterrupted { kind: String, node: String, step: u64, run_id: String },
+    Serialization(String),
+    Internal(String),
+}
+```
+
+Every variant is **actionable** — you can match on it and decide what to do, not just log a string:
+
+```rust
+match client.invoke(messages).await {
+    Ok(reply) => { /* ... */ }
+    Err(CognisError::RateLimited { retry_after_ms }) => {
+        tokio::time::sleep(Duration::from_millis(retry_after_ms)).await;
+        // retry
+    }
+    Err(CognisError::AuthenticationFailed(_)) => {
+        // bad key — don't retry, surface to the operator
+    }
+    Err(e) => return Err(e.into()),
+}
+```
+
+This is also exactly what the [provider resilience wrappers](/building-agents/provider-resilience) key off of — a `CircuitBreakerProvider`'s `FailureClassifier` and `RetryableClassifier` both decide "does this count as a failure" by inspecting the `CognisError` variant, not by string-matching a message.
+
+## Where it stops being shared: `cognis-trace`
+
+`cognis-trace` defines its own `TraceError` rather than reusing `CognisError` — deliberately. Exporter failures (a Langfuse request timing out, a malformed config) are **never propagated into your main code path**. They're logged and counted instead; `TraceError` exists for diagnostic surfaces like `stats()` and builder validation, not for your `?` chains. Observability failing shouldn't take your agent down with it.
+
+## The umbrella crate hand-rolls its own
+
+`cognis` — the umbrella crate — deliberately does **not** depend on `thiserror`. It's the one crate sitting above all four siblings, and pulling in another proc-macro dependency there wasn't worth it for the handful of error types it defines itself. A real example, `SubscribeError` from the agent bus:
+
+```rust
+#[derive(Debug)]
+pub enum SubscribeError { Closed, Lagged(u64), Empty }
+
+impl std::fmt::Display for SubscribeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Closed => write!(f, "channel closed"),
+            Self::Lagged(n) => write!(f, "lagged by {n} messages"),
+            Self::Empty => write!(f, "no messages available"),
+        }
+    }
+}
+
+impl std::error::Error for SubscribeError {}
+```
+
+If you're adding a new error type inside `cognis` itself (contributing a middleware, say), follow this shape rather than reaching for `thiserror` — it's not available there.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Provider resilience & routing" icon="route" href="/building-agents/provider-resilience">
+    FailureClassifier and RetryableClassifier key off these variants.
+  </Card>
+  <Card title="Production → Resilience" icon="shield" href="/production/resilience">
+    Retry and backoff policies built around recoverable errors.
+  </Card>
+</CardGroup>

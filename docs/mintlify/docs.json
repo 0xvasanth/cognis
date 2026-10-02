@@ -28,10 +28,12 @@
             "group": "Core ideas",
             "icon": "lightbulb",
             "pages": [
+              "core-ideas/architecture",
               "core-ideas/runnables",
               "core-ideas/messages",
               "core-ideas/graphs",
-              "core-ideas/agents"
+              "core-ideas/agents",
+              "core-ideas/error-handling"
             ]
           },
           {
@@ -68,7 +70,8 @@
               "building-agents/middleware",
               "building-agents/hitl",
               "building-agents/streaming",
-              "building-agents/structured-output"
+              "building-agents/structured-output",
+              "building-agents/testing"
             ]
           },
           {
