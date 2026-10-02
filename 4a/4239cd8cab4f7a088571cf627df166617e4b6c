@@ -1,0 +1,28 @@
+docs/mintlify/docs.json
+  s_1c99a74d31b4d9::t_1f9ee40da42650 73-74
+  s_1c99a74d31b4d9::t_4b20cb8fe2c219 31,35-36
+docs/mintlify/core-ideas/architecture.mdx
+  s_1c99a74d31b4d9::t_abf2680daeed42 1-63
+docs/mintlify/core-ideas/error-handling.mdx
+  s_1c99a74d31b4d9::t_5d745afac9be20 1-83
+docs/mintlify/core-ideas/runnables.mdx
+  s_1c99a74d31b4d9::t_84d0c057255369 166-171
+docs/mintlify/building-agents/testing.mdx
+  s_1c99a74d31b4d9::t_b7fc1c5c681e1d 1-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a4239cd8cab4f7a088571cf627df166617e4b6c",
+  "prompts": {},
+  "sessions": {
+    "s_1c99a74d31b4d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d535c2a5-603f-4d23-afba-333a928e8120",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
