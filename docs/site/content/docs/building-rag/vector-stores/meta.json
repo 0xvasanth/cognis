@@ -1,0 +1,12 @@
+{
+  "title": "Vector stores",
+  "pages": [
+    "overview",
+    "in-memory",
+    "faiss",
+    "chroma",
+    "qdrant",
+    "pinecone",
+    "weaviate"
+  ]
+}

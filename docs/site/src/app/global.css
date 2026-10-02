@@ -1,0 +1,100 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+/* --- cognis token overrides: matched to docs.dokploy.com/docs/core --- */
+/* light mode: same neutral, no-hue philosophy, inverted */
+:root {
+  --color-fd-background: #ffffff;
+  --color-fd-foreground: #0a0a0a;
+  --color-fd-muted: #f5f5f5;
+  --color-fd-muted-foreground: rgba(64, 64, 64, 0.8);
+  --color-fd-popover: #ffffff;
+  --color-fd-popover-foreground: #0a0a0a;
+  --color-fd-card: #fafafa;
+  --color-fd-card-foreground: #0a0a0a;
+  --color-fd-border: hsla(0, 0%, 0%, 10%);
+  --color-fd-primary: #0a0a0a;
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-secondary: #efefef;
+  --color-fd-secondary-foreground: #0a0a0a;
+  --color-fd-accent: #efefef;
+  --color-fd-accent-foreground: #0a0a0a;
+  --color-fd-ring: #0a0a0a;
+}
+
+.dark {
+  --color-fd-background: #050505;
+  --color-fd-foreground: rgb(235, 235, 235);
+  --color-fd-muted: #0d0d0d;
+  --color-fd-muted-foreground: rgba(179, 179, 179, 0.8);
+  --color-fd-popover: #0d0d0d;
+  --color-fd-popover-foreground: rgb(235, 235, 235);
+  --color-fd-card: #0d0d0d;
+  --color-fd-card-foreground: rgb(235, 235, 235);
+  --color-fd-border: hsla(0, 0%, 100%, 10%);
+  --color-fd-primary: #f5f5f5;
+  --color-fd-primary-foreground: #050505;
+  --color-fd-secondary: #212121;
+  --color-fd-secondary-foreground: rgb(235, 235, 235);
+  --color-fd-accent: #212121;
+  --color-fd-accent-foreground: rgb(235, 235, 235);
+  --color-fd-ring: #f5f5f5;
+}
+
+body {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  line-height: 1.65;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+article {
+  --spacing-fd-section: 3.5rem;
+}
+
+article h2 {
+  margin-top: 3.25rem !important;
+}
+
+/* mono reserved strictly for code-shaped content */
+code, pre, kbd, .cognis-badge {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+.cognis-badges {
+  gap: 8px;
+}
+
+.cognis-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 4px;
+  border: 1px solid var(--color-fd-border);
+  background: var(--color-fd-card);
+  color: var(--color-fd-muted-foreground);
+  text-decoration: none;
+  line-height: 1.4;
+}
+
+.cognis-badge strong {
+  color: var(--color-fd-accent-foreground);
+  font-weight: 600;
+}

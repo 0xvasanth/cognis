@@ -1,0 +1,12 @@
+{
+  "title": "Models",
+  "pages": [
+    "overview",
+    "openai",
+    "anthropic",
+    "google",
+    "ollama",
+    "azure",
+    "openrouter"
+  ]
+}

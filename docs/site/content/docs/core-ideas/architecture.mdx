@@ -1,0 +1,63 @@
+---
+title: "Architecture"
+description: "Five crates, one umbrella. What each one does, and what depending on it actually costs you."
+sidebarTitle: "Architecture"
+---
+
+Cognis isn't one crate — it's a foundation crate, four sibling capability crates, a proc-macro crate, and an umbrella that re-exports the stack. Knowing the shape matters for one practical reason: it decides what you actually compile into your binary.
+
+```
+cognis-core      Foundation. Runnable, Message, prompts, output parsers,
+                 callbacks, wrappers. Zero internal-crate deps, zero
+                 network features, ever.
+
+cognis-llm       LLM client + providers (feature-gated per provider).
+                 Tool trait, structured output, streaming.
+
+cognis-rag       Embeddings, vector stores (feature-gated per backend),
+                 retrievers, splitters, loaders, indexing pipeline.
+
+cognisgraph      Crate name `cognis-graph`. Stateful Graph<S>, Pregel
+                 engine, reducers, channels, checkpointers.
+
+cognis-trace     Pluggable observability (Langfuse today; OpenTelemetry
+                 is Phase 2, not yet shipped).
+
+cognis-macros    Proc macros: #[tool], #[derive(GraphState)].
+
+cognis           Umbrella + agent layer. AgentBuilder, multi-agent
+                 orchestration, memory variants, middleware, built-in
+                 tools. Re-exports core/llm/rag/graph at the top level.
+```
+
+## The dependency rule that affects your binary
+
+`cognis-llm`, `cognis-rag`, `cognisgraph`, and `cognis-trace` each depend only on `cognis-core` — never on each other. `cognis` is the only crate that pulls all four siblings together. That isolation is what makes feature-gating meaningful: enabling `anthropic` doesn't pull in anything from `cognis-rag`, enabling a vector store doesn't pull in graph checkpointing code, and so on.
+
+## Do you need the umbrella crate?
+
+Most apps do — `cognis = { version = "0.3", features = [...] }` plus `use cognis::prelude::*;` is the path documented throughout this site, and it's what `AgentBuilder`, memory variants, and middleware live in.
+
+But if you only need, say, a typed LLM client with no agent loop, no memory, no middleware — depend on `cognis-llm` directly instead. Same for `cognis-rag` if you're building a retrieval pipeline without the agent layer at all. You lose `AgentBuilder` and friends, but your dependency tree (and compile time) shrinks to exactly what you're using. Check [Feature flags](/docs/reference/feature-flags) for the full matrix either way.
+
+## Why this shape, not a single crate
+
+A few concrete things fall out of keeping these separate:
+
+- **Pay only for what you use.** A binary using only Ollama doesn't compile in OpenAI's HTTP client, auth types, or request/response structs — the `openai` feature simply isn't enabled.
+- **No circular temptation.** Because `cognis-rag` can't depend on `cognisgraph` (or vice versa), a RAG-specific concept can't quietly leak into the graph engine's API, and vice versa. The boundary is enforced by the build, not by convention.
+- **The umbrella can evolve independently.** New agent-level features (a new middleware, a new memory variant) land in `cognis` without touching the four siblings' public APIs at all.
+
+## See also
+
+<Cards>
+  <Card title="Runnables" href="/docs/core-ideas/runnables">
+    The trait every layer is built on.
+  </Card>
+  <Card title="Feature flags" href="/docs/reference/feature-flags">
+    The full flag matrix per crate.
+  </Card>
+  <Card title="Contribute → Architecture" href="/docs/contribute/architecture">
+    The contributor-facing version — where new code should go.
+  </Card>
+</Cards>

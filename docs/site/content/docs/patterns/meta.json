@@ -1,0 +1,13 @@
+{
+  "title": "Patterns",
+  "pages": [
+    "research-assistant",
+    "code-qa",
+    "multi-agent-debate",
+    "long-context",
+    "hitl-approval",
+    "stateful-chat",
+    "streaming-ui",
+    "local-ollama"
+  ]
+}

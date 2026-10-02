@@ -1,0 +1,35 @@
+---
+title: "Resilience"
+description: "Error propagation, retry/backoff, cost-based rate limiters, SSRF guards on URL-fetching tools."
+sidebarTitle: "Resilience"
+---
+
+Resilience examples enact production patterns for keeping an LLM app up. Sources under [`examples/resilience/`](https://github.com/0xvasanth/cognis/tree/main/examples/resilience).
+
+| Name | Scenario | Source |
+|---|---|---|
+| `resilience_error_handling` | User submits an age string; show how parse errors propagate through a Runnable chain so the caller can surface a friendly message. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/error_handling.rs) |
+| `resilience_error_recovery` | URL shortener that fails twice then succeeds — exponential backoff retry keeps the user-facing call working. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/error_recovery.rs) |
+| `resilience_rate_limiters` | Cost-based budget — cap LLM spend at $1/min using TokenBucket / SlidingWindow / CostBased / Composite. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/advanced_rate_limiters.rs) |
+| `resilience_ssrf_protection` | URL-fetch tool that gets a URL from user input — reject internal IPs, localhost, and AWS metadata before any HTTP call. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/resilience/ssrf_protection.rs) |
+
+## How to run
+
+```bash
+cargo run -p cognis-examples --example resilience_ssrf_protection
+cargo run -p cognis-examples --example resilience_rate_limiters
+```
+
+## See also
+
+<Cards>
+  <Card title="Resilience guide" href="/docs/production/resilience">
+    Wrappers, middleware, recovery patterns.
+  </Card>
+  <Card title="Caching" href="/docs/production/caching">
+    Don't pay twice.
+  </Card>
+  <Card title="Security" href="/docs/production/security">
+    PII, deny-lists, sandboxing.
+  </Card>
+</Cards>

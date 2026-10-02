@@ -1,0 +1,11 @@
+{
+  "title": "Reference",
+  "pages": [
+    "api",
+    "feature-flags",
+    "env-vars",
+    "faq",
+    "troubleshooting",
+    "changelog"
+  ]
+}

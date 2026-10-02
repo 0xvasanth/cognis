@@ -1,0 +1,156 @@
+---
+title: "Human-in-the-loop"
+description: "Pause an agent before sensitive actions, show a human what's about to happen, and let them approve, edit, or reject."
+sidebarTitle: "Human-in-the-loop"
+---
+
+Some actions are too important to leave to the model alone — sending an email, executing a transaction, modifying production data. Human-in-the-loop (HITL) lets you mark those actions and require human approval before they run. Cognis offers two paths to HITL, depending on whether you're inside an agent loop or driving a graph directly.
+
+## Two layers
+
+Cognis ships two distinct HITL surfaces — they pause at different points and answer different questions.
+
+| Layer | Purpose | API |
+|---|---|---|
+| **Tool approval** | Gate a tool call before dispatch. The most common HITL pattern. | `Approver` trait + `AgentBuilder::with_approver(...)` |
+| **Transcript-level pause** | Pause every (or some) LLM call to consult a human — inject context, override the reply, or skip. | `HumanInTheLoop` middleware + `HumanResponder` trait |
+| **Graph interrupts** | Pause a `Graph<S>` before/after named nodes; pull saved state, edit, resume. Useful for staged approvals at workflow boundaries. | `with_interrupt_before` / `with_interrupt_after` + `resume` |
+
+For "ask before running tool X" — almost always the right answer — use **tool approval**. For "let a reviewer steer the model on every reply" — rare — use the middleware. For workflow checkpoints, use graph interrupts.
+
+## Quick example — tool approval
+
+`AgentBuilder::with_approver` wraps every registered tool in an `ApprovalGatedTool`. The approver decides per call.
+
+```rust
+use std::sync::Arc;
+use cognis::prelude::*;
+use cognis::AgentBuilder;
+
+let approver = Arc::new(MyApprover);   // your impl Approver
+
+let agent = AgentBuilder::new()
+    .with_llm(client)
+    .with_tools(tools)         // register tools first
+    .with_approver(approver)   // then wrap with the approver — order matters
+    .build()?;
+```
+
+<Callout type="info">
+Tools registered *after* `.with_approver(...)` are NOT auto-wrapped. Call `with_approver` last.
+</Callout>
+
+The trait:
+
+```rust
+use async_trait::async_trait;
+use cognis::tools::{Approver, Decision};
+use cognis::Result;
+
+struct MyApprover;
+
+#[async_trait]
+impl Approver for MyApprover {
+    async fn approve(&self, tool_name: &str, args: &serde_json::Value)
+        -> Result<Decision>
+    {
+        if tool_name == "send_email" {
+            // Surface to your UI; await the human's reply.
+            let decision = my_ui::ask_human(tool_name, args).await?;
+            Ok(decision)
+        } else {
+            Ok(Decision::Approve)
+        }
+    }
+}
+```
+
+`Decision` covers the common shapes:
+
+- `Decision::Approve` — let the call run as-is.
+- `Decision::Reject { reason }` — refuse; the model sees `reason` as the tool's output and can apologize or try something else. Use `Decision::reject("nope")` as a shortcut.
+- `Decision::Edit { args }` — approve, but rewrite the args (e.g., cap a transfer amount).
+
+Built-in approvers under `cognis::tools`: `AutoApprove`, `RejectAll`, `AllowList` — handy for tests or as a base to compose your own.
+
+## Quick example — graph interrupts
+
+For workflows where you want to pause *before* (or after) a specific node, regardless of what the model decided:
+
+```rust
+use cognis::prelude::*;
+use cognis_core::CognisError;
+
+let graph = builder
+    .compile()?
+    .with_checkpointer(cp.clone())
+    .with_interrupt_before(["execute_payment", "send_notification"]);
+
+let cfg = RunnableConfig::default();
+let run_id = cfg.run_id;
+
+match graph.invoke(state, cfg.clone()).await {
+    Err(CognisError::GraphInterrupted { kind, step, .. }) => {
+        // The graph paused. Pull the state, show it, decide.
+        let snapshot = graph.get_state(run_id).await?.unwrap_or_default();
+        // Optionally: graph.update_state(run_id, step, &edited).await?;
+        let resumed = graph.resume(run_id, step, snapshot, cfg).await?;
+    }
+    other => { let _ = other?; }
+}
+```
+
+Source: [`examples/graphs/graph_interrupts_demo.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_interrupts_demo.rs).
+
+## Transcript-level pause
+
+For the rarer case where you want a human to potentially intervene on *every* model call (or a subset gated by a predicate), wrap the LLM client with the `HumanInTheLoop` middleware. It pauses before each call, asks a `HumanResponder`, and acts on a `HumanDecision`.
+
+```rust
+use std::sync::Arc;
+use cognis::middleware::{HumanInTheLoop, HumanDecision, MiddlewarePipeline};
+use cognis_llm::Client;
+
+let primary = Client::from_env()?;
+
+let hitl = HumanInTheLoop::new(|ctx| async move {
+    // Inspect ctx.messages, ctx.opts; return HumanDecision::Skip,
+    // ::InjectSystem(text), or ::Override(text).
+    Ok(HumanDecision::Skip)
+})
+.with_gate(|ctx| ctx.messages.last().map_or(false, |m| m.content().contains("CONFIRM")));
+
+let pipelined = MiddlewarePipeline::new().push(hitl).build(primary);
+
+// Use the pipelined client directly:
+let resp = pipelined.invoke(messages, tool_defs, opts).await?;
+```
+
+To run middleware inside an `AgentBuilder`-built agent (where the loop drives the LLM), wrap a `PipelinedClient` in a custom `LLMProvider` and feed that into `Client::new(...)`. See [Middleware → Wiring middleware into an agent](/docs/building-agents/middleware#wiring-middleware-into-an-agent).
+
+Built-in `HumanResponder` impls under `cognis::middleware`: `AlwaysSkip` (no-op for testing). Closures that return `HumanDecision` work too via a blanket impl.
+
+## How it works
+
+- **The agent loop is graph-shaped.** When a tool call is about to dispatch, control hits the approver before the dispatcher node runs.
+- **The graph engine treats interrupts as errors with structure.** `CognisError::GraphInterrupted` is *not* a failure — it's a pause. Your code matches it, decides, and calls `resume`.
+- **Checkpointers are required for `resume`.** The engine needs persisted state to restart from. See [Graph workflows → Checkpointing](/docs/graph-workflows/checkpointing).
+- **Edits during pause are first-class.** `graph.update_state(run_id, step, &edited)` writes a new snapshot at the same step. Subsequent `resume` reads from it.
+
+## When to combine
+
+Many production agents use *both*: an `Approver` for tool-call-level gating, and graph interrupts for higher-level workflow checkpoints (e.g., "pause before generating the final report so a reviewer sees the draft"). They don't conflict; the approver runs inside the agent loop, the interrupt fires at the graph boundary you mark.
+
+## See also
+
+<Cards>
+  <Card title="Patterns → HITL approval" href="/docs/patterns/hitl-approval">
+    A complete approval flow with a CLI prompt.
+  </Card>
+  <Card title="Graph workflows → Checkpointing" href="/docs/graph-workflows/checkpointing">
+    What `resume` reads from.
+  </Card>
+  <Card title="Middleware" href="/docs/building-agents/middleware">
+    `HumanInTheLoop`, `ApprovalGate`, and friends.
+  </Card>
+</Cards>

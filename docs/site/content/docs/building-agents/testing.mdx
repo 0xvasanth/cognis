@@ -1,0 +1,105 @@
+---
+title: "Testing your agents"
+description: "Cognis doesn't ship a mocking library — it ships traits simple enough that you don't need one. The pattern this codebase uses for its own tests, applied to yours."
+sidebarTitle: "Testing"
+---
+
+There's no `cognis::testing` module to import — the internal test helpers that power Cognis's own test suite are crate-private. That's fine: `LLMProvider`, `Tool`, and `Runnable` are small enough traits that hand-rolling a test double for each is a few lines, not a framework. This page shows the exact pattern the codebase uses on itself.
+
+## Fake a Runnable with `lambda`
+
+For anything that's just `Runnable<I, O>` — not a full provider — skip writing a struct entirely:
+
+```rust
+use cognis_core::compose::lambda;
+
+let fake_model = lambda(|input: String| async move {
+    Ok::<_, CognisError>(format!("echo: {input}"))
+});
+
+let chain = prompt.pipe(fake_model).pipe(parser);
+```
+
+This is the one genuinely reusable, public building block — reach for it before hand-rolling a struct.
+
+## Hand-roll a canned provider when you need `LLMProvider`
+
+When your code depends on the full `LLMProvider` trait (streaming, tool calls, health checks) rather than a bare `Runnable`, write a minimal struct scoped to your test module — this is the actual pattern `cognis-llm`'s own tests use:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+    use async_trait::async_trait;
+    use cognis_llm::provider::{LLMProvider, Provider};
+    use cognis_llm::chat::{ChatOptions, ChatResponse, HealthStatus};
+
+    /// Records which calls it received, returns a canned response.
+    struct Tagged(Arc<Mutex<Vec<&'static str>>>, &'static str);
+
+    #[async_trait]
+    impl LLMProvider for Tagged {
+        fn name(&self) -> &str { self.1 }
+        fn provider_type(&self) -> Provider { Provider::OpenAI }
+
+        async fn chat_completion(
+            &self,
+            _messages: Vec<Message>,
+            _opts: ChatOptions,
+        ) -> Result<ChatResponse> {
+            self.0.lock().unwrap().push(self.1);
+            Ok(ChatResponse {
+                message: Message::ai("canned reply"),
+                usage: None,
+                finish_reason: "stop".into(),
+                model: "test".into(),
+            })
+        }
+
+        // health_check, streaming, tool-call variants: implement only
+        // what your test actually exercises. Default to `todo!()` and
+        // let a real test failure tell you when you need more.
+    }
+
+    #[tokio::test]
+    async fn routes_to_the_matching_predicate() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let router = RoutingProvider::new("t", Arc::new(Tagged(calls.clone(), "default")))
+            .route(ProviderRoute::new("a", Arc::new(Tagged(calls.clone(), "a")), |_| true));
+
+        router.chat_completion(vec![], ChatOptions::default()).await.unwrap();
+        assert_eq!(*calls.lock().unwrap(), vec!["a"], "got: {:?}", calls.lock().unwrap());
+    }
+}
+```
+
+The naming convention across the codebase: `Tagged` for "returns a canned response but records what it was called with," `Fixed*` for "always returns the same thing," `Recording*` for "records every call, doesn't decide behavior," `Scripted*` for "returns a different canned response each call, in order." Pick whichever shape your test needs and name it accordingly — readers of the test immediately know what it does without reading the impl.
+
+## Testing concurrency
+
+Wrappers like [`LoadBalancerProvider`](/docs/building-agents/provider-resilience#load-balancer) or `RunnableExt::batch` dispatch concurrently — assert on call counts with `Arc<AtomicUsize>`, not a `Vec` behind a `Mutex`, when you only need a count and don't care about order:
+
+```rust
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+let calls = Arc::new(AtomicUsize::new(0));
+// inside your test double's method body:
+calls.fetch_add(1, Ordering::SeqCst);
+// ...
+assert_eq!(calls.load(Ordering::SeqCst), 3, "got: {}", calls.load(Ordering::SeqCst));
+```
+
+## Test naming
+
+Match the codebase's own convention if you're contributing tests back, or just because it reads well either way: `verb_does_x_when_y`, snake_case, verbose — `routes_to_the_matching_predicate`, not `test_routing` or `test1`.
+
+## See also
+
+<Cards>
+  <Card title="Runnables" href="/docs/core-ideas/runnables">
+    What lambda() actually builds.
+  </Card>
+  <Card title="Provider resilience & routing" href="/docs/building-agents/provider-resilience">
+    The wrappers most worth writing these tests against.
+  </Card>
+</Cards>

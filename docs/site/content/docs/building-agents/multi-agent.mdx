@@ -1,0 +1,170 @@
+---
+title: "Multi-agent orchestration"
+description: "When one agent isn't enough. Sequential, Supervisor, ParallelVote, RoundRobin, or your own handoff strategy."
+sidebarTitle: "Multi-agent"
+---
+
+Some problems are easier when you split them across specialized agents — a planner, a researcher, a writer, a critic. Cognis ships four orchestration strategies and a `HandoffStrategy` trait you can implement for your own. The orchestrator handles the boring parts (input routing, output capture, error propagation); you decide how the agents talk to each other.
+
+## What it is
+
+```rust
+let orch = MultiAgentOrchestrator::new(strategy)
+    .add("name1", agent1)
+    .add("name2", agent2);
+
+let resp: AgentResponse = orch.run(input).await?;
+```
+
+`strategy` is a value (not a string or enum), which means each strategy is its own type with its own configuration knobs.
+
+## Pick a strategy
+
+<Tabs items={["Sequential","Supervisor","ParallelVote","RoundRobin"]}>
+  <Tab value="Sequential">
+    Each agent receives the previous agent's output. Useful for pipelines where one specialist hands off to the next.
+
+    ```rust
+    use cognis::{AgentBuilder, MultiAgentOrchestrator, Sequential};
+    use cognis_llm::Client;
+
+    let planner = AgentBuilder::new().with_llm(Client::from_env()?)
+        .with_system_prompt("Break the request into 3 numbered steps.").build()?;
+
+    let executor = AgentBuilder::new().with_llm(Client::from_env()?)
+        .with_system_prompt("Receive a numbered plan; reply with one paragraph.").build()?;
+
+    let orch = MultiAgentOrchestrator::new(Sequential)
+        .add("planner", planner)
+        .add("executor", executor);
+
+    let resp = orch.run("Help me prep for a 5-min team standup.").await?;
+    ```
+    Source: [`examples/v2/08_ollama_multi_agent.rs`](https://github.com/0xvasanth/cognis/blob/main/examples/v2/08_ollama_multi_agent.rs).
+  </Tab>
+  <Tab value="Supervisor">
+    The first agent acts as a router: it sees the input, replies, and its reply is parsed for the next worker's name + the prompt to send. The chosen worker runs once; its reply is the final answer. Single hop — to chain further hops, run another `orch.run(...)` with the previous output.
+
+    ```rust
+    use cognis::{MultiAgentOrchestrator, Supervisor};
+
+    let orch = MultiAgentOrchestrator::new(Supervisor::new())
+        .add("supervisor", supervisor_agent)   // first agent is the router
+        .add("researcher", researcher_agent)
+        .add("writer", writer_agent);
+    ```
+
+    Customize how the supervisor's reply is parsed:
+
+    ```rust
+    use std::sync::Arc;
+
+    let orch = MultiAgentOrchestrator::new(
+        Supervisor::new().with_parser(Arc::new(|reply: &str| {
+            // return Some((agent_id, prompt_for_that_agent))
+            // or None to keep the supervisor's reply as the final answer.
+            None
+        }))
+    );
+    ```
+  </Tab>
+  <Tab value="ParallelVote">
+    All agents run on the same input concurrently. Outputs are tallied by content equality — the most-frequent reply wins; ties break by registration order.
+
+    ```rust
+    use cognis::{MultiAgentOrchestrator, ParallelVote};
+
+    let orch = MultiAgentOrchestrator::new(ParallelVote)
+        .add("a", a)
+        .add("b", b)
+        .add("c", c);
+    ```
+    Useful for high-stakes classifications, fact-check ensembles, or running the same prompt across multiple models. For quorum-based voting (require a minimum agreement before accepting), use the `Consensus` strategy instead — `Consensus::new(0.5)` requires 50% agreement.
+  </Tab>
+  <Tab value="RoundRobin">
+    Round-robin load-balancing across agents that share the same role (e.g. an "answerer" pool). Each `run()` call routes to the next agent in registration order, cycling. The picked agent handles the request alone; the others are not invoked for this call.
+
+    ```rust
+    use cognis::{MultiAgentOrchestrator, RoundRobin};
+
+    let orch = MultiAgentOrchestrator::new(RoundRobin::new())
+        .add("worker_a", worker_a)
+        .add("worker_b", worker_b)
+        .add("worker_c", worker_c);
+    ```
+    Useful when you want to spread requests across replicas. For iterative debate / propose-then-critique loops, drive the back-and-forth from your application code by calling `orch.run(...)` (or specific agents) in sequence.
+  </Tab>
+</Tabs>
+
+## How it works
+
+- **Each strategy is a struct that implements `HandoffStrategy`.** That trait has one required async method: `run(&self, agents, input, bus) -> Result<AgentResponse>`. The strategy decides everything that happens between the user's input and the final response.
+- **Agents inside the orchestrator are still `Agent`s.** Each runs its own loop with its own memory, tools, and middleware. The orchestrator only decides who runs next.
+- **Errors propagate.** If an agent inside the orchestrator returns `Err`, the orchestrator returns `Err`. Wrap a sub-agent's client with `with_fallback` if you want graceful degradation.
+- **The orchestrator returns an `AgentResponse`.** Same shape as a single agent — drop-in callers don't change.
+- **Other strategies in the box.** Beyond the four covered above, `cognis::multi_agent` also ships `Hierarchical` (manager → workers tree) and `Consensus` (quorum-based voting).
+
+## Custom handoff
+
+Implement `HandoffStrategy` for full control:
+
+```rust
+use std::sync::Arc;
+use async_trait::async_trait;
+use tokio::sync::Mutex;
+use cognis::multi_agent::{HandoffStrategy, MessageBus};
+use cognis::{Agent, AgentResponse, Message, Result};
+
+struct EscalateOnUnsure;
+
+#[async_trait]
+impl HandoffStrategy for EscalateOnUnsure {
+    async fn run(
+        &self,
+        agents: &[(String, Arc<Mutex<Agent>>)],
+        input: Message,
+        bus: Arc<dyn MessageBus>,
+    ) -> Result<AgentResponse> {
+        // 1. Run a primary agent.
+        // 2. If its reply is unsure, route to a senior agent.
+        // 3. Return the chosen reply.
+        todo!()
+    }
+
+    fn name(&self) -> &str { "EscalateOnUnsure" }
+}
+```
+
+This is the right shape for domain-specific orchestrators — escalation chains, conditional handoffs, supervised exploration.
+
+## AgentBus and AgentEventBus
+
+For looser coupling than orchestration — broadcast / subscribe between agents — Cognis has two pub/sub primitives:
+
+- **`AgentBus`** — generic typed pub/sub. Any `T: Clone + Send + Sync + 'static` can be a topic value.
+- **`AgentEventBus`** — pre-typed for `AgentEvent`s emitted during the loop (request started, tool called, response produced, …).
+
+```rust
+use cognis::AgentBus;
+
+let bus = AgentBus::new();
+let mut sub = bus.subscribe::<MyEvent>("topic.events");
+bus.publish("topic.events", MyEvent { /* … */ }).await?;
+let ev = sub.recv().await?;
+```
+
+These don't replace the orchestrator — they complement it. Orchestrators are for tightly coupled handoffs; buses are for fan-out signalling.
+
+## See also
+
+<Cards>
+  <Card title="Patterns → Multi-agent debate" href="/docs/patterns/multi-agent-debate">
+    A worked propose-critique-revise loop.
+  </Card>
+  <Card title="Patterns → Research assistant" href="/docs/patterns/research-assistant">
+    Sequential planner → researcher → writer.
+  </Card>
+  <Card title="Middleware" href="/docs/building-agents/middleware">
+    `SubagentMiddleware` for inline subagent spawning from a single parent loop.
+  </Card>
+</Cards>
