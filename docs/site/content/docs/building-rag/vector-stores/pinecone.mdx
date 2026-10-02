@@ -1,0 +1,31 @@
+---
+title: "Pinecone"
+description: "PineconeProvider — serverless Pinecone, namespace-scoped."
+sidebarTitle: "Pinecone"
+---
+
+Feature flag: `vectorstore-pinecone`. Targets the serverless Pinecone HTTP API.
+
+## Construct
+
+```rust
+use cognis_rag::vectorstore::pinecone::PineconeBuilder;
+
+let store = PineconeBuilder::default()
+    .index_url("https://my-index-xxxxx.svc.us-east1-gcp.pinecone.io")
+    .api_key(std::env::var("PINECONE_API_KEY")?)
+    .namespace("production")  // optional — scopes reads/writes to one namespace
+    .build()?;
+```
+
+Note this is an `index_url`, not a `base_url` — Pinecone's serverless indexes each have their own dedicated endpoint rather than a shared API host.
+
+## Namespaces
+
+`namespace` scopes every call the store makes — useful for multi-tenant setups (one namespace per customer) or separating environments (`staging` vs. `production`) inside the same index without standing up separate Pinecone indexes.
+
+## See also
+
+<Card title="Vector stores overview" href="/docs/building-rag/vector-stores/overview">
+  All six backends and the DedupVectorStore decorator.
+</Card>

@@ -1,0 +1,39 @@
+---
+title: "Graphs"
+description: "Stateful workflows — polling state machines, checkpointing, HITL interrupts, semantic routing, topic channels."
+sidebarTitle: "Graphs"
+---
+
+Graph examples enact recognizable workflows on top of `Graph<S>`. Sources under [`examples/graphs/`](https://github.com/0xvasanth/cognis/tree/main/examples/graphs).
+
+| Name | Scenario | Source |
+|---|---|---|
+| `graphs_state_machine` | Polling loop — check up to 5 times whether an external job is done; give up if not. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/state_machine.rs) |
+| `graphs_with_checkpoints` | Resumable 5-step ETL pipeline — extract / validate / transform / load / notify, snapshot per step. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_with_checkpoints.rs) |
+| `graphs_interrupts` | HITL pause-for-approval — agent drafts an email, graph stops before the `send` node so a reviewer can approve. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/graph_interrupts_demo.rs) |
+| `graphs_semantic_router` | Customer-support intent routing — `"refund"` → refund_flow, `"cancel"` → cancel_flow, else general help. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/semantic_router.rs) |
+| `graphs_topic_channels` | Onboarding agent that collects (name, hobbies, todo) across turns — reducers per field (last_value vs. append). | [src](https://github.com/0xvasanth/cognis/blob/main/examples/graphs/topic_channels.rs) |
+
+## How to run
+
+Most graph examples are offline (no LLM needed):
+
+```bash
+cargo run -p cognis-examples --example graphs_state_machine
+cargo run -p cognis-examples --example graphs_with_checkpoints
+cargo run -p cognis-examples --example graphs_interrupts
+```
+
+## See also
+
+<Cards>
+  <Card title="Graphs and state" href="/docs/core-ideas/graphs">
+    The user guide.
+  </Card>
+  <Card title="Checkpointing" href="/docs/graph-workflows/checkpointing">
+    Time travel and resume.
+  </Card>
+  <Card title="Patterns → HITL approval" href="/docs/patterns/hitl-approval">
+    Interrupts in a real flow.
+  </Card>
+</Cards>

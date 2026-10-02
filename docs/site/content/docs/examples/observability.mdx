@@ -1,0 +1,34 @@
+---
+title: "Observability"
+description: "Observers for debugging, evaluation harness for CI, pre-flight provider health checks."
+sidebarTitle: "Observability"
+---
+
+Observability examples enact what you'd add to a production deployment. Sources under [`examples/observability/`](https://github.com/0xvasanth/cognis/tree/main/examples/observability).
+
+| Name | Scenario | Source |
+|---|---|---|
+| `obs_event_system` | Add lightweight LLM-call timing logs without changing the chain code — attach a `TimedLogger` Observer. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/event_system_demo.rs) |
+| `obs_evaluation` | Regression eval — given 5 known (question, expected_answer) pairs, score the agent. Run in CI. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/evaluation_framework.rs) |
+| `obs_health_monitoring` | Pre-flight provider check — verify the LLM is reachable at startup; fail fast with a clear error. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/observability/health_monitoring.rs) |
+
+## How to run
+
+```bash
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example obs_evaluation
+```
+
+## See also
+
+<Cards>
+  <Card title="Callbacks & observers" href="/docs/observability/callbacks">
+    The user guide.
+  </Card>
+  <Card title="Trace with Langfuse" href="/docs/observability/langfuse">
+    Production observability.
+  </Card>
+  <Card title="Evaluation" href="/docs/observability/evaluation">
+    Datasets, scorers, reports.
+  </Card>
+</Cards>

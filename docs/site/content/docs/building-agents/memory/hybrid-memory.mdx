@@ -1,0 +1,39 @@
+---
+title: "Hybrid memory"
+description: "HybridMemory — compose several memory variants into one, each doing its own thing on write."
+sidebarTitle: "Hybrid memory"
+---
+
+Every other variant on this site is one strategy. `HybridMemory` is the exception — it holds a list of member memories, broadcasts every `write()` to all of them, and concatenates each member's `seed()` contribution, in registration order, into one unified seed the agent sees.
+
+## Construct
+
+```rust
+use cognis::prelude::*;
+
+let memory = HybridMemory::new()
+    .with(Window::new(10))                          // recent turns, verbatim
+    .with(EntityMemory::new())                       // running entity ledger
+    .with(VectorMemory::new(store).with_k(3));        // on-demand semantic recall
+```
+
+Each member keeps doing its own thing independently: the `Window` trims to the last 10 messages, the `EntityMemory` extracts facts from every message it sees, the `VectorMemory` embeds everything for later `.recall()` calls. The agent just sees one combined seed.
+
+## Why reach for it
+
+The other eight variants each pick one trade-off: recency vs. budget vs. extraction vs. semantic recall. Real applications often want more than one at once — a support bot that needs the last few turns verbatim (`Window`) *and* a standing ledger of the customer's name and account details (`EntityMemory`) *and* the ability to pull up a similar ticket from months ago (`VectorMemory`). `HybridMemory` is how you compose those instead of hand-rolling a bespoke `Memory` implementation that does all three.
+
+## Ordering matters
+
+`seed()` concatenates member contributions in the order they were `.with(...)`-added — put your pinned/system-shaped members (entity ledgers, knowledge graphs) before your recency buffer if you want the model to see "what it knows" before "what was just said," or reverse it if recency should anchor the prompt.
+
+## See also
+
+<Cards>
+  <Card title="Memory overview" href="/docs/building-agents/memory/overview">
+    The full comparison table across all nine variants.
+  </Card>
+  <Card title="Patterns → Stateful chat" href="/docs/patterns/stateful-chat">
+    A complete chat backend built on composed memory.
+  </Card>
+</Cards>

@@ -1,0 +1,17 @@
+{
+  "title": "Cognis",
+  "pages": [
+    "index",
+    "get-started",
+    "core-ideas",
+    "building-agents",
+    "building-rag",
+    "graph-workflows",
+    "observability",
+    "patterns",
+    "production",
+    "reference",
+    "examples",
+    "contribute"
+  ]
+}

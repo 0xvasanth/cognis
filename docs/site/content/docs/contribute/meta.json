@@ -1,0 +1,13 @@
+{
+  "title": "Contribute",
+  "pages": [
+    "ways-to-contribute",
+    "development-setup",
+    "architecture",
+    "pull-requests",
+    "adding-a-provider",
+    "adding-a-vector-store",
+    "adding-a-tool",
+    "code-of-conduct"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "title": "Building agents",
+  "pages": [
+    "models",
+    "provider-resilience",
+    "tools",
+    "memory",
+    "multi-agent",
+    "middleware",
+    "hitl",
+    "streaming",
+    "structured-output",
+    "testing"
+  ]
+}

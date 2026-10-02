@@ -1,6 +1,6 @@
 # Contributing to Cognis
 
-Thanks for your interest in contributing to Cognis! This document covers the basics. The full contributor docs live at the docs site under [Contribute](https://github.com/0xvasanth/cognis/tree/main/docs/mintlify/contribute).
+Thanks for your interest in contributing to Cognis! This document covers the basics. The full contributor docs live at the docs site under [Contribute](https://github.com/0xvasanth/cognis/tree/main/docs/site/content/docs/contribute).
 
 ## Getting started
 
@@ -22,7 +22,7 @@ cognis/
 │   ├── cognis-macros/  # Proc macros: #[tool], #[derive(GraphState)].
 │   └── cognis/         # Umbrella + agent layer. Re-exports the four siblings.
 ├── examples/           # Runnable demos under examples/<category>/
-├── docs/mintlify/      # The docs site.
+├── docs/site/          # The docs site (Fumadocs).
 └── Cargo.toml          # Workspace root.
 ```
 
@@ -79,7 +79,7 @@ Each LLM provider should:
 - Include tests with mocked HTTP responses.
 - Include an example under `examples/models/`.
 
-The full step-by-step is in the docs: [Contribute → Adding a new provider](https://github.com/0xvasanth/cognis/blob/main/docs/mintlify/contribute/adding-a-provider.mdx).
+The full step-by-step is in the docs: [Contribute → Adding a new provider](https://github.com/0xvasanth/cognis/blob/main/docs/site/content/docs/contribute/adding-a-provider.mdx).
 
 ## Reporting issues
 
@@ -89,7 +89,7 @@ The full step-by-step is in the docs: [Contribute → Adding a new provider](htt
 
 ## Code of conduct
 
-Be respectful and constructive. We're building something together. The full code of conduct is in [`docs/mintlify/contribute/code-of-conduct.mdx`](https://github.com/0xvasanth/cognis/blob/main/docs/mintlify/contribute/code-of-conduct.mdx).
+Be respectful and constructive. We're building something together. The full code of conduct is in [`docs/site/content/docs/contribute/code-of-conduct.mdx`](https://github.com/0xvasanth/cognis/blob/main/docs/site/content/docs/contribute/code-of-conduct.mdx).
 
 ## License
 

@@ -1,0 +1,63 @@
+---
+title: "Vector stores overview"
+description: "Six backends behind one VectorStore trait, plus a dedup decorator that wraps any of them."
+sidebarTitle: "Overview"
+---
+
+Every backend implements the same `VectorStore` trait, so swapping one in for another is a constructor change, not a rewrite of your retrieval code.
+
+<Cards>
+  <Card title="In-memory" href="/docs/building-rag/vector-stores/in-memory">
+    Zero setup. Prototyping and corpora under ~10k docs.
+  </Card>
+  <Card title="FAISS" href="/docs/building-rag/vector-stores/faiss">
+    Pure-Rust, no C++ dependency. Flat, IVFFlat, or HNSW indexes.
+  </Card>
+  <Card title="Chroma" href="/docs/building-rag/vector-stores/chroma">
+    HTTP, Chroma OSS API.
+  </Card>
+  <Card title="Qdrant" href="/docs/building-rag/vector-stores/qdrant">
+    HTTP, with native filter pushdown.
+  </Card>
+  <Card title="Pinecone" href="/docs/building-rag/vector-stores/pinecone">
+    Serverless, namespace-scoped.
+  </Card>
+  <Card title="Weaviate" href="/docs/building-rag/vector-stores/weaviate">
+    HTTP, class-based object model.
+  </Card>
+</Cards>
+
+## Feature flags
+
+Each HTTP-backed store is gated separately; FAISS is pure Rust with no extra dependency; in-memory has no flag at all (always available).
+
+```toml
+cognis-rag = { version = "0.3", features = ["vectorstore-qdrant"] }
+# or: vectorstore-chroma, vectorstore-pinecone, vectorstore-weaviate, vectorstore-faiss
+# or: all-vectorstores
+```
+
+## Deduplicate across any backend
+
+`DedupVectorStore` is a decorator, not a backend — it wraps any `VectorStore` and silently drops documents whose content fingerprint has already been seen. Reach for it whenever the same fact might arrive more than once: agent loops that re-extract facts, repeated indexing runs, or multi-source pipelines feeding the same store.
+
+```rust
+use cognis_rag::vectorstore::DedupVectorStore;
+
+let store = DedupVectorStore::new(qdrant_store);
+// or seed it with fingerprints you already know about:
+let store = DedupVectorStore::with_seen(qdrant_store, existing_fingerprints);
+```
+
+The default fingerprint is normalized text (lowercase + collapsed whitespace) hashed with FNV-1a 128-bit — the same algorithm `record_manager` uses. Supply your own via `.with_fingerprint(store, |text| ...)` when your dedup key isn't derived from raw text (a document ID, a composite hash). Check whether a given text would be deduped with `.contains(text)`, or inspect `.seen_count()`.
+
+## See also
+
+<Cards>
+  <Card title="Retrievers" href="/docs/building-rag/retrievers">
+    Turn a store into a Runnable you can .pipe() into a prompt.
+  </Card>
+  <Card title="Indexing" href="/docs/building-rag/indexing">
+    IndexingPipeline + RecordManager — only re-embed what changed.
+  </Card>
+</Cards>

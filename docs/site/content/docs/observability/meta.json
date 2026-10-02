@@ -1,0 +1,10 @@
+{
+  "title": "Observability",
+  "pages": [
+    "callbacks",
+    "langfuse",
+    "cost",
+    "prompts-scores",
+    "evaluation"
+  ]
+}

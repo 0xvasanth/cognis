@@ -1,0 +1,41 @@
+---
+title: "Tools"
+description: "Defining and dispatching tools — typed schemas, multi-tool agents, DAG orchestration, stateful HTTP."
+sidebarTitle: "Tools"
+---
+
+Tool examples cover the surfaces a developer reaches for when giving an agent things to do. Sources under [`examples/tools/`](https://github.com/0xvasanth/cognis/tree/main/examples/tools).
+
+| Name | Scenario | Source |
+|---|---|---|
+| `tools_schema` | Build a `get_weather` tool with typed args; agent dispatches it for two cities in one turn. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/tool_schema.rs) |
+| `tools_calling_agent` | Multi-tool agent — Calculator + WordCount, dispatched as the user asks each. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/tool_calling_agent.rs) |
+| `tools_orchestrator` | Fan out three slow price-fetch tools in parallel, fold to the cheapest. No agent loop. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/tool_orchestrator.rs) |
+| `tools_stateful_http` | Translator tool that reuses one connection pool across calls — the shape of any external-service tool. | [src](https://github.com/0xvasanth/cognis/blob/main/examples/tools/stateful_http.rs) |
+
+## How to run
+
+```bash
+COGNIS_PROVIDER=ollama COGNIS_OLLAMA_MODEL=llama3.1 \
+  cargo run -p cognis-examples --example tools_schema
+```
+
+## Pick a starting point
+
+- **Building your first typed tool?** `tools_schema` — `SchemaBasedTool` with a typed `Params` struct.
+- **Calling external services?** `tools_stateful_http` shows the shared-client pattern.
+- **No agent loop, just a DAG of calls?** `tools_orchestrator`.
+
+## See also
+
+<Cards>
+  <Card title="Tools guide" href="/docs/building-agents/tools">
+    Tool, SchemaBasedTool, validators, ToolOrchestrator.
+  </Card>
+  <Card title="Production → Security" href="/docs/production/security">
+    Deny-lists, SSRF protection, sandboxing.
+  </Card>
+  <Card title="Patterns → HITL approval" href="/docs/patterns/hitl-approval">
+    Approval-gated tool calls.
+  </Card>
+</Cards>

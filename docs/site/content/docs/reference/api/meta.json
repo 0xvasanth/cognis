@@ -1,0 +1,12 @@
+{
+  "title": "API per crate",
+  "pages": [
+    "cognis",
+    "cognis-core",
+    "cognis-llm",
+    "cognis-rag",
+    "cognis-graph",
+    "cognis-trace",
+    "cognis-macros"
+  ]
+}
