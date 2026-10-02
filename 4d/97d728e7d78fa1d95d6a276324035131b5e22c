@@ -1,0 +1,301 @@
+docs/site/src/components/mdx.tsx
+  s_1c99a74d31b4d9::t_dc12d49d34efac 3-12
+  s_1c99a74d31b4d9::t_2ed46271533738 1-2
+  s_1c99a74d31b4d9::t_288bd81dc65650 13-15
+  s_1c99a74d31b4d9::t_8d85f9c6ecdb31 16-21
+docs/site/src/lib/layout.shared.tsx
+  s_1c99a74d31b4d9::t_95f8258549a817 12
+  s_1c99a74d31b4d9::t_63e66d8028f4b0 9-11
+  s_1c99a74d31b4d9::t_863ff080eb545b 13-15
+  s_1c99a74d31b4d9::t_3bf859fb4cd72d 1-8,16
+.gitignore
+  s_1c99a74d31b4d9::t_8c648505f318b4 24-25,29
+docs/site/.gitignore
+  s_1c99a74d31b4d9::t_3cef2143b6537d 1-26
+docs/site/AGENTS.md
+  s_1c99a74d31b4d9::t_0ed8247a688bd1 1-9
+docs/site/CLAUDE.md
+  s_1c99a74d31b4d9::t_dab6aa2f9ae8ed 1
+docs/site/README.md
+  s_1c99a74d31b4d9::t_2a113e965a1add 1-45
+docs/site/content/docs/building-agents/hitl.mdx
+  s_1c99a74d31b4d9::t_b85d44772d27ef 1-156
+docs/site/content/docs/building-agents/memory/entity-and-knowledge-graph.mdx
+  s_1c99a74d31b4d9::t_ffffdddd5f13dc 1-71
+docs/site/content/docs/building-agents/memory/hybrid-memory.mdx
+  s_1c99a74d31b4d9::t_cf8bad051d9422 1-39
+docs/site/content/docs/building-agents/memory/meta.json
+  s_1c99a74d31b4d9::t_47f9e3a685491a 1-10
+docs/site/content/docs/building-agents/memory/overview.mdx
+  s_1c99a74d31b4d9::t_41053ba8501301 1-137
+docs/site/content/docs/building-agents/memory/token-and-summary.mdx
+  s_1c99a74d31b4d9::t_b89d8803c0d793 1-62
+docs/site/content/docs/building-agents/memory/vector-memory.mdx
+  s_1c99a74d31b4d9::t_e452eb179caee1 1-46
+docs/site/content/docs/building-agents/meta.json
+  s_1c99a74d31b4d9::t_8b3a692ba1d99e 1-15
+docs/site/content/docs/building-agents/middleware.mdx
+  s_1c99a74d31b4d9::t_e2bb9a6de82a71 1-227
+docs/site/content/docs/building-agents/models/anthropic.mdx
+  s_1c99a74d31b4d9::t_b1335bfb826f99 1-45
+docs/site/content/docs/building-agents/models/azure.mdx
+  s_1c99a74d31b4d9::t_121c3dcb3bc1f5 1-46
+docs/site/content/docs/building-agents/models/google.mdx
+  s_1c99a74d31b4d9::t_312de69ecefe2e 1-43
+docs/site/content/docs/building-agents/models/meta.json
+  s_1c99a74d31b4d9::t_e10c4d7f33d339 1-12
+docs/site/content/docs/building-agents/models/ollama.mdx
+  s_1c99a74d31b4d9::t_a6f970685e30af 1-38
+docs/site/content/docs/building-agents/models/openai.mdx
+  s_1c99a74d31b4d9::t_e9625e18e62a6b 1-50
+docs/site/content/docs/building-agents/models/openrouter.mdx
+  s_1c99a74d31b4d9::t_e4d39f3bb209f9 1-47
+docs/site/content/docs/building-agents/models/overview.mdx
+  s_1c99a74d31b4d9::t_fab5bdeff99850 1-186
+docs/site/content/docs/building-agents/multi-agent.mdx
+  s_1c99a74d31b4d9::t_7281f96f341489 1-170
+docs/site/content/docs/building-agents/provider-resilience.mdx
+  s_1c99a74d31b4d9::t_c1ffab7a76fde0 1-146
+docs/site/content/docs/building-agents/streaming.mdx
+  s_1c99a74d31b4d9::t_4750be2e41bc7b 1-123
+docs/site/content/docs/building-agents/structured-output.mdx
+  s_1c99a74d31b4d9::t_615c07019e5ef5 1-114
+docs/site/content/docs/building-agents/testing.mdx
+  s_1c99a74d31b4d9::t_292264c853c123 1-105
+docs/site/content/docs/building-agents/tools.mdx
+  s_1c99a74d31b4d9::t_eee99e423ebadf 1-209
+docs/site/content/docs/building-rag/documents.mdx
+  s_1c99a74d31b4d9::t_56da14b1fee15f 1-148
+docs/site/content/docs/building-rag/embeddings.mdx
+  s_1c99a74d31b4d9::t_306c82bb8e7472 1-179
+docs/site/content/docs/building-rag/indexing.mdx
+  s_1c99a74d31b4d9::t_f4d04a85e08a9a 1-129
+docs/site/content/docs/building-rag/meta.json
+  s_1c99a74d31b4d9::t_d3ce3e0ceaa501 1-11
+docs/site/content/docs/building-rag/reranking.mdx
+  s_1c99a74d31b4d9::t_6bf76a21db445e 1-119
+docs/site/content/docs/building-rag/retrievers.mdx
+  s_1c99a74d31b4d9::t_60cd7aff6dd555 1-138
+docs/site/content/docs/building-rag/vector-stores/chroma.mdx
+  s_1c99a74d31b4d9::t_0e4c5de3330925 1-30
+docs/site/content/docs/building-rag/vector-stores/faiss.mdx
+  s_1c99a74d31b4d9::t_f08c3242b1b661 1-36
+docs/site/content/docs/building-rag/vector-stores/in-memory.mdx
+  s_1c99a74d31b4d9::t_dea48dd0878a08 1-33
+docs/site/content/docs/building-rag/vector-stores/meta.json
+  s_1c99a74d31b4d9::t_92e6731a1b6182 1-12
+docs/site/content/docs/building-rag/vector-stores/overview.mdx
+  s_1c99a74d31b4d9::t_16f194b19145c9 1-63
+docs/site/content/docs/building-rag/vector-stores/pinecone.mdx
+  s_1c99a74d31b4d9::t_a739c54a449e3c 1-31
+docs/site/content/docs/building-rag/vector-stores/qdrant.mdx
+  s_1c99a74d31b4d9::t_1ede3e8e5b6143 1-31
+docs/site/content/docs/building-rag/vector-stores/weaviate.mdx
+  s_1c99a74d31b4d9::t_a4df4ca1a9eb80 1-29
+docs/site/content/docs/contribute/adding-a-provider.mdx
+  s_1c99a74d31b4d9::t_3e8320bd130d25 1-237
+docs/site/content/docs/contribute/adding-a-tool.mdx
+  s_1c99a74d31b4d9::t_b419985079db7e 1-225
+docs/site/content/docs/contribute/adding-a-vector-store.mdx
+  s_1c99a74d31b4d9::t_99a6e564f2864d 1-197
+docs/site/content/docs/contribute/architecture.mdx
+  s_1c99a74d31b4d9::t_3fd1d883e5ab67 1-123
+docs/site/content/docs/contribute/code-of-conduct.mdx
+  s_1c99a74d31b4d9::t_beb1db72b15ac2 1-69
+docs/site/content/docs/contribute/development-setup.mdx
+  s_1c99a74d31b4d9::t_6cc1c49517768e 1-146
+docs/site/content/docs/contribute/meta.json
+  s_1c99a74d31b4d9::t_3d8b9e0fde814e 1-13
+docs/site/content/docs/contribute/pull-requests.mdx
+  s_1c99a74d31b4d9::t_d58aea4585c6ea 1-123
+docs/site/content/docs/contribute/ways-to-contribute.mdx
+  s_1c99a74d31b4d9::t_2471ccbd01e781 1-94
+docs/site/content/docs/core-ideas/agents.mdx
+  s_1c99a74d31b4d9::t_da466386a38320 1-118
+docs/site/content/docs/core-ideas/architecture.mdx
+  s_1c99a74d31b4d9::t_1a49155b2bf93b 1-63
+docs/site/content/docs/core-ideas/error-handling.mdx
+  s_1c99a74d31b4d9::t_7cd01fcf478b05 1-83
+docs/site/content/docs/core-ideas/graphs.mdx
+  s_1c99a74d31b4d9::t_a50cb90ad25155 1-170
+docs/site/content/docs/core-ideas/messages.mdx
+  s_1c99a74d31b4d9::t_87b27b3dc90ec8 1-117
+docs/site/content/docs/core-ideas/meta.json
+  s_1c99a74d31b4d9::t_83c86987ba60c7 1-11
+docs/site/content/docs/core-ideas/runnables.mdx
+  s_1c99a74d31b4d9::t_eac5a051d4e09c 1-181
+docs/site/content/docs/examples/agents.mdx
+  s_1c99a74d31b4d9::t_c49ef8660bbf15 1-39
+docs/site/content/docs/examples/chains.mdx
+  s_1c99a74d31b4d9::t_dc9684a54a0b40 1-35
+docs/site/content/docs/examples/graphs.mdx
+  s_1c99a74d31b4d9::t_ae4f409abe8715 1-39
+docs/site/content/docs/examples/index.mdx
+  s_1c99a74d31b4d9::t_46af1b8ace314f 1-81
+docs/site/content/docs/examples/memory.mdx
+  s_1c99a74d31b4d9::t_96285580a3c1ef 1-37
+docs/site/content/docs/examples/meta.json
+  s_1c99a74d31b4d9::t_7ccca465f63803 1-17
+docs/site/content/docs/examples/models.mdx
+  s_1c99a74d31b4d9::t_32dcbbfb50cac9 1-40
+docs/site/content/docs/examples/observability.mdx
+  s_1c99a74d31b4d9::t_7bf51c7baf745f 1-34
+docs/site/content/docs/examples/parsers.mdx
+  s_1c99a74d31b4d9::t_a39d34b9271ee4 1-37
+docs/site/content/docs/examples/quickstart.mdx
+  s_1c99a74d31b4d9::t_63c8b2448a8cd4 1-53
+docs/site/content/docs/examples/resilience.mdx
+  s_1c99a74d31b4d9::t_d9949846fa65fc 1-35
+docs/site/content/docs/examples/retrieval.mdx
+  s_1c99a74d31b4d9::t_5fac754d8263b8 1-42
+docs/site/content/docs/examples/tools.mdx
+  s_1c99a74d31b4d9::t_1a60df4343b39b 1-41
+docs/site/content/docs/get-started/installation.mdx
+  s_1c99a74d31b4d9::t_339ce7c0eae74d 1-124
+docs/site/content/docs/get-started/meta.json
+  s_1c99a74d31b4d9::t_5c8dc092f04334 1-7
+docs/site/content/docs/get-started/quickstart.mdx
+  s_1c99a74d31b4d9::t_656055dae763dd 1-154
+docs/site/content/docs/graph-workflows/checkpointing.mdx
+  s_1c99a74d31b4d9::t_5a1d923ddda113 1-143
+docs/site/content/docs/graph-workflows/control-flow.mdx
+  s_1c99a74d31b4d9::t_7d34416c76bf57 1-130
+docs/site/content/docs/graph-workflows/meta.json
+  s_1c99a74d31b4d9::t_8c557d5e83abfc 1-10
+docs/site/content/docs/graph-workflows/state.mdx
+  s_1c99a74d31b4d9::t_87c052ef11cb1e 1-136
+docs/site/content/docs/graph-workflows/streaming.mdx
+  s_1c99a74d31b4d9::t_f72d32cf5fb053 1-108
+docs/site/content/docs/graph-workflows/visualization.mdx
+  s_1c99a74d31b4d9::t_b3d325cf9d2bc1 1-117
+docs/site/content/docs/index.mdx
+  s_1c99a74d31b4d9::t_c1ca7ce0869f85 1-122
+docs/site/content/docs/meta.json
+  s_1c99a74d31b4d9::t_ad03621567df16 1-17
+docs/site/content/docs/observability/callbacks.mdx
+  s_1c99a74d31b4d9::t_9e7c76a4978fc1 1-151
+docs/site/content/docs/observability/cost.mdx
+  s_1c99a74d31b4d9::t_20b6da9adca40a 1-122
+docs/site/content/docs/observability/evaluation.mdx
+  s_1c99a74d31b4d9::t_0d5835bfd80cd7 1-122
+docs/site/content/docs/observability/langfuse.mdx
+  s_1c99a74d31b4d9::t_aef1264fc17393 1-131
+docs/site/content/docs/observability/meta.json
+  s_1c99a74d31b4d9::t_c4c148e967920a 1-10
+docs/site/content/docs/observability/prompts-scores.mdx
+  s_1c99a74d31b4d9::t_b32c71274a4d40 1-119
+docs/site/content/docs/patterns/code-qa.mdx
+  s_1c99a74d31b4d9::t_61c3b5ed15e423 1-144
+docs/site/content/docs/patterns/hitl-approval.mdx
+  s_1c99a74d31b4d9::t_8acf8fe67382c7 1-132
+docs/site/content/docs/patterns/local-ollama.mdx
+  s_1c99a74d31b4d9::t_78ffa527af9f49 1-167
+docs/site/content/docs/patterns/long-context.mdx
+  s_1c99a74d31b4d9::t_86ed41fa6d4e2f 1-124
+docs/site/content/docs/patterns/meta.json
+  s_1c99a74d31b4d9::t_99a427df5e24c3 1-13
+docs/site/content/docs/patterns/multi-agent-debate.mdx
+  s_1c99a74d31b4d9::t_37e12a50637239 1-105
+docs/site/content/docs/patterns/research-assistant.mdx
+  s_1c99a74d31b4d9::t_33a0670ed517fc 1-164
+docs/site/content/docs/patterns/stateful-chat.mdx
+  s_1c99a74d31b4d9::t_fd44c9a37fd863 1-124
+docs/site/content/docs/patterns/streaming-ui.mdx
+  s_1c99a74d31b4d9::t_3280867e36bd37 1-155
+docs/site/content/docs/production/caching.mdx
+  s_1c99a74d31b4d9::t_8a93dd4bec209b 1-132
+docs/site/content/docs/production/going-to-production.mdx
+  s_1c99a74d31b4d9::t_aec09951da7c56 1-171
+docs/site/content/docs/production/meta.json
+  s_1c99a74d31b4d9::t_0d7e3f884acda8 1-9
+docs/site/content/docs/production/resilience.mdx
+  s_1c99a74d31b4d9::t_fc69d42460f10c 1-157
+docs/site/content/docs/production/security.mdx
+  s_1c99a74d31b4d9::t_47d3edadbc7181 1-163
+docs/site/content/docs/reference/api/cognis-core.mdx
+  s_1c99a74d31b4d9::t_559871c62efd12 1-141
+docs/site/content/docs/reference/api/cognis-graph.mdx
+  s_1c99a74d31b4d9::t_b43ff9e6f14624 1-173
+docs/site/content/docs/reference/api/cognis-llm.mdx
+  s_1c99a74d31b4d9::t_b268e4e3b7e064 1-146
+docs/site/content/docs/reference/api/cognis-macros.mdx
+  s_1c99a74d31b4d9::t_3af12b071ce680 1-130
+docs/site/content/docs/reference/api/cognis-rag.mdx
+  s_1c99a74d31b4d9::t_7c541338c65076 1-146
+docs/site/content/docs/reference/api/cognis-trace.mdx
+  s_1c99a74d31b4d9::t_42ece898c1c57f 1-174
+docs/site/content/docs/reference/api/cognis.mdx
+  s_1c99a74d31b4d9::t_4f3c963e3f76ad 1-84
+docs/site/content/docs/reference/api/meta.json
+  s_1c99a74d31b4d9::t_e56e64c4ce9041 1-12
+docs/site/content/docs/reference/changelog.mdx
+  s_1c99a74d31b4d9::t_79ac611bc0a62c 1-44
+docs/site/content/docs/reference/env-vars.mdx
+  s_1c99a74d31b4d9::t_3f9a47cc263afa 1-102
+docs/site/content/docs/reference/faq.mdx
+  s_1c99a74d31b4d9::t_3072016e20f1b0 1-99
+docs/site/content/docs/reference/feature-flags.mdx
+  s_1c99a74d31b4d9::t_0b8bd88a1240fa 1-140
+docs/site/content/docs/reference/meta.json
+  s_1c99a74d31b4d9::t_e792dc36bab3fc 1-11
+docs/site/content/docs/reference/troubleshooting.mdx
+  s_1c99a74d31b4d9::t_980e08114709cf 1-102
+docs/site/eslint.config.mjs
+  s_1c99a74d31b4d9::t_b0ac5b962a0c77 1-15
+docs/site/next.config.mjs
+  s_1c99a74d31b4d9::t_d75841fb067fdc 1-10
+docs/site/package.json
+  s_1c99a74d31b4d9::t_88ca3fde897478 1-34
+docs/site/pnpm-lock.yaml
+  s_1c99a74d31b4d9::t_09c1eb855e454d 1-6873
+docs/site/postcss.config.mjs
+  s_1c99a74d31b4d9::t_5990fa2dad6c97 1-7
+docs/site/src/app/(home)/layout.tsx
+  s_1c99a74d31b4d9::t_e54accd08c03af 1-6
+docs/site/src/app/(home)/page.tsx
+  s_1c99a74d31b4d9::t_3cebf41dd7b328 1-292
+docs/site/src/app/api/search/route.ts
+  s_1c99a74d31b4d9::t_1cde8ec1a4904a 1-4
+docs/site/src/app/docs/[[...slug]]/page.tsx
+  s_1c99a74d31b4d9::t_d2f61af951f340 1-63
+docs/site/src/app/docs/layout.tsx
+  s_1c99a74d31b4d9::t_4461a3da477633 1-11
+docs/site/src/app/global.css
+  s_1c99a74d31b4d9::t_72a5be2c73c999 1-100
+docs/site/src/app/layout.tsx
+  s_1c99a74d31b4d9::t_07ad2ed9c7e44c 1-25
+docs/site/src/app/llms-full.txt/route.ts
+  s_1c99a74d31b4d9::t_f357cae1269603 1-7
+docs/site/src/app/llms.mdx/docs/[[...slug]]/route.ts
+  s_1c99a74d31b4d9::t_f2a266d24b024a 1-24
+docs/site/src/app/llms.txt/route.ts
+  s_1c99a74d31b4d9::t_16d1499b62f51b 1-7
+docs/site/src/app/og/docs/[...slug]/route.tsx
+  s_1c99a74d31b4d9::t_1e08d6f1806b67 1-25
+docs/site/src/lib/cn.ts
+  s_1c99a74d31b4d9::t_d9105ece3062e5 1
+docs/site/src/lib/shared.ts
+  s_1c99a74d31b4d9::t_caed8407067852 1-28
+docs/site/src/lib/source.ts
+  s_1c99a74d31b4d9::t_bae7c9b233438d 1-31
+docs/site/src/proxy.ts
+  s_1c99a74d31b4d9::t_1c55b5fc2811c0 1-32
+docs/site/tsconfig.json
+  s_1c99a74d31b4d9::t_75c5b59e863dca 1-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4d97d728e7d78fa1d95d6a276324035131b5e22c",
+  "prompts": {},
+  "sessions": {
+    "s_1c99a74d31b4d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d535c2a5-603f-4d23-afba-333a928e8120",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
