@@ -80,6 +80,9 @@ path = "../../examples/agents/streaming_agent_events.rs"
 [[example]]
 name = "agents_streaming_agent"
 path = "../../examples/agents/streaming_agent.rs"
+[[example]]
+name = "agents_streaming_ollama"
+path = "../../examples/agents/streaming_ollama.rs"
 
 # memory/ — memory variants.
 [[example]]
