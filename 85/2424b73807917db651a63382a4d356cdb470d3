@@ -1,0 +1,20 @@
+docs/site/src/app/layout.tsx
+  s_1c99a74d31b4d9::t_b2e957206da87d 1,6-8
+  s_1c99a74d31b4d9::t_c808248afd2121 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "852424b73807917db651a63382a4d356cdb470d3",
+  "prompts": {},
+  "sessions": {
+    "s_1c99a74d31b4d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d535c2a5-603f-4d23-afba-333a928e8120",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "vasanth <itsparser@gmail.com>"
+    }
+  }
+}
